@@ -566,6 +566,8 @@ async def upload_to_drive(
 ) -> dict[str, Any]:
     ensure_audio_file(file)
     date_dir = safe_segment(date, datetime.now().date().isoformat())
+    logger.info(f"date={date}")
+    logger.info(f"piece={piece}")
     piece_dir = safe_segment(piece, "uncategorized")
     staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
 
