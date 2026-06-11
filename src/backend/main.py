@@ -6,6 +6,8 @@ import mimetypes
 import os
 import re
 import shutil
+import json
+from google.oauth2 import service_account
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -185,17 +187,23 @@ def drive_enabled() -> bool:
 
 
 def drive_service():
-    credentials_path = (
-        os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
-        or os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+
+    if not service_account_json:
+        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON is not set")
+
+    info = json.loads(service_account_json)
+
+    credentials = service_account.Credentials.from_service_account_info(
+        info,
+        scopes=DRIVE_SCOPES,
     )
-    if credentials_path:
-        credentials = service_account.Credentials.from_service_account_file(
-            credentials_path,
-            scopes=DRIVE_SCOPES,
-        )
-    else:
-        credentials, _ = google_auth_default(scopes=DRIVE_SCOPES)
+
+    logger.info(
+        "Using Drive service account: %s",
+        info.get("client_email"),
+    )
+
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
 
