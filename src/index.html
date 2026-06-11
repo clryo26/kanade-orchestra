@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オーケストラ活動管理ツール</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">オーケストラ活動管理ツール</a>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" id="adminMenuBtn" type="button">管理メニュー</button>
+                <button class="btn btn-outline-secondary" id="memberMenuBtn" type="button">団員メニュー</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container-fluid py-4">
+        <section id="adminPanel" class="panel">
+            <div class="toolbar mb-3">
+                <button class="btn btn-sm btn-outline-primary active" data-tab="upload" type="button">録音管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
+            </div>
+
+            <div id="uploadTab" class="tab-content">
+                <div class="card">
+                    <div class="card-header">録音アップロード</div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label" for="uploadDate">練習日</label>
+                                <input type="date" id="uploadDate" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="uploadPiece">曲名</label>
+                                <input type="text" id="uploadPiece" class="form-control" placeholder="例: 交響曲第5番 第1楽章">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="bitrate">変換品質</label>
+                                <select id="bitrate" class="form-select">
+                                    <option value="128">128 kbps</option>
+                                    <option value="192" selected>192 kbps</option>
+                                    <option value="320">320 kbps</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <p class="text-muted mb-2">保存先: <span id="savePath"></span></p>
+                        <div id="dropZone" class="drop-zone mb-3">
+                            <strong>WAV / MP3 をドラッグ&ドロップ</strong>
+                            <span>または <button class="link-button" id="selectFileBtn" type="button">ファイルを選択</button></span>
+                            <small id="selectedFileName" class="text-muted">未選択</small>
+                            <input type="file" id="fileInput" accept=".wav,.mp3,audio/wav,audio/mpeg" hidden>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-primary" id="convertBtn" type="button">MP3に変換</button>
+                            <button class="btn btn-outline-secondary" id="uploadBtn" type="button">ローカル保管へ保存</button>
+                            <button class="btn btn-outline-danger" id="clearBtn" type="button">クリア</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="performanceTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">演奏会情報管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="perfId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="perfTitle">タイトル</label>
+                                <input type="text" class="form-control" id="perfTitle">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="perfDate">開催日</label>
+                                <input type="date" class="form-control" id="perfDate">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="perfOpenTime">開場</label>
+                                <input type="time" class="form-control" id="perfOpenTime" value="18:00">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="perfStartTime">開演</label>
+                                <input type="time" class="form-control" id="perfStartTime" value="19:00">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="perfConductor">指揮</label>
+                                <input type="text" class="form-control" id="perfConductor">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="perfVenue">会場</label>
+                                <input type="text" class="form-control" id="perfVenue">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="perfPieces">曲目</label>
+                                <input type="text" class="form-control" id="perfPieces" placeholder="カンマ区切りで入力">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="addPerfBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="editPerfBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deletePerfBtn" type="button">削除</button>
+                        </div>
+                        <ul class="list-group" id="perfListItems"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div id="scheduleTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">練習予定管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="schedId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-2">
+                                <label class="form-label" for="schedDate">練習日</label>
+                                <input type="date" class="form-control" id="schedDate">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="schedTime">開始時間</label>
+                                <input type="time" class="form-control" id="schedTime" value="13:00">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="schedVenue">場所</label>
+                                <input type="text" class="form-control" id="schedVenue">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="schedAvailHours">利用可能時間</label>
+                                <input type="text" class="form-control" id="schedAvailHours" placeholder="12:30 - 16:30">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="schedPieces">練習曲</label>
+                                <input type="text" class="form-control" id="schedPieces">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="schedNotes">備考</label>
+                                <input type="text" class="form-control" id="schedNotes">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="addSchedBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="editSchedBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deleteSchedBtn" type="button">削除</button>
+                        </div>
+                        <div id="schedListItems"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="announcementTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">お知らせ管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="annId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label" for="annDate">日付</label>
+                                <input type="date" class="form-control" id="annDate">
+                            </div>
+                            <div class="col-md-9">
+                                <label class="form-label" for="annContent">内容</label>
+                                <textarea class="form-control" id="annContent" rows="2"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="addAnnBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="editAnnBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deleteAnnBtn" type="button">削除</button>
+                        </div>
+                        <ul class="list-group" id="annListItems"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">録音ファイル一覧</div>
+                <div class="card-body">
+                    <div id="songTreeAdmin"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="memberPanel" class="panel" hidden>
+            <div class="toolbar mb-3">
+                <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
+            </div>
+
+            <div id="memberAnnounceTab" class="tab-content">
+                <div class="card">
+                    <div class="card-header">お知らせ</div>
+                    <div class="card-body">
+                        <ul class="list-group" id="memberAnnList"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div id="memberPerformanceTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">演奏会情報</div>
+                    <div class="card-body" id="memberPerfInfo"></div>
+                </div>
+            </div>
+
+            <div id="memberScheduleTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">練習予定</div>
+                    <div class="card-body" id="memberSchedInfo"></div>
+                </div>
+            </div>
+
+            <div id="memberRecordingTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">録音部屋</div>
+                    <div class="card-body" id="songTreeMember"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="toastArea" class="toast-area"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

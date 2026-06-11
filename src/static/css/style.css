@@ -1,0 +1,161 @@
+:root {
+    --brand: #235789;
+    --brand-dark: #183f66;
+    --accent: #2f855a;
+    --paper: #ffffff;
+    --surface: #f6f7f9;
+    --line: #d9dee7;
+    --text: #1f2933;
+}
+
+body {
+    background: var(--surface);
+    color: var(--text);
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+}
+
+.navbar-brand {
+    color: var(--brand) !important;
+    font-weight: 700;
+}
+
+.panel {
+    animation: fadeIn 0.18s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    margin-bottom: 1rem;
+}
+
+.card-header {
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    color: var(--brand-dark);
+    font-weight: 700;
+}
+
+.btn {
+    border-radius: 6px;
+}
+
+.btn-primary,
+.btn-outline-primary.active {
+    background-color: var(--brand);
+    border-color: var(--brand);
+}
+
+.btn-primary:hover {
+    background-color: var(--brand-dark);
+    border-color: var(--brand-dark);
+}
+
+.drop-zone {
+    align-items: center;
+    background: #fbfcfe;
+    border: 2px dashed #aeb8c8;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    justify-content: center;
+    min-height: 150px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.drop-zone.dragover {
+    background: #eef6ff;
+    border-color: var(--brand);
+}
+
+.link-button {
+    background: transparent;
+    border: 0;
+    color: var(--brand);
+    font-weight: 700;
+    padding: 0;
+    text-decoration: underline;
+}
+
+#savePath {
+    color: var(--brand);
+    font-family: Consolas, "Courier New", monospace;
+    font-weight: 700;
+}
+
+.clickable-row {
+    cursor: pointer;
+}
+
+.clickable-row:hover,
+.list-group-item-action:hover {
+    background: #f0f6fb;
+}
+
+.info-block {
+    border-bottom: 1px solid var(--line);
+    padding: 0.75rem 0;
+}
+
+.info-block:first-child {
+    padding-top: 0;
+}
+
+.info-block:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.recording-group h6 {
+    color: var(--brand-dark);
+    font-weight: 700;
+}
+
+.toast-area {
+    display: grid;
+    gap: 0.5rem;
+    max-width: min(380px, calc(100vw - 2rem));
+    position: fixed;
+    right: 1rem;
+    top: 5rem;
+    z-index: 1080;
+}
+
+.toast-area .alert {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .navbar .container-fluid {
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .navbar .d-flex {
+        flex-wrap: wrap;
+    }
+
+    .toolbar .btn {
+        flex: 1 1 45%;
+    }
+}

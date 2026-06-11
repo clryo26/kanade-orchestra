@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+*.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# 環境変数
+.env
+.env.local
+.env.*.local
+credentials/
+service-account*.json
+*-service-account.json
+
+# プロジェクト固有
+src/uploads/*
+src/data/*
+logs/*
+*.log
+!src/uploads/.gitkeep
+!src/data/.gitkeep
+!logs/.gitkeep
+
+# テスト
+.pytest_cache/
+.coverage
+htmlcov/
+
+# UV
+.uv-virtualenvs/
+uv.lock
+
+# Docker
+docker-compose.override.yml
+
+# OS
+Thumbs.db
+.Thumbs.db
+
+# その他
+*.bak
+*.tmp
+*.temp
+node_modules/
