@@ -578,7 +578,7 @@ async def upload_to_drive(
         }
 
     try:
-        drive_item = upload_path_to_drive(staging_path, date_dir, piece_dir)
+        drive_item = upload_file_to_drive(staging_path, date_dir, piece_dir)
     except HttpError as exc:
         logger.exception("Google Drive upload failed")
         raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {exc}") from exc

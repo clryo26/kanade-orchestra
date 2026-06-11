@@ -95,8 +95,9 @@ def upload_file_to_drive(local_path, practice_date, song_name):
     ).execute()
 
     return {
-        "id": uploaded["id"],
-        "name": uploaded["name"],
-        "view_url": uploaded.get("webViewLink"),
-        "download_url": uploaded.get("webContentLink"),
-    }
+    "id": uploaded["id"],
+    "name": uploaded["name"],
+    "web_view_link": uploaded.get("webViewLink"),
+    "download_url": uploaded.get("webContentLink"),
+    "view_url": uploaded.get("webViewLink"),
+}
