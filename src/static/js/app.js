@@ -169,8 +169,10 @@ function audioFormData() {
     const formData = new FormData();
     formData.append('file', appState.selectedFile);
     formData.append('bitrate', $('bitrate').value);
-    formData.append('date', $('uploadDate').value);
-    formData.append('piece', $('uploadPiece').value);
+    formData.append('date', document.getElementById('uploadDate').value);
+    formData.append('piece', document.getElementById('uploadPiece').value);
+    console.log('uploadDate=', document.getElementById('uploadDate').value);
+    console.log('uploadPiece=', document.getElementById('uploadPiece').value);
     return formData;
 }
 
