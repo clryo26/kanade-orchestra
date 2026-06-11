@@ -23,6 +23,11 @@ from googleapiclient.http import MediaFileUpload
 from pydantic import BaseModel, Field
 
 try:
+    from .drive_storage import upload_file_to_drive
+except ImportError:  # pragma: no cover - allows running main.py directly.
+    from drive_storage import upload_file_to_drive
+
+try:
     from pydub import AudioSegment
 except ImportError:  # pragma: no cover
     AudioSegment = None
@@ -508,22 +513,21 @@ async def convert_audio(
         "message": "Converted",
     }
 
-    if drive_enabled():
-        try:
-            drive_item = upload_path_to_drive(output_path, date_dir, piece_dir)
-            response.update(
-                {
-                    "drive_file_id": drive_item["id"],
-                    "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
-                    "download_url": drive_item.get("download_url"),
-                    "source": "google_drive",
-                    "message": "Converted and uploaded to Google Drive",
-                }
-            )
-        except HttpError as exc:
-            logger.exception("Google Drive upload failed")
-            response["drive_error"] = str(exc)
-            response["message"] = "Converted locally, but Google Drive upload failed"
+    drive_file = upload_file_to_drive(
+        local_path=output_path,
+        practice_date=date_dir,
+        song_name=piece_dir,
+    )
+    print("Google Drive upload complete:", drive_file)
+    response.update(
+        {
+            "drive_file_id": drive_file["id"],
+            "share_link": drive_file.get("view_url") or drive_file.get("download_url"),
+            "download_url": drive_file.get("download_url") or response["download_url"],
+            "source": "google_drive",
+            "message": "Converted and uploaded to Google Drive",
+        }
+    )
 
     return response
 
