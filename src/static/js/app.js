@@ -2,8 +2,11 @@ const KANADE_EXTERNAL_LINKS = {
     x: 'https://twitter.com/kanade_orche',
     facebook: 'https://facebook.com/zouokesutora',
     instagram: 'https://instagram.com/kanade.orchestra',
-    youtube: 'https://www.youtube.com/@fukuoka-kanade-orchestra'
+    youtube: 'https://www.youtube.com/@fukuoka-kanade-orchestra',
+    memberProfile: 'https://sites.google.com/view/kanadeprof/%E3%83%9B%E3%83%BC%E3%83%A0'
 };
+
+const KANADE_MEMBER_PROFILE_PASSWORD = 'kanadeprof';
 
 const appState = {
     selectedFile: null,
@@ -12,7 +15,9 @@ const appState = {
     performances: [],
     schedules: [],
     announcements: [],
-    recordings: []
+    recordings: [],
+    recordingsLoaded: false,
+    recordingsLoading: null
 };
 
 const today = () => {
@@ -31,6 +36,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindForms();
     showAdminPanel();
     await loadAll();
+    requestAnimationFrame(() => {
+        if (!$('adminPanel').hidden && !appState.recordingsLoaded) {
+            ensureRecordingsLoaded();
+        }
+    });
     updateSavePath();
 });
 
@@ -107,6 +117,10 @@ function switchTab(panelId, tabName) {
     if (target) target.hidden = false;
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
+
+    if (tabName === 'upload' || tabName === 'member-recording') {
+        ensureRecordingsLoaded();
+    }
 }
 
 async function reloadPortal() {
@@ -139,6 +153,14 @@ function toPascalTab(value) {
         'member-performance': 'memberPerformance',
         'member-schedule': 'memberSchedule',
         'member-recording': 'memberRecording',
+        'member-profile': 'memberProfile',
+        'member-absence': 'memberAbsence',
+        'member-sheets': 'memberSheets',
+        'member-payments': 'memberPayments',
+        'member-roster': 'memberRoster',
+        'member-events': 'memberEvents',
+        'member-song-info': 'memberSongInfo',
+        'member-album': 'memberAlbum',
         'member-sns': 'memberSns',
         'member-concert-records': 'memberConcertRecords'
     };
@@ -422,7 +444,7 @@ function clearUploadForm() {
     updateSavePath();
 }
 async function loadAll() {
-    await Promise.all([loadPerformances(), loadSchedules(), loadAnnouncements(), loadRecordings()]);
+    await Promise.all([loadPerformances(), loadSchedules(), loadAnnouncements()]);
 }
 
 async function loadPerformances() {
@@ -441,9 +463,36 @@ async function loadAnnouncements() {
 }
 
 async function loadRecordings() {
-    const data = await request('/api/recordings');
+    const data = await request('/api/recordings?limit=200');
     appState.recordings = data.files || [];
+    appState.recordingsLoaded = true;
     renderRecordings();
+}
+
+async function ensureRecordingsLoaded(force = false) {
+    if (appState.recordingsLoaded && !force) return;
+    if (appState.recordingsLoading && !force) return appState.recordingsLoading;
+
+    renderRecordingsLoading();
+    appState.recordingsLoading = loadRecordings()
+        .catch((error) => {
+            console.error(error);
+            appState.recordingsLoaded = false;
+            showAlert(`録音一覧の読み込みに失敗しました: ${error.message}`, 'danger');
+        })
+        .finally(() => {
+            appState.recordingsLoading = null;
+        });
+    return appState.recordingsLoading;
+}
+
+function renderRecordingsLoading() {
+    ['songTreeAdmin', 'songTreeMember'].forEach((id) => {
+        const container = $(id);
+        if (container) {
+            container.innerHTML = '<p class="text-muted mb-0">録音一覧を読み込み中...</p>';
+        }
+    });
 }
 
 async function savePerformance() {
@@ -846,6 +895,16 @@ function announcementItem(ann, selectable) {
 }
 
 function renderRecordings() {
+    if (!appState.recordingsLoaded && !appState.recordingsLoading) {
+        ['songTreeAdmin', 'songTreeMember'].forEach((id) => {
+            const container = $(id);
+            if (container) {
+                container.innerHTML = '<button class="btn btn-outline-primary btn-sm load-recordings-btn" type="button">録音一覧を読み込む</button>';
+                container.querySelector('.load-recordings-btn').addEventListener('click', () => ensureRecordingsLoaded());
+            }
+        });
+        return;
+    }
     renderRecordingList('songTreeAdmin', true);
     renderRecordingList('songTreeMember', false);
 }
@@ -930,7 +989,7 @@ function renderRecordingList(containerId, canDelete) {
                                 </span>
                                 <span class="d-flex gap-2">${actionButton}</span>
                             </div>
-                            ${canDelete ? '' : `<audio class="recording-player mt-2 w-100" controls hidden src="${escapeHtml(playUrl)}"></audio>`}
+                            ${canDelete ? '' : `<div class="recording-player-slot mt-2" data-play-url="${escapeHtml(playUrl)}" hidden></div>`}
                         `;
 
                         if (canDelete) {
@@ -1081,8 +1140,50 @@ function renderMemberViews() {
     renderMemberSchedules();
     renderAnnouncements();
     renderRecordings();
+    renderMemberProfile();
     renderMemberSns();
     renderMemberConcertRecords();
+}
+
+function toggleRecordingPlayback(item) {
+    const button = item.querySelector('.play-recording-btn');
+    const slot = item.querySelector('.recording-player-slot');
+    if (!slot || !button) return;
+
+    let audio = slot.querySelector('.recording-player');
+    if (!audio) {
+        audio = document.createElement('audio');
+        audio.className = 'recording-player w-100';
+        audio.controls = true;
+        audio.preload = 'none';
+        audio.src = slot.dataset.playUrl || '';
+        slot.appendChild(audio);
+    }
+
+    document.querySelectorAll('.recording-player').forEach((otherAudio) => {
+        if (otherAudio !== audio) {
+            otherAudio.pause();
+            const otherSlot = otherAudio.closest('.recording-player-slot');
+            if (otherSlot) otherSlot.hidden = true;
+            const otherButton = otherAudio.closest('.list-group-item')?.querySelector('.play-recording-btn');
+            if (otherButton) otherButton.textContent = '再生';
+        }
+    });
+
+    slot.hidden = false;
+    if (audio.paused) {
+        audio.play()
+            .then(() => { button.textContent = '停止'; })
+            .catch((error) => showAlert(`再生できませんでした: ${error.message}`, 'danger'));
+    } else {
+        audio.pause();
+        button.textContent = '再生';
+    }
+
+    audio.onended = () => {
+        button.textContent = '再生';
+        slot.hidden = true;
+    };
 }
 
 
@@ -1091,6 +1192,27 @@ function externalLinkButton(url, label, variant = 'outline-primary') {
         <a class="btn btn-${variant} btn-lg external-link-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
             ${escapeHtml(label)}
         </a>
+    `;
+}
+
+function renderMemberProfile() {
+    const container = $('memberProfileInfo');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="external-link-card mb-3">
+            <div>
+                <strong>福岡奏オーケストラ団員プロフィール</strong>
+                <p class="text-muted mb-1">プロフィールサイト閲覧パスワード: <code>${escapeHtml(KANADE_MEMBER_PROFILE_PASSWORD)}</code></p>
+            </div>
+            ${externalLinkButton(KANADE_EXTERNAL_LINKS.memberProfile, '団員紹介を開く', 'outline-primary')}
+        </div>
+        <iframe
+            class="member-profile-frame"
+            title="福岡奏オーケストラ団員プロフィール"
+            src="${escapeHtml(KANADE_EXTERNAL_LINKS.memberProfile)}"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+        ></iframe>
     `;
 }
 
@@ -1148,7 +1270,14 @@ function renderMemberPerformances() {
         container.innerHTML = '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
         return;
     }
-    container.innerHTML = appState.performances.map((perf) => `
+    const perf = upcomingPerformance();
+    const countdownHtml = perf ? `
+        <div class="portal-countdown mb-3">
+            <strong>本番まであと${Math.max(0, Math.ceil((new Date(`${perf.date}T00:00:00`) - new Date(`${today()}T00:00:00`)) / 86400000))}日！</strong>
+            <span>${escapeHtml(perf.title || '')}</span>
+        </div>
+    ` : '';
+    container.innerHTML = countdownHtml + appState.performances.map((perf) => `
         <article class="info-block">
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(perf.date)} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
@@ -1301,4 +1430,354 @@ function showAlert(message, type = 'info') {
     toast.textContent = message;
     $('toastArea').appendChild(toast);
     setTimeout(() => toast.remove(), 4200);
+}
+
+const PORTAL_ADMIN_PASSWORD = 'kanadeadmin';
+const PORTAL_COLLECTIONS = [
+    'absences',
+    'sheet_library',
+    'payments',
+    'rosters',
+    'events',
+    'event_responses',
+    'song_info',
+    'albums'
+];
+let portalExtensionReady = false;
+
+Object.assign(appState, {
+    absences: [],
+    sheetLibrary: [],
+    payments: [],
+    rosters: [],
+    events: [],
+    eventResponses: [],
+    songInfo: [],
+    albums: [],
+    portalLoaded: false
+});
+
+function showAdminPanel() {
+    if (!portalExtensionReady) {
+        $('adminPanel').hidden = true;
+        $('memberPanel').hidden = false;
+        localStorage.setItem('userRole', 'member');
+        return;
+    }
+
+    if (sessionStorage.getItem('adminUnlocked') !== 'true') {
+        const password = prompt('管理者パスワードを入力してください');
+        if (password !== PORTAL_ADMIN_PASSWORD) {
+            showAlert('管理者パスワードが違います', 'warning');
+            showMemberPanel();
+            return;
+        }
+        sessionStorage.setItem('adminUnlocked', 'true');
+    }
+
+    $('adminPanel').hidden = false;
+    $('memberPanel').hidden = true;
+    localStorage.setItem('userRole', 'admin');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    setupPortalExtension();
+    portalExtensionReady = true;
+    await loadPortalData();
+    showMemberPanel();
+    switchTab('memberPanel', 'member-announce');
+});
+
+function setupPortalExtension() {
+    const toolbar = document.querySelector('#memberPanel .toolbar');
+    if (!toolbar || $('memberAbsenceTab')) return;
+
+    [
+        ['member-absence', '欠席連絡'],
+        ['member-sheets', '楽譜ライブラリ'],
+        ['member-payments', '支払状況'],
+        ['member-roster', '乗り番表'],
+        ['member-events', 'イベント調整'],
+        ['member-song-info', '楽曲情報'],
+        ['member-album', 'アルバム']
+    ].forEach(([tab, label]) => {
+        const button = document.createElement('button');
+        button.className = 'btn btn-sm btn-outline-secondary';
+        button.dataset.tab = tab;
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', () => {
+            switchTab('memberPanel', tab);
+            renderPortalTab(tab);
+        });
+        toolbar.appendChild(button);
+    });
+
+    const panel = $('memberPanel');
+    panel.insertAdjacentHTML('beforeend', `
+        <div id="memberAbsenceTab" class="tab-content" hidden><div class="card"><div class="card-header">欠席連絡</div><div class="card-body" id="memberAbsenceInfo"></div></div></div>
+        <div id="memberSheetsTab" class="tab-content" hidden><div class="card"><div class="card-header">楽譜ライブラリ</div><div class="card-body" id="memberSheetsInfo"></div></div></div>
+        <div id="memberPaymentsTab" class="tab-content" hidden><div class="card"><div class="card-header">支払状況</div><div class="card-body" id="memberPaymentsInfo"></div></div></div>
+        <div id="memberRosterTab" class="tab-content" hidden><div class="card"><div class="card-header">乗り番表</div><div class="card-body" id="memberRosterInfo"></div></div></div>
+        <div id="memberEventsTab" class="tab-content" hidden><div class="card"><div class="card-header">イベント調整</div><div class="card-body" id="memberEventsInfo"></div></div></div>
+        <div id="memberSongInfoTab" class="tab-content" hidden><div class="card"><div class="card-header">楽曲情報</div><div class="card-body" id="memberSongInfoInfo"></div></div></div>
+        <div id="memberAlbumTab" class="tab-content" hidden><div class="card"><div class="card-header">アルバム</div><div class="card-body" id="memberAlbumInfo"></div></div></div>
+    `);
+}
+
+async function loadPortalData() {
+    const results = await Promise.all(PORTAL_COLLECTIONS.map((name) =>
+        request(`/api/portal/${name}`).catch(() => ({ items: [] }))
+    ));
+    appState.absences = results[0].items || [];
+    appState.sheetLibrary = results[1].items || [];
+    appState.payments = results[2].items || [];
+    appState.rosters = results[3].items || [];
+    appState.events = results[4].items || [];
+    appState.eventResponses = results[5].items || [];
+    appState.songInfo = results[6].items || [];
+    appState.albums = results[7].items || [];
+    appState.portalLoaded = true;
+}
+
+async function savePortalItem(collection, data) {
+    const saved = await request(`/api/portal/${collection}`, jsonOptions('POST', { data }));
+    await loadPortalData();
+    return saved;
+}
+
+function portalData(item) {
+    return item?.data || {};
+}
+
+function renderPortalTab(tab) {
+    const renderers = {
+        'member-absence': renderAbsences,
+        'member-sheets': renderSheets,
+        'member-payments': renderPayments,
+        'member-roster': renderRosters,
+        'member-events': renderEvents,
+        'member-song-info': renderSongInfo,
+        'member-album': renderAlbum
+    };
+    renderers[tab]?.();
+}
+
+function upcomingPerformance() {
+    const todayValue = today();
+    return [...appState.performances]
+        .filter((perf) => String(perf.date || '') >= todayValue)
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))[0] || null;
+}
+
+function scheduleOptions() {
+    return appState.schedules
+        .slice()
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+        .map((sched) => `<option value="${escapeHtml(sched.date)}">${escapeHtml(sched.date)} ${escapeHtml(sched.venue || '')}</option>`)
+        .join('');
+}
+
+function performanceOptions() {
+    return appState.performances
+        .map((perf) => `<option value="${escapeHtml(perf.title)}">${escapeHtml(perf.title)} (${escapeHtml(perf.date || '')})</option>`)
+        .join('');
+}
+
+function renderAbsences() {
+    const grouped = groupBy(appState.absences.map(portalData), 'practice_date');
+    $('memberAbsenceInfo').innerHTML = `
+        <div class="row g-2 mb-3">
+            <div class="col-md-4"><input id="absenceName" class="form-control" placeholder="名前"></div>
+            <div class="col-md-4"><select id="absenceDate" class="form-select">${scheduleOptions()}</select></div>
+            <div class="col-md-4"><button id="absenceSubmit" class="btn btn-primary w-100" type="button">欠席を登録</button></div>
+        </div>
+        ${Object.entries(grouped).map(([date, people]) => `
+            <div class="info-block">
+                <h6>${escapeHtml(date)}</h6>
+                <p class="mb-0">${people.map((item) => escapeHtml(item.name)).join('、') || '欠席者なし'}</p>
+            </div>
+        `).join('') || '<p class="text-muted mb-0">欠席連絡はまだありません</p>'}
+    `;
+    $('absenceSubmit').addEventListener('click', async () => {
+        const name = $('absenceName').value.trim();
+        const practiceDate = $('absenceDate').value;
+        if (!name || !practiceDate) return showAlert('名前と練習日を入力してください', 'warning');
+        await savePortalItem('absences', { name, practice_date: practiceDate });
+        renderAbsences();
+        showAlert('欠席連絡を登録しました', 'success');
+    });
+}
+
+function renderSheets() {
+    $('memberSheetsInfo').innerHTML = `
+        <form id="sheetUploadForm" class="row g-2 mb-3">
+            <div class="col-md-3"><select name="performance" class="form-select">${performanceOptions()}</select></div>
+            <div class="col-md-3"><input name="piece" class="form-control" placeholder="曲名"></div>
+            <div class="col-md-4"><input name="file" type="file" accept="application/pdf,.pdf" class="form-control"></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">PDF登録</button></div>
+        </form>
+        <div class="portal-grid">${appState.sheetLibrary.map((item) => fileCard(portalData(item), true)).join('') || '<p class="text-muted">楽譜はまだありません</p>'}</div>
+    `;
+    $('sheetUploadForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await uploadPortalFile('sheets', event.currentTarget);
+        renderSheets();
+    });
+}
+
+function renderPayments() {
+    const members = [...new Set(appState.payments.map((item) => portalData(item).member).filter(Boolean))];
+    $('memberPaymentsInfo').innerHTML = `
+        <div class="row g-2 mb-3">
+            <div class="col-md-4"><input id="paymentMember" class="form-control" list="paymentMembers" placeholder="団員名"></div>
+            <datalist id="paymentMembers">${members.map((name) => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
+            <div class="col-md-2"><select id="membershipFee" class="form-select"><option value="未払い">団費 未払い</option><option value="支払済">団費 支払済</option></select></div>
+            <div class="col-md-2"><select id="concertFee" class="form-select"><option value="未払い">演奏会費 未払い</option><option value="支払済">演奏会費 支払済</option></select></div>
+            <div class="col-md-2"><button id="paymentSave" class="btn btn-primary w-100" type="button">登録</button></div>
+        </div>
+        <div id="paymentResult">${paymentRows(appState.payments.map(portalData))}</div>
+    `;
+    $('paymentSave').addEventListener('click', async () => {
+        const member = $('paymentMember').value.trim();
+        if (!member) return showAlert('団員名を入力してください', 'warning');
+        await savePortalItem('payments', { member, membership_fee: $('membershipFee').value, concert_fee: $('concertFee').value });
+        renderPayments();
+    });
+}
+
+function paymentRows(rows) {
+    if (!rows.length) return '<p class="text-muted">支払状況はまだありません</p>';
+    return `<table class="table table-sm"><thead><tr><th>団員</th><th>団費</th><th>演奏会費</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.member)}</td><td>${escapeHtml(row.membership_fee)}</td><td>${escapeHtml(row.concert_fee)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderRosters() {
+    $('memberRosterInfo').innerHTML = `
+        <div class="row g-2 mb-3">
+            <div class="col-md-3"><select id="rosterPerformance" class="form-select">${performanceOptions()}</select></div>
+            <div class="col-md-3"><input id="rosterPart" class="form-control" placeholder="パート"></div>
+            <div class="col-md-4"><input id="rosterMembers" class="form-control" placeholder="乗り番（カンマ区切り）"></div>
+            <div class="col-md-2"><button id="rosterSave" class="btn btn-primary w-100" type="button">登録</button></div>
+        </div>
+        ${groupedPortalBlocks(appState.rosters.map(portalData), 'performance', (row) => `${escapeHtml(row.part || '')}: ${escapeHtml(row.members || '')}`)}
+    `;
+    $('rosterSave').addEventListener('click', async () => {
+        await savePortalItem('rosters', { performance: $('rosterPerformance').value, part: $('rosterPart').value, members: $('rosterMembers').value });
+        renderRosters();
+    });
+}
+
+function renderEvents() {
+    $('memberEventsInfo').innerHTML = `
+        <div class="row g-2 mb-3">
+            <div class="col-md-3"><input id="eventTitle" class="form-control" placeholder="イベント名"></div>
+            <div class="col-md-2"><input id="eventDate" type="date" class="form-control" value="${today()}"></div>
+            <div class="col-md-3"><input id="eventName" class="form-control" placeholder="あなたの名前"></div>
+            <div class="col-md-2"><button id="eventCreate" class="btn btn-outline-primary w-100" type="button">作成</button></div>
+        </div>
+        ${appState.events.map((eventItem) => eventBlock(eventItem)).join('') || '<p class="text-muted">イベントはまだありません</p>'}
+    `;
+    $('eventCreate').addEventListener('click', async () => {
+        const title = $('eventTitle').value.trim();
+        if (!title) return showAlert('イベント名を入力してください', 'warning');
+        await savePortalItem('events', { title, date: $('eventDate').value });
+        renderEvents();
+    });
+    document.querySelectorAll('[data-event-response]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const name = $('eventName').value.trim();
+            if (!name) return showAlert('名前を入力してください', 'warning');
+            await savePortalItem('event_responses', { event_id: Number(button.dataset.eventId), name, status: button.dataset.eventResponse });
+            renderEvents();
+        });
+    });
+}
+
+function eventBlock(eventItem) {
+    const event = portalData(eventItem);
+    const responses = appState.eventResponses.map(portalData).filter((row) => Number(row.event_id) === Number(eventItem.id));
+    return `
+        <div class="info-block">
+            <h6>${escapeHtml(event.title)} <span class="text-muted small">${escapeHtml(event.date || '')}</span></h6>
+            <div class="d-flex gap-2 mb-2">
+                <button class="btn btn-sm btn-success" data-event-id="${eventItem.id}" data-event-response="参加" type="button">参加</button>
+                <button class="btn btn-sm btn-outline-secondary" data-event-id="${eventItem.id}" data-event-response="不参加" type="button">不参加</button>
+            </div>
+            <p class="mb-0">${responses.map((row) => `${escapeHtml(row.name)}: ${escapeHtml(row.status)}`).join(' / ') || '回答なし'}</p>
+        </div>
+    `;
+}
+
+function renderSongInfo() {
+    $('memberSongInfoInfo').innerHTML = `
+        <div class="row g-2 mb-3">
+            <div class="col-md-3"><select id="songPerformance" class="form-select">${performanceOptions()}</select></div>
+            <div class="col-md-3"><input id="songTitle" class="form-control" placeholder="曲名"></div>
+            <div class="col-md-4"><input id="songMemo" class="form-control" placeholder="作曲者、参考情報、注意点など"></div>
+            <div class="col-md-2"><button id="songSave" class="btn btn-primary w-100" type="button">登録</button></div>
+        </div>
+        ${groupedPortalBlocks(appState.songInfo.map(portalData), 'performance', (row) => `<strong>${escapeHtml(row.title || '')}</strong><br>${escapeHtml(row.memo || '')}`)}
+    `;
+    $('songSave').addEventListener('click', async () => {
+        await savePortalItem('song_info', { performance: $('songPerformance').value, title: $('songTitle').value, memo: $('songMemo').value });
+        renderSongInfo();
+    });
+}
+
+function renderAlbum() {
+    $('memberAlbumInfo').innerHTML = `
+        <form id="albumUploadForm" class="row g-2 mb-3">
+            <div class="col-md-3"><input name="title" class="form-control" placeholder="写真タイトル"></div>
+            <div class="col-md-3"><input name="member" class="form-control" placeholder="投稿者"></div>
+            <div class="col-md-4"><input name="file" type="file" accept="image/*" class="form-control"></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">写真登録</button></div>
+        </form>
+        <div class="album-grid">${appState.albums.map((item) => imageCard(portalData(item))).join('') || '<p class="text-muted">写真はまだありません</p>'}</div>
+    `;
+    $('albumUploadForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await uploadPortalFile('albums', event.currentTarget);
+        renderAlbum();
+    });
+}
+
+async function uploadPortalFile(kind, form) {
+    const formData = new FormData(form);
+    const response = await request(`/api/portal-files/${kind}`, { method: 'POST', body: formData });
+    await loadPortalData();
+    showAlert('登録しました', 'success');
+    return response;
+}
+
+function fileCard(file, isPdf = false) {
+    return `
+        <div class="portal-file-card">
+            <strong>${escapeHtml(file.title || file.name || '')}</strong>
+            <p class="text-muted mb-2">${escapeHtml([file.performance, file.piece].filter(Boolean).join(' / '))}</p>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-sm btn-outline-primary" href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener">閲覧</a>
+                <a class="btn btn-sm btn-primary" href="${escapeHtml(file.download_url || file.url || '#')}">DL</a>
+            </div>
+        </div>
+    `;
+}
+
+function imageCard(file) {
+    return `
+        <figure class="album-card">
+            <img src="${escapeHtml(file.url || '')}" alt="${escapeHtml(file.title || file.name || '写真')}" loading="lazy">
+            <figcaption><strong>${escapeHtml(file.title || file.name || '')}</strong><br><span class="text-muted">${escapeHtml(file.member || '')}</span></figcaption>
+        </figure>
+    `;
+}
+
+function groupedPortalBlocks(rows, key, renderRow) {
+    if (!rows.length) return '<p class="text-muted">登録はまだありません</p>';
+    const grouped = groupBy(rows, key);
+    return Object.entries(grouped).map(([group, items]) => `
+        <div class="info-block">
+            <h6>${escapeHtml(group)}</h6>
+            ${items.map((row) => `<p class="mb-1">${renderRow(row)}</p>`).join('')}
+        </div>
+    `).join('');
 }

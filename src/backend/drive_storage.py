@@ -27,14 +27,23 @@ def get_storage_client() -> storage.Client:
             credentials=credentials,
         )
 
-    if service_account_file:
+    if service_account_file and Path(service_account_file).exists():
         return storage.Client.from_service_account_json(service_account_file)
 
     return storage.Client()
 
 
 def storage_enabled() -> bool:
-    return bool(storage_bucket_name())
+    if not storage_bucket_name():
+        return False
+    if os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip():
+        return True
+    service_account_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
+    if service_account_file and Path(service_account_file).exists():
+        return True
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip():
+        return True
+    return bool(os.getenv("K_SERVICE", "").strip())
 
 
 def get_storage_bucket() -> storage.Bucket:

@@ -63,6 +63,16 @@ DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files")
+PORTAL_DATA_NAMES = (
+    "absences",
+    "sheet_library",
+    "payments",
+    "rosters",
+    "events",
+    "event_responses",
+    "song_info",
+    "albums",
+)
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -161,6 +171,13 @@ class DirectUploadCompleteRequest(BaseModel):
     bitrate: int = 192
 
 
+class PortalItem(BaseModel):
+    id: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
 def model_dump(model: BaseModel) -> dict[str, Any]:
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
@@ -184,17 +201,14 @@ def load_local_json_data(name: str) -> list[dict[str, Any]]:
 
 def load_json_data(name: str) -> list[dict[str, Any]]:
     if storage_enabled():
+        cloud_data = None
         try:
             cloud_data = load_json_from_storage(name)
         except json.JSONDecodeError as exc:
             logger.error("Invalid JSON in Cloud Storage data %s: %s", name, exc)
             raise HTTPException(status_code=500, detail=f"Cloud Storage {name}.json is invalid")
         except Exception as exc:
-            logger.exception("Failed to load %s.json from Cloud Storage", name)
-            raise HTTPException(
-                status_code=502,
-                detail=f"Failed to load {name}.json from Cloud Storage: {exc}",
-            ) from exc
+            logger.warning("Failed to load %s.json from Cloud Storage. Falling back to local data: %s", name, exc)
         if cloud_data is not None:
             return cloud_data
 
@@ -285,7 +299,7 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
         "date": date,
         "piece": piece,
         "size": stat.st_size,
-        "duration_seconds": audio_duration_seconds(path),
+        "duration_seconds": 0,
         "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
         "path": rel,
         "play_url": f"/api/recordings/play/{rel}",
@@ -346,6 +360,43 @@ def audio_duration_seconds(path: Path) -> float:
     except Exception:
         logger.exception("Failed to read audio duration: %s", path)
         return 0
+
+
+def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(item)
+    object_name = normalized.get("object_name") or normalized.get("id")
+    duration_seconds = (
+        normalized.get("duration_seconds")
+        or normalized.get("durationSeconds")
+        or normalized.get("duration")
+        or normalized.get("audio_duration_seconds")
+        or 0
+    )
+    try:
+        duration_seconds = float(duration_seconds or 0)
+    except (TypeError, ValueError):
+        duration_seconds = 0
+
+    if normalized.get("source") != "google_cloud_storage" or not object_name:
+        normalized["duration_seconds"] = duration_seconds
+        return normalized
+
+    encoded_object_name = quote(str(object_name), safe="/")
+    direct_url = (
+        normalized.get("download_url")
+        or normalized.get("web_view_link")
+        or normalized.get("view_url")
+    )
+    normalized["object_name"] = object_name
+    if direct_url and os.getenv("GOOGLE_CLOUD_STORAGE_DIRECT_PLAY", "true").strip().lower() == "true":
+        normalized["play_url"] = direct_url
+        normalized["download_url"] = direct_url
+    else:
+        normalized["play_url"] = f"/api/recordings/cloud/play/{encoded_object_name}"
+        normalized["download_url"] = f"/api/recordings/cloud/download/{encoded_object_name}"
+
+    normalized["duration_seconds"] = duration_seconds
+    return normalized
 
 def remember_drive_file(item: dict[str, Any]) -> None:
     items = load_json_data("drive_files")
@@ -651,13 +702,27 @@ async def convert_audio(
 
 
 @app.get("/api/recordings")
-async def get_recordings() -> dict[str, list[dict[str, Any]]]:
+async def get_recordings(limit: int = 200) -> dict[str, list[dict[str, Any]]]:
+    safe_limit = max(1, min(limit, 1000))
     drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
-    local_files = [
-        local_recording_metadata(path)
-        for path in sorted(CONVERTED_DIR.rglob("*.mp3"), key=lambda item: item.stat().st_mtime, reverse=True)
-    ]
-    return {"files": drive_files + local_files}
+    local_paths = sorted(
+        CONVERTED_DIR.rglob("*.mp3"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )[:safe_limit]
+    local_files = [local_recording_metadata(path) for path in local_paths]
+
+    seen: set[str] = set()
+    files: list[dict[str, Any]] = []
+    for item in drive_files + local_files:
+        key = str(item.get("object_name") or item.get("path") or item.get("id") or item.get("download_url"))
+        if key in seen:
+            continue
+        seen.add(key)
+        files.append(item)
+        if len(files) >= safe_limit:
+            break
+    return {"files": files}
 
 
 def local_recording_path(path: str) -> Path:
@@ -970,6 +1035,128 @@ async def complete_direct_upload(payload: DirectUploadCompleteRequest) -> dict[s
 @app.get("/api/drive/files")
 async def get_drive_files() -> dict[str, list[dict[str, Any]]]:
     return {"files": load_json_data("drive_files")}
+
+
+def ensure_portal_collection(collection: str) -> str:
+    if collection not in PORTAL_DATA_NAMES:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    return collection
+
+
+def normalize_portal_payload(item: PortalItem | dict[str, Any], item_id: int | None = None) -> dict[str, Any]:
+    payload = model_dump(item) if isinstance(item, BaseModel) else dict(item)
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    now = datetime.now().isoformat()
+    return {
+        "id": item_id if item_id is not None else payload.get("id"),
+        "created_at": payload.get("created_at") or now,
+        "updated_at": now,
+        "data": data,
+    }
+
+
+@app.get("/api/portal/{collection}")
+async def list_portal_items(collection: str) -> dict[str, list[dict[str, Any]]]:
+    collection = ensure_portal_collection(collection)
+    return {"items": load_json_data(collection)}
+
+
+@app.post("/api/portal/{collection}")
+async def create_portal_item(collection: str, item: PortalItem) -> dict[str, Any]:
+    collection = ensure_portal_collection(collection)
+    items = load_json_data(collection)
+    payload = normalize_portal_payload(item, next_id(items))
+    items.insert(0, payload)
+    save_json_data(collection, items)
+    return payload
+
+
+@app.put("/api/portal/{collection}/{item_id}")
+async def update_portal_item(collection: str, item_id: int, item: PortalItem) -> dict[str, Any]:
+    collection = ensure_portal_collection(collection)
+    items = load_json_data(collection)
+    index, current = find_item(items, item_id)
+    payload = normalize_portal_payload(item, item_id)
+    payload["created_at"] = current.get("created_at") or payload["created_at"]
+    items[index] = payload
+    save_json_data(collection, items)
+    return payload
+
+
+@app.delete("/api/portal/{collection}/{item_id}")
+async def delete_portal_item(collection: str, item_id: int) -> dict[str, str]:
+    collection = ensure_portal_collection(collection)
+    items = load_json_data(collection)
+    find_item(items, item_id)
+    save_json_data(collection, [item for item in items if item.get("id") != item_id])
+    return {"message": "Deleted"}
+
+
+def ensure_upload_kind(kind: str) -> str:
+    if kind not in {"sheets", "albums"}:
+        raise HTTPException(status_code=404, detail="Upload kind not found")
+    return kind
+
+
+def portal_upload_dir(kind: str) -> Path:
+    path = UPLOAD_DIR / "portal" / ensure_upload_kind(kind)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+@app.post("/api/portal-files/{kind}")
+async def upload_portal_file(
+    kind: str,
+    file: UploadFile = File(...),
+    performance: str = Form(""),
+    piece: str = Form(""),
+    title: str = Form(""),
+    member: str = Form(""),
+    note: str = Form(""),
+) -> dict[str, Any]:
+    kind = ensure_upload_kind(kind)
+    suffix = Path(file.filename or "").suffix.lower()
+    if kind == "sheets" and suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="PDFファイルを選択してください")
+    if kind == "albums" and suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        raise HTTPException(status_code=400, detail="画像ファイルを選択してください")
+
+    target_dir = portal_upload_dir(kind) / safe_segment(performance or "common", "common")
+    if piece:
+        target_dir = target_dir / safe_segment(piece, "piece")
+    saved_path = save_upload_to_path(file, target_dir)
+    rel = saved_path.relative_to(portal_upload_dir(kind)).as_posix()
+    item = {
+        "title": title or saved_path.stem,
+        "name": saved_path.name,
+        "performance": performance,
+        "piece": piece,
+        "member": member,
+        "note": note,
+        "size": saved_path.stat().st_size,
+        "url": f"/api/portal-files/{kind}/{quote(rel, safe='/')}",
+        "download_url": f"/api/portal-files/{kind}/{quote(rel, safe='/')}?download=1",
+        "uploaded_at": datetime.now().isoformat(),
+    }
+    collection = "sheet_library" if kind == "sheets" else "albums"
+    items = load_json_data(collection)
+    payload = normalize_portal_payload({"data": item}, next_id(items))
+    items.insert(0, payload)
+    save_json_data(collection, items)
+    return payload
+
+
+@app.get("/api/portal-files/{kind}/{path:path}")
+async def get_portal_file(kind: str, path: str, download: bool = False) -> FileResponse:
+    root = portal_upload_dir(kind).resolve()
+    requested = (root / path).resolve()
+    if not requested.is_file() or root not in requested.parents:
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        requested,
+        filename=requested.name if download else None,
+        media_type=mimetypes.guess_type(requested.name)[0] or "application/octet-stream",
+    )
 
 
 if __name__ == "__main__":
