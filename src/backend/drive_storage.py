@@ -11,6 +11,10 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 
+def storage_bucket_name() -> str:
+    return os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip()
+
+
 def get_storage_client() -> storage.Client:
     service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     service_account_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
@@ -30,15 +34,45 @@ def get_storage_client() -> storage.Client:
 
 
 def storage_enabled() -> bool:
-    return bool(os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip())
+    return bool(storage_bucket_name())
+
+
+def get_storage_bucket() -> storage.Bucket:
+    bucket_name = storage_bucket_name()
+    if not bucket_name:
+        raise RuntimeError("GOOGLE_CLOUD_STORAGE_BUCKET is not set")
+    return get_storage_client().bucket(bucket_name)
 
 
 def public_url(bucket_name: str, object_name: str) -> str:
     return f"https://storage.googleapis.com/{bucket_name}/{object_name}"
 
 
+def data_object_name(name: str) -> str:
+    prefix = os.getenv("GOOGLE_CLOUD_STORAGE_DATA_PREFIX", "app-data").strip().strip("/")
+    filename = f"{name}.json"
+    return f"{prefix}/{filename}" if prefix else filename
+
+
+def load_json_from_storage(name: str) -> list[dict[str, Any]] | None:
+    blob = get_storage_bucket().blob(data_object_name(name))
+    if not blob.exists():
+        return None
+
+    loaded = json.loads(blob.download_as_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, list) else []
+
+
+def save_json_to_storage(name: str, data: list[dict[str, Any]]) -> None:
+    blob = get_storage_bucket().blob(data_object_name(name))
+    blob.upload_from_string(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        content_type="application/json; charset=utf-8",
+    )
+
+
 def upload_file_to_drive(local_path: str | Path, practice_date: str, song_name: str) -> dict[str, Any]:
-    bucket_name = os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip()
+    bucket_name = storage_bucket_name()
     if not bucket_name:
         raise RuntimeError("GOOGLE_CLOUD_STORAGE_BUCKET is not set")
 
@@ -50,7 +84,7 @@ def upload_file_to_drive(local_path: str | Path, practice_date: str, song_name: 
     )
     content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
 
-    bucket = get_storage_client().bucket(bucket_name)
+    bucket = get_storage_bucket()
     blob = bucket.blob(object_name)
     blob.upload_from_filename(str(file_path), content_type=content_type)
 

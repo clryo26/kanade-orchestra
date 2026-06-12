@@ -1,5 +1,7 @@
 const appState = {
     selectedFile: null,
+    selectedFiles: [],
+    performancePieces: [],
     performances: [],
     schedules: [],
     announcements: [],
@@ -39,36 +41,21 @@ function bindNavigation() {
 }
 
 function bindUpload() {
-    const dropZone = $('dropZone');
     const fileInput = $('fileInput');
 
     $('selectFileBtn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (event) => handleFiles(event.target.files));
     $('uploadDate').addEventListener('input', updateSavePath);
     $('uploadPiece').addEventListener('input', updateSavePath);
-    $('convertBtn').addEventListener('click', convertFile);
     $('uploadBtn').addEventListener('click', uploadToLocalStore);
     $('clearBtn').addEventListener('click', clearUploadForm);
-
-    ['dragenter', 'dragover'].forEach((name) => {
-        dropZone.addEventListener(name, (event) => {
-            event.preventDefault();
-            dropZone.classList.add('dragover');
-        });
-    });
-    ['dragleave', 'drop'].forEach((name) => {
-        dropZone.addEventListener(name, (event) => {
-            event.preventDefault();
-            dropZone.classList.remove('dragover');
-        });
-    });
-    dropZone.addEventListener('drop', (event) => handleFiles(event.dataTransfer.files));
 }
 
 function bindForms() {
     $('addPerfBtn').addEventListener('click', savePerformance);
     $('editPerfBtn').addEventListener('click', clearPerformanceForm);
     $('deletePerfBtn').addEventListener('click', deletePerformance);
+    $('addPieceBtn').addEventListener('click', addPerformancePiece);
 
     $('addSchedBtn').addEventListener('click', saveSchedule);
     $('editSchedBtn').addEventListener('click', clearScheduleForm);
@@ -129,55 +116,60 @@ function updateSavePath() {
 }
 
 function handleFiles(files) {
-    const file = files && files[0];
-    if (!file) return;
+    const selected = Array.from(files || []);
+    if (!selected.length) return;
 
-    const extension = file.name.split('.').pop().toLowerCase();
-    if (!['wav', 'mp3'].includes(extension)) {
+    const validFiles = selected.filter((file) => {
+        const extension = file.name.split('.').pop().toLowerCase();
+        return ['wav', 'mp3'].includes(extension);
+    });
+    if (validFiles.length !== selected.length) {
         showAlert('WAV または MP3 ファイルを選択してください', 'warning');
-        return;
     }
+    if (!validFiles.length) return;
 
-    appState.selectedFile = file;
-    $('selectedFileName').textContent = `${file.name} (${formatBytes(file.size)})`;
-    showAlert('ファイルを選択しました', 'success');
-}
-
-async function convertFile() {
-    if (!appState.selectedFile) {
-        showAlert('先にファイルを選択してください', 'warning');
-        return;
-    }
-
-    const formData = audioFormData();
-    const data = await request('/api/convert', { method: 'POST', body: formData });
-    showAlert(`変換しました: ${data.filename}`, 'success');
-    await loadRecordings();
+    appState.selectedFiles = validFiles;
+    appState.selectedFile = validFiles[0];
+    $('selectedFileName').textContent = selectedFileSummary(validFiles);
+    showAlert(`${validFiles.length} 件のファイルを選択しました`, 'success');
 }
 
 async function uploadToLocalStore() {
-    if (!appState.selectedFile) {
+    if (!appState.selectedFiles.length) {
         showAlert('先にファイルを選択してください', 'warning');
         return;
     }
 
-    const data = await request('/api/drive/upload', { method: 'POST', body: audioFormData() });
-    showAlert(data.message, 'info');
+    let completed = 0;
+    for (const file of appState.selectedFiles) {
+        await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
+        completed += 1;
+    }
+    showAlert(`${completed} 件の録音ファイルを保存しました`, 'info');
+    await loadRecordings();
 }
 
-function audioFormData() {
+function audioFormData(file) {
     const formData = new FormData();
-    formData.append('file', appState.selectedFile);
+    formData.append('file', file);
     formData.append('bitrate', $('bitrate').value);
     formData.append('date', document.getElementById('uploadDate').value);
     formData.append('piece', document.getElementById('uploadPiece').value);
-    console.log('uploadDate=', document.getElementById('uploadDate').value);
-    console.log('uploadPiece=', document.getElementById('uploadPiece').value);
     return formData;
+}
+
+function selectedFileSummary(files) {
+    if (files.length === 1) {
+        const file = files[0];
+        return `${file.name} (${formatBytes(file.size)})`;
+    }
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    return `${files.length} 件選択 (${formatBytes(totalSize)})`;
 }
 
 function clearUploadForm() {
     appState.selectedFile = null;
+    appState.selectedFiles = [];
     $('fileInput').value = '';
     $('selectedFileName').textContent = '未選択';
     $('uploadDate').value = today();
@@ -185,7 +177,6 @@ function clearUploadForm() {
     $('bitrate').value = '192';
     updateSavePath();
 }
-
 async function loadAll() {
     await Promise.all([loadPerformances(), loadSchedules(), loadAnnouncements(), loadRecordings()]);
 }
@@ -219,7 +210,7 @@ async function savePerformance() {
         start_time: $('perfStartTime').value,
         venue: $('perfVenue').value.trim(),
         conductor: $('perfConductor').value.trim(),
-        pieces: $('perfPieces').value.split(',').map((value) => value.trim()).filter(Boolean)
+        pieces: currentPerformancePieces()
     };
     if (!payload.title || !payload.date) {
         showAlert('タイトルと開催日を入力してください', 'warning');
@@ -243,7 +234,8 @@ function selectPerformance(id) {
     $('perfStartTime').value = item.start_time || '19:00';
     $('perfVenue').value = item.venue || '';
     $('perfConductor').value = item.conductor || '';
-    $('perfPieces').value = (item.pieces || []).join(', ');
+    appState.performancePieces = normalizePerformancePieces(item.pieces || []);
+    renderPerformancePieceList();
 }
 
 async function deletePerformance() {
@@ -266,19 +258,91 @@ function clearPerformanceForm() {
     $('perfStartTime').value = '19:00';
     $('perfVenue').value = '';
     $('perfConductor').value = '';
-    $('perfPieces').value = '';
+    $('perfPieceComposer').value = '';
+    $('perfPieceTitle').value = '';
+    appState.performancePieces = [];
+    renderPerformancePieceList();
+}
+
+function addPerformancePiece() {
+    const composer = $('perfPieceComposer').value.trim();
+    const title = $('perfPieceTitle').value.trim();
+    if (!title) {
+        showAlert('曲名を入力してください', 'warning');
+        return;
+    }
+
+    appState.performancePieces.push({ composer, title });
+    $('perfPieceComposer').value = '';
+    $('perfPieceTitle').value = '';
+    renderPerformancePieceList();
+}
+
+function removePerformancePiece(index) {
+    appState.performancePieces.splice(index, 1);
+    renderPerformancePieceList();
+}
+
+function currentPerformancePieces() {
+    const composer = $('perfPieceComposer').value.trim();
+    const title = $('perfPieceTitle').value.trim();
+    const pieces = [...appState.performancePieces];
+    if (title) {
+        pieces.push({ composer, title });
+    }
+    return pieces;
+}
+
+function normalizePerformancePieces(pieces) {
+    return (pieces || []).map((piece) => {
+        if (typeof piece === 'string') {
+            return { composer: '', title: piece };
+        }
+        return {
+            composer: piece.composer || '',
+            title: piece.title || piece.name || ''
+        };
+    }).filter((piece) => piece.title);
+}
+
+function performancePieceLabel(piece) {
+    if (typeof piece === 'string') return piece;
+    return piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+}
+
+function renderPerformancePieceList() {
+    const list = $('perfPieceList');
+    list.innerHTML = emptyText(appState.performancePieces, '曲目はまだありません');
+    appState.performancePieces.forEach((piece, index) => {
+        const item = document.createElement('li');
+        item.className = 'list-group-item d-flex justify-content-between align-items-center gap-3';
+        item.innerHTML = `
+            <span>${escapeHtml(performancePieceLabel(piece))}</span>
+            <button class="btn btn-sm btn-outline-danger" type="button">削除</button>
+        `;
+        item.querySelector('button').addEventListener('click', () => removePerformancePiece(index));
+        list.appendChild(item);
+    });
 }
 
 async function saveSchedule() {
+    const startTime = $('schedStartTime').value;
+    const endTime = $('schedEndTime').value;
+    const availableStartTime = $('schedAvailableStartTime').value;
+    const availableEndTime = $('schedAvailableEndTime').value;
     const payload = {
         date: $('schedDate').value,
-        time: $('schedTime').value,
+        time: formatTimeRange(startTime, endTime),
+        start_time: startTime,
+        end_time: endTime,
         venue: $('schedVenue').value.trim(),
-        available_hours: $('schedAvailHours').value.trim(),
+        available_hours: formatTimeRange(availableStartTime, availableEndTime),
+        available_start_time: availableStartTime,
+        available_end_time: availableEndTime,
         pieces: $('schedPieces').value.trim(),
         notes: $('schedNotes').value.trim()
     };
-    if (!payload.date || !payload.time) {
+    if (!payload.date || !payload.start_time || !payload.end_time) {
         showAlert('練習日と開始時間を入力してください', 'warning');
         return;
     }
@@ -295,9 +359,13 @@ function selectSchedule(id) {
     if (!item) return;
     $('schedId').value = item.id;
     $('schedDate').value = item.date || today();
-    $('schedTime').value = item.time || '13:00';
+    const practiceRange = splitTimeRange(item.time);
+    const availableRange = splitTimeRange(item.available_hours);
+    $('schedStartTime').value = item.start_time || practiceRange.start || '13:00';
+    $('schedEndTime').value = item.end_time || practiceRange.end || '16:30';
     $('schedVenue').value = item.venue || '';
-    $('schedAvailHours').value = item.available_hours || '';
+    $('schedAvailableStartTime').value = item.available_start_time || availableRange.start || '12:30';
+    $('schedAvailableEndTime').value = item.available_end_time || availableRange.end || '16:30';
     $('schedPieces').value = item.pieces || '';
     $('schedNotes').value = item.notes || '';
 }
@@ -317,11 +385,30 @@ async function deleteSchedule() {
 function clearScheduleForm() {
     $('schedId').value = '';
     $('schedDate').value = today();
-    $('schedTime').value = '13:00';
+    $('schedStartTime').value = '13:00';
+    $('schedEndTime').value = '16:30';
     $('schedVenue').value = '';
-    $('schedAvailHours').value = '';
+    $('schedAvailableStartTime').value = '12:30';
+    $('schedAvailableEndTime').value = '16:30';
     $('schedPieces').value = '';
     $('schedNotes').value = '';
+}
+
+function formatTimeRange(start, end) {
+    return start && end ? `${start} - ${end}` : start || end || '';
+}
+
+function splitTimeRange(value) {
+    const match = String(value || '').match(/(\d{1,2}:\d{2})\s*(?:-|〜|~|～)\s*(\d{1,2}:\d{2})/);
+    return match ? { start: match[1], end: match[2] } : { start: '', end: '' };
+}
+
+function scheduleTimeLabel(sched) {
+    return formatTimeRange(sched.start_time, sched.end_time) || sched.time || '';
+}
+
+function scheduleAvailableLabel(sched) {
+    return formatTimeRange(sched.available_start_time, sched.available_end_time) || sched.available_hours || '';
 }
 
 async function saveAnnouncement() {
@@ -405,7 +492,7 @@ function renderSchedules() {
         row.className = 'clickable-row';
         row.innerHTML = `
             <td>${escapeHtml(sched.date)}</td>
-            <td>${escapeHtml(sched.time)}</td>
+            <td>${escapeHtml(scheduleTimeLabel(sched))}</td>
             <td>${escapeHtml(sched.venue || '')}</td>
             <td>${escapeHtml(sched.pieces || '')}</td>
             <td>${escapeHtml(sched.notes || '')}</td>
@@ -441,11 +528,11 @@ function announcementItem(ann, selectable) {
 }
 
 function renderRecordings() {
-    renderRecordingList('songTreeAdmin');
-    renderRecordingList('songTreeMember');
+    renderRecordingList('songTreeAdmin', true);
+    renderRecordingList('songTreeMember', false);
 }
 
-function renderRecordingList(containerId) {
+function renderRecordingList(containerId, canDelete) {
     const container = $(containerId);
     if (!appState.recordings.length) {
         container.innerHTML = '<p class="text-muted mb-0">録音ファイルはまだありません</p>';
@@ -461,21 +548,71 @@ function renderRecordingList(containerId) {
         const list = document.createElement('div');
         list.className = 'list-group mb-3';
         files.forEach((file) => {
-            const link = document.createElement('a');
-            link.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3';
-            link.href = file.download_url;
-            link.innerHTML = `
-                <span>
+            const item = document.createElement('div');
+            item.className = 'list-group-item';
+            const playUrl = file.play_url || file.download_url;
+            const downloadUrl = file.download_url || playUrl;
+            const actionButton = canDelete
+                ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
+                : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
+            item.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                    <span>
                     <strong>${escapeHtml(file.name)}</strong>
                     <span class="small text-muted d-block">${escapeHtml(file.piece || '未分類')} / ${formatBytes(file.size)}</span>
-                </span>
-                <span class="badge text-bg-primary">DL</span>
+                    </span>
+                    <span class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary play-recording-btn" type="button">再生</button>
+                        ${actionButton}
+                    </span>
+                </div>
             `;
-            list.appendChild(link);
+            if (playUrl) {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.preload = 'none';
+                audio.src = playUrl;
+                audio.className = 'w-100 mt-2';
+                audio.hidden = true;
+                item.appendChild(audio);
+
+                const playButton = item.querySelector('.play-recording-btn');
+                playButton.addEventListener('click', async () => {
+                    if (audio.hidden) {
+                        audio.hidden = false;
+                        playButton.textContent = '停止';
+                        await audio.play();
+                        return;
+                    }
+                    audio.pause();
+                    audio.hidden = true;
+                    playButton.textContent = '再生';
+                });
+                audio.addEventListener('ended', () => {
+                    audio.hidden = true;
+                    playButton.textContent = '再生';
+                });
+            }
+            if (canDelete) {
+                item.querySelector('.delete-recording-btn').addEventListener('click', () => deleteRecording(file));
+            }
+            list.appendChild(item);
         });
         section.appendChild(list);
         container.appendChild(section);
     });
+}
+
+async function deleteRecording(file) {
+    if (!confirm(`${file.name} を削除しますか？`)) return;
+
+    await request('/api/recordings', jsonOptions('DELETE', {
+        source: file.source || 'local',
+        object_name: file.object_name || file.id || '',
+        path: file.path || ''
+    }));
+    await loadRecordings();
+    showAlert('録音ファイルを削除しました', 'success');
 }
 
 function renderMemberViews() {
@@ -496,7 +633,7 @@ function renderMemberPerformances() {
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(perf.date)} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
-            <p class="mb-0">${escapeHtml((perf.pieces || []).join('、'))}</p>
+            <p class="mb-0">${escapeHtml((perf.pieces || []).map(performancePieceLabel).join('、'))}</p>
         </article>
     `).join('');
 }
@@ -509,8 +646,8 @@ function renderMemberSchedules() {
     }
     container.innerHTML = appState.schedules.map((sched) => `
         <article class="info-block">
-            <h5>${escapeHtml(sched.date)} ${escapeHtml(sched.time)}</h5>
-            <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(sched.available_hours || '')}</p>
+            <h5>${escapeHtml(sched.date)} ${escapeHtml(scheduleTimeLabel(sched))}</h5>
+            <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(scheduleAvailableLabel(sched))}</p>
             <p>${escapeHtml(sched.pieces || '')}</p>
             <p class="mb-0 text-muted">${escapeHtml(sched.notes || '')}</p>
         </article>

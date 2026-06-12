@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オーケストラ活動管理ツール</title>
+    <title>奏オケポータル</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">オーケストラ活動管理ツール</a>
+            <a class="navbar-brand" href="#">奏オケポータル</a>
             <div class="d-flex gap-2">
                 <button class="btn btn-outline-primary" id="adminMenuBtn" type="button">管理メニュー</button>
                 <button class="btn btn-outline-secondary" id="memberMenuBtn" type="button">団員メニュー</button>
@@ -51,18 +51,23 @@
                         </div>
 
                         <p class="text-muted mb-2">保存先: <span id="savePath"></span></p>
-                        <div id="dropZone" class="drop-zone mb-3">
-                            <strong>WAV / MP3 をドラッグ&ドロップ</strong>
-                            <span>または <button class="link-button" id="selectFileBtn" type="button">ファイルを選択</button></span>
-                            <small id="selectedFileName" class="text-muted">未選択</small>
-                            <input type="file" id="fileInput" accept=".wav,.mp3,audio/wav,audio/mpeg" hidden>
+                        <div class="mb-3">
+                            <button class="btn btn-outline-primary" id="selectFileBtn" type="button">ファイルを選択</button>
+                            <small id="selectedFileName" class="text-muted ms-2">未選択</small>
+                            <input type="file" id="fileInput" accept=".wav,.mp3,audio/wav,audio/mpeg" multiple hidden>
                         </div>
 
                         <div class="d-flex flex-wrap gap-2">
-                            <button class="btn btn-primary" id="convertBtn" type="button">MP3に変換</button>
-                            <button class="btn btn-outline-secondary" id="uploadBtn" type="button">ローカル保管へ保存</button>
+                            <button class="btn btn-primary" id="uploadBtn" type="button">録音ファイルを保存</button>
                             <button class="btn btn-outline-danger" id="clearBtn" type="button">クリア</button>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">録音ファイル一覧</div>
+                    <div class="card-body">
+                        <div id="songTreeAdmin"></div>
                     </div>
                 </div>
             </div>
@@ -97,9 +102,19 @@
                                 <label class="form-label" for="perfVenue">会場</label>
                                 <input type="text" class="form-control" id="perfVenue">
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="perfPieces">曲目</label>
-                                <input type="text" class="form-control" id="perfPieces" placeholder="カンマ区切りで入力">
+                            <div class="col-md-3">
+                                <label class="form-label" for="perfPieceComposer">作曲者</label>
+                                <input type="text" class="form-control" id="perfPieceComposer" placeholder="例: サン＝サーンス">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label" for="perfPieceTitle">曲名</label>
+                                <input type="text" class="form-control" id="perfPieceTitle" placeholder="例: 交響曲第3番 オルガン付き">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button class="btn btn-outline-primary w-100" id="addPieceBtn" type="button">曲を追加</button>
+                            </div>
+                            <div class="col-12">
+                                <ul class="list-group" id="perfPieceList"></ul>
                             </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mb-3">
@@ -123,16 +138,24 @@
                                 <input type="date" class="form-control" id="schedDate">
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label" for="schedTime">開始時間</label>
-                                <input type="time" class="form-control" id="schedTime" value="13:00">
+                                <label class="form-label" for="schedStartTime">開始時間</label>
+                                <input type="time" class="form-control" id="schedStartTime" value="13:00">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="schedEndTime">終了時間</label>
+                                <input type="time" class="form-control" id="schedEndTime" value="16:30">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="schedVenue">場所</label>
                                 <input type="text" class="form-control" id="schedVenue">
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label" for="schedAvailHours">利用可能時間</label>
-                                <input type="text" class="form-control" id="schedAvailHours" placeholder="12:30 - 16:30">
+                                <label class="form-label" for="schedAvailableStartTime">利用可能開始</label>
+                                <input type="time" class="form-control" id="schedAvailableStartTime" value="12:30">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="schedAvailableEndTime">利用可能終了</label>
+                                <input type="time" class="form-control" id="schedAvailableEndTime" value="16:30">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="schedPieces">練習曲</label>
@@ -175,13 +198,6 @@
                         </div>
                         <ul class="list-group" id="annListItems"></ul>
                     </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">録音ファイル一覧</div>
-                <div class="card-body">
-                    <div id="songTreeAdmin"></div>
                 </div>
             </div>
         </section>

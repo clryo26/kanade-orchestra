@@ -2,24 +2,38 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import os
 import re
 import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 try:
-    from .drive_storage import storage_enabled, upload_file_to_drive
+    from .drive_storage import (
+        get_storage_bucket,
+        load_json_from_storage,
+        save_json_to_storage,
+        storage_enabled,
+        upload_file_to_drive,
+    )
 except ImportError:  # pragma: no cover - allows running main.py directly.
-    from drive_storage import storage_enabled, upload_file_to_drive
+    from drive_storage import (
+        get_storage_bucket,
+        load_json_from_storage,
+        save_json_to_storage,
+        storage_enabled,
+        upload_file_to_drive,
+    )
 
 try:
     from pydub import AudioSegment
@@ -37,6 +51,7 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -66,7 +81,7 @@ class Performance(BaseModel):
     start_time: str
     venue: str
     conductor: str
-    pieces: list[str] = Field(default_factory=list)
+    pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -74,9 +89,13 @@ class Performance(BaseModel):
 class Schedule(BaseModel):
     id: int | None = None
     date: str
-    time: str
+    time: str = ""
+    start_time: str = ""
+    end_time: str = ""
     venue: str
     available_hours: str = ""
+    available_start_time: str = ""
+    available_end_time: str = ""
     pieces: str = ""
     notes: str = ""
     created_at: str | None = None
@@ -91,6 +110,12 @@ class Announcement(BaseModel):
     updated_at: str | None = None
 
 
+class RecordingDeleteRequest(BaseModel):
+    source: str
+    object_name: str = ""
+    path: str = ""
+
+
 def model_dump(model: BaseModel) -> dict[str, Any]:
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
@@ -99,7 +124,7 @@ def data_file(name: str) -> Path:
     return DATA_DIR / f"{name}.json"
 
 
-def load_json_data(name: str) -> list[dict[str, Any]]:
+def load_local_json_data(name: str) -> list[dict[str, Any]]:
     path = data_file(name)
     if not path.exists():
         return []
@@ -112,12 +137,57 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=500, detail=f"{name}.json is invalid")
 
 
+def load_json_data(name: str) -> list[dict[str, Any]]:
+    if storage_enabled():
+        try:
+            cloud_data = load_json_from_storage(name)
+        except json.JSONDecodeError as exc:
+            logger.error("Invalid JSON in Cloud Storage data %s: %s", name, exc)
+            raise HTTPException(status_code=500, detail=f"Cloud Storage {name}.json is invalid")
+        except Exception as exc:
+            logger.exception("Failed to load %s.json from Cloud Storage", name)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to load {name}.json from Cloud Storage: {exc}",
+            ) from exc
+        if cloud_data is not None:
+            return cloud_data
+
+    return load_local_json_data(name)
+
+
 def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
     path = data_file(name)
     tmp_path = path.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
     tmp_path.replace(path)
+
+    if storage_enabled():
+        try:
+            save_json_to_storage(name, data)
+        except Exception as exc:
+            logger.exception("Failed to save %s.json to Cloud Storage", name)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to save {name}.json to Cloud Storage: {exc}",
+            ) from exc
+
+
+@app.on_event("startup")
+async def seed_cloud_data_from_local() -> None:
+    if not storage_enabled():
+        return
+
+    for name in JSON_DATA_NAMES:
+        if not data_file(name).exists():
+            continue
+        try:
+            if load_json_from_storage(name) is None:
+                save_json_to_storage(name, load_local_json_data(name))
+                logger.info("Seeded %s.json to Cloud Storage", name)
+        except Exception:
+            logger.exception("Failed to seed %s.json to Cloud Storage", name)
 
 
 def next_id(items: list[dict[str, Any]]) -> int:
@@ -163,9 +233,24 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
         "piece": piece,
         "size": stat.st_size,
         "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        "path": rel,
+        "play_url": f"/api/recordings/play/{rel}",
         "download_url": f"/api/recordings/download/{rel}",
         "source": "local",
     }
+
+
+def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(item)
+    object_name = normalized.get("object_name") or normalized.get("id")
+    if normalized.get("source") != "google_cloud_storage" or not object_name:
+        return normalized
+
+    encoded_object_name = quote(str(object_name), safe="/")
+    normalized["object_name"] = object_name
+    normalized["play_url"] = f"/api/recordings/cloud/play/{encoded_object_name}"
+    normalized["download_url"] = f"/api/recordings/cloud/download/{encoded_object_name}"
+    return normalized
 
 
 def remember_drive_file(item: dict[str, Any]) -> None:
@@ -175,11 +260,47 @@ def remember_drive_file(item: dict[str, Any]) -> None:
     save_json_data("drive_files", items[:500])
 
 
+def forget_drive_file(object_name: str) -> None:
+    items = load_json_data("drive_files")
+    save_json_data(
+        "drive_files",
+        [
+            item
+            for item in items
+            if item.get("object_name") != object_name and item.get("id") != object_name
+        ],
+    )
+
+
 def save_upload_to_path(file: UploadFile, directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     output_path = directory / safe_upload_name(file.filename or "audio")
     with output_path.open("wb") as target:
         shutil.copyfileobj(file.file, target)
+    return output_path
+
+
+def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
+    output_path = source_path.with_suffix(".mp3")
+    if suffix == ".mp3":
+        if source_path != output_path:
+            source_path.replace(output_path)
+        return output_path
+
+    if AudioSegment is None:
+        raise HTTPException(status_code=500, detail="pydub is not available")
+
+    try:
+        audio = AudioSegment.from_file(source_path)
+        audio.export(output_path, format="mp3", bitrate=f"{bitrate}k")
+        source_path.unlink(missing_ok=True)
+    except Exception as exc:
+        logger.exception("Audio conversion failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Audio conversion failed. Make sure ffmpeg is installed.",
+        ) from exc
+
     return output_path
 
 
@@ -342,9 +463,9 @@ async def delete_announcement(announcement_id: int) -> dict[str, str]:
 @app.post("/api/convert")
 async def convert_audio(
     file: UploadFile = File(...),
-    bitrate: int = 192,
-    date: str = "",
-    piece: str = "",
+    bitrate: int = Form(192),
+    date: str = Form(""),
+    piece: str = Form(""),
 ) -> dict[str, Any]:
     suffix = ensure_audio_file(file)
     if bitrate not in {128, 192, 320}:
@@ -354,24 +475,7 @@ async def convert_audio(
     piece_dir = safe_segment(piece, "uncategorized")
     output_dir = CONVERTED_DIR / date_dir / piece_dir
     source_path = save_upload_to_path(file, output_dir)
-    output_path = source_path.with_suffix(".mp3")
-
-    if suffix == ".mp3":
-        if source_path != output_path:
-            source_path.replace(output_path)
-    else:
-        if AudioSegment is None:
-            raise HTTPException(status_code=500, detail="pydub is not available")
-        try:
-            audio = AudioSegment.from_file(source_path)
-            audio.export(output_path, format="mp3", bitrate=f"{bitrate}k")
-            source_path.unlink(missing_ok=True)
-        except Exception as exc:
-            logger.exception("Audio conversion failed")
-            raise HTTPException(
-                status_code=500,
-                detail="Audio conversion failed. Make sure ffmpeg is installed.",
-            ) from exc
+    output_path = convert_path_to_mp3(source_path, suffix, bitrate)
 
     response = {
         "filename": output_path.name,
@@ -405,7 +509,7 @@ async def convert_audio(
 
 @app.get("/api/recordings")
 async def get_recordings() -> dict[str, list[dict[str, Any]]]:
-    drive_files = load_json_data("drive_files")
+    drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
     local_files = [
         local_recording_metadata(path)
         for path in sorted(CONVERTED_DIR.rglob("*.mp3"), key=lambda item: item.stat().st_mtime, reverse=True)
@@ -413,37 +517,119 @@ async def get_recordings() -> dict[str, list[dict[str, Any]]]:
     return {"files": drive_files + local_files}
 
 
-@app.get("/api/recordings/download/{path:path}")
-async def download_recording(path: str) -> FileResponse:
+def local_recording_path(path: str) -> Path:
     requested = (UPLOAD_DIR / path).resolve()
     if not requested.is_file() or UPLOAD_DIR.resolve() not in requested.parents:
         raise HTTPException(status_code=404, detail="File not found")
+    return requested
+
+
+@app.get("/api/recordings/play/{path:path}")
+async def play_recording(path: str) -> FileResponse:
+    requested = local_recording_path(path)
+    return FileResponse(
+        requested,
+        media_type=mimetypes.guess_type(requested.name)[0] or "application/octet-stream",
+    )
+
+
+@app.get("/api/recordings/download/{path:path}")
+async def download_recording(path: str) -> FileResponse:
+    requested = local_recording_path(path)
     return FileResponse(requested, filename=requested.name)
+
+
+@app.delete("/api/recordings")
+async def delete_recording(payload: RecordingDeleteRequest) -> dict[str, str]:
+    if payload.source == "google_cloud_storage":
+        object_name = payload.object_name.strip()
+        if not object_name:
+            raise HTTPException(status_code=400, detail="object_name is required")
+
+        blob = get_storage_bucket().blob(object_name)
+        if blob.exists():
+            blob.delete()
+        forget_drive_file(object_name)
+        return {"message": "Deleted"}
+
+    path = payload.path.strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="path is required")
+
+    requested = local_recording_path(path)
+    requested.unlink()
+    return {"message": "Deleted"}
+
+
+def stream_storage_blob(object_name: str, download: bool) -> StreamingResponse:
+    if not storage_enabled():
+        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
+    if not object_name:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    blob = get_storage_bucket().blob(object_name)
+    if not blob.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    blob.reload()
+    filename = Path(object_name).name
+    disposition = "attachment" if download else "inline"
+    content_type = blob.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+    }
+    if blob.size is not None:
+        headers["Content-Length"] = str(blob.size)
+
+    def chunks():
+        with blob.open("rb") as source:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+
+    return StreamingResponse(chunks(), media_type=content_type, headers=headers)
+
+
+@app.get("/api/recordings/cloud/play/{object_name:path}")
+async def play_cloud_recording(object_name: str) -> StreamingResponse:
+    return stream_storage_blob(object_name, download=False)
+
+
+@app.get("/api/recordings/cloud/download/{object_name:path}")
+async def download_cloud_recording(object_name: str) -> StreamingResponse:
+    return stream_storage_blob(object_name, download=True)
 
 
 @app.post("/api/drive/upload")
 async def upload_to_drive(
     file: UploadFile = File(...),
-    date: str = "",
-    piece: str = "",
+    bitrate: int = Form(192),
+    date: str = Form(""),
+    piece: str = Form(""),
 ) -> dict[str, Any]:
-    ensure_audio_file(file)
+    suffix = ensure_audio_file(file)
+    if bitrate not in {128, 192, 320}:
+        raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
+
     date_dir = safe_segment(date, datetime.now().date().isoformat())
     logger.info(f"date={date}")
     logger.info(f"piece={piece}")
     piece_dir = safe_segment(piece, "uncategorized")
     staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
+    output_path = convert_path_to_mp3(staging_path, suffix, bitrate)
 
     if not storage_enabled():
         return {
             "drive_file_id": None,
-            "share_link": f"/api/recordings/download/{staging_path.relative_to(UPLOAD_DIR).as_posix()}",
+            "share_link": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
             "source": "local",
             "message": "Google Cloud Storage is not configured. Saved locally.",
         }
 
     try:
-        drive_item = upload_file_to_drive(staging_path, date_dir, piece_dir)
+        drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
         remember_drive_file(drive_item)
     except Exception as exc:
         logger.exception("Google Cloud Storage upload failed")
