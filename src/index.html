@@ -12,6 +12,7 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="#">奏オケポータル</a>
             <div class="d-flex gap-2">
+                <button class="btn btn-outline-success" id="portalReloadBtn" type="button">リロード</button>
                 <button class="btn btn-outline-primary" id="adminMenuBtn" type="button">管理メニュー</button>
                 <button class="btn btn-outline-secondary" id="memberMenuBtn" type="button">団員メニュー</button>
             </div>
@@ -236,6 +237,8 @@
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-sns" type="button">SNS</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-concert-records" type="button">演奏会記録</button>
             </div>
 
             <div id="memberAnnounceTab" class="tab-content">
@@ -265,6 +268,20 @@
                 <div class="card">
                     <div class="card-header">録音部屋</div>
                     <div class="card-body" id="songTreeMember"></div>
+                </div>
+            </div>
+
+            <div id="memberSnsTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">SNS</div>
+                    <div class="card-body" id="memberSnsInfo"></div>
+                </div>
+            </div>
+
+            <div id="memberConcertRecordsTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">演奏会記録</div>
+                    <div class="card-body" id="memberConcertRecordsInfo"></div>
                 </div>
             </div>
         </section>

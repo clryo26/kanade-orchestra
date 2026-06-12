@@ -1,3 +1,10 @@
+const KANADE_EXTERNAL_LINKS = {
+    x: 'https://twitter.com/kanade_orche',
+    facebook: 'https://facebook.com/zouokesutora',
+    instagram: 'https://instagram.com/kanade.orchestra',
+    youtube: 'https://www.youtube.com/@fukuoka-kanade-orchestra'
+};
+
 const appState = {
     selectedFile: null,
     selectedFiles: [],
@@ -37,6 +44,7 @@ function setDefaultDates() {
 function bindNavigation() {
     $('adminMenuBtn').addEventListener('click', showAdminPanel);
     $('memberMenuBtn').addEventListener('click', showMemberPanel);
+    $('portalReloadBtn').addEventListener('click', reloadPortal);
 
     document.querySelectorAll('#adminPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('adminPanel', button.dataset.tab));
@@ -101,6 +109,26 @@ function switchTab(panelId, tabName) {
     if (button) button.classList.add('active');
 }
 
+async function reloadPortal() {
+    const button = $('portalReloadBtn');
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'リロード中...';
+    try {
+        await loadAll();
+        if (!$('memberPanel').hidden) {
+            renderMemberViews();
+        }
+        showAlert('最新情報に更新しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`リロードに失敗しました: ${error.message}`, 'danger');
+    } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+    }
+}
+
 function toPascalTab(value) {
     const map = {
         upload: 'upload',
@@ -110,7 +138,9 @@ function toPascalTab(value) {
         'member-announce': 'memberAnnounce',
         'member-performance': 'memberPerformance',
         'member-schedule': 'memberSchedule',
-        'member-recording': 'memberRecording'
+        'member-recording': 'memberRecording',
+        'member-sns': 'memberSns',
+        'member-concert-records': 'memberConcertRecords'
     };
     return map[value] || value;
 }
@@ -859,9 +889,8 @@ function renderRecordingList(containerId, canDelete) {
                 .forEach(([piece, pieceFiles]) => {
                     const pieceDetails = document.createElement('details');
                     pieceDetails.className = 'recording-piece-group ms-3 mt-2';
-                    // 練習日を開いた直後は、曲ごとの一覧はまだ折りたたんだ状態にする。
-                    // 管理者側は従来どおり確認しやすいよう曲ごとも開いておく。
-                    pieceDetails.open = canDelete;
+                    // 練習日を開いた直後は、最新日を含めて曲ごとの一覧は折りたたんだ状態にする。
+                    pieceDetails.open = false;
 
                     const pieceSummary = document.createElement('summary');
                     pieceSummary.className = 'recording-summary';
@@ -1052,6 +1081,65 @@ function renderMemberViews() {
     renderMemberSchedules();
     renderAnnouncements();
     renderRecordings();
+    renderMemberSns();
+    renderMemberConcertRecords();
+}
+
+
+function externalLinkButton(url, label, variant = 'outline-primary') {
+    return `
+        <a class="btn btn-${variant} btn-lg external-link-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+            ${escapeHtml(label)}
+        </a>
+    `;
+}
+
+function renderMemberSns() {
+    const container = $('memberSnsInfo');
+    if (!container) return;
+    container.innerHTML = `
+        <p class="text-muted">奏オケの公式SNSを開きます。</p>
+        <div class="external-link-list">
+            <div class="external-link-card">
+                <div>
+                    <strong>X (Twitter)</strong>
+                    <p class="text-muted mb-0">最新情報・お知らせ</p>
+                </div>
+                ${externalLinkButton(KANADE_EXTERNAL_LINKS.x, 'X (Twitter)を開く', 'outline-dark')}
+            </div>
+            <div class="external-link-card">
+                <div>
+                    <strong>Facebook</strong>
+                    <p class="text-muted mb-0">演奏会情報・イベント情報</p>
+                </div>
+                ${externalLinkButton(KANADE_EXTERNAL_LINKS.facebook, 'Facebookを開く', 'outline-primary')}
+            </div>
+            <div class="external-link-card">
+                <div>
+                    <strong>Instagram</strong>
+                    <p class="text-muted mb-0">写真・動画</p>
+                </div>
+                ${externalLinkButton(KANADE_EXTERNAL_LINKS.instagram, 'Instagramを開く', 'outline-danger')}
+            </div>
+        </div>
+    `;
+}
+
+function renderMemberConcertRecords() {
+    const container = $('memberConcertRecordsInfo');
+    if (!container) return;
+    container.innerHTML = `
+        <p class="text-muted">奏オケの演奏会動画・記録を確認できます。</p>
+        <div class="external-link-list">
+            <div class="external-link-card">
+                <div>
+                    <strong>奏オケ公式YouTube</strong>
+                    <p class="text-muted mb-0">演奏会動画・過去の記録</p>
+                </div>
+                ${externalLinkButton(KANADE_EXTERNAL_LINKS.youtube, 'YouTubeチャンネルを開く', 'outline-danger')}
+            </div>
+        </div>
+    `;
 }
 
 function renderMemberPerformances() {

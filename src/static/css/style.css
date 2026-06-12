@@ -221,3 +221,41 @@ body {
     margin-left: 0.5rem;
     vertical-align: middle;
 }
+
+.external-link-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.external-link-button {
+    text-align: center;
+    font-weight: 700;
+}
+
+.external-link-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.external-link-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: #fff;
+}
+
+.external-link-card .external-link-button {
+    flex-shrink: 0;
+}
+
+@media (max-width: 576px) {
+    .external-link-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
