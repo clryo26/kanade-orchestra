@@ -19,6 +19,8 @@ dependencies = [
     "pydantic==2.5.0",
     "python-multipart==0.0.6",
     "pydub==0.25.1",
+    "imageio-ffmpeg==0.4.9",
+    "setuptools==69.0.3",
     "librosa==0.10.0",
     "google-cloud-storage==2.14.0",
     "google-auth==2.25.2",

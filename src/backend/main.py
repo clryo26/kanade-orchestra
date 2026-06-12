@@ -36,6 +36,11 @@ except ImportError:  # pragma: no cover - allows running main.py directly.
     )
 
 try:
+    import imageio_ffmpeg
+except ImportError:  # pragma: no cover
+    imageio_ffmpeg = None
+
+try:
     from pydub import AudioSegment
 except ImportError:  # pragma: no cover
     AudioSegment = None
@@ -44,6 +49,9 @@ except ImportError:  # pragma: no cover
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
+
+if AudioSegment is not None and imageio_ffmpeg is not None:
+    AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -291,7 +299,7 @@ def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
         raise HTTPException(status_code=500, detail="pydub is not available")
 
     try:
-        audio = AudioSegment.from_file(source_path)
+        audio = AudioSegment.from_file(source_path, format=suffix.lstrip("."))
         audio.export(output_path, format="mp3", bitrate=f"{bitrate}k")
         source_path.unlink(missing_ok=True)
     except Exception as exc:

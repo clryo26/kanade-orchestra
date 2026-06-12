@@ -1,5 +1,179 @@
 # オーケストラ音声共有ツール 設計書（Web版）
 
+## 現行実装仕様（2026-06-12時点）
+
+### サービス名
+- 画面表示名、ブラウザタイトルは **奏オケポータル**。
+- 管理者メニューと団員メニューを同一Webアプリ内で切り替える。
+
+### 技術構成
+- フロントエンド: HTML / Bootstrap 5 / Vanilla JavaScript。
+- バックエンド: FastAPI。
+- 音声変換: pydub + ffmpeg。
+- パッケージ管理: uv。
+- 永続化: Google Cloud Storage。
+- ローカル開発時は `src/data/*.json` と `src/uploads/` にも保存する。
+
+### Google Cloud Storage構成
+- 環境変数:
+  - `GOOGLE_CLOUD_STORAGE_BUCKET`: 保存先バケット名。
+  - `GOOGLE_CLOUD_STORAGE_DATA_PREFIX`: JSONデータ保存プレフィックス。既定値は `app-data`。
+  - `GOOGLE_CLOUD_STORAGE_PUBLIC`: 音声オブジェクトを公開するか。既定値は `false`。
+  - `GOOGLE_SERVICE_ACCOUNT_FILE`: ローカル開発用サービスアカウントJSON。
+- 音声ファイル保存パス:
+  - `{練習日}/{練習曲名}/{ファイル名}.mp3`
+  - 例: `2026-06-06/オルガン付き/sample.mp3`
+- アプリデータ保存パス:
+  - `app-data/performances.json`
+  - `app-data/schedules.json`
+  - `app-data/announcements.json`
+  - `app-data/drive_files.json`
+- 起動時、GCS側にJSONが存在しない場合はローカルJSONから初回コピーする。
+
+### 録音管理
+- ドラッグ&ドロップは使用しない。
+- `ファイルを選択` ボタンからWAV/MP3を複数一括選択できる。
+- `録音ファイルを保存` 実行時の挙動:
+  - WAVファイルは自動でMP3に変換して保存する。
+  - MP3ファイルは変換せずそのまま保存する。
+  - 変換品質は128/192/320kbpsから選択する。
+  - 複数選択時は同一の練習日・練習曲名で順番に保存する。
+- 管理者メニューの録音ファイル一覧:
+  - 録音管理タブ内にのみ表示する。
+  - `再生` と `削除` を提供する。
+  - `削除` はGCS上の音声オブジェクトと `drive_files.json` のメタデータを削除する。
+- 団員メニューの録音部屋:
+  - `再生` と `DL` を提供する。
+  - GCSが非公開でも、バックエンド経由のストリーミング/ダウンロードURLで扱う。
+
+### 演奏会情報管理
+- 登録項目:
+  - タイトル
+  - 開催日
+  - 開場時間
+  - 開演時間
+  - 会場
+  - 指揮者
+  - 曲目リスト
+- 曲目は1曲ごとに以下を登録する。
+  - 作曲者
+  - 曲名
+- 既存の文字列配列形式の曲目データも読み込み時に `{ composer, title }` 相当へ正規化して表示する。
+
+### 練習予定管理
+- 登録項目:
+  - 練習日
+  - 練習開始時間
+  - 練習終了時間
+  - 場所
+  - 利用可能開始時間
+  - 利用可能終了時間
+  - 練習曲
+  - 備考
+- 旧形式の `time` / `available_hours` も読み込み時に表示互換を維持する。
+
+### お知らせ管理
+- 登録項目:
+  - 日付
+  - 内容
+- 管理者が作成・更新・削除し、団員メニューで閲覧する。
+
+### APIエンドポイント
+- ヘルスチェック:
+  - `GET /api/health`
+- 演奏会情報:
+  - `GET /api/performances`
+  - `POST /api/performances`
+  - `GET /api/performances/{performance_id}`
+  - `PUT /api/performances/{performance_id}`
+  - `DELETE /api/performances/{performance_id}`
+- 練習予定:
+  - `GET /api/schedules`
+  - `POST /api/schedules`
+  - `GET /api/schedules/{schedule_id}`
+  - `PUT /api/schedules/{schedule_id}`
+  - `DELETE /api/schedules/{schedule_id}`
+- お知らせ:
+  - `GET /api/announcements`
+  - `POST /api/announcements`
+  - `GET /api/announcements/{announcement_id}`
+  - `PUT /api/announcements/{announcement_id}`
+  - `DELETE /api/announcements/{announcement_id}`
+- 録音:
+  - `GET /api/recordings`
+  - `GET /api/recordings/play/{path}`
+  - `GET /api/recordings/download/{path}`
+  - `GET /api/recordings/cloud/play/{object_name}`
+  - `GET /api/recordings/cloud/download/{object_name}`
+  - `DELETE /api/recordings`
+- 録音アップロード:
+  - `POST /api/drive/upload`
+  - API名は既存フロント互換のため `drive` のままだが、実体はGoogle Cloud Storage保存。
+- 互換API:
+  - `POST /api/convert`
+  - 単体変換APIとして残すが、録音管理画面からは直接使用しない。
+  - `GET /api/drive/files`
+
+### 主要データモデル
+
+#### Performance
+```json
+{
+  "id": 1,
+  "title": "第1回定期演奏会",
+  "date": "2026-06-12",
+  "open_time": "18:00",
+  "start_time": "19:00",
+  "venue": "ホール名",
+  "conductor": "指揮者名",
+  "pieces": [
+    {
+      "composer": "サン＝サーンス",
+      "title": "交響曲第3番 オルガン付き"
+    }
+  ],
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+#### Schedule
+```json
+{
+  "id": 1,
+  "date": "2026-06-12",
+  "time": "13:00 - 16:30",
+  "start_time": "13:00",
+  "end_time": "16:30",
+  "venue": "練習場所",
+  "available_hours": "12:30 - 16:30",
+  "available_start_time": "12:30",
+  "available_end_time": "16:30",
+  "pieces": "練習曲",
+  "notes": "備考",
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+#### Recording Metadata
+```json
+{
+  "id": "2026-06-06/オルガン付き/sample.mp3",
+  "name": "sample.mp3",
+  "date": "2026-06-06",
+  "piece": "オルガン付き",
+  "size": 123456,
+  "mime_type": "audio/mpeg",
+  "modified_at": "...",
+  "bucket": "kanade-storage",
+  "object_name": "2026-06-06/オルガン付き/sample.mp3",
+  "source": "google_cloud_storage"
+}
+```
+
+---
+
 ## プロジェクト概要
 
 オーケストラの団員向けに、Webブラウザから WAV形式の音声ファイルを MP3形式に変換し、Google Driveを経由で共有・再生できるWebアプリケーション。Google Sites内に埋め込み可能で、リハーサル音声やパート別録音などを効率的に共有・再生するための統合Webツール。
