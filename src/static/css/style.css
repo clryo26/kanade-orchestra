@@ -206,3 +206,18 @@ body {
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+.admin-progress-area {
+    border: 1px solid #cfe2ff;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #f8fbff;
+}
+
+.recording-summary-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}

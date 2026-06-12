@@ -276,6 +276,55 @@ function setUploadControlsDisabled(disabled) {
     $('fileInput').disabled = disabled;
 }
 
+function updateAdminProgress(percent, title, status) {
+    const area = $('adminProgressArea');
+    if (!area) return;
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    area.hidden = false;
+    $('adminProgressTitle').textContent = title || '処理中';
+    $('adminProgressPercent').textContent = `${safePercent}%`;
+    $('adminProgressStatus').textContent = status || '';
+    $('adminProgressBar').style.width = `${safePercent}%`;
+    $('adminProgressBar').setAttribute('aria-valuenow', String(safePercent));
+}
+
+function clearAdminProgressAfterDelay(delayMs = 1600) {
+    window.setTimeout(() => {
+        const area = $('adminProgressArea');
+        if (area) area.hidden = true;
+    }, delayMs);
+}
+
+function setButtonBusy(button, busyText) {
+    if (!button) return () => {};
+    const originalHtml = button.innerHTML;
+    const originalDisabled = button.disabled;
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>${escapeHtml(busyText)}`;
+    return () => {
+        button.innerHTML = originalHtml;
+        button.disabled = originalDisabled;
+    };
+}
+
+async function runAdminOperation(buttonOrId, title, status, operation) {
+    const button = typeof buttonOrId === 'string' ? $(buttonOrId) : buttonOrId;
+    const restoreButton = setButtonBusy(button, '処理中...');
+    updateAdminProgress(10, title, status);
+    try {
+        const result = await operation();
+        updateAdminProgress(100, title, '完了しました');
+        clearAdminProgressAfterDelay();
+        return result;
+    } catch (error) {
+        updateAdminProgress(100, title, `失敗しました: ${error.message}`);
+        clearAdminProgressAfterDelay(4000);
+        throw error;
+    } finally {
+        restoreButton();
+    }
+}
+
 async function audioUploadMetadata(file) {
     return {
         filename: file.name,
@@ -383,10 +432,19 @@ async function savePerformance() {
     }
 
     const id = $('perfId').value;
-    await request(id ? `/api/performances/${id}` : '/api/performances', jsonOptions(id ? 'PUT' : 'POST', payload));
-    clearPerformanceForm();
-    await loadPerformances();
-    showAlert('演奏会情報を保存しました', 'success');
+    try {
+        await runAdminOperation('addPerfBtn', '演奏会情報保存中', '入力内容を保存しています', async () => {
+            updateAdminProgress(35, '演奏会情報保存中', 'サーバーへ送信中');
+            await request(id ? `/api/performances/${id}` : '/api/performances', jsonOptions(id ? 'PUT' : 'POST', payload));
+            updateAdminProgress(70, '演奏会情報保存中', '一覧を更新中');
+            clearPerformanceForm();
+            await loadPerformances();
+        });
+        showAlert('演奏会情報を保存しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`演奏会情報の保存に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function selectPerformance(id) {
@@ -409,10 +467,19 @@ async function deletePerformance() {
         showAlert('削除する演奏会を一覧から選択してください', 'warning');
         return;
     }
-    await request(`/api/performances/${id}`, { method: 'DELETE' });
-    clearPerformanceForm();
-    await loadPerformances();
-    showAlert('演奏会情報を削除しました', 'success');
+    try {
+        await runAdminOperation('deletePerfBtn', '演奏会情報削除中', '削除しています', async () => {
+            updateAdminProgress(35, '演奏会情報削除中', 'サーバーへ削除依頼中');
+            await request(`/api/performances/${id}`, { method: 'DELETE' });
+            updateAdminProgress(70, '演奏会情報削除中', '一覧を更新中');
+            clearPerformanceForm();
+            await loadPerformances();
+        });
+        showAlert('演奏会情報を削除しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`演奏会情報の削除に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function clearPerformanceForm() {
@@ -528,10 +595,19 @@ async function saveSchedule() {
     }
 
     const id = $('schedId').value;
-    await request(id ? `/api/schedules/${id}` : '/api/schedules', jsonOptions(id ? 'PUT' : 'POST', payload));
-    clearScheduleForm();
-    await loadSchedules();
-    showAlert('練習予定を保存しました', 'success');
+    try {
+        await runAdminOperation('addSchedBtn', '練習予定保存中', '入力内容を保存しています', async () => {
+            updateAdminProgress(35, '練習予定保存中', 'サーバーへ送信中');
+            await request(id ? `/api/schedules/${id}` : '/api/schedules', jsonOptions(id ? 'PUT' : 'POST', payload));
+            updateAdminProgress(70, '練習予定保存中', '一覧を更新中');
+            clearScheduleForm();
+            await loadSchedules();
+        });
+        showAlert('練習予定を保存しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`練習予定の保存に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function selectSchedule(id) {
@@ -557,10 +633,19 @@ async function deleteSchedule() {
         showAlert('削除する練習予定を一覧から選択してください', 'warning');
         return;
     }
-    await request(`/api/schedules/${id}`, { method: 'DELETE' });
-    clearScheduleForm();
-    await loadSchedules();
-    showAlert('練習予定を削除しました', 'success');
+    try {
+        await runAdminOperation('deleteSchedBtn', '練習予定削除中', '削除しています', async () => {
+            updateAdminProgress(35, '練習予定削除中', 'サーバーへ削除依頼中');
+            await request(`/api/schedules/${id}`, { method: 'DELETE' });
+            updateAdminProgress(70, '練習予定削除中', '一覧を更新中');
+            clearScheduleForm();
+            await loadSchedules();
+        });
+        showAlert('練習予定を削除しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`練習予定の削除に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function clearScheduleForm() {
@@ -604,10 +689,19 @@ async function saveAnnouncement() {
     }
 
     const id = $('annId').value;
-    await request(id ? `/api/announcements/${id}` : '/api/announcements', jsonOptions(id ? 'PUT' : 'POST', payload));
-    clearAnnouncementForm();
-    await loadAnnouncements();
-    showAlert('お知らせを保存しました', 'success');
+    try {
+        await runAdminOperation('addAnnBtn', 'お知らせ保存中', '入力内容を保存しています', async () => {
+            updateAdminProgress(35, 'お知らせ保存中', 'サーバーへ送信中');
+            await request(id ? `/api/announcements/${id}` : '/api/announcements', jsonOptions(id ? 'PUT' : 'POST', payload));
+            updateAdminProgress(70, 'お知らせ保存中', '一覧を更新中');
+            clearAnnouncementForm();
+            await loadAnnouncements();
+        });
+        showAlert('お知らせを保存しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`お知らせの保存に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function selectAnnouncement(id) {
@@ -624,10 +718,19 @@ async function deleteAnnouncement() {
         showAlert('削除するお知らせを一覧から選択してください', 'warning');
         return;
     }
-    await request(`/api/announcements/${id}`, { method: 'DELETE' });
-    clearAnnouncementForm();
-    await loadAnnouncements();
-    showAlert('お知らせを削除しました', 'success');
+    try {
+        await runAdminOperation('deleteAnnBtn', 'お知らせ削除中', '削除しています', async () => {
+            updateAdminProgress(35, 'お知らせ削除中', 'サーバーへ削除依頼中');
+            await request(`/api/announcements/${id}`, { method: 'DELETE' });
+            updateAdminProgress(70, 'お知らせ削除中', '一覧を更新中');
+            clearAnnouncementForm();
+            await loadAnnouncements();
+        });
+        showAlert('お知らせを削除しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`お知らせの削除に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function clearAnnouncementForm() {
@@ -669,7 +772,9 @@ function renderSchedules() {
         </div>
     `;
     const body = container.querySelector('tbody');
-    appState.schedules.forEach((sched) => {
+    [...appState.schedules]
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(scheduleTimeLabel(a)).localeCompare(String(scheduleTimeLabel(b))))
+        .forEach((sched) => {
         const row = document.createElement('tr');
         row.className = 'clickable-row';
         row.innerHTML = `
@@ -743,6 +848,8 @@ function renderRecordingList(containerId, canDelete) {
             `;
             if (isMember) {
                 dateSummary.appendChild(downloadGroupButton(dateFiles, `${date || '未分類'}_録音一括.zip`));
+            } else {
+                dateSummary.appendChild(deleteGroupButton(dateFiles, `${date || '未分類'} の録音 ${dateFiles.length}件`));
             }
             dateDetails.appendChild(dateSummary);
 
@@ -752,7 +859,9 @@ function renderRecordingList(containerId, canDelete) {
                 .forEach(([piece, pieceFiles]) => {
                     const pieceDetails = document.createElement('details');
                     pieceDetails.className = 'recording-piece-group ms-3 mt-2';
-                    pieceDetails.open = canDelete || dateIndex === 0;
+                    // 練習日を開いた直後は、曲ごとの一覧はまだ折りたたんだ状態にする。
+                    // 管理者側は従来どおり確認しやすいよう曲ごとも開いておく。
+                    pieceDetails.open = canDelete;
 
                     const pieceSummary = document.createElement('summary');
                     pieceSummary.className = 'recording-summary';
@@ -762,6 +871,8 @@ function renderRecordingList(containerId, canDelete) {
                     `;
                     if (isMember) {
                         pieceSummary.appendChild(downloadGroupButton(pieceFiles, `${date || '未分類'}_${piece || '未分類'}_録音一括.zip`));
+                    } else {
+                        pieceSummary.appendChild(deleteGroupButton(pieceFiles, `${date || '未分類'} / ${piece || '未分類'} の録音 ${pieceFiles.length}件`));
                     }
                     pieceDetails.appendChild(pieceSummary);
 
@@ -771,9 +882,8 @@ function renderRecordingList(containerId, canDelete) {
                         const item = document.createElement('div');
                         item.className = 'list-group-item';
                         const downloadUrl = file.download_url || file.play_url || '#';
-                        const durationLabel = formatDuration(file.duration_seconds);
-                        const metaParts = [formatBytes(file.size)];
-                        if (durationLabel) metaParts.push(durationLabel);
+                        const durationLabel = formatDuration(recordingDurationSeconds(file));
+                        const metaParts = [`サイズ: ${formatBytes(file.size)}`, `長さ: ${durationLabel || '未取得'}`];
 
                         const playUrl = file.play_url || downloadUrl;
                         const actionButton = canDelete
@@ -795,7 +905,7 @@ function renderRecordingList(containerId, canDelete) {
                         `;
 
                         if (canDelete) {
-                            item.querySelector('.delete-recording-btn').addEventListener('click', () => deleteRecording(file));
+                            item.querySelector('.delete-recording-btn').addEventListener('click', (event) => deleteRecording(file, event.currentTarget));
                         } else {
                             item.querySelector('.play-recording-btn').addEventListener('click', () => toggleRecordingPlayback(item));
                         }
@@ -820,6 +930,44 @@ function downloadGroupButton(files, filename) {
         downloadRecordingGroup(files, filename);
     });
     return button;
+}
+
+function deleteGroupButton(files, label) {
+    const button = document.createElement('button');
+    button.className = 'btn btn-sm btn-outline-danger ms-2';
+    button.type = 'button';
+    button.textContent = '配下一括削除';
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteRecordingGroup(files, label, button);
+    });
+    return button;
+}
+
+async function deleteRecordingGroup(files, label, button) {
+    if (!files.length) return;
+    if (!confirm(`${label} を一括削除します。よろしいですか？`)) return;
+
+    try {
+        await runAdminOperation(button, '録音ファイル一括削除中', `${label} の削除を開始します`, async () => {
+            for (const [index, file] of files.entries()) {
+                const percent = Math.round(((index + 1) / files.length) * 90);
+                updateAdminProgress(5 + percent, '録音ファイル一括削除中', `${index + 1}/${files.length} 件目を削除中: ${file.name}`);
+                await request('/api/recordings', jsonOptions('DELETE', {
+                    source: file.source || 'local',
+                    object_name: file.object_name || file.id || '',
+                    path: file.path || ''
+                }));
+            }
+            updateAdminProgress(95, '録音ファイル一括削除中', '一覧を更新中');
+            await loadRecordings();
+        });
+        showAlert(`${files.length} 件の録音ファイルを削除しました`, 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`録音ファイルの一括削除に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 async function downloadRecordingGroup(files, filename) {
@@ -848,16 +996,25 @@ async function downloadRecordingGroup(files, filename) {
     URL.revokeObjectURL(url);
 }
 
-async function deleteRecording(file) {
+async function deleteRecording(file, button = null) {
     if (!confirm(`${file.name} を削除しますか？`)) return;
 
-    await request('/api/recordings', jsonOptions('DELETE', {
-        source: file.source || 'local',
-        object_name: file.object_name || file.id || '',
-        path: file.path || ''
-    }));
-    await loadRecordings();
-    showAlert('録音ファイルを削除しました', 'success');
+    try {
+        await runAdminOperation(button, '録音ファイル削除中', `${file.name} を削除しています`, async () => {
+            updateAdminProgress(35, '録音ファイル削除中', 'サーバーへ削除依頼中');
+            await request('/api/recordings', jsonOptions('DELETE', {
+                source: file.source || 'local',
+                object_name: file.object_name || file.id || '',
+                path: file.path || ''
+            }));
+            updateAdminProgress(75, '録音ファイル削除中', '一覧を更新中');
+            await loadRecordings();
+        });
+        showAlert('録音ファイルを削除しました', 'success');
+    } catch (error) {
+        console.error(error);
+        showAlert(`録音ファイルの削除に失敗しました: ${error.message}`, 'danger');
+    }
 }
 
 function toggleRecordingPlayback(item) {
@@ -924,15 +1081,59 @@ function renderMemberSchedules() {
         container.innerHTML = '<p class="text-muted mb-0">今後の練習予定はまだありません</p>';
         return;
     }
-    container.innerHTML = upcomingSchedules.map((sched) => `
+    container.innerHTML = upcomingSchedules.map((sched, index) => `
         <article class="info-block">
-            <h5>${escapeHtml(sched.date)} ${escapeHtml(scheduleTimeLabel(sched))}</h5>
-            <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(scheduleAvailableLabel(sched))}</p>
-            ${sched.conductor_training ? '<p class="conductor-training-label mb-1">※指揮トレ</p>' : ''}
-            <p>${escapeHtml(sched.pieces || '')}</p>
-            <p class="mb-0 text-muted multiline-text">${escapeHtml(sched.notes || '')}</p>
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div>
+                    <h5>${escapeHtml(sched.date)} ${escapeHtml(scheduleTimeLabel(sched))}</h5>
+                    <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(scheduleAvailableLabel(sched))}</p>
+                    ${sched.conductor_training ? '<p class="conductor-training-label mb-1">※指揮トレ</p>' : ''}
+                    <p>${escapeHtml(sched.pieces || '')}</p>
+                    <p class="mb-0 text-muted multiline-text">${escapeHtml(sched.notes || '')}</p>
+                </div>
+                <button class="btn btn-outline-primary btn-sm add-google-calendar-btn" type="button" data-schedule-index="${index}">Googleカレンダーに追加</button>
+            </div>
         </article>
     `).join('');
+    container.querySelectorAll('.add-google-calendar-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            const schedule = upcomingSchedules[Number(button.dataset.scheduleIndex)];
+            const url = buildGoogleCalendarUrl(schedule);
+            window.open(url, '_blank', 'noopener');
+        });
+    });
+}
+
+function buildGoogleCalendarUrl(sched) {
+    const titleParts = ['奏オケ 練習'];
+    if (sched.conductor_training) titleParts.push('指揮トレ');
+    if (sched.pieces) titleParts.push(sched.pieces);
+
+    const details = [
+        sched.conductor_training ? '※指揮トレ' : '',
+        sched.pieces ? `練習曲: ${sched.pieces}` : '',
+        sched.notes || '',
+        scheduleAvailableLabel(sched) ? `利用可能時間: ${scheduleAvailableLabel(sched)}` : ''
+    ].filter(Boolean).join('\n');
+
+    const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: titleParts.join(' / '),
+        dates: googleCalendarDateRange(sched),
+        location: sched.venue || '',
+        details
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function googleCalendarDateRange(sched) {
+    const date = String(sched.date || '').replace(/-/g, '');
+    const start = String(sched.start_time || splitTimeRange(sched.time).start || '').replace(':', '');
+    const end = String(sched.end_time || splitTimeRange(sched.time).end || '').replace(':', '');
+    if (date && start && end) {
+        return `${date}T${start.padEnd(6, '0')}/${date}T${end.padEnd(6, '0')}`;
+    }
+    return `${date}/${date}`;
 }
 
 async function request(url, options = {}) {
@@ -973,6 +1174,17 @@ function formatBytes(bytes) {
     const units = ['B', 'KB', 'MB', 'GB'];
     const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
     return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function recordingDurationSeconds(file) {
+    return Number(
+        file.duration_seconds
+        ?? file.durationSeconds
+        ?? file.duration
+        ?? file.audio_duration_seconds
+        ?? file.metadata?.duration_seconds
+        ?? 0
+    ) || 0;
 }
 
 function formatDuration(seconds) {

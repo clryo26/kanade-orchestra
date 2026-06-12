@@ -297,13 +297,42 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
 def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(item)
     object_name = normalized.get("object_name") or normalized.get("id")
+    duration_seconds = (
+        normalized.get("duration_seconds")
+        or normalized.get("durationSeconds")
+        or normalized.get("duration")
+        or normalized.get("audio_duration_seconds")
+        or 0
+    )
+    try:
+        duration_seconds = float(duration_seconds or 0)
+    except (TypeError, ValueError):
+        duration_seconds = 0
+
     if normalized.get("source") != "google_cloud_storage" or not object_name:
+        normalized["duration_seconds"] = duration_seconds
         return normalized
 
     encoded_object_name = quote(str(object_name), safe="/")
     normalized["object_name"] = object_name
     normalized["play_url"] = f"/api/recordings/cloud/play/{encoded_object_name}"
     normalized["download_url"] = f"/api/recordings/cloud/download/{encoded_object_name}"
+
+    # 旧データなどで曲の長さが未保存の場合は、一覧表示時にGCS上の音声から取得する。
+    # 取得できない場合でも画面側で「未取得」と表示できるよう0を返す。
+    if not duration_seconds and storage_enabled():
+        try:
+            blob = get_storage_bucket().blob(str(object_name))
+            if blob.exists():
+                suffix = Path(str(object_name)).suffix or ".audio"
+                with tempfile.NamedTemporaryFile(suffix=suffix) as temp_file:
+                    blob.download_to_filename(temp_file.name)
+                    duration_seconds = audio_duration_seconds(Path(temp_file.name))
+        except Exception:
+            logger.exception("Failed to read cloud audio duration: %s", object_name)
+            duration_seconds = 0
+
+    normalized["duration_seconds"] = duration_seconds
     return normalized
 
 

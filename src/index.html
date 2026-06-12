@@ -27,6 +27,17 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
             </div>
 
+            <div id="adminProgressArea" class="admin-progress-area mb-3" hidden>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong id="adminProgressTitle">処理中</strong>
+                    <span id="adminProgressPercent" class="small text-muted">0%</span>
+                </div>
+                <div class="progress mb-2" role="progressbar" aria-label="管理メニュー処理進捗">
+                    <div id="adminProgressBar" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <div id="adminProgressStatus" class="small text-muted">待機中</div>
+            </div>
+
             <div id="uploadTab" class="tab-content">
                 <div class="card">
                     <div class="card-header">録音アップロード</div>
