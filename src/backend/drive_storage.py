@@ -1,103 +1,77 @@
+from __future__ import annotations
+
 import json
+import mimetypes
 import os
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
+from google.cloud import storage
 from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
+def get_storage_client() -> storage.Client:
+    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    service_account_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
+
+    if service_account_json:
+        info = json.loads(service_account_json)
+        credentials = service_account.Credentials.from_service_account_info(info)
+        return storage.Client(
+            project=info.get("project_id"),
+            credentials=credentials,
+        )
+
+    if service_account_file:
+        return storage.Client.from_service_account_json(service_account_file)
+
+    return storage.Client()
 
 
-def get_drive_service():
-    service_account_json = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
-    info = json.loads(service_account_json)
-
-    credentials = service_account.Credentials.from_service_account_info(
-        info,
-        scopes=SCOPES,
-    )
-
-    return build("drive", "v3", credentials=credentials)
+def storage_enabled() -> bool:
+    return bool(os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip())
 
 
-def create_folder(service, name, parent_id):
-    query = (
-        f"name='{name}' and "
-        f"mimeType='application/vnd.google-apps.folder' and "
-        f"'{parent_id}' in parents and trashed=false"
-    )
-
-    result = service.files().list(
-        q=query,
-        fields="files(id, name)",
-        supportsAllDrives=True,
-    ).execute()
-
-    files = result.get("files", [])
-    if files:
-        return files[0]["id"]
-
-    metadata = {
-        "name": name,
-        "mimeType": "application/vnd.google-apps.folder",
-        "parents": [parent_id],
-    }
-
-    folder = service.files().create(
-        body=metadata,
-        fields="id",
-        supportsAllDrives=True,
-    ).execute()
-
-    return folder["id"]
+def public_url(bucket_name: str, object_name: str) -> str:
+    return f"https://storage.googleapis.com/{bucket_name}/{object_name}"
 
 
-def upload_file_to_drive(local_path, practice_date, song_name):
-    service = get_drive_service()
-
-    root_folder_id = os.environ["GOOGLE_DRIVE_FOLDER_ID"]
-
-    date_folder_id = create_folder(service, practice_date, root_folder_id)
-    song_folder_id = create_folder(service, song_name, date_folder_id)
+def upload_file_to_drive(local_path: str | Path, practice_date: str, song_name: str) -> dict[str, Any]:
+    bucket_name = os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip()
+    if not bucket_name:
+        raise RuntimeError("GOOGLE_CLOUD_STORAGE_BUCKET is not set")
 
     file_path = Path(local_path)
-
-    metadata = {
-        "name": file_path.name,
-        "parents": [song_folder_id],
-    }
-
-    media = MediaFileUpload(
-        str(file_path),
-        mimetype="audio/mpeg",
-        resumable=True,
+    object_name = "/".join(
+        segment.strip("/")
+        for segment in (practice_date, song_name, file_path.name)
+        if segment.strip("/")
     )
+    content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
 
-    uploaded = service.files().create(
-        body=metadata,
-        media_body=media,
-        fields="id, name, webViewLink, webContentLink",
-        supportsAllDrives=True,
-    ).execute()
+    bucket = get_storage_client().bucket(bucket_name)
+    blob = bucket.blob(object_name)
+    blob.upload_from_filename(str(file_path), content_type=content_type)
 
-    permission_type = os.environ.get("GOOGLE_DRIVE_PERMISSION_TYPE", "anyone")
-    permission_role = os.environ.get("GOOGLE_DRIVE_PERMISSION_ROLE", "reader")
+    if os.getenv("GOOGLE_CLOUD_STORAGE_PUBLIC", "false").strip().lower() == "true":
+        blob.make_public()
 
-    service.permissions().create(
-        fileId=uploaded["id"],
-        body={
-            "type": permission_type,
-            "role": permission_role,
-        },
-        supportsAllDrives=True,
-    ).execute()
+    blob.reload()
 
+    url = blob.public_url if blob.public_url else public_url(bucket_name, object_name)
     return {
-    "id": uploaded["id"],
-    "name": uploaded["name"],
-    "web_view_link": uploaded.get("webViewLink"),
-    "download_url": uploaded.get("webContentLink"),
-    "view_url": uploaded.get("webViewLink"),
-}
+        "id": object_name,
+        "name": file_path.name,
+        "date": practice_date,
+        "piece": song_name,
+        "size": blob.size or file_path.stat().st_size,
+        "mime_type": blob.content_type or content_type,
+        "modified_at": blob.updated.isoformat() if blob.updated else datetime.now().isoformat(),
+        "bucket": bucket_name,
+        "object_name": object_name,
+        "web_view_link": url,
+        "download_url": url,
+        "view_url": url,
+        "source": "google_cloud_storage",
+    }

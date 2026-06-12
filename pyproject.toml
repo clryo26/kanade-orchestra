@@ -20,10 +20,8 @@ dependencies = [
     "python-multipart==0.0.6",
     "pydub==0.25.1",
     "librosa==0.10.0",
+    "google-cloud-storage==2.14.0",
     "google-auth==2.25.2",
-    "google-auth-oauthlib==1.2.0",
-    "google-auth-httplib2==0.2.0",
-    "google-api-python-client==2.107.0",
     "python-dotenv==1.0.0",
 ]
 

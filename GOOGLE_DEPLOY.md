@@ -1,44 +1,42 @@
-# Google Drive / Google Sites publish steps
+# Google Cloud Storage / Google Sites publish steps
 
-This app can store uploaded or converted recordings in Google Drive and show share links in the member recording page.
+This app can store uploaded or converted recordings in Google Cloud Storage and show links in the member recording page.
 
-## 1. Enable Google Drive API
+## 1. Prepare Google Cloud Storage
 
 1. Create or select a Google Cloud project.
-2. Enable Google Drive API.
-3. Create a service account for Cloud Run.
-4. Create a Drive folder for recordings.
-5. Share that Drive folder with the service account email as Editor.
-6. Copy the folder ID from the folder URL after `/folders/`.
+2. Enable Cloud Run, Cloud Build, and Cloud Storage APIs.
+3. Create a Cloud Storage bucket for recordings.
+4. Create a service account for Cloud Run.
+5. Grant the service account `Storage Object Admin` on the bucket.
 
-## 2. Choose Drive sharing scope
+## 2. Choose object visibility
 
-Anyone with the link:
-
-```env
-GOOGLE_DRIVE_PERMISSION_TYPE=anyone
-GOOGLE_DRIVE_PERMISSION_ROLE=reader
-```
-
-Only your Google Workspace domain:
+Private bucket, recommended:
 
 ```env
-GOOGLE_DRIVE_PERMISSION_TYPE=domain
-GOOGLE_DRIVE_PERMISSION_ROLE=reader
-GOOGLE_DRIVE_PERMISSION_DOMAIN=example.org
+GOOGLE_CLOUD_STORAGE_PUBLIC=false
 ```
+
+Public object URLs:
+
+```env
+GOOGLE_CLOUD_STORAGE_PUBLIC=true
+```
+
+When public URLs are disabled, the app still records the object URL, but users need bucket/object permissions to open it.
 
 ## 3. Deploy to Cloud Run
 
 ```powershell
 gcloud auth login
 gcloud config set project YOUR_PROJECT_ID
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com drive.googleapis.com
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com storage.googleapis.com
 gcloud run deploy orchestra-tool `
   --source . `
   --region asia-northeast1 `
   --allow-unauthenticated `
-  --set-env-vars GOOGLE_DRIVE_FOLDER_ID=YOUR_FOLDER_ID,GOOGLE_DRIVE_PERMISSION_TYPE=anyone,GOOGLE_DRIVE_PERMISSION_ROLE=reader
+  --set-env-vars GOOGLE_CLOUD_STORAGE_BUCKET=YOUR_BUCKET_NAME,GOOGLE_CLOUD_STORAGE_PUBLIC=false
 ```
 
 Copy the deployed `https://...run.app` URL.
@@ -56,9 +54,9 @@ Set the Google Sites visibility to match your orchestra policy.
 
 1. Open the app as an administrator.
 2. Upload a WAV or MP3 file.
-3. Click `MP3に変換`.
-4. The converted MP3 is uploaded to Drive when `GOOGLE_DRIVE_FOLDER_ID` is configured.
-5. Members can open the recording from `団員メニュー > 録音部屋`.
+3. Click the MP3 conversion button.
+4. The converted MP3 is uploaded to Cloud Storage when `GOOGLE_CLOUD_STORAGE_BUCKET` is configured.
+5. Members can open the recording from the member recording page.
 
 ## Notes
 

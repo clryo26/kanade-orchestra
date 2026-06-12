@@ -1,6 +1,6 @@
 # オーケストラ活動管理ツール
 
-オーケストラの団員向けWebアプリケーション。管理者がWAV形式の音声ファイルをMP3形式に変換して、Google Driveを経由で共有・再生できます。
+オーケストラの団員向けWebアプリケーション。管理者がWAV形式の音声ファイルをMP3形式に変換して、Google Cloud Storageを経由で共有・再生できます。
 
 ## 🎵 主な機能
 
@@ -23,7 +23,7 @@
 | **フロントエンド** | HTML5, CSS3, Bootstrap 5, Vanilla JavaScript |
 | **バックエンド** | FastAPI (Python 3.10+) |
 | **音声処理** | pydub, librosa |
-| **クラウドストレージ** | Google Drive API |
+| **クラウドストレージ** | Google Cloud Storage |
 | **認証** | Google OAuth 2.0 |
 | **デプロイ** | Google Cloud Run (Docker) |
 | **パッケージ管理** | UV |
@@ -139,12 +139,12 @@ http://localhost:8000
 |---------|--------------|------|
 | POST | `/api/convert` | 音声ファイルを変換 |
 
-### Google Drive連携
+### Google Cloud Storage連携
 
 | メソッド | エンドポイント | 説明 |
 |---------|--------------|------|
-| POST | `/api/drive/upload` | Google Driveにアップロード |
-| GET | `/api/drive/files` | Drive上のファイル一覧を取得 |
+| POST | `/api/drive/upload` | Google Cloud Storageにアップロード |
+| GET | `/api/drive/files` | Cloud Storage上のファイル一覧を取得 |
 
 ## 🔐 Google認証設定（今後の実装）
 

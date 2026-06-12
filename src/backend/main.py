@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
 import os
 import re
 import shutil
-import json
-from google.oauth2 import service_account
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,17 +14,12 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from google.auth import default as google_auth_default
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload
 from pydantic import BaseModel, Field
 
 try:
-    from .drive_storage import upload_file_to_drive
+    from .drive_storage import storage_enabled, upload_file_to_drive
 except ImportError:  # pragma: no cover - allows running main.py directly.
-    from drive_storage import upload_file_to_drive
+    from drive_storage import storage_enabled, upload_file_to_drive
 
 try:
     from pydub import AudioSegment
@@ -45,12 +37,6 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
-
-DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
-DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
-DRIVE_PERMISSION_TYPE = os.getenv("GOOGLE_DRIVE_PERMISSION_TYPE", "anyone").strip()
-DRIVE_PERMISSION_ROLE = os.getenv("GOOGLE_DRIVE_PERMISSION_ROLE", "reader").strip()
-DRIVE_PERMISSION_DOMAIN = os.getenv("GOOGLE_DRIVE_PERMISSION_DOMAIN", "").strip()
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -182,131 +168,6 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
     }
 
 
-def drive_enabled() -> bool:
-    return bool(DRIVE_FOLDER_ID)
-
-
-def drive_service():
-    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-
-    if not service_account_json:
-        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON is not set")
-
-    info = json.loads(service_account_json)
-
-    credentials = service_account.Credentials.from_service_account_info(
-        info,
-        scopes=DRIVE_SCOPES,
-    )
-
-    logger.info(
-        "Using Drive service account: %s",
-        info.get("client_email"),
-    )
-
-    return build("drive", "v3", credentials=credentials, cache_discovery=False)
-
-
-def escape_drive_query(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("'", "\\'")
-
-
-def find_or_create_drive_folder(service, name: str, parent_id: str) -> str:
-    safe_name = escape_drive_query(name)
-    query = (
-        "mimeType='application/vnd.google-apps.folder' "
-        f"and name='{safe_name}' "
-        f"and '{parent_id}' in parents "
-        "and trashed=false"
-    )
-    result = (
-        service.files()
-        .list(
-            q=query,
-            spaces="drive",
-            fields="files(id,name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        )
-        .execute()
-    )
-    folders = result.get("files", [])
-    if folders:
-        return folders[0]["id"]
-
-    metadata = {
-        "name": name,
-        "mimeType": "application/vnd.google-apps.folder",
-        "parents": [parent_id],
-    }
-    folder = (
-        service.files()
-        .create(body=metadata, fields="id", supportsAllDrives=True)
-        .execute()
-    )
-    return folder["id"]
-
-
-def apply_drive_permission(service, file_id: str) -> None:
-    if DRIVE_PERMISSION_TYPE == "none":
-        return
-
-    permission: dict[str, str] = {
-        "type": DRIVE_PERMISSION_TYPE,
-        "role": DRIVE_PERMISSION_ROLE,
-    }
-    if DRIVE_PERMISSION_TYPE == "domain":
-        if not DRIVE_PERMISSION_DOMAIN:
-            raise HTTPException(status_code=500, detail="GOOGLE_DRIVE_PERMISSION_DOMAIN is required")
-        permission["domain"] = DRIVE_PERMISSION_DOMAIN
-
-    service.permissions().create(
-        fileId=file_id,
-        body=permission,
-        fields="id",
-        supportsAllDrives=True,
-    ).execute()
-
-
-def upload_path_to_drive(path: Path, date: str, piece: str) -> dict[str, Any]:
-    if not drive_enabled():
-        raise HTTPException(status_code=503, detail="Google Drive is not configured")
-
-    service = drive_service()
-    date_folder_id = find_or_create_drive_folder(service, safe_segment(date, "undated"), DRIVE_FOLDER_ID)
-    piece_folder_id = find_or_create_drive_folder(service, safe_segment(piece, "uncategorized"), date_folder_id)
-    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    metadata = {"name": path.name, "parents": [piece_folder_id]}
-    media = MediaFileUpload(str(path), mimetype=mime_type, resumable=True)
-
-    file = (
-        service.files()
-        .create(
-            body=metadata,
-            media_body=media,
-            fields="id,name,size,mimeType,webViewLink,webContentLink,modifiedTime",
-            supportsAllDrives=True,
-        )
-        .execute()
-    )
-    apply_drive_permission(service, file["id"])
-
-    item = {
-        "id": file["id"],
-        "name": file.get("name", path.name),
-        "date": date,
-        "piece": piece,
-        "size": int(file.get("size", path.stat().st_size)),
-        "mime_type": file.get("mimeType", mime_type),
-        "modified_at": file.get("modifiedTime", datetime.now().isoformat()),
-        "web_view_link": file.get("webViewLink"),
-        "download_url": file.get("webContentLink") or file.get("webViewLink"),
-        "source": "google_drive",
-    }
-    remember_drive_file(item)
-    return item
-
-
 def remember_drive_file(item: dict[str, Any]) -> None:
     items = load_json_data("drive_files")
     items = [existing for existing in items if existing.get("id") != item.get("id")]
@@ -333,7 +194,7 @@ async def health_check() -> dict[str, str]:
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "service": "Orchestra Activity Tool",
-        "drive_configured": str(drive_enabled()).lower(),
+        "storage_configured": str(storage_enabled()).lower(),
     }
 
 
@@ -521,21 +382,23 @@ async def convert_audio(
         "message": "Converted",
     }
 
-    drive_file = upload_file_to_drive(
-        local_path=output_path,
-        practice_date=date_dir,
-        song_name=piece_dir,
-    )
-    print("Google Drive upload complete:", drive_file)
-    response.update(
-        {
-            "drive_file_id": drive_file["id"],
-            "share_link": drive_file.get("view_url") or drive_file.get("download_url"),
-            "download_url": drive_file.get("download_url") or response["download_url"],
-            "source": "google_drive",
-            "message": "Converted and uploaded to Google Drive",
-        }
-    )
+    if storage_enabled():
+        storage_file = upload_file_to_drive(
+            local_path=output_path,
+            practice_date=date_dir,
+            song_name=piece_dir,
+        )
+        logger.info("Google Cloud Storage upload complete: %s", storage_file)
+        remember_drive_file(storage_file)
+        response.update(
+            {
+                "drive_file_id": storage_file["id"],
+                "share_link": storage_file.get("view_url") or storage_file.get("download_url"),
+                "download_url": storage_file.get("download_url") or response["download_url"],
+                "source": "google_cloud_storage",
+                "message": "Converted and uploaded to Google Cloud Storage",
+            }
+        )
 
     return response
 
@@ -571,26 +434,30 @@ async def upload_to_drive(
     piece_dir = safe_segment(piece, "uncategorized")
     staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
 
-    if not drive_enabled():
+    if not storage_enabled():
         return {
             "drive_file_id": None,
             "share_link": f"/api/recordings/download/{staging_path.relative_to(UPLOAD_DIR).as_posix()}",
             "source": "local",
-            "message": "Google Drive is not configured. Saved locally.",
+            "message": "Google Cloud Storage is not configured. Saved locally.",
         }
 
     try:
         drive_item = upload_file_to_drive(staging_path, date_dir, piece_dir)
-    except HttpError as exc:
-        logger.exception("Google Drive upload failed")
-        raise HTTPException(status_code=502, detail=f"Google Drive upload failed: {exc}") from exc
+        remember_drive_file(drive_item)
+    except Exception as exc:
+        logger.exception("Google Cloud Storage upload failed")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Google Cloud Storage upload failed: {exc}",
+        ) from exc
 
     return {
         "drive_file_id": drive_item["id"],
         "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
         "download_url": drive_item.get("download_url"),
-        "source": "google_drive",
-        "message": "Uploaded to Google Drive",
+        "source": "google_cloud_storage",
+        "message": "Uploaded to Google Cloud Storage",
     }
 
 
