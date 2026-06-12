@@ -159,3 +159,19 @@ body {
         flex: 1 1 45%;
     }
 }
+
+
+.recording-summary {
+    cursor: pointer;
+    padding: 0.5rem 0;
+}
+
+.recording-summary .btn {
+    vertical-align: middle;
+}
+
+.recording-date-group,
+.recording-piece-group {
+    border-left: 3px solid #e9ecef;
+    padding-left: 0.75rem;
+}

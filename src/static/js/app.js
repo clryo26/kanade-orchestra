@@ -110,9 +110,7 @@ function toPascalTab(value) {
 }
 
 function updateSavePath() {
-    const date = $('uploadDate').value || today();
-    const piece = $('uploadPiece').value.trim() || '未分類';
-    $('savePath').textContent = `/converted/${date}/${piece}/`;
+    // 保存先は画面に表示しない。既存イベントから呼ばれても何もしない。
 }
 
 function handleFiles(files) {
@@ -142,11 +140,81 @@ async function uploadToLocalStore() {
 
     let completed = 0;
     for (const file of appState.selectedFiles) {
-        await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
+        await uploadAudioFile(file);
         completed += 1;
     }
     showAlert(`${completed} 件の録音ファイルを保存しました`, 'info');
     await loadRecordings();
+}
+
+async function uploadAudioFile(file) {
+    // Cloud Run has a request-size limit, so send the audio body directly to GCS.
+    // Cloud Run only creates the upload session and registers metadata.
+    try {
+        await uploadDirectlyToCloudStorage(file);
+    } catch (error) {
+        console.warn('Direct upload failed. Falling back to Cloud Run upload.', error);
+        showAlert('GCS直接アップロードに失敗しました。Cloud Run経由で再試行します。', 'warning');
+        await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
+    }
+}
+
+async function uploadDirectlyToCloudStorage(file) {
+    const metadata = await audioUploadMetadata(file);
+    const session = await request('/api/drive/direct-upload-session', jsonOptions('POST', metadata));
+    const uploadResponse = await fetch(session.upload_url, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': session.content_type || metadata.content_type
+        },
+        body: file
+    });
+    if (!uploadResponse.ok) {
+        const message = await uploadResponse.text();
+        throw new Error(message || `GCS upload failed: ${uploadResponse.status}`);
+    }
+
+    await request('/api/drive/direct-upload-complete', jsonOptions('POST', {
+        ...metadata,
+        object_name: session.object_name
+    }));
+}
+
+async function audioUploadMetadata(file) {
+    return {
+        filename: file.name,
+        content_type: file.type || guessAudioContentType(file.name),
+        size: file.size,
+        date: document.getElementById('uploadDate').value,
+        piece: document.getElementById('uploadPiece').value,
+        duration_seconds: await getAudioDurationSeconds(file)
+    };
+}
+
+function getAudioDurationSeconds(file) {
+    return new Promise((resolve) => {
+        const audio = document.createElement('audio');
+        const objectUrl = URL.createObjectURL(file);
+        const cleanup = () => URL.revokeObjectURL(objectUrl);
+        audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+            const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+            cleanup();
+            resolve(duration);
+        };
+        audio.onerror = () => {
+            cleanup();
+            resolve(0);
+        };
+        audio.src = objectUrl;
+    });
+}
+
+function guessAudioContentType(filename) {
+    const extension = filename.split('.').pop().toLowerCase();
+    if (extension === 'wav') return 'audio/wav';
+    if (extension === 'mp3') return 'audio/mpeg';
+    return 'application/octet-stream';
 }
 
 function audioFormData(file) {
@@ -539,68 +607,121 @@ function renderRecordingList(containerId, canDelete) {
         return;
     }
 
-    const grouped = groupBy(appState.recordings, 'date');
+    const isMember = !canDelete;
+    const groupedByDate = groupBy(appState.recordings, 'date');
     container.innerHTML = '';
-    Object.entries(grouped).forEach(([date, files]) => {
-        const section = document.createElement('div');
-        section.className = 'recording-group';
-        section.innerHTML = `<h6>${escapeHtml(date || '未分類')}</h6>`;
-        const list = document.createElement('div');
-        list.className = 'list-group mb-3';
-        files.forEach((file) => {
-            const item = document.createElement('div');
-            item.className = 'list-group-item';
-            const playUrl = file.play_url || file.download_url;
-            const downloadUrl = file.download_url || playUrl;
-            const actionButton = canDelete
-                ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
-                : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
-            item.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-                    <span>
-                    <strong>${escapeHtml(file.name)}</strong>
-                    <span class="small text-muted d-block">${escapeHtml(file.piece || '未分類')} / ${formatBytes(file.size)}</span>
-                    </span>
-                    <span class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary play-recording-btn" type="button">再生</button>
-                        ${actionButton}
-                    </span>
-                </div>
-            `;
-            if (playUrl) {
-                const audio = document.createElement('audio');
-                audio.controls = true;
-                audio.preload = 'none';
-                audio.src = playUrl;
-                audio.className = 'w-100 mt-2';
-                audio.hidden = true;
-                item.appendChild(audio);
 
-                const playButton = item.querySelector('.play-recording-btn');
-                playButton.addEventListener('click', async () => {
-                    if (audio.hidden) {
-                        audio.hidden = false;
-                        playButton.textContent = '停止';
-                        await audio.play();
-                        return;
+    Object.entries(groupedByDate)
+        .sort(([a], [b]) => String(b).localeCompare(String(a)))
+        .forEach(([date, dateFiles]) => {
+            const dateDetails = document.createElement('details');
+            dateDetails.className = 'recording-date-group mb-3';
+            dateDetails.open = true;
+
+            const dateSummary = document.createElement('summary');
+            dateSummary.className = 'recording-summary fw-bold';
+            dateSummary.innerHTML = `
+                <span>${escapeHtml(date || '未分類')}</span>
+                <span class="small text-muted ms-2">${dateFiles.length}件</span>
+            `;
+            if (isMember) {
+                dateSummary.appendChild(downloadGroupButton(dateFiles, `${date || '未分類'}_録音一括.zip`));
+            }
+            dateDetails.appendChild(dateSummary);
+
+            const groupedByPiece = groupBy(dateFiles, 'piece');
+            Object.entries(groupedByPiece)
+                .sort(([a], [b]) => String(a).localeCompare(String(b), 'ja'))
+                .forEach(([piece, pieceFiles]) => {
+                    const pieceDetails = document.createElement('details');
+                    pieceDetails.className = 'recording-piece-group ms-3 mt-2';
+                    pieceDetails.open = true;
+
+                    const pieceSummary = document.createElement('summary');
+                    pieceSummary.className = 'recording-summary';
+                    pieceSummary.innerHTML = `
+                        <span>${escapeHtml(piece || '未分類')}</span>
+                        <span class="small text-muted ms-2">${pieceFiles.length}件</span>
+                    `;
+                    if (isMember) {
+                        pieceSummary.appendChild(downloadGroupButton(pieceFiles, `${date || '未分類'}_${piece || '未分類'}_録音一括.zip`));
                     }
-                    audio.pause();
-                    audio.hidden = true;
-                    playButton.textContent = '再生';
+                    pieceDetails.appendChild(pieceSummary);
+
+                    const list = document.createElement('div');
+                    list.className = 'list-group mt-2 mb-3';
+                    pieceFiles.forEach((file) => {
+                        const item = document.createElement('div');
+                        item.className = 'list-group-item';
+                        const downloadUrl = file.download_url || file.play_url || '#';
+                        const durationLabel = formatDuration(file.duration_seconds);
+                        const metaParts = [formatBytes(file.size)];
+                        if (durationLabel) metaParts.push(durationLabel);
+
+                        const actionButton = canDelete
+                            ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
+                            : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
+
+                        item.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                                <span>
+                                    <strong>${escapeHtml(file.name)}</strong>
+                                    <span class="small text-muted d-block">${escapeHtml(metaParts.join(' / '))}</span>
+                                </span>
+                                <span class="d-flex gap-2">${actionButton}</span>
+                            </div>
+                        `;
+
+                        if (canDelete) {
+                            item.querySelector('.delete-recording-btn').addEventListener('click', () => deleteRecording(file));
+                        }
+                        list.appendChild(item);
+                    });
+                    pieceDetails.appendChild(list);
+                    dateDetails.appendChild(pieceDetails);
                 });
-                audio.addEventListener('ended', () => {
-                    audio.hidden = true;
-                    playButton.textContent = '再生';
-                });
-            }
-            if (canDelete) {
-                item.querySelector('.delete-recording-btn').addEventListener('click', () => deleteRecording(file));
-            }
-            list.appendChild(item);
+
+            container.appendChild(dateDetails);
         });
-        section.appendChild(list);
-        container.appendChild(section);
+}
+
+function downloadGroupButton(files, filename) {
+    const button = document.createElement('button');
+    button.className = 'btn btn-sm btn-outline-primary ms-2';
+    button.type = 'button';
+    button.textContent = '配下一括DL';
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        downloadRecordingGroup(files, filename);
     });
+    return button;
+}
+
+async function downloadRecordingGroup(files, filename) {
+    if (!files.length) return;
+    const response = await fetch('/api/recordings/download-zip', jsonOptions('POST', {
+        filename,
+        files: files.map((file) => ({
+            source: file.source || 'local',
+            object_name: file.object_name || file.id || '',
+            path: file.path || '',
+            name: file.name || 'recording.mp3'
+        }))
+    }));
+    if (!response.ok) {
+        showAlert('一括ダウンロードに失敗しました', 'danger');
+        return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 }
 
 async function deleteRecording(file) {
@@ -633,7 +754,7 @@ function renderMemberPerformances() {
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(perf.date)} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
-            <p class="mb-0">${escapeHtml((perf.pieces || []).map(performancePieceLabel).join('、'))}</p>
+            <ul class="mb-0">${(perf.pieces || []).map((piece) => `<li>${escapeHtml(performancePieceLabel(piece))}</li>`).join('')}</ul>
         </article>
     `).join('');
 }
@@ -692,6 +813,16 @@ function formatBytes(bytes) {
     const units = ['B', 'KB', 'MB', 'GB'];
     const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
     return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function formatDuration(seconds) {
+    const totalSeconds = Math.round(Number(seconds) || 0);
+    if (!totalSeconds) return '';
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
 function escapeHtml(value) {

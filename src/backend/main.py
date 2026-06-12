@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import io
 import json
 import logging
 import mimetypes
 import os
 import re
 import shutil
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -124,6 +126,37 @@ class RecordingDeleteRequest(BaseModel):
     path: str = ""
 
 
+class RecordingDownloadItem(BaseModel):
+    source: str = "local"
+    object_name: str = ""
+    path: str = ""
+    name: str = "recording.mp3"
+
+
+class RecordingDownloadZipRequest(BaseModel):
+    filename: str = "recordings.zip"
+    files: list[RecordingDownloadItem] = Field(default_factory=list)
+
+
+class DirectUploadSessionRequest(BaseModel):
+    filename: str
+    content_type: str = ""
+    size: int = 0
+    date: str = ""
+    piece: str = ""
+    duration_seconds: float = 0
+
+
+class DirectUploadCompleteRequest(BaseModel):
+    object_name: str
+    filename: str
+    content_type: str = ""
+    size: int = 0
+    date: str = ""
+    piece: str = ""
+    duration_seconds: float = 0
+
+
 def model_dump(model: BaseModel) -> dict[str, Any]:
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
@@ -222,6 +255,14 @@ def safe_upload_name(filename: str) -> str:
     return f"{stem}{suffix}"
 
 
+def storage_object_name(practice_date: str, song_name: str, filename: str) -> str:
+    return "/".join(
+        segment.strip("/")
+        for segment in (practice_date, song_name, safe_upload_name(filename))
+        if segment.strip("/")
+    )
+
+
 def ensure_audio_file(file: UploadFile) -> str:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".wav", ".mp3"}:
@@ -240,6 +281,7 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
         "date": date,
         "piece": piece,
         "size": stat.st_size,
+        "duration_seconds": audio_duration_seconds(path),
         "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
         "path": rel,
         "play_url": f"/api/recordings/play/{rel}",
@@ -260,6 +302,17 @@ def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
     normalized["download_url"] = f"/api/recordings/cloud/download/{encoded_object_name}"
     return normalized
 
+
+
+def audio_duration_seconds(path: Path) -> float:
+    if AudioSegment is None:
+        return 0
+    try:
+        audio = AudioSegment.from_file(path)
+        return round(len(audio) / 1000, 3)
+    except Exception:
+        logger.exception("Failed to read audio duration: %s", path)
+        return 0
 
 def remember_drive_file(item: dict[str, Any]) -> None:
     items = load_json_data("drive_files")
@@ -485,10 +538,13 @@ async def convert_audio(
     source_path = save_upload_to_path(file, output_dir)
     output_path = convert_path_to_mp3(source_path, suffix, bitrate)
 
+    duration_seconds = audio_duration_seconds(output_path)
+
     response = {
         "filename": output_path.name,
         "path": str(output_path.relative_to(UPLOAD_DIR).as_posix()),
         "bitrate": bitrate,
+        "duration_seconds": duration_seconds,
         "download_url": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
         "source": "local",
         "message": "Converted",
@@ -500,6 +556,7 @@ async def convert_audio(
             practice_date=date_dir,
             song_name=piece_dir,
         )
+        storage_file["duration_seconds"] = duration_seconds
         logger.info("Google Cloud Storage upload complete: %s", storage_file)
         remember_drive_file(storage_file)
         response.update(
@@ -545,6 +602,50 @@ async def play_recording(path: str) -> FileResponse:
 async def download_recording(path: str) -> FileResponse:
     requested = local_recording_path(path)
     return FileResponse(requested, filename=requested.name)
+
+
+
+@app.post("/api/recordings/download-zip")
+async def download_recordings_zip(payload: RecordingDownloadZipRequest) -> StreamingResponse:
+    if not payload.files:
+        raise HTTPException(status_code=400, detail="files is required")
+
+    buffer = io.BytesIO()
+    used_names: dict[str, int] = {}
+
+    def unique_name(name: str) -> str:
+        safe_name = safe_upload_name(name or "recording.mp3")
+        count = used_names.get(safe_name, 0)
+        used_names[safe_name] = count + 1
+        if count == 0:
+            return safe_name
+        path = Path(safe_name)
+        return f"{path.stem}_{count + 1}{path.suffix}"
+
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in payload.files:
+            arcname = unique_name(item.name)
+            if item.source == "google_cloud_storage":
+                object_name = item.object_name.strip()
+                if not object_name:
+                    continue
+                blob = get_storage_bucket().blob(object_name)
+                if blob.exists():
+                    archive.writestr(arcname, blob.download_as_bytes())
+                continue
+
+            path = item.path.strip()
+            if not path:
+                continue
+            requested = local_recording_path(path)
+            archive.write(requested, arcname=arcname)
+
+    buffer.seek(0)
+    filename = safe_upload_name(payload.filename or "recordings.zip")
+    if not filename.lower().endswith(".zip"):
+        filename = f"{filename}.zip"
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
+    return StreamingResponse(buffer, media_type="application/zip", headers=headers)
 
 
 @app.delete("/api/recordings")
@@ -627,17 +728,20 @@ async def upload_to_drive(
     piece_dir = safe_segment(piece, "uncategorized")
     staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
     output_path = convert_path_to_mp3(staging_path, suffix, bitrate)
+    duration_seconds = audio_duration_seconds(output_path)
 
     if not storage_enabled():
         return {
             "drive_file_id": None,
             "share_link": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
+            "duration_seconds": duration_seconds,
             "source": "local",
             "message": "Google Cloud Storage is not configured. Saved locally.",
         }
 
     try:
         drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
+        drive_item["duration_seconds"] = duration_seconds
         remember_drive_file(drive_item)
     except Exception as exc:
         logger.exception("Google Cloud Storage upload failed")
@@ -652,6 +756,105 @@ async def upload_to_drive(
         "download_url": drive_item.get("download_url"),
         "source": "google_cloud_storage",
         "message": "Uploaded to Google Cloud Storage",
+    }
+
+
+@app.post("/api/drive/direct-upload-session")
+async def create_direct_upload_session(
+    payload: DirectUploadSessionRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Create a GCS resumable upload session.
+
+    Large audio files must not be sent through Cloud Run because Cloud Run has
+    an HTTP request size limit. This endpoint only creates a short-lived upload
+    URL, and the browser uploads the file body directly to Cloud Storage.
+    """
+    suffix = Path(payload.filename or "").suffix.lower()
+    if suffix not in {".wav", ".mp3"}:
+        raise HTTPException(status_code=400, detail="Please upload a WAV or MP3 file")
+    if not storage_enabled():
+        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
+
+    date_dir = safe_segment(payload.date, datetime.now().date().isoformat())
+    piece_dir = safe_segment(payload.piece, "uncategorized")
+    object_name = storage_object_name(date_dir, piece_dir, payload.filename)
+    content_type = payload.content_type or mimetypes.guess_type(payload.filename)[0] or "application/octet-stream"
+
+    try:
+        blob = get_storage_bucket().blob(object_name)
+        upload_url = blob.create_resumable_upload_session(
+            content_type=content_type,
+            size=payload.size or None,
+            origin=request.headers.get("origin"),
+        )
+    except Exception as exc:
+        logger.exception("Failed to create direct upload session")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to create direct upload session: {exc}",
+        ) from exc
+
+    return {
+        "upload_url": upload_url,
+        "object_name": object_name,
+        "bucket": get_storage_bucket().name,
+        "content_type": content_type,
+    }
+
+
+@app.post("/api/drive/direct-upload-complete")
+async def complete_direct_upload(payload: DirectUploadCompleteRequest) -> dict[str, Any]:
+    """Register metadata after the browser has uploaded directly to GCS."""
+    if not storage_enabled():
+        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
+
+    date_dir = safe_segment(payload.date, datetime.now().date().isoformat())
+    piece_dir = safe_segment(payload.piece, "uncategorized")
+    object_name = payload.object_name.strip().strip("/")
+    if not object_name:
+        raise HTTPException(status_code=400, detail="object_name is required")
+
+    try:
+        bucket = get_storage_bucket()
+        blob = bucket.blob(object_name)
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="Uploaded file was not found in Cloud Storage")
+        blob.reload()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to verify direct upload")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to verify direct upload: {exc}",
+        ) from exc
+
+    url = blob.public_url if blob.public_url else f"https://storage.googleapis.com/{bucket.name}/{object_name}"
+    drive_item = {
+        "id": object_name,
+        "name": Path(payload.filename or object_name).name,
+        "date": date_dir,
+        "piece": piece_dir,
+        "size": blob.size or payload.size,
+        "duration_seconds": payload.duration_seconds,
+        "mime_type": blob.content_type or payload.content_type or mimetypes.guess_type(object_name)[0] or "application/octet-stream",
+        "modified_at": blob.updated.isoformat() if blob.updated else datetime.now().isoformat(),
+        "bucket": bucket.name,
+        "object_name": object_name,
+        "web_view_link": url,
+        "download_url": url,
+        "view_url": url,
+        "source": "google_cloud_storage",
+    }
+    remember_drive_file(drive_item)
+
+    return {
+        "drive_file_id": drive_item["id"],
+        "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
+        "download_url": drive_item.get("download_url"),
+        "source": "google_cloud_storage",
+        "message": "Uploaded directly to Google Cloud Storage",
     }
 
 
