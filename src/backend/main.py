@@ -7,6 +7,7 @@ import mimetypes
 import os
 import re
 import shutil
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -108,6 +109,7 @@ class Schedule(BaseModel):
     available_end_time: str = ""
     pieces: str = ""
     notes: str = ""
+    conductor_training: bool = False
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -145,6 +147,7 @@ class DirectUploadSessionRequest(BaseModel):
     date: str = ""
     piece: str = ""
     duration_seconds: float = 0
+    bitrate: int = 192
 
 
 class DirectUploadCompleteRequest(BaseModel):
@@ -155,6 +158,7 @@ class DirectUploadCompleteRequest(BaseModel):
     date: str = ""
     piece: str = ""
     duration_seconds: float = 0
+    bitrate: int = 192
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
@@ -363,6 +367,51 @@ def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
         ) from exc
 
     return output_path
+
+
+def storage_public_url(bucket_name: str, object_name: str) -> str:
+    return f"https://storage.googleapis.com/{bucket_name}/{object_name}"
+
+
+def make_blob_public_if_configured(blob: Any) -> None:
+    if os.getenv("GOOGLE_CLOUD_STORAGE_PUBLIC", "false").strip().lower() == "true":
+        blob.make_public()
+
+
+def convert_uploaded_storage_wav_to_mp3(
+    bucket: Any,
+    source_blob: Any,
+    date_dir: str,
+    piece_dir: str,
+    filename: str,
+    bitrate: int,
+) -> tuple[Any, float]:
+    """Download a directly uploaded WAV from GCS, convert it, upload the MP3, and delete the WAV."""
+    if bitrate not in {128, 192, 320}:
+        raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="direct-audio-", dir=DRIVE_STAGING_DIR))
+    try:
+        source_path = temp_dir / safe_upload_name(filename or Path(source_blob.name).name)
+        if source_path.suffix.lower() != ".wav":
+            source_path = source_path.with_suffix(".wav")
+
+        source_blob.download_to_filename(str(source_path))
+        output_path = convert_path_to_mp3(source_path, ".wav", bitrate)
+        duration_seconds = audio_duration_seconds(output_path)
+
+        converted_object_name = storage_object_name(date_dir, piece_dir, output_path.name)
+        target_blob = bucket.blob(converted_object_name)
+        target_blob.upload_from_filename(str(output_path), content_type="audio/mpeg")
+        make_blob_public_if_configured(target_blob)
+        target_blob.reload()
+
+        if source_blob.name != target_blob.name and source_blob.exists():
+            source_blob.delete()
+
+        return target_blob, duration_seconds
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @app.get("/")
@@ -773,6 +822,12 @@ async def create_direct_upload_session(
     suffix = Path(payload.filename or "").suffix.lower()
     if suffix not in {".wav", ".mp3"}:
         raise HTTPException(status_code=400, detail="Please upload a WAV or MP3 file")
+    if not payload.date.strip():
+        raise HTTPException(status_code=400, detail="練習日は必須です")
+    if not payload.piece.strip():
+        raise HTTPException(status_code=400, detail="曲名は必須です")
+    if payload.bitrate not in {128, 192, 320}:
+        raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
     if not storage_enabled():
         raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
 
@@ -809,6 +864,11 @@ async def complete_direct_upload(payload: DirectUploadCompleteRequest) -> dict[s
     if not storage_enabled():
         raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
 
+    if not payload.date.strip():
+        raise HTTPException(status_code=400, detail="練習日は必須です")
+    if not payload.piece.strip():
+        raise HTTPException(status_code=400, detail="曲名は必須です")
+
     date_dir = safe_segment(payload.date, datetime.now().date().isoformat())
     piece_dir = safe_segment(payload.piece, "uncategorized")
     object_name = payload.object_name.strip().strip("/")
@@ -821,24 +881,44 @@ async def complete_direct_upload(payload: DirectUploadCompleteRequest) -> dict[s
         if not blob.exists():
             raise HTTPException(status_code=404, detail="Uploaded file was not found in Cloud Storage")
         blob.reload()
+
+        suffix = Path(payload.filename or object_name).suffix.lower()
+        if suffix == ".wav":
+            logger.info("Converting directly uploaded WAV to MP3: %s", object_name)
+            blob, duration_seconds = convert_uploaded_storage_wav_to_mp3(
+                bucket=bucket,
+                source_blob=blob,
+                date_dir=date_dir,
+                piece_dir=piece_dir,
+                filename=payload.filename or Path(object_name).name,
+                bitrate=payload.bitrate,
+            )
+            object_name = blob.name
+            filename = Path(object_name).name
+        else:
+            make_blob_public_if_configured(blob)
+            duration_seconds = payload.duration_seconds
+            filename = Path(payload.filename or object_name).name
+
+        blob.reload()
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to verify direct upload")
+        logger.exception("Failed to verify or convert direct upload")
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to verify direct upload: {exc}",
+            detail=f"Failed to verify or convert direct upload: {exc}",
         ) from exc
 
-    url = blob.public_url if blob.public_url else f"https://storage.googleapis.com/{bucket.name}/{object_name}"
+    url = blob.public_url if blob.public_url else storage_public_url(bucket.name, object_name)
     drive_item = {
         "id": object_name,
-        "name": Path(payload.filename or object_name).name,
+        "name": filename,
         "date": date_dir,
         "piece": piece_dir,
         "size": blob.size or payload.size,
-        "duration_seconds": payload.duration_seconds,
-        "mime_type": blob.content_type or payload.content_type or mimetypes.guess_type(object_name)[0] or "application/octet-stream",
+        "duration_seconds": duration_seconds,
+        "mime_type": blob.content_type or mimetypes.guess_type(object_name)[0] or "application/octet-stream",
         "modified_at": blob.updated.isoformat() if blob.updated else datetime.now().isoformat(),
         "bucket": bucket.name,
         "object_name": object_name,

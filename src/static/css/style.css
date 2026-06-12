@@ -175,3 +175,34 @@ body {
     border-left: 3px solid #e9ecef;
     padding-left: 0.75rem;
 }
+
+
+.upload-progress-area {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+}
+
+.upload-progress-list {
+    padding-left: 1.2rem;
+}
+
+.upload-progress-list li {
+    margin-bottom: 0.25rem;
+}
+
+.conductor-training-label {
+    color: #d00000;
+    font-weight: 700;
+}
+
+.piece-order-buttons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.multiline-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}

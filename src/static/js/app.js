@@ -8,7 +8,13 @@ const appState = {
     recordings: []
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 const $ = (id) => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -133,51 +139,141 @@ function handleFiles(files) {
 }
 
 async function uploadToLocalStore() {
+    const uploadDate = $('uploadDate').value.trim();
+    const uploadPiece = $('uploadPiece').value.trim();
+
+    if (!uploadDate) {
+        showAlert('練習日は必須です', 'warning');
+        $('uploadDate').focus();
+        return;
+    }
+    if (!uploadPiece) {
+        showAlert('曲名は必須です', 'warning');
+        $('uploadPiece').focus();
+        return;
+    }
     if (!appState.selectedFiles.length) {
         showAlert('先にファイルを選択してください', 'warning');
         return;
     }
 
+    setUploadControlsDisabled(true);
+    resetUploadProgress(appState.selectedFiles);
+
     let completed = 0;
-    for (const file of appState.selectedFiles) {
-        await uploadAudioFile(file);
-        completed += 1;
+    try {
+        for (const [index, file] of appState.selectedFiles.entries()) {
+            setUploadProgress(index, 0, `${file.name} の準備中`, `${index + 1}/${appState.selectedFiles.length} 件目`);
+            await uploadAudioFile(file, index, appState.selectedFiles.length);
+            completed += 1;
+            setUploadProgress(index, 100, `${file.name} の保存完了`, `${completed}/${appState.selectedFiles.length} 件完了`);
+        }
+        showAlert(`${completed} 件の録音ファイルを保存しました`, 'info');
+        await loadRecordings();
+        setUploadProgress(appState.selectedFiles.length - 1, 100, 'すべての録音ファイルを保存しました', '完了');
+    } catch (error) {
+        console.error(error);
+        showAlert(`録音ファイルの保存に失敗しました: ${error.message}`, 'danger');
+    } finally {
+        setUploadControlsDisabled(false);
     }
-    showAlert(`${completed} 件の録音ファイルを保存しました`, 'info');
-    await loadRecordings();
 }
 
-async function uploadAudioFile(file) {
+async function uploadAudioFile(file, fileIndex = 0, totalFiles = 1) {
     // Cloud Run has a request-size limit, so send the audio body directly to GCS.
     // Cloud Run only creates the upload session and registers metadata.
     try {
-        await uploadDirectlyToCloudStorage(file);
+        await uploadDirectlyToCloudStorage(file, fileIndex, totalFiles);
     } catch (error) {
-        console.warn('Direct upload failed. Falling back to Cloud Run upload.', error);
+        console.warn('Direct upload failed.', error);
+        const canFallbackToCloudRun = file.size < 30 * 1024 * 1024;
+        if (!canFallbackToCloudRun) {
+            throw error;
+        }
         showAlert('GCS直接アップロードに失敗しました。Cloud Run経由で再試行します。', 'warning');
+        setUploadProgress(fileIndex, 5, `${file.name} をCloud Run経由で再試行中`, `${fileIndex + 1}/${totalFiles} 件目`);
         await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
     }
 }
 
-async function uploadDirectlyToCloudStorage(file) {
+async function uploadDirectlyToCloudStorage(file, fileIndex = 0, totalFiles = 1) {
+    setUploadProgress(fileIndex, 5, `${file.name} の音声情報を確認中`, `${fileIndex + 1}/${totalFiles} 件目`);
     const metadata = await audioUploadMetadata(file);
-    const session = await request('/api/drive/direct-upload-session', jsonOptions('POST', metadata));
-    const uploadResponse = await fetch(session.upload_url, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': session.content_type || metadata.content_type
-        },
-        body: file
-    });
-    if (!uploadResponse.ok) {
-        const message = await uploadResponse.text();
-        throw new Error(message || `GCS upload failed: ${uploadResponse.status}`);
-    }
 
+    setUploadProgress(fileIndex, 12, `${file.name} のアップロードURLを取得中`, `${fileIndex + 1}/${totalFiles} 件目`);
+    const session = await request('/api/drive/direct-upload-session', jsonOptions('POST', metadata));
+
+    setUploadProgress(fileIndex, 15, `${file.name} をGCSへアップロード中`, `${fileIndex + 1}/${totalFiles} 件目`);
+    await uploadFileWithProgress(session.upload_url, file, session.content_type || metadata.content_type, (percent) => {
+        const scaledPercent = 15 + Math.round(percent * 0.75);
+        setUploadProgress(fileIndex, scaledPercent, `${file.name} をGCSへアップロード中 ${percent}%`, `${fileIndex + 1}/${totalFiles} 件目`);
+    });
+
+    setUploadProgress(fileIndex, 92, `${file.name} の変換・登録情報を保存中`, `${fileIndex + 1}/${totalFiles} 件目`);
     await request('/api/drive/direct-upload-complete', jsonOptions('POST', {
         ...metadata,
         object_name: session.object_name
     }));
+}
+
+function uploadFileWithProgress(uploadUrl, file, contentType, onProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', contentType || file.type || 'application/octet-stream');
+        xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return;
+            const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+            onProgress(percent);
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                onProgress(100);
+                resolve();
+            } else {
+                reject(new Error(xhr.responseText || `GCS upload failed: ${xhr.status}`));
+            }
+        };
+        xhr.onerror = () => reject(new Error('GCSアップロード中に通信エラーが発生しました'));
+        xhr.onabort = () => reject(new Error('GCSアップロードが中断されました'));
+        xhr.send(file);
+    });
+}
+
+function resetUploadProgress(files) {
+    const area = $('uploadProgressArea');
+    const list = $('uploadProgressList');
+    area.hidden = false;
+    list.innerHTML = '';
+    files.forEach((file, index) => {
+        const li = document.createElement('li');
+        li.id = `uploadProgressItem${index}`;
+        li.textContent = `${file.name}: 待機中`;
+        list.appendChild(li);
+    });
+    updateUploadProgressBar(0, 'アップロード準備中', '待機中');
+}
+
+function setUploadProgress(fileIndex, percent, status, title = '録音ファイル取り込み中') {
+    updateUploadProgressBar(percent, title, status);
+    const item = $(`uploadProgressItem${fileIndex}`);
+    if (item) item.textContent = `${status} (${percent}%)`;
+}
+
+function updateUploadProgressBar(percent, title, status) {
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    $('uploadProgressTitle').textContent = title;
+    $('uploadProgressPercent').textContent = `${safePercent}%`;
+    $('uploadProgressStatus').textContent = status;
+    $('uploadProgressBar').style.width = `${safePercent}%`;
+    $('uploadProgressBar').setAttribute('aria-valuenow', String(safePercent));
+}
+
+function setUploadControlsDisabled(disabled) {
+    $('uploadBtn').disabled = disabled;
+    $('clearBtn').disabled = disabled;
+    $('selectFileBtn').disabled = disabled;
+    $('fileInput').disabled = disabled;
 }
 
 async function audioUploadMetadata(file) {
@@ -187,7 +283,8 @@ async function audioUploadMetadata(file) {
         size: file.size,
         date: document.getElementById('uploadDate').value,
         piece: document.getElementById('uploadPiece').value,
-        duration_seconds: await getAudioDurationSeconds(file)
+        duration_seconds: await getAudioDurationSeconds(file),
+        bitrate: Number($('bitrate').value || 192)
     };
 }
 
@@ -351,6 +448,14 @@ function removePerformancePiece(index) {
     renderPerformancePieceList();
 }
 
+function movePerformancePiece(index, direction) {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= appState.performancePieces.length) return;
+    const pieces = appState.performancePieces;
+    [pieces[index], pieces[nextIndex]] = [pieces[nextIndex], pieces[index]];
+    renderPerformancePieceList();
+}
+
 function currentPerformancePieces() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
@@ -385,10 +490,16 @@ function renderPerformancePieceList() {
         const item = document.createElement('li');
         item.className = 'list-group-item d-flex justify-content-between align-items-center gap-3';
         item.innerHTML = `
-            <span>${escapeHtml(performancePieceLabel(piece))}</span>
-            <button class="btn btn-sm btn-outline-danger" type="button">削除</button>
+            <span><span class="text-muted me-2">${index + 1}.</span>${escapeHtml(performancePieceLabel(piece))}</span>
+            <span class="piece-order-buttons">
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-action="up" ${index === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-action="down" ${index === appState.performancePieces.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete">削除</button>
+            </span>
         `;
-        item.querySelector('button').addEventListener('click', () => removePerformancePiece(index));
+        item.querySelector('[data-action="up"]').addEventListener('click', () => movePerformancePiece(index, -1));
+        item.querySelector('[data-action="down"]').addEventListener('click', () => movePerformancePiece(index, 1));
+        item.querySelector('[data-action="delete"]').addEventListener('click', () => removePerformancePiece(index));
         list.appendChild(item);
     });
 }
@@ -408,7 +519,8 @@ async function saveSchedule() {
         available_start_time: availableStartTime,
         available_end_time: availableEndTime,
         pieces: $('schedPieces').value.trim(),
-        notes: $('schedNotes').value.trim()
+        notes: $('schedNotes').value.trim(),
+        conductor_training: $('schedConductorTraining').checked
     };
     if (!payload.date || !payload.start_time || !payload.end_time) {
         showAlert('練習日と開始時間を入力してください', 'warning');
@@ -436,6 +548,7 @@ function selectSchedule(id) {
     $('schedAvailableEndTime').value = item.available_end_time || availableRange.end || '16:30';
     $('schedPieces').value = item.pieces || '';
     $('schedNotes').value = item.notes || '';
+    $('schedConductorTraining').checked = Boolean(item.conductor_training);
 }
 
 async function deleteSchedule() {
@@ -460,6 +573,7 @@ function clearScheduleForm() {
     $('schedAvailableEndTime').value = '16:30';
     $('schedPieces').value = '';
     $('schedNotes').value = '';
+    $('schedConductorTraining').checked = false;
 }
 
 function formatTimeRange(start, end) {
@@ -549,7 +663,7 @@ function renderSchedules() {
     container.innerHTML = `
         <div class="table-responsive">
             <table class="table table-sm align-middle">
-                <thead><tr><th>日付</th><th>時間</th><th>場所</th><th>曲</th><th>備考</th></tr></thead>
+                <thead><tr><th>日付</th><th>時間</th><th>場所</th><th>指揮トレ</th><th>曲</th><th>備考</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -562,8 +676,9 @@ function renderSchedules() {
             <td>${escapeHtml(sched.date)}</td>
             <td>${escapeHtml(scheduleTimeLabel(sched))}</td>
             <td>${escapeHtml(sched.venue || '')}</td>
+            <td>${sched.conductor_training ? '<span class="conductor-training-label">※指揮トレ</span>' : ''}</td>
             <td>${escapeHtml(sched.pieces || '')}</td>
-            <td>${escapeHtml(sched.notes || '')}</td>
+            <td class="multiline-text">${escapeHtml(sched.notes || '')}</td>
         `;
         row.addEventListener('click', () => selectSchedule(sched.id));
         body.appendChild(row);
@@ -613,10 +728,12 @@ function renderRecordingList(containerId, canDelete) {
 
     Object.entries(groupedByDate)
         .sort(([a], [b]) => String(b).localeCompare(String(a)))
-        .forEach(([date, dateFiles]) => {
+        .forEach(([date, dateFiles], dateIndex) => {
             const dateDetails = document.createElement('details');
             dateDetails.className = 'recording-date-group mb-3';
-            dateDetails.open = true;
+            // 団員メニューでは一番新しい練習日だけ開き、それ以外は折りたたむ。
+            // 管理者メニューは従来どおり全件を開いた状態にする。
+            dateDetails.open = canDelete || dateIndex === 0;
 
             const dateSummary = document.createElement('summary');
             dateSummary.className = 'recording-summary fw-bold';
@@ -635,7 +752,7 @@ function renderRecordingList(containerId, canDelete) {
                 .forEach(([piece, pieceFiles]) => {
                     const pieceDetails = document.createElement('details');
                     pieceDetails.className = 'recording-piece-group ms-3 mt-2';
-                    pieceDetails.open = true;
+                    pieceDetails.open = canDelete || dateIndex === 0;
 
                     const pieceSummary = document.createElement('summary');
                     pieceSummary.className = 'recording-summary';
@@ -658,9 +775,13 @@ function renderRecordingList(containerId, canDelete) {
                         const metaParts = [formatBytes(file.size)];
                         if (durationLabel) metaParts.push(durationLabel);
 
+                        const playUrl = file.play_url || downloadUrl;
                         const actionButton = canDelete
                             ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
-                            : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
+                            : `
+                                <button class="btn btn-sm btn-outline-success play-recording-btn" type="button">再生</button>
+                                <a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>
+                            `;
 
                         item.innerHTML = `
                             <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
@@ -670,10 +791,13 @@ function renderRecordingList(containerId, canDelete) {
                                 </span>
                                 <span class="d-flex gap-2">${actionButton}</span>
                             </div>
+                            ${canDelete ? '' : `<audio class="recording-player mt-2 w-100" controls hidden src="${escapeHtml(playUrl)}"></audio>`}
                         `;
 
                         if (canDelete) {
                             item.querySelector('.delete-recording-btn').addEventListener('click', () => deleteRecording(file));
+                        } else {
+                            item.querySelector('.play-recording-btn').addEventListener('click', () => toggleRecordingPlayback(item));
                         }
                         list.appendChild(item);
                     });
@@ -736,6 +860,36 @@ async function deleteRecording(file) {
     showAlert('録音ファイルを削除しました', 'success');
 }
 
+function toggleRecordingPlayback(item) {
+    const audio = item.querySelector('.recording-player');
+    const button = item.querySelector('.play-recording-btn');
+    if (!audio || !button) return;
+
+    document.querySelectorAll('.recording-player').forEach((otherAudio) => {
+        if (otherAudio !== audio) {
+            otherAudio.pause();
+            otherAudio.hidden = true;
+            const otherButton = otherAudio.closest('.list-group-item')?.querySelector('.play-recording-btn');
+            if (otherButton) otherButton.textContent = '再生';
+        }
+    });
+
+    audio.hidden = false;
+    if (audio.paused) {
+        audio.play()
+            .then(() => { button.textContent = '停止'; })
+            .catch((error) => showAlert(`再生できませんでした: ${error.message}`, 'danger'));
+    } else {
+        audio.pause();
+        button.textContent = '再生';
+    }
+
+    audio.onended = () => {
+        button.textContent = '再生';
+        audio.hidden = true;
+    };
+}
+
 function renderMemberViews() {
     renderMemberPerformances();
     renderMemberSchedules();
@@ -761,16 +915,22 @@ function renderMemberPerformances() {
 
 function renderMemberSchedules() {
     const container = $('memberSchedInfo');
-    if (!appState.schedules.length) {
-        container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
+    const todayValue = today();
+    const upcomingSchedules = appState.schedules
+        .filter((sched) => String(sched.date || '') >= todayValue)
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(scheduleTimeLabel(a)).localeCompare(String(scheduleTimeLabel(b))));
+
+    if (!upcomingSchedules.length) {
+        container.innerHTML = '<p class="text-muted mb-0">今後の練習予定はまだありません</p>';
         return;
     }
-    container.innerHTML = appState.schedules.map((sched) => `
+    container.innerHTML = upcomingSchedules.map((sched) => `
         <article class="info-block">
             <h5>${escapeHtml(sched.date)} ${escapeHtml(scheduleTimeLabel(sched))}</h5>
             <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(scheduleAvailableLabel(sched))}</p>
+            ${sched.conductor_training ? '<p class="conductor-training-label mb-1">※指揮トレ</p>' : ''}
             <p>${escapeHtml(sched.pieces || '')}</p>
-            <p class="mb-0 text-muted">${escapeHtml(sched.notes || '')}</p>
+            <p class="mb-0 text-muted multiline-text">${escapeHtml(sched.notes || '')}</p>
         </article>
     `).join('');
 }

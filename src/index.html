@@ -60,6 +60,18 @@
                             <button class="btn btn-primary" id="uploadBtn" type="button">録音ファイルを保存</button>
                             <button class="btn btn-outline-danger" id="clearBtn" type="button">クリア</button>
                         </div>
+
+                        <div id="uploadProgressArea" class="upload-progress-area mt-3" hidden>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong id="uploadProgressTitle">アップロード準備中</strong>
+                                <span id="uploadProgressPercent" class="small text-muted">0%</span>
+                            </div>
+                            <div class="progress mb-2" role="progressbar" aria-label="録音ファイル取り込み進捗">
+                                <div id="uploadProgressBar" class="progress-bar" style="width: 0%"></div>
+                            </div>
+                            <div id="uploadProgressStatus" class="small text-muted mb-2">待機中</div>
+                            <ul id="uploadProgressList" class="upload-progress-list small mb-0"></ul>
+                        </div>
                     </div>
                 </div>
 
@@ -160,9 +172,15 @@
                                 <label class="form-label" for="schedPieces">練習曲</label>
                                 <input type="text" class="form-control" id="schedPieces">
                             </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="schedConductorTraining">
+                                    <label class="form-check-label fw-bold" for="schedConductorTraining">指揮トレ</label>
+                                </div>
+                            </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedNotes">備考</label>
-                                <input type="text" class="form-control" id="schedNotes">
+                                <textarea class="form-control" id="schedNotes" rows="3" placeholder="備考を複数行で入力できます"></textarea>
                             </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mb-3">
