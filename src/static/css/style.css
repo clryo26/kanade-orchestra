@@ -15,17 +15,21 @@ body {
 }
 
 .navbar-brand {
-    align-items: center;
     color: var(--brand) !important;
-    display: inline-flex;
-    gap: 0.55rem;
     font-weight: 700;
 }
 
-.portal-brand-icon {
-    border-radius: 12px;
-    height: 42px;
-    width: 42px;
+.portal-logo {
+    height: 48px;
+    width: 48px;
+    object-fit: contain;
+}
+
+@media (max-width: 768px) {
+    .portal-logo {
+        height: 44px;
+        width: 44px;
+    }
 }
 
 .panel {
@@ -166,240 +170,5 @@ body {
 
     .toolbar .btn {
         flex: 1 1 45%;
-    }
-}
-
-
-.recording-summary {
-    cursor: pointer;
-    padding: 0.5rem 0;
-}
-
-.recording-summary .btn {
-    vertical-align: middle;
-}
-
-.recording-date-group,
-.recording-piece-group {
-    border-left: 3px solid #e9ecef;
-    padding-left: 0.75rem;
-}
-
-
-.upload-progress-area {
-    border: 1px solid #dee2e6;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
-    background: #f8f9fa;
-}
-
-.upload-progress-list {
-    padding-left: 1.2rem;
-}
-
-.upload-progress-list li {
-    margin-bottom: 0.25rem;
-}
-
-.conductor-training-label {
-    color: #d00000;
-    font-weight: 700;
-}
-
-.piece-order-buttons {
-    display: flex;
-    gap: 0.25rem;
-}
-
-.multiline-text {
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-.admin-progress-area {
-    border: 1px solid #cfe2ff;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
-    background: #f8fbff;
-}
-
-.recording-summary-actions {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin-left: 0.5rem;
-    vertical-align: middle;
-}
-
-.external-link-grid {
-    display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.external-link-button {
-    text-align: center;
-    font-weight: 700;
-}
-
-.external-link-list {
-    display: grid;
-    gap: 0.75rem;
-}
-
-.external-link-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    border: 1px solid #dee2e6;
-    border-radius: 0.75rem;
-    padding: 1rem;
-    background: #fff;
-}
-
-.external-link-card .external-link-button {
-    flex-shrink: 0;
-}
-
-.member-profile-frame {
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    height: min(72vh, 760px);
-    width: 100%;
-}
-
-.profile-hero {
-    align-items: center;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    display: flex;
-    gap: 1rem;
-    padding: 1rem;
-}
-
-.profile-hero-icon {
-    border-radius: 18px;
-    flex: 0 0 auto;
-    height: 86px;
-    width: 86px;
-}
-
-.profile-section-list {
-    display: grid;
-    gap: 1rem;
-}
-
-.profile-section h5 {
-    color: var(--brand-dark);
-    font-weight: 700;
-    margin-bottom: 0.65rem;
-}
-
-.profile-grid {
-    display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-}
-
-.profile-card {
-    align-items: flex-start;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    display: flex;
-    gap: 0.85rem;
-    min-height: 148px;
-    padding: 0.95rem;
-}
-
-.profile-avatar {
-    align-items: center;
-    background: #e9f7f7;
-    border: 1px solid #cfe9ee;
-    border-radius: 50%;
-    color: var(--brand-dark);
-    display: flex;
-    flex: 0 0 auto;
-    font-weight: 700;
-    height: 44px;
-    justify-content: center;
-    width: 44px;
-}
-
-.profile-photo {
-    border-radius: 50%;
-    flex: 0 0 auto;
-    height: 58px;
-    object-fit: cover;
-    width: 58px;
-}
-
-.profile-part,
-.profile-role {
-    color: #667085;
-    font-size: 0.88rem;
-}
-
-.profile-card h6 {
-    font-weight: 700;
-    margin: 0.15rem 0;
-}
-
-.portal-countdown {
-    align-items: center;
-    background: #eef6ff;
-    border: 1px solid #cfe2ff;
-    border-radius: 8px;
-    color: var(--brand-dark);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    justify-content: space-between;
-    padding: 0.85rem 1rem;
-}
-
-.portal-countdown strong {
-    font-size: 1.15rem;
-}
-
-.portal-grid {
-    display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.portal-file-card,
-.album-card {
-    background: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    margin: 0;
-    padding: 0.85rem;
-}
-
-.album-grid {
-    display: grid;
-    gap: 0.85rem;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.album-card img {
-    aspect-ratio: 4 / 3;
-    border-radius: 6px;
-    display: block;
-    object-fit: cover;
-    width: 100%;
-}
-
-.album-card figcaption {
-    margin-top: 0.6rem;
-}
-
-@media (max-width: 576px) {
-    .external-link-card {
-        align-items: stretch;
-        flex-direction: column;
     }
 }

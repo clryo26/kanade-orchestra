@@ -4,23 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>奏オケポータル</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <meta name="theme-color" content="#235789">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="icon" type="image/png" href="/static/img/kanade-icon.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/img/favicon-192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="/static/img/favicon-512.png">
-    <meta name="apple-mobile-web-app-title" content="奏オケポータル">
-    <meta name="application-name" content="奏オケポータル">
-    <meta name="theme-color" content="#ffffff">
-    <link rel="manifest" href="/static/site.webmanifest">
 </head>
 <body>
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">奏オケポータル</a>
+            <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+                <img src="/static/icons/icon-192.png" alt="奏オケ" class="portal-logo">
+                <span>奏オケポータル</span>
+            </a>
             <div class="d-flex gap-2">
-                <button class="btn btn-outline-success" id="portalReloadBtn" type="button">リロード</button>
                 <button class="btn btn-outline-primary" id="adminMenuBtn" type="button">管理メニュー</button>
                 <button class="btn btn-outline-secondary" id="memberMenuBtn" type="button">団員メニュー</button>
             </div>
@@ -28,23 +27,13 @@
     </nav>
 
     <main class="container-fluid py-4">
-        <section id="adminPanel" class="panel" hidden>
+        <section id="adminPanel" class="panel">
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="upload" type="button">録音管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
-            </div>
-
-            <div id="adminProgressArea" class="admin-progress-area mb-3" hidden>
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <strong id="adminProgressTitle">処理中</strong>
-                    <span id="adminProgressPercent" class="small text-muted">0%</span>
-                </div>
-                <div class="progress mb-2" role="progressbar" aria-label="管理メニュー処理進捗">
-                    <div id="adminProgressBar" class="progress-bar" style="width: 0%"></div>
-                </div>
-                <div id="adminProgressStatus" class="small text-muted">待機中</div>
+                <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
             </div>
 
             <div id="uploadTab" class="tab-content">
@@ -70,6 +59,7 @@
                             </div>
                         </div>
 
+                        <p class="text-muted mb-2">保存先: <span id="savePath"></span></p>
                         <div class="mb-3">
                             <button class="btn btn-outline-primary" id="selectFileBtn" type="button">ファイルを選択</button>
                             <small id="selectedFileName" class="text-muted ms-2">未選択</small>
@@ -79,18 +69,6 @@
                         <div class="d-flex flex-wrap gap-2">
                             <button class="btn btn-primary" id="uploadBtn" type="button">録音ファイルを保存</button>
                             <button class="btn btn-outline-danger" id="clearBtn" type="button">クリア</button>
-                        </div>
-
-                        <div id="uploadProgressArea" class="upload-progress-area mt-3" hidden>
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <strong id="uploadProgressTitle">アップロード準備中</strong>
-                                <span id="uploadProgressPercent" class="small text-muted">0%</span>
-                            </div>
-                            <div class="progress mb-2" role="progressbar" aria-label="録音ファイル取り込み進捗">
-                                <div id="uploadProgressBar" class="progress-bar" style="width: 0%"></div>
-                            </div>
-                            <div id="uploadProgressStatus" class="small text-muted mb-2">待機中</div>
-                            <ul id="uploadProgressList" class="upload-progress-list small mb-0"></ul>
                         </div>
                     </div>
                 </div>
@@ -192,15 +170,9 @@
                                 <label class="form-label" for="schedPieces">練習曲</label>
                                 <input type="text" class="form-control" id="schedPieces">
                             </div>
-                            <div class="col-md-2 d-flex align-items-end">
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" id="schedConductorTraining">
-                                    <label class="form-check-label fw-bold" for="schedConductorTraining">指揮トレ</label>
-                                </div>
-                            </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedNotes">備考</label>
-                                <textarea class="form-control" id="schedNotes" rows="3" placeholder="備考を複数行で入力できます"></textarea>
+                                <input type="text" class="form-control" id="schedNotes">
                             </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mb-3">
@@ -237,17 +209,52 @@
                     </div>
                 </div>
             </div>
+
+            <div id="eventTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">イベント調整管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="eventId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="eventTitle">イベント名</label>
+                                <input type="text" class="form-control" id="eventTitle" placeholder="例: 懇親会出欠調整">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="eventDate">開催日</label>
+                                <input type="date" class="form-control" id="eventDate">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="eventDeadline">回答期限</label>
+                                <input type="date" class="form-control" id="eventDeadline">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="eventUrl">調整URL</label>
+                                <input type="url" class="form-control" id="eventUrl" placeholder="https://...">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="eventNotes">備考</label>
+                                <textarea class="form-control" id="eventNotes" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="addEventBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearEventBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deleteEventBtn" type="button">削除</button>
+                        </div>
+                        <ul class="list-group" id="eventListItems"></ul>
+                    </div>
+                </div>
+            </div>
+
         </section>
 
-        <section id="memberPanel" class="panel">
+        <section id="memberPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
-                <button class="btn btn-sm btn-outline-secondary" data-tab="member-profile" type="button">団員紹介</button>
-                <button class="btn btn-sm btn-outline-secondary" data-tab="member-sns" type="button">SNS</button>
-                <button class="btn btn-sm btn-outline-secondary" data-tab="member-concert-records" type="button">演奏会記録</button>
             </div>
 
             <div id="memberAnnounceTab" class="tab-content">
@@ -277,27 +284,6 @@
                 <div class="card">
                     <div class="card-header">録音部屋</div>
                     <div class="card-body" id="songTreeMember"></div>
-                </div>
-            </div>
-
-            <div id="memberProfileTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">団員紹介</div>
-                    <div class="card-body" id="memberProfileInfo"></div>
-                </div>
-            </div>
-
-            <div id="memberSnsTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">SNS</div>
-                    <div class="card-body" id="memberSnsInfo"></div>
-                </div>
-            </div>
-
-            <div id="memberConcertRecordsTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">演奏会記録</div>
-                    <div class="card-body" id="memberConcertRecordsInfo"></div>
                 </div>
             </div>
         </section>
