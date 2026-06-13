@@ -740,7 +740,7 @@ def stream_storage_blob(object_name: str, download: bool, request: Request) -> R
 
 
 @app.get("/api/recordings/cloud/play/{object_name:path}")
-async def play_cloud_recording(object_name: str, request: Request) -> Response | StreamingResponse:
+async def play_cloud_recording(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=False, request=request)
 
 
