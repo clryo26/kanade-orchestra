@@ -1634,7 +1634,7 @@ function setupPortalShell() {
     if (brand) {
         brand.innerHTML = `
             <img class="portal-brand-icon" src="${escapeHtml(KANADE_PORTAL_ICON)}" alt="福岡奏オーケストラ">
-            <span>福岡奏オーケストラ ポータル</span>
+            <span>奏オケポータル</span>
         `;
     }
 

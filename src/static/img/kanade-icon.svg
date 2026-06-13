@@ -16,7 +16,7 @@
       <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#59708a" flood-opacity=".18"/>
     </filter>
   </defs>
-  <rect width="160" height="160" rx="28" fill="#eef3f8"/>
+  <rect width="160" height="160" rx="28" fill="#fff"/>
   <g filter="url(#softShadow)">
     <path d="M80 14c24 0 45 9 57 28 13 20 10 45-2 64-12 20-32 34-55 35-23 1-45-10-58-29C9 94 10 67 22 47 34 27 56 14 80 14z" fill="url(#aqua)"/>
     <path d="M98 21c25 7 42 25 44 48 2 25-13 49-35 61-21 12-48 11-66-5-17-15-22-41-15-63 8-22 28-40 49-43 8-1 16 0 23 2z" fill="url(#rose)"/>
