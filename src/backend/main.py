@@ -6,8 +6,7 @@ import mimetypes
 import os
 import re
 import shutil
-import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -60,7 +59,7 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -84,12 +83,12 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 class Performance(BaseModel):
     id: int | None = None
-    title: str = ""
-    date: str = ""
-    open_time: str = ""
-    start_time: str = ""
-    venue: str = ""
-    conductor: str = ""
+    title: str
+    date: str
+    open_time: str
+    start_time: str
+    venue: str
+    conductor: str
     pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
@@ -109,22 +108,21 @@ class Schedule(BaseModel):
     performance_title: str = ""
     pieces: str = ""
     notes: str = ""
-    conductor_training: bool = False
     created_at: str | None = None
     updated_at: str | None = None
 
 
 class Announcement(BaseModel):
     id: int | None = None
-    date: str = ""
-    content: str = ""
+    date: str
+    content: str
     created_at: str | None = None
     updated_at: str | None = None
 
 
 class EventAdjustment(BaseModel):
     id: int | None = None
-    title: str = ""
+    title: str
     date: str = ""
     deadline: str = ""
     url: str = ""
@@ -135,8 +133,14 @@ class EventAdjustment(BaseModel):
 
 class Member(BaseModel):
     id: int | None = None
-    name: str = ""
+    name: str
     part: str = ""
+    photo_url: str = ""
+    joined_at: str = ""
+    introducer: str = ""
+    role: str = ""
+    instrument_history: str = ""
+    past_orchestras: str = ""
     comment: str = ""
     created_at: str | None = None
     updated_at: str | None = None
@@ -146,29 +150,6 @@ class RecordingDeleteRequest(BaseModel):
     source: str
     object_name: str = ""
     path: str = ""
-
-
-class RecordingBulkDeleteRequest(BaseModel):
-    source: str = "google_cloud_storage"
-    date: str = ""
-    piece: str = ""
-
-
-class DirectUploadUrlRequest(BaseModel):
-    filename: str
-    content_type: str = "application/octet-stream"
-    date: str
-    piece: str
-    size: int = 0
-    bitrate: int = 192
-
-
-class FinalizeDirectUploadRequest(BaseModel):
-    object_name: str
-    filename: str
-    date: str
-    piece: str
-    bitrate: int = 192
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
@@ -199,9 +180,12 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
         except json.JSONDecodeError as exc:
             logger.error("Invalid JSON in Cloud Storage data %s: %s", name, exc)
             raise HTTPException(status_code=500, detail=f"Cloud Storage {name}.json is invalid")
-        except Exception:
-            logger.exception("Failed to load %s.json from Cloud Storage. Falling back to local data.", name)
-            return load_local_json_data(name)
+        except Exception as exc:
+            logger.exception("Failed to load %s.json from Cloud Storage", name)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to load {name}.json from Cloud Storage: {exc}",
+            ) from exc
         if cloud_data is not None:
             return cloud_data
 
@@ -279,6 +263,7 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
     parts = path.relative_to(CONVERTED_DIR).parts if path.is_relative_to(CONVERTED_DIR) else path.parts
     date = parts[0] if len(parts) >= 3 else ""
     piece = parts[1] if len(parts) >= 3 else ""
+    duration_seconds = get_audio_duration_seconds(path)
     return {
         "name": path.name,
         "date": date,
@@ -289,7 +274,8 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
         "play_url": f"/api/recordings/play/{rel}",
         "download_url": f"/api/recordings/download/{rel}",
         "source": "local",
-        "duration": audio_duration_seconds(path),
+        "duration_seconds": duration_seconds,
+        "duration": format_duration(duration_seconds),
     }
 
 
@@ -357,25 +343,26 @@ def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
     return output_path
 
 
-def audio_duration_seconds(path: Path) -> float | None:
+def get_audio_duration_seconds(path: Path) -> float | None:
     if AudioSegment is None:
         return None
     try:
         audio = AudioSegment.from_file(path)
-        return round(len(audio) / 1000, 2)
+        return round(len(audio) / 1000, 1)
     except Exception:
-        logger.warning("Failed to read audio duration: %s", path, exc_info=True)
+        logger.warning("Failed to get audio duration: %s", path, exc_info=True)
         return None
 
 
-def safe_bitrate(value: int) -> int:
-    return value if value in {128, 192, 320} else 192
-
-
-def direct_upload_object_name(filename: str, date: str, piece: str) -> str:
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
-    piece_dir = safe_segment(piece, "uncategorized")
-    return f"tmp-direct-upload/{date_dir}/{piece_dir}/{uuid.uuid4().hex}/{safe_upload_name(filename)}"
+def format_duration(seconds: float | int | None) -> str:
+    if seconds is None:
+        return ""
+    total = int(round(float(seconds)))
+    minutes, sec = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{sec:02d}"
+    return f"{minutes}:{sec:02d}"
 
 
 @app.get("/")
@@ -393,7 +380,7 @@ async def health_check() -> dict[str, str]:
     }
 
 
-@app.get("/api/performances")
+@app.get("/api/performances", response_model=list[Performance])
 async def get_performances() -> list[dict[str, Any]]:
     return load_json_data("performances")
 
@@ -440,7 +427,7 @@ async def delete_performance(performance_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
-@app.get("/api/schedules")
+@app.get("/api/schedules", response_model=list[Schedule])
 async def get_schedules() -> list[dict[str, Any]]:
     return load_json_data("schedules")
 
@@ -489,7 +476,7 @@ async def delete_schedule(schedule_id: int) -> dict[str, str]:
 
 
 
-@app.get("/api/members")
+@app.get("/api/members", response_model=list[Member])
 async def get_members() -> list[dict[str, Any]]:
     return load_json_data("members")
 
@@ -528,7 +515,7 @@ async def delete_member(member_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
-@app.get("/api/events")
+@app.get("/api/events", response_model=list[EventAdjustment])
 async def get_events() -> list[dict[str, Any]]:
     return load_json_data("events")
 
@@ -567,7 +554,7 @@ async def delete_event(event_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
-@app.get("/api/announcements")
+@app.get("/api/announcements", response_model=list[Announcement])
 async def get_announcements() -> list[dict[str, Any]]:
     return load_json_data("announcements")
 
@@ -624,8 +611,6 @@ async def convert_audio(
     suffix = ensure_audio_file(file)
     if bitrate not in {128, 192, 320}:
         raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
-    if not date.strip() or not piece.strip():
-        raise HTTPException(status_code=400, detail="練習日と曲名を入力してください")
 
     date_dir = safe_segment(date, datetime.now().date().isoformat())
     piece_dir = safe_segment(piece, "uncategorized")
@@ -633,12 +618,15 @@ async def convert_audio(
     source_path = save_upload_to_path(file, output_dir)
     output_path = convert_path_to_mp3(source_path, suffix, bitrate)
 
+    duration_seconds = get_audio_duration_seconds(output_path)
     response = {
         "filename": output_path.name,
         "path": str(output_path.relative_to(UPLOAD_DIR).as_posix()),
         "bitrate": bitrate,
         "download_url": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
         "source": "local",
+        "duration_seconds": duration_seconds,
+        "duration": format_duration(duration_seconds),
         "message": "Converted",
     }
 
@@ -649,6 +637,8 @@ async def convert_audio(
             song_name=piece_dir,
         )
         logger.info("Google Cloud Storage upload complete: %s", storage_file)
+        storage_file["duration_seconds"] = duration_seconds
+        storage_file["duration"] = format_duration(duration_seconds)
         remember_drive_file(storage_file)
         response.update(
             {
@@ -715,48 +705,6 @@ async def delete_recording(payload: RecordingDeleteRequest) -> dict[str, str]:
     requested = local_recording_path(path)
     requested.unlink()
     return {"message": "Deleted"}
-
-
-@app.delete("/api/recordings/bulk")
-async def delete_recordings_bulk(payload: RecordingBulkDeleteRequest) -> dict[str, Any]:
-    date = payload.date.strip()
-    piece = payload.piece.strip()
-    if not date:
-        raise HTTPException(status_code=400, detail="date is required")
-
-    deleted = 0
-    if payload.source == "google_cloud_storage" and storage_enabled():
-        items = load_json_data("drive_files")
-        remaining = []
-        bucket = get_storage_bucket()
-        for item in items:
-            matches = item.get("date") == date and (not piece or item.get("piece") == piece)
-            if matches:
-                object_name = item.get("object_name") or item.get("id")
-                if object_name:
-                    try:
-                        blob = bucket.blob(object_name)
-                        if blob.exists():
-                            blob.delete()
-                    except Exception:
-                        logger.warning("Failed to delete blob %s", object_name, exc_info=True)
-                deleted += 1
-            else:
-                remaining.append(item)
-        save_json_data("drive_files", remaining)
-
-    local_root = CONVERTED_DIR / safe_segment(date, date)
-    if local_root.exists():
-        targets = [local_root / safe_segment(piece, piece)] if piece else [local_root]
-        for target in targets:
-            if target.exists():
-                for file_path in target.rglob("*.mp3"):
-                    file_path.unlink(missing_ok=True)
-                    deleted += 1
-                if target.is_dir():
-                    shutil.rmtree(target, ignore_errors=True)
-
-    return {"message": "Deleted", "deleted": deleted}
 
 
 def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | None:
@@ -837,77 +785,6 @@ async def download_cloud_recording(object_name: str, request: Request) :
     return stream_storage_blob(object_name, download=True, request=request)
 
 
-@app.post("/api/recordings/direct-upload-url")
-async def create_direct_upload_url(payload: DirectUploadUrlRequest) -> dict[str, Any]:
-    if not storage_enabled():
-        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
-    suffix = Path(payload.filename or "").suffix.lower()
-    if suffix not in {".wav", ".mp3"}:
-        raise HTTPException(status_code=400, detail="Please upload a WAV or MP3 file")
-    if not payload.date.strip() or not payload.piece.strip():
-        raise HTTPException(status_code=400, detail="練習日と曲名を入力してください")
-
-    object_name = direct_upload_object_name(payload.filename, payload.date, payload.piece)
-    content_type = payload.content_type or mimetypes.guess_type(payload.filename)[0] or "application/octet-stream"
-    blob = get_storage_bucket().blob(object_name)
-    try:
-        upload_url = blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(hours=1),
-            method="PUT",
-            content_type=content_type,
-        )
-    except Exception as exc:
-        logger.exception("Failed to create signed upload URL")
-        raise HTTPException(status_code=502, detail=f"署名付きアップロードURLを作成できませんでした: {exc}") from exc
-    return {"upload_url": upload_url, "object_name": object_name, "content_type": content_type}
-
-
-@app.post("/api/recordings/finalize-upload")
-async def finalize_direct_upload(payload: FinalizeDirectUploadRequest) -> dict[str, Any]:
-    if not storage_enabled():
-        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
-    if not payload.date.strip() or not payload.piece.strip():
-        raise HTTPException(status_code=400, detail="練習日と曲名を入力してください")
-
-    suffix = Path(payload.filename or payload.object_name).suffix.lower()
-    if suffix not in {".wav", ".mp3"}:
-        raise HTTPException(status_code=400, detail="Please upload a WAV or MP3 file")
-
-    bucket = get_storage_bucket()
-    source_blob = bucket.blob(payload.object_name)
-    if not source_blob.exists():
-        raise HTTPException(status_code=404, detail="アップロード済みファイルが見つかりません")
-
-    date_dir = safe_segment(payload.date, datetime.now().date().isoformat())
-    piece_dir = safe_segment(payload.piece, "uncategorized")
-    staging_dir = DRIVE_STAGING_DIR / date_dir / piece_dir / uuid.uuid4().hex
-    staging_dir.mkdir(parents=True, exist_ok=True)
-    source_path = staging_dir / safe_upload_name(payload.filename)
-    try:
-        source_blob.download_to_filename(str(source_path))
-        output_path = convert_path_to_mp3(source_path, suffix, safe_bitrate(payload.bitrate))
-        drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
-        drive_item["duration"] = audio_duration_seconds(output_path)
-        remember_drive_file(drive_item)
-        source_blob.delete()
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Direct upload finalize failed")
-        raise HTTPException(status_code=502, detail=f"録音ファイルの登録に失敗しました: {exc}") from exc
-    finally:
-        shutil.rmtree(staging_dir, ignore_errors=True)
-
-    return {
-        "drive_file_id": drive_item["id"],
-        "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
-        "download_url": drive_item.get("download_url"),
-        "source": "google_cloud_storage",
-        "message": "Uploaded to Google Cloud Storage",
-    }
-
-
 @app.post("/api/drive/upload")
 async def upload_to_drive(
     file: UploadFile = File(...),
@@ -918,8 +795,6 @@ async def upload_to_drive(
     suffix = ensure_audio_file(file)
     if bitrate not in {128, 192, 320}:
         raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
-    if not date.strip() or not piece.strip():
-        raise HTTPException(status_code=400, detail="練習日と曲名を入力してください")
 
     date_dir = safe_segment(date, datetime.now().date().isoformat())
     logger.info(f"date={date}")
@@ -927,18 +802,22 @@ async def upload_to_drive(
     piece_dir = safe_segment(piece, "uncategorized")
     staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
     output_path = convert_path_to_mp3(staging_path, suffix, bitrate)
+    duration_seconds = get_audio_duration_seconds(output_path)
 
     if not storage_enabled():
         return {
             "drive_file_id": None,
             "share_link": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
             "source": "local",
+            "duration_seconds": duration_seconds,
+            "duration": format_duration(duration_seconds),
             "message": "Google Cloud Storage is not configured. Saved locally.",
         }
 
     try:
         drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
-        drive_item["duration"] = audio_duration_seconds(output_path)
+        drive_item["duration_seconds"] = duration_seconds
+        drive_item["duration"] = format_duration(duration_seconds)
         remember_drive_file(drive_item)
     except Exception as exc:
         logger.exception("Google Cloud Storage upload failed")
@@ -952,6 +831,8 @@ async def upload_to_drive(
         "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
         "download_url": drive_item.get("download_url"),
         "source": "google_cloud_storage",
+        "duration_seconds": duration_seconds,
+        "duration": format_duration(duration_seconds),
         "message": "Uploaded to Google Cloud Storage",
     }
 
@@ -959,6 +840,59 @@ async def upload_to_drive(
 @app.get("/api/drive/files")
 async def get_drive_files() -> dict[str, list[dict[str, Any]]]:
     return {"files": load_json_data("drive_files")}
+
+
+EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums"}
+
+def normalize_extra_payload(payload: dict[str, Any], item_id: int | None = None, current: dict[str, Any] | None = None) -> dict[str, Any]:
+    now = datetime.now().isoformat()
+    data = dict(payload or {})
+    data.update({
+        "id": item_id if item_id is not None else data.get("id"),
+        "created_at": (current or {}).get("created_at") or data.get("created_at") or now,
+        "updated_at": now,
+    })
+    return data
+
+async def read_json_body(request: Request) -> dict[str, Any]:
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+def collection_items(name: str) -> list[dict[str, Any]]:
+    if name not in EXTRA_COLLECTIONS:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    return load_json_data(name)
+
+@app.get("/api/extra/{name}")
+async def get_extra_items(name: str) -> list[dict[str, Any]]:
+    return collection_items(name)
+
+@app.post("/api/extra/{name}")
+async def create_extra_item(name: str, request: Request) -> dict[str, Any]:
+    items = collection_items(name)
+    payload = normalize_extra_payload(await read_json_body(request), next_id(items))
+    items.append(payload)
+    save_json_data(name, items)
+    return payload
+
+@app.put("/api/extra/{name}/{item_id}")
+async def update_extra_item(name: str, item_id: int, request: Request) -> dict[str, Any]:
+    items = collection_items(name)
+    index, current = find_item(items, item_id)
+    payload = normalize_extra_payload(await read_json_body(request), item_id, current)
+    items[index] = payload
+    save_json_data(name, items)
+    return payload
+
+@app.delete("/api/extra/{name}/{item_id}")
+async def delete_extra_item(name: str, item_id: int) -> dict[str, str]:
+    items = collection_items(name)
+    find_item(items, item_id)
+    save_json_data(name, [item for item in items if item.get("id") != item_id])
+    return {"message": "Deleted"}
 
 
 if __name__ == "__main__":
