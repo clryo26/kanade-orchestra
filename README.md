@@ -70,7 +70,7 @@ uv run python src/backend/main.py
 または
 
 ```bash
-uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 ### 5. ブラウザでアクセス
