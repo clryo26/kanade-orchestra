@@ -20,6 +20,7 @@
                 <span>奏オケポータル</span>
             </a>
             <div class="d-flex gap-2">
+                <button class="btn btn-outline-success" id="reloadBtn" type="button">更新</button>
                 <button class="btn btn-outline-primary" id="adminMenuBtn" type="button">管理メニュー</button>
                 <button class="btn btn-outline-secondary" id="memberMenuBtn" type="button">団員メニュー</button>
             </div>
@@ -61,7 +62,6 @@
                             </div>
                         </div>
 
-                        <p class="text-muted mb-2">保存先: <span id="savePath"></span></p>
                         <div class="mb-3">
                             <button class="btn btn-outline-primary" id="selectFileBtn" type="button">ファイルを選択</button>
                             <small id="selectedFileName" class="text-muted ms-2">未選択</small>
@@ -72,6 +72,7 @@
                             <button class="btn btn-primary" id="uploadBtn" type="button">録音ファイルを保存</button>
                             <button class="btn btn-outline-danger" id="clearBtn" type="button">クリア</button>
                         </div>
+                        <div id="uploadProgressArea" class="mt-3" hidden></div>
                     </div>
                 </div>
 
@@ -175,6 +176,12 @@
                             <div class="col-md-3">
                                 <label class="form-label" for="schedPieces">練習曲</label>
                                 <select class="form-select" id="schedPieces"></select>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="schedConductorTraining">
+                                    <label class="form-check-label" for="schedConductorTraining">指揮トレ</label>
+                                </div>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedNotes">備考</label>
@@ -305,6 +312,8 @@
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-sns" type="button">SNS</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-records" type="button">演奏会記録</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-intro" type="button">自己紹介</button>
             </div>
 
@@ -335,6 +344,20 @@
                 <div class="card">
                     <div class="card-header">録音部屋</div>
                     <div class="card-body" id="songTreeMember"></div>
+                </div>
+            </div>
+
+            <div id="memberSnsTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">SNS</div>
+                    <div class="card-body" id="memberSnsInfo"></div>
+                </div>
+            </div>
+
+            <div id="memberRecordsTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">演奏会記録</div>
+                    <div class="card-body" id="memberRecordsInfo"></div>
                 </div>
             </div>
 
