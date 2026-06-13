@@ -59,7 +59,7 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "auth_devices", "auth_settings")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -89,6 +89,8 @@ class Performance(BaseModel):
     start_time: str
     venue: str
     conductor: str
+    is_conductor_training: bool = False
+    is_main_performance: bool = False
     pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
@@ -124,9 +126,11 @@ class EventAdjustment(BaseModel):
     id: int | None = None
     title: str
     date: str = ""
+    start_time: str = ""
     deadline: str = ""
     url: str = ""
     notes: str = ""
+    delete_phrase: str = ""
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -150,6 +154,18 @@ class RecordingDeleteRequest(BaseModel):
     source: str
     object_name: str = ""
     path: str = ""
+
+
+class PortalLoginRequest(BaseModel):
+    password: str
+    device_id: str
+    device_name: str = ""
+    user_agent: str = ""
+
+
+class AuthPasswords(BaseModel):
+    portal_password: str
+    admin_password: str
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
@@ -210,6 +226,33 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
             ) from exc
 
 
+def default_auth_settings() -> dict[str, str]:
+    return {
+        "portal_password": "fukufukukanade",
+        "admin_password": "kanadeadmin",
+    }
+
+
+def load_auth_settings() -> dict[str, str]:
+    settings = default_auth_settings()
+    items = load_json_data("auth_settings")
+    if items:
+        settings.update({
+            key: str(items[0].get(key) or value)
+            for key, value in settings.items()
+        })
+    return settings
+
+
+def save_auth_settings(settings: dict[str, str]) -> None:
+    current = load_auth_settings()
+    current.update({
+        "portal_password": settings.get("portal_password") or current["portal_password"],
+        "admin_password": settings.get("admin_password") or current["admin_password"],
+    })
+    save_json_data("auth_settings", [{**current, "updated_at": datetime.now().isoformat()}])
+
+
 @app.on_event("startup")
 async def seed_cloud_data_from_local() -> None:
     if not storage_enabled():
@@ -235,6 +278,92 @@ def find_item(items: list[dict[str, Any]], item_id: int) -> tuple[int, dict[str,
         if item.get("id") == item_id:
             return index, item
     raise HTTPException(status_code=404, detail="Data not found")
+
+
+@app.post("/api/auth/portal-login")
+async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str, Any]:
+    settings = load_auth_settings()
+    if login.password != settings["portal_password"]:
+        raise HTTPException(status_code=401, detail="Invalid portal password")
+
+    device_id = login.device_id.strip()
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id is required")
+
+    devices = load_json_data("auth_devices")
+    now = datetime.now().isoformat()
+    existing = next((item for item in devices if item.get("device_id") == device_id), None)
+    payload = {
+        "device_id": device_id,
+        "device_name": login.device_name or "Unknown device",
+        "user_agent": login.user_agent or request.headers.get("user-agent", ""),
+        "authenticated_at": now,
+        "last_seen_at": now,
+    }
+    if existing:
+        existing.update(payload)
+    else:
+        payload["id"] = next_id(devices)
+        devices.append(payload)
+    save_json_data("auth_devices", devices)
+    return {"authenticated": True, "device_id": device_id}
+
+
+@app.get("/api/auth/devices/{device_id}")
+async def get_auth_device(device_id: str) -> dict[str, Any]:
+    devices = load_json_data("auth_devices")
+    item = next((device for device in devices if device.get("device_id") == device_id), None)
+    if not item:
+        return {"authenticated": False}
+    item["last_seen_at"] = datetime.now().isoformat()
+    save_json_data("auth_devices", devices)
+    return {"authenticated": True, "device": item}
+
+
+@app.get("/api/auth/devices")
+async def get_auth_devices() -> list[dict[str, Any]]:
+    return sorted(
+        load_json_data("auth_devices"),
+        key=lambda item: str(item.get("authenticated_at") or ""),
+        reverse=True,
+    )
+
+
+@app.delete("/api/auth/devices/{device_id}")
+async def delete_auth_device(device_id: str) -> dict[str, str]:
+    devices = load_json_data("auth_devices")
+    save_json_data("auth_devices", [item for item in devices if item.get("device_id") != device_id])
+    return {"message": "Deleted"}
+
+
+@app.get("/api/auth/passwords", response_model=AuthPasswords)
+async def get_auth_passwords() -> dict[str, str]:
+    return load_auth_settings()
+
+
+@app.put("/api/auth/passwords", response_model=AuthPasswords)
+async def update_auth_passwords(passwords: AuthPasswords) -> dict[str, str]:
+    if not passwords.portal_password or not passwords.admin_password:
+        raise HTTPException(status_code=400, detail="Passwords must not be empty")
+    save_auth_settings(model_dump(passwords))
+    return load_auth_settings()
+
+
+@app.get("/api/bootstrap")
+async def get_bootstrap_data() -> dict[str, Any]:
+    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums")
+    extras = {name: load_json_data(name) for name in extra_names}
+    return {
+        "performances": load_json_data("performances"),
+        "schedules": load_json_data("schedules"),
+        "announcements": load_json_data("announcements"),
+        "events": load_json_data("events"),
+        "members": load_json_data("members"),
+        "recordings": recording_payload(),
+        "extras": extras,
+        "auth_devices": await get_auth_devices(),
+        "auth_passwords": load_auth_settings(),
+    }
 
 
 def safe_segment(value: str, default: str) -> str:
@@ -653,14 +782,18 @@ async def convert_audio(
     return response
 
 
-@app.get("/api/recordings")
-async def get_recordings() -> dict[str, list[dict[str, Any]]]:
+def recording_payload() -> dict[str, list[dict[str, Any]]]:
     drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
     local_files = [
         local_recording_metadata(path)
         for path in sorted(CONVERTED_DIR.rglob("*.mp3"), key=lambda item: item.stat().st_mtime, reverse=True)
     ]
     return {"files": drive_files + local_files}
+
+
+@app.get("/api/recordings")
+async def get_recordings() -> dict[str, list[dict[str, Any]]]:
+    return recording_payload()
 
 
 def local_recording_path(path: str) -> Path:

@@ -1,5 +1,4 @@
 const appState = {
-    selectedFile: null,
     selectedFiles: [],
     performancePieces: [],
     performancePieceEditIndex: null,
@@ -15,24 +14,62 @@ const appState = {
     payments: [],
     castings: [],
     pieceInfos: [],
-    albums: []
+    albums: [],
+    currentAudio: null,
+    currentPlayButton: null,
+    continuousPlayback: false,
+    dataLoaded: false,
+    authDevices: [],
+    authPasswords: {
+        portal_password: 'fukufukukanade',
+        admin_password: 'kanadeadmin'
+    },
+    suppressDerivedRender: false,
+    portalAuthVerified: false
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const $ = (id) => document.getElementById(id);
+const PORTAL_AUTH_KEY = 'kanadePortalAuthenticated';
+const PORTAL_DEVICE_ID_KEY = 'kanadePortalDeviceId';
 const SCHEDULE_EXTRA_PIECES = ['未定', 'ポップス全曲', 'クラシック全曲'];
 const MEMBER_PARTS = ['Violin', 'Viola', 'Cello', 'Contrabass', 'Flute', 'Oboe', 'Clarinet', 'Fagot', 'Horn', 'Trumpet', 'Trombone', 'Tuba', 'Percussion', 'Piano'];
 
+async function withButtonStatus(button, processingLabel, task) {
+    if (!button || button.disabled) return;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = processingLabel;
+    try {
+        return await task();
+    } catch (error) {
+        showAlert(error.message || '処理に失敗しました', 'danger');
+    } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+    }
+}
+
+function setOperationStatus(id, message, type = 'info') {
+    const element = $(id);
+    if (!element) return;
+    element.hidden = false;
+    element.className = `operation-status operation-status-${type}`;
+    element.textContent = message;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     setDefaultDates();
+    setupPortalHome();
     bindNavigation();
     bindUpload();
     bindForms();
-    showMemberPanel();
-    await loadAll();
-    renderSchedulePerformanceOptions();
-    updateSchedulePieceOptions();
     updateSavePath();
+    if (await isPortalAuthenticated()) {
+        await enterPortal();
+    } else {
+        showPortalLogin();
+    }
 });
 
 function setDefaultDates() {
@@ -42,11 +79,133 @@ function setDefaultDates() {
     $('perfDate').value = today();
 }
 
+function setupPortalHome() {
+    const memberPanel = $('memberPanel');
+    if (!memberPanel || $('memberHomeTab')) return;
+
+    const toolbar = memberPanel.querySelector('.toolbar');
+    if (toolbar && !$('memberHomeBtn')) {
+        toolbar.insertAdjacentHTML('afterbegin', '<button class="btn btn-sm btn-outline-secondary" id="memberHomeBtn" data-tab="member-home" type="button">ポータルトップ</button>');
+    }
+
+    memberPanel.insertAdjacentHTML('afterbegin', `
+        <div id="memberHomeTab" class="tab-content">
+            <section class="portal-home">
+                <div class="portal-home-section">
+                    <div class="portal-home-heading">
+                        <h2>お知らせ</h2>
+                    </div>
+                    <div id="portalHomeAnnouncements"></div>
+                </div>
+                <div id="portalHomeCountdown"></div>
+                <div class="portal-home-section">
+                    <div class="portal-home-heading">
+                        <h2>メニュー</h2>
+                    </div>
+                    <div class="portal-menu-grid" id="portalHomeMenu"></div>
+                </div>
+            </section>
+        </div>
+    `);
+}
+
+function portalDeviceId() {
+    let deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY);
+    if (!deviceId) {
+        deviceId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(PORTAL_DEVICE_ID_KEY, deviceId);
+    }
+    return deviceId;
+}
+
+function portalDeviceName() {
+    const platform = navigator.platform || 'unknown';
+    const language = navigator.language || '';
+    return `${platform}${language ? ` / ${language}` : ''}`;
+}
+
+async function isPortalAuthenticated() {
+    if (appState.portalAuthVerified) return true;
+    const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY);
+    if (!deviceId || localStorage.getItem(PORTAL_AUTH_KEY) !== 'true') return false;
+    try {
+        const result = await request(`/api/auth/devices/${encodeURIComponent(deviceId)}`);
+        appState.portalAuthVerified = Boolean(result.authenticated);
+        return appState.portalAuthVerified;
+    } catch {
+        return false;
+    }
+}
+
+function showPortalLogin() {
+    $('adminPanel').hidden = true;
+    $('memberPanel').hidden = true;
+    let loginPanel = $('portalLoginPanel');
+    if (!loginPanel) {
+        const main = document.querySelector('main');
+        main.insertAdjacentHTML('afterbegin', `
+            <section id="portalLoginPanel" class="panel portal-login-panel">
+                <div class="portal-login-box">
+                    <h1>奏オケポータル</h1>
+                    <label class="form-label" for="portalPasswordInput">パスワード</label>
+                    <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password">
+                    <button class="btn btn-primary w-100 mt-3" id="portalLoginBtn" type="button">ログイン</button>
+                </div>
+            </section>
+        `);
+        loginPanel = $('portalLoginPanel');
+        $('portalLoginBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '確認中...', handlePortalLogin));
+        $('portalPasswordInput').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                $('portalLoginBtn').click();
+            }
+        });
+    }
+    loginPanel.hidden = false;
+    $('portalPasswordInput')?.focus();
+}
+
+async function handlePortalLogin() {
+    const input = $('portalPasswordInput');
+    if (!input) return;
+    try {
+        await request('/api/auth/portal-login', jsonOptions('POST', {
+            password: input.value,
+            device_id: portalDeviceId(),
+            device_name: portalDeviceName(),
+            user_agent: navigator.userAgent || ''
+        }));
+    } catch {
+        showAlert('ポータルのパスワードが違います', 'danger');
+        if (input) input.value = '';
+        return;
+    }
+    localStorage.setItem(PORTAL_AUTH_KEY, 'true');
+    appState.portalAuthVerified = true;
+    await enterPortal();
+}
+
+async function enterPortal() {
+    if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
+    if (!appState.dataLoaded) {
+        await loadAll();
+        appState.dataLoaded = true;
+    }
+    await showMemberPanel(false);
+}
+
 function bindNavigation() {
+    const brand = document.querySelector('.navbar-brand');
+    if (brand) brand.addEventListener('click', (event) => {
+        event.preventDefault();
+        showMemberPanel();
+    });
     $('adminMenuBtn').addEventListener('click', requestAdminPanel);
     $('memberMenuBtn').addEventListener('click', showMemberPanel);
     if ($('backToPortalBtn')) $('backToPortalBtn').addEventListener('click', showMemberPanel);
     if ($('memberAdminMenuBtn')) $('memberAdminMenuBtn').addEventListener('click', requestAdminPanel);
+    if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => window.location.reload());
 
     document.querySelectorAll('#adminPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('adminPanel', button.dataset.tab));
@@ -63,37 +222,51 @@ function bindUpload() {
     fileInput.addEventListener('change', (event) => handleFiles(event.target.files));
     $('uploadDate').addEventListener('input', updateSavePath);
     $('uploadPiece').addEventListener('input', updateSavePath);
-    $('uploadBtn').addEventListener('click', uploadToLocalStore);
+    $('uploadBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => uploadToLocalStore()));
     $('clearBtn').addEventListener('click', clearUploadForm);
 }
 
 function bindForms() {
-    $('addPerfBtn').addEventListener('click', savePerformance);
+    $('addPerfBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePerformance()));
     $('editPerfBtn').addEventListener('click', clearPerformanceForm);
-    $('deletePerfBtn').addEventListener('click', deletePerformance);
+    $('deletePerfBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePerformance()));
     $('addPieceBtn').addEventListener('click', addPerformancePiece);
 
-    $('addSchedBtn').addEventListener('click', saveSchedule);
+    $('addSchedBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveSchedule()));
     $('editSchedBtn').addEventListener('click', clearScheduleForm);
-    $('deleteSchedBtn').addEventListener('click', deleteSchedule);
+    $('deleteSchedBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteSchedule()));
     $('schedPerformance').addEventListener('change', updateSchedulePieceOptions);
 
-    $('addAnnBtn').addEventListener('click', saveAnnouncement);
+    $('addAnnBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveAnnouncement()));
     $('editAnnBtn').addEventListener('click', clearAnnouncementForm);
-    $('deleteAnnBtn').addEventListener('click', deleteAnnouncement);
+    $('deleteAnnBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteAnnouncement()));
 
-    $('addEventBtn').addEventListener('click', saveEvent);
+    $('addEventBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveEvent()));
     $('clearEventBtn').addEventListener('click', clearEventForm);
-    $('deleteEventBtn').addEventListener('click', deleteEvent);
+    $('deleteEventBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteEvent()));
 
-    $('addMemberBtn').addEventListener('click', saveMember);
+    $('addMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveMember()));
     $('clearMemberBtn').addEventListener('click', clearMemberForm);
-    $('deleteMemberBtn').addEventListener('click', deleteMember);
+    $('deleteMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteMember()));
+
+    if ($('savePasswordSettingsBtn')) {
+        $('savePasswordSettingsBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePasswordSettings()));
+    }
 }
 
-function requestAdminPanel() {
+async function requestAdminPanel() {
+    if (!(await isPortalAuthenticated())) {
+        showPortalLogin();
+        return;
+    }
+    try {
+        appState.authPasswords = await request('/api/auth/passwords');
+        renderPasswordManagement();
+    } catch {
+        // Fall back to the last loaded password settings.
+    }
     const password = prompt('管理メニューのパスワードを入力してください');
-    const expected = localStorage.getItem('adminPassword') || 'kanade';
+    const expected = appState.authPasswords.admin_password || 'kanadeadmin';
     if (password !== expected) {
         showAlert('パスワードが違います', 'danger');
         return;
@@ -107,15 +280,24 @@ function showAdminPanel() {
     localStorage.setItem('userRole', 'admin');
 }
 
-function showMemberPanel() {
+async function showMemberPanel(shouldRender = true) {
+    if (!(await isPortalAuthenticated())) {
+        showPortalLogin();
+        return;
+    }
     $('memberPanel').hidden = false;
     $('adminPanel').hidden = true;
     localStorage.setItem('userRole', 'member');
-    renderMemberViews();
+    if (shouldRender) renderMemberViews();
+    switchTab('memberPanel', 'member-home', shouldRender);
 }
 
-function switchTab(panelId, tabName) {
+function switchTab(panelId, tabName, renderOnShow = true) {
     const panel = $(panelId);
+    const toolbar = panel.querySelector('.toolbar');
+    if (toolbar && panelId === 'memberPanel') {
+        toolbar.hidden = tabName === 'member-home';
+    }
     panel.querySelectorAll('.tab-content').forEach((tab) => {
         tab.hidden = true;
     });
@@ -128,6 +310,7 @@ function switchTab(panelId, tabName) {
     if (target) target.hidden = false;
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
+    if (renderOnShow && tabName === 'member-home') renderPortalHome();
 }
 
 function toPascalTab(value) {
@@ -138,6 +321,9 @@ function toPascalTab(value) {
         announcement: 'announcement',
         event: 'event',
         member: 'member',
+        'auth-devices': 'authDevices',
+        password: 'password',
+        'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
         'member-performance': 'memberPerformance',
         'member-schedule': 'memberSchedule',
@@ -155,6 +341,7 @@ function toPascalTab(value) {
 }
 
 function updateSavePath() {
+    if (!$('savePath')) return;
     const date = $('uploadDate').value || today();
     const piece = $('uploadPiece').value.trim() || '未分類';
     $('savePath').textContent = `/converted/${date}/${piece}/`;
@@ -174,7 +361,6 @@ function handleFiles(files) {
     if (!validFiles.length) return;
 
     appState.selectedFiles = validFiles;
-    appState.selectedFile = validFiles[0];
     $('selectedFileName').textContent = selectedFileSummary(validFiles);
     showAlert(`${validFiles.length} 件のファイルを選択しました`, 'success');
 }
@@ -185,13 +371,22 @@ async function uploadToLocalStore() {
         return;
     }
 
+    setOperationStatus('uploadProgress', `録音ファイルを保存しています。0 / ${appState.selectedFiles.length} 件`);
     let completed = 0;
-    for (const file of appState.selectedFiles) {
-        await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
-        completed += 1;
+    try {
+        for (const file of appState.selectedFiles) {
+            setOperationStatus('uploadProgress', `保存中: ${file.name}（${completed + 1} / ${appState.selectedFiles.length} 件）`);
+            await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
+            completed += 1;
+            setOperationStatus('uploadProgress', `保存完了: ${completed} / ${appState.selectedFiles.length} 件`);
+        }
+        showAlert(`${completed} 件の録音ファイルを保存しました`, 'info');
+        await loadRecordings();
+        setOperationStatus('uploadProgress', `保存が完了しました。${completed} 件の録音ファイルを一覧に反映しました。`);
+    } catch (error) {
+        setOperationStatus('uploadProgress', `保存に失敗しました。${completed} / ${appState.selectedFiles.length} 件まで完了しています。`, 'danger');
+        throw error;
     }
-    showAlert(`${completed} 件の録音ファイルを保存しました`, 'info');
-    await loadRecordings();
 }
 
 function audioFormData(file) {
@@ -213,24 +408,112 @@ function selectedFileSummary(files) {
 }
 
 function clearUploadForm() {
-    appState.selectedFile = null;
     appState.selectedFiles = [];
     $('fileInput').value = '';
     $('selectedFileName').textContent = '未選択';
     $('uploadDate').value = today();
     $('uploadPiece').value = '';
     $('bitrate').value = '192';
+    const progress = $('uploadProgress');
+    if (progress) progress.hidden = true;
     updateSavePath();
 }
 async function loadAll() {
-    await Promise.all([loadPerformances(), loadSchedules(), loadAnnouncements(), loadEvents(), loadMembers(), loadRecordings(), loadExtraData()]);
+    let data;
+    try {
+        data = await requestJson('/api/bootstrap');
+    } catch {
+        data = await legacyBootstrapData();
+    }
+    applyBootstrapData(data);
+    renderInitialViews();
+}
+
+async function requestJson(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+    return response.json();
+}
+
+async function legacyBootstrapData() {
+    const [
+        performances,
+        schedules,
+        announcements,
+        events,
+        members,
+        recordings,
+        absences,
+        eventResponses,
+        sheetLibrary,
+        payments,
+        castings,
+        pieceInfos,
+        albums,
+        authDevices,
+        authPasswords
+    ] = await Promise.all([
+        request('/api/performances'),
+        request('/api/schedules'),
+        request('/api/announcements'),
+        request('/api/events'),
+        request('/api/members'),
+        request('/api/recordings'),
+        request('/api/extra/absences'),
+        request('/api/extra/event_responses'),
+        request('/api/extra/sheet_library'),
+        request('/api/extra/payments'),
+        request('/api/extra/castings'),
+        request('/api/extra/piece_infos'),
+        request('/api/extra/albums'),
+        request('/api/auth/devices'),
+        request('/api/auth/passwords')
+    ]);
+    return {
+        performances,
+        schedules,
+        announcements,
+        events,
+        members,
+        recordings,
+        extras: {
+            absences,
+            event_responses: eventResponses,
+            sheet_library: sheetLibrary,
+            payments,
+            castings,
+            piece_infos: pieceInfos,
+            albums
+        },
+        auth_devices: authDevices,
+        auth_passwords: authPasswords
+    };
+}
+
+function applyBootstrapData(data) {
+    const extras = data.extras || {};
+    Object.assign(appState, {
+        performances: data.performances || [],
+        schedules: data.schedules || [],
+        announcements: data.announcements || [],
+        events: data.events || [],
+        members: data.members || [],
+        recordings: data.recordings?.files || [],
+        absences: extras.absences || [],
+        eventResponses: extras.event_responses || [],
+        sheetLibrary: extras.sheet_library || [],
+        payments: extras.payments || [],
+        castings: extras.castings || [],
+        pieceInfos: extras.piece_infos || [],
+        albums: extras.albums || [],
+        authDevices: data.auth_devices || [],
+        authPasswords: data.auth_passwords || appState.authPasswords
+    });
 }
 
 async function loadPerformances() {
     appState.performances = await request('/api/performances');
     renderPerformances();
-    renderSchedulePerformanceOptions();
-    updateSchedulePieceOptions();
 }
 
 async function loadSchedules() {
@@ -253,10 +536,41 @@ async function loadMembers() {
     renderMembers();
 }
 
+function renderInitialViews() {
+    appState.suppressDerivedRender = true;
+    renderPerformances();
+    renderSchedules();
+    renderAnnouncements();
+    renderEvents();
+    renderMembers();
+    renderRecordings();
+    appState.suppressDerivedRender = false;
+    renderMemberPerformances();
+    renderMemberSchedules();
+    renderMemberIntros();
+    renderMemberExtraViews();
+    renderAuthDevices();
+    renderPasswordManagement();
+    renderSchedulePerformanceOptions();
+    updateSchedulePieceOptions();
+    renderPortalHome();
+}
+
 async function loadRecordings() {
     const data = await request('/api/recordings');
     appState.recordings = data.files || [];
     renderRecordings();
+}
+
+async function loadAuthManagement() {
+    const [devices, passwords] = await Promise.all([
+        request('/api/auth/devices'),
+        request('/api/auth/passwords')
+    ]);
+    appState.authDevices = devices || [];
+    appState.authPasswords = passwords || appState.authPasswords;
+    renderAuthDevices();
+    renderPasswordManagement();
 }
 
 async function loadExtraData() {
@@ -285,6 +599,8 @@ async function savePerformance() {
         start_time: $('perfStartTime').value,
         venue: $('perfVenue').value.trim(),
         conductor: $('perfConductor').value.trim(),
+        is_conductor_training: $('perfConductorTraining') ? $('perfConductorTraining').checked : false,
+        is_main_performance: $('perfMainPerformance') ? $('perfMainPerformance').checked : false,
         pieces: currentPerformancePieces()
     };
     if (!payload.title || !payload.date) {
@@ -309,6 +625,8 @@ function selectPerformance(id) {
     $('perfStartTime').value = item.start_time || '19:00';
     $('perfVenue').value = item.venue || '';
     $('perfConductor').value = item.conductor || '';
+    if ($('perfConductorTraining')) $('perfConductorTraining').checked = Boolean(item.is_conductor_training);
+    if ($('perfMainPerformance')) $('perfMainPerformance').checked = Boolean(item.is_main_performance);
     appState.performancePieces = normalizePerformancePieces(item.pieces || []);
     renderPerformancePieceList();
 }
@@ -335,6 +653,9 @@ function clearPerformanceForm() {
     $('perfConductor').value = '';
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
+    if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+    if ($('perfConductorTraining')) $('perfConductorTraining').checked = false;
+    if ($('perfMainPerformance')) $('perfMainPerformance').checked = false;
     appState.performancePieces = [];
     appState.performancePieceEditIndex = null;
     $('addPieceBtn').textContent = '曲を追加';
@@ -344,12 +665,13 @@ function clearPerformanceForm() {
 function addPerformancePiece() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
+    const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
     if (!title) {
         showAlert('曲名を入力してください', 'warning');
         return;
     }
 
-    const piece = { composer, title };
+    const piece = { composer, title, alias };
     if (appState.performancePieceEditIndex !== null) {
         appState.performancePieces[appState.performancePieceEditIndex] = piece;
         appState.performancePieceEditIndex = null;
@@ -359,6 +681,7 @@ function addPerformancePiece() {
     }
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
+    if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
     renderPerformancePieceList();
 }
 
@@ -367,6 +690,7 @@ function editPerformancePiece(index) {
     if (!piece) return;
     $('perfPieceComposer').value = piece.composer || '';
     $('perfPieceTitle').value = piece.title || '';
+    if ($('perfPieceAlias')) $('perfPieceAlias').value = piece.alias || '';
     appState.performancePieceEditIndex = index;
     $('addPieceBtn').textContent = '曲を更新';
 }
@@ -378,6 +702,7 @@ function removePerformancePiece(index) {
         $('addPieceBtn').textContent = '曲を追加';
         $('perfPieceComposer').value = '';
         $('perfPieceTitle').value = '';
+        if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
     } else if (appState.performancePieceEditIndex !== null && appState.performancePieceEditIndex > index) {
         appState.performancePieceEditIndex -= 1;
     }
@@ -387,9 +712,10 @@ function removePerformancePiece(index) {
 function currentPerformancePieces() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
+    const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
     const pieces = [...appState.performancePieces];
     if (title) {
-        pieces.push({ composer, title });
+        pieces.push({ composer, title, alias });
     }
     return pieces;
 }
@@ -401,14 +727,16 @@ function normalizePerformancePieces(pieces) {
         }
         return {
             composer: piece.composer || '',
-            title: piece.title || piece.name || ''
+            title: piece.title || piece.name || '',
+            alias: piece.alias || piece.short_name || ''
         };
     }).filter((piece) => piece.title);
 }
 
 function performancePieceLabel(piece) {
     if (typeof piece === 'string') return piece;
-    return piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+    const title = piece.alias ? `${piece.title}（${piece.alias}）` : piece.title;
+    return piece.composer ? `${piece.composer}: ${title}` : title;
 }
 
 function renderPerformancePieceList() {
@@ -598,9 +926,11 @@ async function saveEvent() {
     const payload = {
         title: $('eventTitle').value.trim(),
         date: $('eventDate').value,
+        start_time: $('eventStartTime') ? $('eventStartTime').value : '',
         deadline: $('eventDeadline').value,
         url: $('eventUrl').value.trim(),
-        notes: $('eventNotes').value.trim()
+        notes: $('eventNotes').value.trim(),
+        delete_phrase: $('eventDeletePhrase') ? $('eventDeletePhrase').value.trim() : ''
     };
     if (!payload.title) {
         showAlert('イベント名を入力してください', 'warning');
@@ -620,9 +950,11 @@ function selectEvent(id) {
     $('eventId').value = item.id;
     $('eventTitle').value = item.title || '';
     $('eventDate').value = item.date || '';
+    if ($('eventStartTime')) $('eventStartTime').value = item.start_time || '';
     $('eventDeadline').value = item.deadline || '';
     $('eventUrl').value = item.url || '';
     $('eventNotes').value = item.notes || '';
+    if ($('eventDeletePhrase')) $('eventDeletePhrase').value = item.delete_phrase || '';
 }
 
 async function deleteEvent() {
@@ -631,10 +963,15 @@ async function deleteEvent() {
         showAlert('削除するイベントを一覧から選択してください', 'warning');
         return;
     }
-    if (!confirm('選択中のイベント調整を削除しますか？')) return;
+    await deleteEventById(id, true);
+}
+
+async function deleteEventById(id, adminDelete = false) {
+    if (adminDelete && !confirm('本当に削除しますか？')) return;
     await request(`/api/events/${id}`, { method: 'DELETE' });
     clearEventForm();
     await loadEvents();
+    await loadExtraData();
     showAlert('イベント調整を削除しました', 'success');
 }
 
@@ -642,16 +979,34 @@ function clearEventForm() {
     $('eventId').value = '';
     $('eventTitle').value = '';
     $('eventDate').value = '';
+    if ($('eventStartTime')) $('eventStartTime').value = '';
     $('eventDeadline').value = '';
     $('eventUrl').value = '';
     $('eventNotes').value = '';
+    if ($('eventDeletePhrase')) $('eventDeletePhrase').value = '';
+}
+
+function sortedEvents(events) {
+    return [...(events || [])].sort((a, b) =>
+        String(a.date || '').localeCompare(String(b.date || '')) ||
+        String(a.start_time || '').localeCompare(String(b.start_time || '')) ||
+        String(a.title || '').localeCompare(String(b.title || ''))
+    );
+}
+
+function eventDateTimeLabel(event) {
+    const date = formatDateWithWeekday(event?.date, '未定');
+    return event?.start_time ? `${date} ${event.start_time}` : date;
 }
 
 async function saveMember() {
+    const current = appState.members.find((member) => String(member.id) === String($('memberId').value));
+    const photoFile = $('memberPhotoFile')?.files?.[0];
+    const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current?.photo_url || '');
     const payload = {
         name: $('memberName').value.trim(),
         part: $('memberPart').value,
-        photo_url: $('memberPhotoUrl') ? $('memberPhotoUrl').value.trim() : '',
+        photo_url: photoUrl,
         joined_at: $('memberJoinedAt') ? $('memberJoinedAt').value : '',
         introducer: $('memberIntroducer') ? $('memberIntroducer').value.trim() : '',
         role: $('memberRole') ? $('memberRole').value.trim() : '',
@@ -680,7 +1035,7 @@ function selectMember(id) {
     $('memberId').value = item.id;
     $('memberName').value = item.name || '';
     $('memberPart').value = item.part || '';
-    if ($('memberPhotoUrl')) $('memberPhotoUrl').value = item.photo_url || '';
+    if ($('memberPhotoFile')) $('memberPhotoFile').value = '';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = item.joined_at || '';
     if ($('memberIntroducer')) $('memberIntroducer').value = item.introducer || '';
     if ($('memberRole')) $('memberRole').value = item.role || '';
@@ -706,13 +1061,22 @@ function clearMemberForm() {
     $('memberId').value = '';
     $('memberName').value = '';
     $('memberPart').value = '';
-    if ($('memberPhotoUrl')) $('memberPhotoUrl').value = '';
+    if ($('memberPhotoFile')) $('memberPhotoFile').value = '';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = '';
     if ($('memberIntroducer')) $('memberIntroducer').value = '';
     if ($('memberRole')) $('memberRole').value = '';
     if ($('memberInstrumentHistory')) $('memberInstrumentHistory').value = '';
     if ($('memberPastOrchestras')) $('memberPastOrchestras').value = '';
     $('memberComment').value = '';
+}
+
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.addEventListener('load', () => resolve(String(reader.result || '')));
+        reader.addEventListener('error', () => reject(reader.error || new Error('画像を読み込めませんでした')));
+        reader.readAsDataURL(file);
+    });
 }
 
 function renderMembers() {
@@ -728,8 +1092,68 @@ function renderMembers() {
             list.appendChild(item);
         });
     }
-    renderMemberIntros();
-    renderMemberExtraViews();
+    if (!appState.suppressDerivedRender) {
+        renderMemberIntros();
+        renderMemberExtraViews();
+    }
+}
+
+function renderAuthDevices() {
+    const container = $('authDeviceListItems');
+    if (!container) return;
+    if (!appState.authDevices.length) {
+        container.innerHTML = '<p class="text-muted mb-0">認証済み端末はまだありません</p>';
+        return;
+    }
+    container.innerHTML = `<div class="list-group">${appState.authDevices.map((device) => `
+        <div class="list-group-item">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+                <span>
+                    <strong>${escapeHtml(device.device_name || 'Unknown device')}</strong>
+                    <div class="small text-muted">端末ID: ${escapeHtml(device.device_id || '')}</div>
+                    <div class="small text-muted">認証日時: ${escapeHtml(formatDateTimeLabel(device.authenticated_at))}</div>
+                    <div class="small text-muted">最終確認: ${escapeHtml(formatDateTimeLabel(device.last_seen_at))}</div>
+                    ${device.user_agent ? `<div class="small text-muted text-break">${escapeHtml(device.user_agent)}</div>` : ''}
+                </span>
+                <span><button class="btn btn-sm btn-outline-danger auth-device-delete-btn" type="button" data-device-id="${escapeHtml(device.device_id || '')}">削除</button></span>
+            </div>
+        </div>
+    `).join('')}</div>`;
+    container.querySelectorAll('.auth-device-delete-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteAuthDevice(button.dataset.deviceId)));
+    });
+}
+
+function renderPasswordManagement() {
+    if ($('portalPasswordSetting')) $('portalPasswordSetting').value = appState.authPasswords.portal_password || '';
+    if ($('adminPasswordSetting')) $('adminPasswordSetting').value = appState.authPasswords.admin_password || '';
+}
+
+async function deleteAuthDevice(deviceId) {
+    if (!deviceId) return;
+    if (!confirm('この認証端末を削除しますか？')) return;
+    await request(`/api/auth/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+    if (deviceId === localStorage.getItem(PORTAL_DEVICE_ID_KEY)) {
+        localStorage.removeItem(PORTAL_AUTH_KEY);
+        appState.portalAuthVerified = false;
+    }
+    await loadAuthManagement();
+    showAlert('認証端末を削除しました', 'success');
+}
+
+async function savePasswordSettings() {
+    const portalPassword = $('portalPasswordSetting').value.trim();
+    const adminPassword = $('adminPasswordSetting').value.trim();
+    if (!portalPassword || !adminPassword) {
+        showAlert('両方のパスワードを入力してください', 'warning');
+        return;
+    }
+    appState.authPasswords = await request('/api/auth/passwords', jsonOptions('PUT', {
+        portal_password: portalPassword,
+        admin_password: adminPassword
+    }));
+    renderPasswordManagement();
+    showAlert('パスワードを保存しました', 'success');
 }
 
 function renderMemberIntros() {
@@ -764,18 +1188,32 @@ function renderEvents() {
     const list = $('eventListItems');
     if (!list) return;
     list.innerHTML = emptyText(appState.events, 'イベント調整はまだありません');
-    appState.events.forEach((event) => {
-        const item = document.createElement('button');
-        item.type = 'button';
+    sortedEvents(appState.events).forEach((event) => {
+        const item = document.createElement('div');
         item.className = 'list-group-item list-group-item-action';
         item.innerHTML = `
-            <strong>${escapeHtml(event.title)}</strong>
-            <div class="small text-muted">開催日: ${escapeHtml(event.date || '未定')} / 回答期限: ${escapeHtml(event.deadline || '未定')}</div>
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+                <span>
+                    <strong>${escapeHtml(event.title)}</strong>
+                    <div class="small text-muted">開催日: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}</div>
+                    <div class="small text-muted">削除時の合言葉: ${escapeHtml(event.delete_phrase || '未設定')}</div>
+                </span>
+                <span>
+                    <button class="btn btn-sm btn-outline-danger admin-event-delete-btn" type="button">削除</button>
+                </span>
+            </div>
+            ${event.notes ? `<div class="small multiline-text mt-1">${escapeHtml(event.notes)}</div>` : ''}
             ${event.url ? `<div class="small text-truncate">${escapeHtml(event.url)}</div>` : ''}
         `;
         item.addEventListener('click', () => selectEvent(event.id));
+        item.querySelector('.admin-event-delete-btn').addEventListener('click', (clickEvent) => {
+            clickEvent.preventDefault();
+            clickEvent.stopPropagation();
+            withButtonStatus(clickEvent.currentTarget, '削除中...', () => deleteEventById(event.id, true));
+        });
         list.appendChild(item);
     });
+    if (!appState.suppressDerivedRender) renderMemberEventView();
 }
 
 function renderPerformances() {
@@ -787,21 +1225,25 @@ function renderPerformances() {
         item.className = 'list-group-item list-group-item-action';
         item.innerHTML = `
             <strong>${escapeHtml(perf.title)}</strong>
-            <div class="small text-muted">${escapeHtml(perf.date)} / ${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</div>
+            <div class="small text-muted">${escapeHtml(formatDateWithWeekday(perf.date))} / ${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</div>
         `;
         item.addEventListener('click', () => selectPerformance(perf.id));
         list.appendChild(item);
     });
-    renderMemberPerformances();
-    renderSchedulePerformanceOptions();
-    updateSchedulePieceOptions();
+    if (!appState.suppressDerivedRender) {
+        renderMemberPerformances();
+        renderMemberSchedules();
+        renderSchedulePerformanceOptions();
+        updateSchedulePieceOptions();
+        renderPortalHome();
+    }
 }
 
 function renderSchedules() {
     const container = $('schedListItems');
     if (!appState.schedules.length) {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
-        renderMemberSchedules();
+        if (!appState.suppressDerivedRender) renderMemberSchedules();
         return;
     }
     container.innerHTML = `
@@ -817,7 +1259,7 @@ function renderSchedules() {
         const row = document.createElement('tr');
         row.className = 'clickable-row';
         row.innerHTML = `
-            <td>${escapeHtml(sched.date)}</td>
+            <td>${escapeHtml(formatDateWithWeekday(sched.date))}</td>
             <td>${escapeHtml(scheduleTimeLabel(sched))}</td>
             <td>${escapeHtml(sched.venue || '')}</td>
             <td>${escapeHtml(schedulePerformanceLabel(sched))}</td>
@@ -827,7 +1269,7 @@ function renderSchedules() {
         row.addEventListener('click', () => selectSchedule(sched.id));
         body.appendChild(row);
     });
-    renderMemberSchedules();
+    if (!appState.suppressDerivedRender) renderMemberSchedules();
 }
 
 function renderAnnouncements() {
@@ -841,6 +1283,7 @@ function renderAnnouncements() {
         admin.appendChild(adminItem);
         member.appendChild(memberItem);
     });
+    if (!appState.suppressDerivedRender) renderPortalHome();
 }
 
 function announcementItem(ann, selectable) {
@@ -849,7 +1292,7 @@ function announcementItem(ann, selectable) {
         ? 'list-group-item list-group-item-action'
         : 'list-group-item';
     if (selectable) item.type = 'button';
-    item.innerHTML = `<span class="small text-muted">${escapeHtml(ann.date)}</span><br>${escapeHtml(ann.content)}`;
+    item.innerHTML = `<span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span><br>${escapeHtml(ann.content)}`;
     if (selectable) item.addEventListener('click', () => selectAnnouncement(ann.id));
     return item;
 }
@@ -866,78 +1309,214 @@ function renderRecordingList(containerId, canDelete) {
         return;
     }
 
-    const grouped = groupBy(appState.recordings, 'date');
+    const grouped = groupRecordingsByDateAndPiece(appState.recordings);
+    const latestDate = grouped[0]?.date || '';
     container.innerHTML = '';
-    Object.entries(grouped).forEach(([date, files]) => {
-        const section = document.createElement('div');
-        section.className = 'recording-group';
-        section.innerHTML = `<h6>${escapeHtml(date || '未分類')}</h6>`;
-        const list = document.createElement('div');
-        list.className = 'list-group mb-3';
-        files.forEach((file) => {
-            const item = document.createElement('div');
-            item.className = 'list-group-item';
-            const playUrl = file.play_url || file.download_url;
-            const downloadUrl = file.download_url || playUrl;
-            const actionButton = canDelete
-                ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
-                : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
-            item.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-                    <span>
-                    <strong>${escapeHtml(file.name)}</strong>
-                    <span class="small text-muted d-block">${escapeHtml(file.piece || '未分類')} / ${formatDurationLabel(file)} / ${formatBytes(file.size)}</span>
-                    </span>
-                    <span class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary play-recording-btn" type="button">再生</button>
-                        ${actionButton}
-                    </span>
-                </div>
-                <div class="recording-player-area mt-2"></div>
+    if (!canDelete) {
+        const controls = document.createElement('div');
+        controls.className = 'recording-controls';
+        controls.innerHTML = `
+            <label class="form-check recording-continuous-check">
+                <input class="form-check-input" id="continuousPlaybackCheck" type="checkbox" ${appState.continuousPlayback ? 'checked' : ''}>
+                <span class="form-check-label">連続再生</span>
+            </label>
+        `;
+        controls.querySelector('#continuousPlaybackCheck').addEventListener('change', (event) => {
+            appState.continuousPlayback = event.currentTarget.checked;
+        });
+        container.appendChild(controls);
+    }
+    grouped.forEach((dateGroup) => {
+        const dateOpen = canDelete || dateGroup.date === latestDate;
+        const dateDetails = document.createElement('details');
+        dateDetails.className = 'recording-date-group';
+        dateDetails.open = dateOpen;
+        dateDetails.innerHTML = `
+            <summary class="recording-summary recording-date-summary">
+                <span>${escapeHtml(formatDateWithWeekday(dateGroup.date, '未分類'))}</span>
+                ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">練習日を一括削除</button>' : ''}
+            </summary>
+        `;
+        if (canDelete) {
+            dateDetails.querySelector('.recording-bulk-delete-btn').addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                withButtonStatus(event.currentTarget, '削除中...', () => deleteRecordingGroup(dateGroup.pieces.flatMap((pieceGroup) => pieceGroup.files), `${formatDateWithWeekday(dateGroup.date, '未分類')} の録音`));
+            });
+        }
+        dateGroup.pieces.forEach((pieceGroup) => {
+            const pieceDetails = document.createElement('details');
+            pieceDetails.className = 'recording-piece-group';
+            pieceDetails.open = canDelete || dateGroup.date === latestDate;
+            pieceDetails.innerHTML = `
+                <summary class="recording-summary recording-piece-summary">
+                    <span>${escapeHtml(pieceGroup.piece || '未分類')}</span>
+                    ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">曲を一括削除</button>' : ''}
+                </summary>
             `;
-            const playButton = item.querySelector('.play-recording-btn');
-            const playerArea = item.querySelector('.recording-player-area');
-            playButton.disabled = !playUrl;
-            if (playUrl) {
-                let audio = null;
-                playButton.addEventListener('click', async () => {
-                    try {
-                        if (!audio) {
-                            audio = document.createElement('audio');
-                            audio.controls = true;
-                            audio.preload = 'metadata';
-                            audio.className = 'w-100';
-                            audio.src = withCacheBuster(playUrl);
-                            playerArea.appendChild(audio);
-                            audio.addEventListener('ended', () => {
-                                playButton.textContent = '再生';
-                            });
-                            audio.addEventListener('error', () => {
-                                showAlert('音声ファイルを読み込めませんでした。再デプロイ後の場合は更新して再試行してください。', 'danger');
-                                playButton.textContent = '再生';
-                            });
-                        }
-                        if (audio.paused) {
-                            await audio.play();
-                            playButton.textContent = '停止';
-                        } else {
-                            audio.pause();
-                            playButton.textContent = '再生';
-                        }
-                    } catch (error) {
-                        showAlert(`再生できませんでした: ${error.message}`, 'danger');
-                        playButton.textContent = '再生';
-                    }
+            if (canDelete) {
+                pieceDetails.querySelector('.recording-bulk-delete-btn').addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    withButtonStatus(event.currentTarget, '削除中...', () => deleteRecordingGroup(pieceGroup.files, `${formatDateWithWeekday(dateGroup.date, '未分類')} / ${pieceGroup.piece || '未分類'} の録音`));
                 });
             }
-            if (canDelete) {
-                item.querySelector('.delete-recording-btn').addEventListener('click', () => deleteRecording(file));
+            const list = document.createElement('div');
+            list.className = 'list-group mb-3';
+            if (!canDelete && dateGroup.date === latestDate) {
+                pieceDetails.classList.add('files-collapsed');
+                list.hidden = true;
+                const summary = pieceDetails.querySelector('summary');
+                summary.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    list.hidden = !list.hidden;
+                    pieceDetails.open = true;
+                    pieceDetails.classList.toggle('files-collapsed', list.hidden);
+                });
             }
-            list.appendChild(item);
+            pieceGroup.files.forEach((file) => {
+                list.appendChild(recordingFileItem(file, canDelete));
+            });
+            pieceDetails.appendChild(list);
+            dateDetails.appendChild(pieceDetails);
         });
-        section.appendChild(list);
-        container.appendChild(section);
+        container.appendChild(dateDetails);
     });
+}
+
+function groupRecordingsByDateAndPiece(recordings) {
+    const dates = new Map();
+    [...recordings]
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(a.piece || '').localeCompare(String(b.piece || '')) || String(a.name || '').localeCompare(String(b.name || '')))
+        .forEach((file) => {
+            const date = file.date || '未分類';
+            const piece = file.piece || '未分類';
+            if (!dates.has(date)) dates.set(date, new Map());
+            if (!dates.get(date).has(piece)) dates.get(date).set(piece, []);
+            dates.get(date).get(piece).push(file);
+        });
+    return Array.from(dates.entries()).map(([date, pieces]) => ({
+        date,
+        pieces: Array.from(pieces.entries()).map(([piece, files]) => ({ piece, files }))
+    }));
+}
+
+function recordingFileItem(file, canDelete) {
+    const item = document.createElement('div');
+    item.className = 'list-group-item recording-list-item';
+    const playUrl = file.play_url || file.download_url;
+    const downloadUrl = file.download_url || playUrl;
+    const actionButton = canDelete
+        ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
+        : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
+    item.innerHTML = `
+        <div class="recording-row">
+            <span class="recording-meta">
+                <strong class="recording-file-name">${escapeHtml(file.name)}</strong>
+                <span class="recording-duration">${formatDurationLabel(file)}</span>
+            </span>
+            <span class="recording-actions">
+                <button class="btn btn-sm btn-outline-primary play-recording-btn" type="button">再生</button>
+                ${actionButton}
+            </span>
+        </div>
+        <div class="recording-player-area mt-2"></div>
+    `;
+    bindRecordingFileItem(item, file, playUrl, canDelete);
+    if (canDelete) {
+        item.querySelector('.delete-recording-btn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteRecording(file)));
+    }
+    return item;
+}
+
+function bindRecordingFileItem(item, file, playUrl, canDelete) {
+    const playButton = item.querySelector('.play-recording-btn');
+    const playerArea = item.querySelector('.recording-player-area');
+    playButton.disabled = !playUrl;
+    if (!playUrl) return;
+    let audio = null;
+    playButton.addEventListener('click', async () => {
+        try {
+            if (!audio) {
+                audio = document.createElement('audio');
+                audio.controls = true;
+                audio.preload = 'auto';
+                audio.className = 'w-100';
+                audio.src = withCacheBuster(playUrl);
+                playerArea.appendChild(audio);
+                audio.addEventListener('pause', () => {
+                    if (!audio.ended) {
+                        playButton.textContent = '再生';
+                        if (appState.currentAudio === audio) {
+                            appState.currentAudio = null;
+                            appState.currentPlayButton = null;
+                        }
+                    }
+                });
+                audio.addEventListener('ended', () => {
+                    playButton.textContent = '再生';
+                    if (appState.currentAudio === audio) {
+                        appState.currentAudio = null;
+                        appState.currentPlayButton = null;
+                    }
+                    if (!canDelete && appState.continuousPlayback) {
+                        playNextRecording(item);
+                    }
+                });
+                audio.addEventListener('error', () => {
+                    showAlert('音声ファイルを読み込めませんでした。再デプロイ後の場合は更新して再試行してください。', 'danger');
+                    playButton.textContent = '再生';
+                });
+            }
+            if (audio.paused) {
+                stopCurrentRecording(audio);
+                await audio.play();
+                appState.currentAudio = audio;
+                appState.currentPlayButton = playButton;
+                playButton.textContent = '停止';
+            } else {
+                audio.pause();
+                playButton.textContent = '再生';
+                if (appState.currentAudio === audio) {
+                    appState.currentAudio = null;
+                    appState.currentPlayButton = null;
+                }
+            }
+        } catch (error) {
+            showAlert(`再生できませんでした: ${error.message}`, 'danger');
+            playButton.textContent = '再生';
+        }
+    });
+}
+
+function stopCurrentRecording(exceptAudio = null) {
+    const audio = appState.currentAudio;
+    const button = appState.currentPlayButton;
+    if (audio && audio !== exceptAudio) {
+        audio.pause();
+        try {
+            audio.currentTime = 0;
+        } catch {
+            // Some streaming sources cannot seek until enough data has loaded.
+        }
+        if (button) {
+            button.textContent = '再生';
+        }
+    }
+    if (audio !== exceptAudio) {
+        appState.currentAudio = null;
+        appState.currentPlayButton = null;
+    }
+}
+
+function playNextRecording(currentItem) {
+    const items = Array.from(document.querySelectorAll('#songTreeMember .recording-list-item'));
+    const currentIndex = items.indexOf(currentItem);
+    const nextItem = items[currentIndex + 1];
+    const nextButton = nextItem?.querySelector('.play-recording-btn:not(:disabled)');
+    if (nextButton) {
+        nextButton.click();
+    }
 }
 
 function withCacheBuster(url) {
@@ -949,13 +1528,29 @@ function withCacheBuster(url) {
 async function deleteRecording(file) {
     if (!confirm(`${file.name} を削除しますか？`)) return;
 
+    await deleteRecordingFile(file);
+    await loadRecordings();
+    showAlert('録音ファイルを削除しました', 'success');
+}
+
+async function deleteRecordingGroup(files, label) {
+    const targets = (files || []).filter(Boolean);
+    if (!targets.length) return;
+    if (!confirm(`${label} ${targets.length}件を一括削除しますか？`)) return;
+
+    for (const file of targets) {
+        await deleteRecordingFile(file);
+    }
+    await loadRecordings();
+    showAlert(`${targets.length}件の録音ファイルを削除しました`, 'success');
+}
+
+async function deleteRecordingFile(file) {
     await request('/api/recordings', jsonOptions('DELETE', {
         source: file.source || 'local',
         object_name: file.object_name || file.id || '',
         path: file.path || ''
     }));
-    await loadRecordings();
-    showAlert('録音ファイルを削除しました', 'success');
 }
 
 function renderMemberViews() {
@@ -964,6 +1559,73 @@ function renderMemberViews() {
     renderAnnouncements();
     renderRecordings();
     renderMemberIntros();
+    renderPortalHome();
+}
+
+function renderPortalHome() {
+    const announceContainer = $('portalHomeAnnouncements');
+    const countdownContainer = $('portalHomeCountdown');
+    const menuContainer = $('portalHomeMenu');
+    if (!announceContainer || !countdownContainer || !menuContainer) return;
+
+    const announcements = [...(appState.announcements || [])]
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, 5);
+    announceContainer.innerHTML = announcements.length
+        ? `<div class="list-group">${announcements.map((ann) => `
+            <article class="list-group-item">
+                <div class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</div>
+                <div class="multiline-text">${escapeHtml(ann.content || '')}</div>
+            </article>
+        `).join('')}</div>`
+        : '<p class="text-muted mb-0">お知らせはまだありません</p>';
+
+    const nextPerf = nextPerformance();
+    const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
+    countdownContainer.innerHTML = nextPerf && countdown !== null
+        ? `<section class="portal-countdown-card">
+            <div class="portal-countdown-main">本番まであと${Math.max(0, countdown)}日！</div>
+            <div class="portal-countdown-sub">${escapeHtml(nextPerf.title || '')} / ${escapeHtml(formatDateWithWeekday(nextPerf.date, ''))}</div>
+        </section>`
+        : `<section class="portal-countdown-card muted">
+            <div class="portal-countdown-main">演奏会情報はまだありません</div>
+            <div class="portal-countdown-sub">管理メニューから演奏会情報を登録してください</div>
+        </section>`;
+
+    const menuItems = [
+        ['member-performance', '演奏会情報'],
+        ['member-schedule', '練習予定'],
+        ['member-recording', '録音部屋'],
+        ['member-absence', '欠席連絡'],
+        ['member-sheet', '楽譜ライブラリ'],
+        ['member-payment', '支払状況'],
+        ['member-casting', '乗り番表'],
+        ['member-event', 'イベント調整'],
+        ['member-piece-info', '楽曲情報'],
+        ['member-album', 'アルバム'],
+        ['member-intro', '団員紹介']
+    ];
+    menuContainer.innerHTML = menuItems.map(([tab, label]) => `
+        <button class="portal-menu-button" type="button" data-home-tab="${tab}">
+            <span>${escapeHtml(label)}</span>
+        </button>
+    `).join('') + `
+        <button class="portal-menu-button admin" type="button" data-home-admin>
+            <span>管理メニュー</span>
+        </button>
+    `;
+    menuContainer.querySelectorAll('[data-home-tab]').forEach((button) => {
+        button.addEventListener('click', () => switchTab('memberPanel', button.dataset.homeTab));
+    });
+    const adminButton = menuContainer.querySelector('[data-home-admin]');
+    if (adminButton) adminButton.addEventListener('click', requestAdminPanel);
+}
+
+function nextPerformance() {
+    const upcoming = [...(appState.performances || [])]
+        .filter((perf) => perf.date && perf.date >= today())
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return upcoming[0] || null;
 }
 
 function renderMemberPerformances() {
@@ -972,13 +1634,12 @@ function renderMemberPerformances() {
         container.innerHTML = '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
         return;
     }
-    const upcoming = [...appState.performances].filter((perf) => perf.date).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const nextPerf = upcoming.find((perf) => perf.date >= today()) || upcoming[0];
+    const nextPerf = nextPerformance() || [...appState.performances].filter((perf) => perf.date).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
     const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
     container.innerHTML = `${nextPerf && countdown !== null ? `<div class="countdown-banner">本番まであと${countdown}日！</div>` : ''}` + appState.performances.map((perf) => `
         <article class="info-block">
             <h5>${escapeHtml(perf.title)}</h5>
-            <p>${escapeHtml(perf.date)} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
+            <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
             <div class="mb-0">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceLabel(piece))}</div>`).join('')}</div>
         </article>
@@ -992,19 +1653,85 @@ function renderMemberSchedules() {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
         return;
     }
-    container.innerHTML = upcoming.map((sched) => `
-        <article class="info-block">
-            <h5>${escapeHtml(sched.date)} ${escapeHtml(scheduleTimeLabel(sched))}</h5>
-            <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(scheduleAvailableLabel(sched))}</p>
-            <p class="mb-1"><strong>演奏会:</strong> ${escapeHtml(schedulePerformanceLabel(sched))}</p>
-            <p class="mb-1"><strong>練習曲:</strong> ${escapeHtml(sched.pieces || '未定')}</p>
-            <p class="mb-0 text-muted multiline-text">${escapeHtml(sched.notes || '')}</p>
-        </article>
+    const grouped = groupSchedulesByPerformance(upcoming);
+    container.innerHTML = grouped.map((group) => `
+        <section class="schedule-performance-group">
+            <h5 class="schedule-performance-title">${escapeHtml(group.title)}</h5>
+            ${group.schedules.map((sched) => `
+                <article class="info-block schedule-card ${scheduleIsMainPerformance(sched) ? 'schedule-card-main-performance' : ''}">
+                    <div class="schedule-main-line schedule-date-line">
+                        <span>${escapeHtml(formatScheduleDate(sched.date))}</span>
+                        ${scheduleIsConductorTraining(sched) ? '<span class="schedule-conductor-training">※指揮トレ</span>' : ''}
+                    </div>
+                    <div class="schedule-main-line">${escapeHtml(scheduleTimeLabel(sched) || '時間未定')}</div>
+                    <div class="schedule-main-line">${escapeHtml(sched.venue || '場所未定')}</div>
+                    <div class="schedule-detail-line">練習可能時間: ${escapeHtml(scheduleAvailableLabel(sched) || '未定')}</div>
+                    <div class="schedule-detail-line">練習曲: ${escapeHtml(sched.pieces || '未定')}</div>
+                    <div class="schedule-detail-line multiline-text">備考: ${escapeHtml(sched.notes || 'なし')}</div>
+                </article>
+            `).join('')}
+        </section>
     `).join('');
 }
 
 function sortedSchedules(schedules) {
     return [...(schedules || [])].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(scheduleTimeLabel(a)).localeCompare(String(scheduleTimeLabel(b))));
+}
+
+function groupSchedulesByPerformance(schedules) {
+    const groups = new Map();
+    schedules.forEach((sched) => {
+        const key = sched.performance_id ? `performance-${sched.performance_id}` : `title-${schedulePerformanceLabel(sched)}`;
+        if (!groups.has(key)) {
+            const performance = appState.performances.find((perf) => String(perf.id) === String(sched.performance_id));
+            groups.set(key, {
+                title: performance ? performance.title : schedulePerformanceLabel(sched),
+                date: performance?.date || '',
+                schedules: []
+            });
+        }
+        groups.get(key).schedules.push(sched);
+    });
+    return Array.from(groups.values())
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.title || '').localeCompare(String(b.title || '')))
+        .map((group) => ({
+            ...group,
+            schedules: sortedSchedules(group.schedules)
+        }));
+}
+
+function schedulePerformance(sched) {
+    if (!sched || !sched.performance_id) return null;
+    return appState.performances.find((perf) => String(perf.id) === String(sched.performance_id)) || null;
+}
+
+function scheduleIsConductorTraining(sched) {
+    return Boolean(schedulePerformance(sched)?.is_conductor_training);
+}
+
+function scheduleIsMainPerformance(sched) {
+    return Boolean(schedulePerformance(sched)?.is_main_performance);
+}
+
+function formatScheduleDate(dateText) {
+    return formatDateWithWeekday(dateText);
+}
+
+function formatDateWithWeekday(dateText, fallback = '未定') {
+    if (!dateText) return fallback;
+    const date = new Date(`${dateText}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dateText;
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    return `${dateText}（${weekdays[date.getDay()]}）`;
+}
+
+function formatDateTimeLabel(value) {
+    if (!value) return '未記録';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const dateText = date.toISOString().slice(0, 10);
+    const timeText = date.toTimeString().slice(0, 5);
+    return `${formatDateWithWeekday(dateText)} ${timeText}`;
 }
 
 function schedulePerformanceLabel(sched) {
@@ -1050,7 +1777,7 @@ function memberOptions(selected = '') {
 
 function scheduleOptions(selected = '') {
     const upcoming = sortedSchedules(appState.schedules).filter((s) => !s.date || s.date >= today());
-    return ['<option value="">選択してください</option>'].concat(upcoming.map((s) => `<option value="${escapeHtml(String(s.id))}" ${String(s.id) === String(selected) ? 'selected' : ''}>${escapeHtml(s.date)} ${escapeHtml(scheduleTimeLabel(s))} ${escapeHtml(s.venue || '')}</option>`)).join('');
+    return ['<option value="">選択してください</option>'].concat(upcoming.map((s) => `<option value="${escapeHtml(String(s.id))}" ${String(s.id) === String(selected) ? 'selected' : ''}>${escapeHtml(formatDateWithWeekday(s.date))} ${escapeHtml(scheduleTimeLabel(s))} ${escapeHtml(s.venue || '')}</option>`)).join('');
 }
 
 function renderAbsenceView() {
@@ -1066,10 +1793,10 @@ function renderAbsenceView() {
         <h6>練習日ごとの欠席者</h6>
         ${sortedSchedules(appState.schedules).map((s) => {
             const abs = (grouped[String(s.id)] || grouped[s.id] || []);
-            return `<div class="info-block"><strong>${escapeHtml(s.date)} ${escapeHtml(scheduleTimeLabel(s))}</strong><div class="small text-muted">${escapeHtml(s.venue || '')}</div><div>${abs.length ? abs.map((a) => escapeHtml(a.name)).join('、') : '欠席連絡なし'}</div></div>`;
+            return `<div class="info-block"><strong>${escapeHtml(formatDateWithWeekday(s.date))} ${escapeHtml(scheduleTimeLabel(s))}</strong><div class="small text-muted">${escapeHtml(s.venue || '')}</div><div>${abs.length ? abs.map((a) => escapeHtml(a.name)).join('、') : '欠席連絡なし'}</div></div>`;
         }).join('')}
     `;
-    $('absenceSaveBtn').addEventListener('click', async () => {
+    $('absenceSaveBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', async () => {
         const name = $('absenceMemberName').value;
         const scheduleId = $('absenceScheduleId').value;
         if (!name || !scheduleId) { showAlert('名前と練習日を選択してください', 'warning'); return; }
@@ -1077,7 +1804,7 @@ function renderAbsenceView() {
         await saveExtra('absences', { name, schedule_id: scheduleId, schedule_date: sched ? sched.date : '' });
         showAlert('欠席連絡を登録しました', 'success');
         await loadExtraData();
-    });
+    }));
 }
 
 function renderSheetLibraryView() {
@@ -1110,34 +1837,115 @@ function renderCastingView() {
 function renderMemberEventView() {
     const c = $('memberEventInfo'); if (!c) return;
     c.innerHTML = `
-        <div class="row g-2 mb-3"><div class="col-md-5"><input id="memberEventTitle" class="form-control" placeholder="イベント名"></div><div class="col-md-3"><input id="memberEventDate" type="date" class="form-control"></div><div class="col-md-2"><button id="memberEventCreateBtn" class="btn btn-primary w-100">イベント作成</button></div></div>
-        <div class="mb-3"><label class="form-label">イベント選択</label><select id="memberEventSelect" class="form-select"><option value="">選択してください</option>${appState.events.map((e) => `<option value="${e.id}">${escapeHtml(e.date || '')} ${escapeHtml(e.title)}</option>`).join('')}</select></div>
-        <div id="memberEventChild"></div>`;
+        <div id="memberEventListView">
+            <div class="row g-2 mb-3">
+                <div class="col-md-4"><label class="form-label">イベント名</label><input id="memberEventTitle" class="form-control"></div>
+                <div class="col-md-3"><label class="form-label">開催日</label><input id="memberEventDate" type="date" class="form-control"></div>
+                <div class="col-md-2"><label class="form-label">開始時刻</label><input id="memberEventStartTime" type="time" class="form-control"></div>
+                <div class="col-md-3"><label class="form-label">回答期限</label><input id="memberEventDeadline" type="date" class="form-control"></div>
+                <div class="col-12"><label class="form-label">イベント概要/備考</label><textarea id="memberEventNotes" class="form-control" rows="3"></textarea></div>
+                <div class="col-md-6"><label class="form-label">削除時の合言葉</label><input id="memberEventDeletePhrase" class="form-control"></div>
+                <div class="col-md-3 d-flex align-items-end"><button id="memberEventCreateBtn" class="btn btn-primary w-100" type="button">イベント登録</button></div>
+            </div>
+            <h6>イベント一覧</h6>
+            <div class="list-group" id="memberEventList"></div>
+        </div>
+        <div id="memberEventDetailView" hidden></div>`;
     $('memberEventDate').value = today();
-    $('memberEventCreateBtn').addEventListener('click', async () => {
-        const title = $('memberEventTitle').value.trim(); const date = $('memberEventDate').value;
-        if (!title || !date) { showAlert('イベント名と日付を入力してください', 'warning'); return; }
-        await request('/api/events', jsonOptions('POST', { title, date, deadline: '', url: '', notes: '' }));
+    $('memberEventDeadline').value = today();
+    $('memberEventCreateBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '作成中...', async () => {
+        const payload = {
+            title: $('memberEventTitle').value.trim(),
+            date: $('memberEventDate').value,
+            start_time: $('memberEventStartTime').value,
+            deadline: $('memberEventDeadline').value,
+            notes: $('memberEventNotes').value.trim(),
+            delete_phrase: $('memberEventDeletePhrase').value.trim(),
+            url: ''
+        };
+        if (!payload.title || !payload.date || !payload.start_time || !payload.deadline || !payload.delete_phrase) {
+            showAlert('イベント名、開催日、開始時刻、回答期限、削除時の合言葉を入力してください', 'warning');
+            return;
+        }
+        await request('/api/events', jsonOptions('POST', payload));
         showAlert('イベントを作成しました', 'success');
         await loadEvents(); await loadExtraData();
-    });
-    $('memberEventSelect').addEventListener('change', renderEventChildForm);
+    }));
+    renderMemberEventList();
 }
 
-function renderEventChildForm() {
-    const id = $('memberEventSelect').value;
-    const c = $('memberEventChild');
-    if (!id) { c.innerHTML = ''; return; }
+function renderMemberEventList() {
+    const list = $('memberEventList');
+    if (!list) return;
+    const events = sortedEvents(appState.events);
+    list.innerHTML = events.length ? '' : '<p class="text-muted mb-0">イベントはまだありません</p>';
+    events.forEach((event) => {
+        const item = document.createElement('button');
+        item.className = 'list-group-item list-group-item-action text-start';
+        item.type = 'button';
+        const responseCount = appState.eventResponses.filter((r) => String(r.event_id) === String(event.id)).length;
+        item.innerHTML = `
+            <strong>${escapeHtml(event.title)}</strong>
+            <div class="small text-muted">開催: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}</div>
+            ${event.notes ? `<div class="small multiline-text mt-1">${escapeHtml(event.notes)}</div>` : ''}
+            <div class="small text-muted mt-1">回答数: ${responseCount}</div>
+        `;
+        item.addEventListener('click', () => renderMemberEventDetail(event.id));
+        list.appendChild(item);
+    });
+}
+
+function renderMemberEventDetail(id) {
+    const listView = $('memberEventListView');
+    const detailView = $('memberEventDetailView');
+    const event = appState.events.find((item) => String(item.id) === String(id));
+    if (!listView || !detailView || !event) return;
+    listView.hidden = true;
+    detailView.hidden = false;
     const responses = appState.eventResponses.filter((r) => String(r.event_id) === String(id));
-    c.innerHTML = `<div class="row g-2 align-items-end mb-3"><div class="col-md-5"><label class="form-label">名前</label><select id="eventResponseName" class="form-select">${memberOptions()}</select></div><div class="col-md-4"><label class="form-label">参加/不参加</label><select id="eventResponseStatus" class="form-select"><option>参加</option><option>不参加</option></select></div><div class="col-md-3"><button id="eventResponseSaveBtn" class="btn btn-primary w-100">登録</button></div></div><h6>回答状況</h6>${responses.length ? responses.map((r) => `<div class="list-group-item">${escapeHtml(r.name)}：${escapeHtml(r.status)}</div>`).join('') : '<p class="text-muted">回答はまだありません</p>'}`;
-    $('eventResponseSaveBtn').addEventListener('click', async () => {
+    detailView.innerHTML = `
+        <button class="btn btn-sm btn-outline-secondary mb-3" id="memberEventBackBtn" type="button">イベント一覧に戻る</button>
+        <section class="info-block pt-0">
+            <h5>${escapeHtml(event.title)}</h5>
+            <div>開催: ${escapeHtml(eventDateTimeLabel(event))}</div>
+            <div>回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}</div>
+            ${event.notes ? `<div class="multiline-text mt-2">${escapeHtml(event.notes)}</div>` : ''}
+        </section>
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-5"><label class="form-label">名前</label><select id="eventResponseName" class="form-select">${memberOptions()}</select></div>
+            <div class="col-md-4"><label class="form-label">参加/不参加</label><select id="eventResponseStatus" class="form-select"><option>参加</option><option>不参加</option></select></div>
+            <div class="col-md-3"><button id="eventResponseSaveBtn" class="btn btn-primary w-100" type="button">登録</button></div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-outline-danger" id="memberEventDeleteBtn" type="button">イベント削除</button>
+        </div>
+        <h6>回答状況</h6>
+        ${responses.length ? responses.map((r) => `<div class="list-group-item">${escapeHtml(r.name)}：${escapeHtml(r.status)}</div>`).join('') : '<p class="text-muted">回答はまだありません</p>'}
+    `;
+    $('memberEventBackBtn').addEventListener('click', () => {
+        detailView.hidden = true;
+        listView.hidden = false;
+        renderMemberEventList();
+    });
+    $('eventResponseSaveBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', async () => {
         const name = $('eventResponseName').value; const status = $('eventResponseStatus').value;
         if (!name) { showAlert('名前を選択してください', 'warning'); return; }
         await saveExtra('event_responses', { event_id: id, name, status });
         showAlert('イベント出欠を登録しました', 'success');
         await loadExtraData();
-        if ($('memberEventSelect')) { $('memberEventSelect').value = id; renderEventChildForm(); }
-    });
+        renderMemberEventDetail(id);
+    }));
+    $('memberEventDeleteBtn').addEventListener('click', (clickEvent) => withButtonStatus(clickEvent.currentTarget, '削除中...', async () => {
+        const phrase = prompt('削除時の合言葉を入力してください');
+        if (phrase === null) return;
+        if (phrase !== (event.delete_phrase || '')) {
+            showAlert('削除時の合言葉が違います', 'danger');
+            return;
+        }
+        if (!confirm('本当に削除しますか？')) return;
+        await deleteEventById(id, false);
+        renderMemberEventView();
+    }));
 }
 
 function renderPieceInfoView() {

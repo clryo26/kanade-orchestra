@@ -53,6 +53,28 @@ body {
     gap: 0.5rem;
 }
 
+.portal-login-panel {
+    display: grid;
+    min-height: calc(100vh - 110px);
+    place-items: center;
+}
+
+.portal-login-box {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    max-width: 420px;
+    padding: 1.25rem;
+    width: min(100%, 420px);
+}
+
+.portal-login-box h1 {
+    color: var(--brand-dark);
+    font-size: 1.35rem;
+    font-weight: 800;
+    margin: 0 0 1rem;
+}
+
 .card {
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -110,10 +132,20 @@ body {
     text-decoration: underline;
 }
 
-#savePath {
-    color: var(--brand);
-    font-family: Consolas, "Courier New", monospace;
+.operation-status {
+    background: #eef6ff;
+    border: 1px solid #b8d8f4;
+    border-radius: 8px;
+    color: var(--brand-dark);
     font-weight: 700;
+    margin-top: 1rem;
+    padding: 0.65rem 0.75rem;
+}
+
+.operation-status-danger {
+    background: #fff1f1;
+    border-color: #f3b7b7;
+    color: #b02a37;
 }
 
 .clickable-row {
@@ -139,9 +171,188 @@ body {
     padding-bottom: 0;
 }
 
+.schedule-performance-group {
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 1rem;
+    padding-bottom: 0.25rem;
+}
+
+.schedule-performance-group:last-child {
+    border-bottom: 0;
+    margin-bottom: 0;
+}
+
+.schedule-performance-title {
+    color: var(--brand-dark);
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+}
+
+.schedule-card {
+    padding: 0.75rem 0;
+}
+
+.schedule-card-main-performance {
+    background: #fff4cc;
+    border: 1px solid #f1c40f;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    padding: 0.85rem;
+}
+
+.schedule-date-line {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.schedule-conductor-training {
+    color: #dc3545;
+    font-weight: 800;
+}
+
+.schedule-main-line {
+    font-weight: 700;
+    line-height: 1.55;
+}
+
+.schedule-detail-line {
+    line-height: 1.55;
+}
+
 .recording-group h6 {
     color: var(--brand-dark);
     font-weight: 700;
+}
+
+.recording-date-group,
+.recording-piece-group {
+    margin-bottom: 0.65rem;
+}
+
+.recording-summary {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    gap: 0.5rem;
+    font-weight: 700;
+    justify-content: space-between;
+    list-style: none;
+    padding: 0.65rem 0.75rem;
+}
+
+.recording-summary::-webkit-details-marker {
+    display: none;
+}
+
+.recording-summary::after {
+    content: "開く";
+    color: #667085;
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.recording-summary > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recording-bulk-delete-btn {
+    flex: 0 0 auto;
+}
+
+details[open] > .recording-summary::after {
+    content: "閉じる";
+}
+
+.recording-piece-group.files-collapsed > .recording-summary::after {
+    content: "ファイルを開く";
+}
+
+details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::after {
+    content: "ファイルを閉じる";
+}
+
+.recording-date-summary {
+    background: #eef6ff;
+    color: var(--brand-dark);
+}
+
+.recording-piece-summary {
+    margin-left: 0.75rem;
+}
+
+.recording-piece-group .list-group {
+    margin-left: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.recording-controls {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.75rem;
+}
+
+.recording-continuous-check {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.45rem;
+    margin: 0;
+}
+
+.recording-row {
+    align-items: center;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.recording-meta {
+    display: block;
+    min-width: 0;
+}
+
+.recording-file-name,
+.recording-duration {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recording-file-name {
+    color: var(--text);
+    font-weight: 700;
+}
+
+.recording-duration {
+    color: #667085;
+    font-size: 0.85rem;
+}
+
+.recording-actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 0.4rem;
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+.recording-actions .btn {
+    min-width: 52px;
 }
 
 .toast-area {
@@ -171,6 +382,29 @@ body {
     .toolbar .btn {
         flex: 1 1 45%;
     }
+
+    .recording-list-item {
+        padding: 0.65rem 0.55rem;
+    }
+
+    .recording-row {
+        gap: 0.45rem;
+    }
+
+    .recording-actions .btn {
+        min-width: 48px;
+        padding-left: 0.55rem;
+        padding-right: 0.55rem;
+    }
+
+    .recording-summary {
+        align-items: stretch;
+        flex-wrap: wrap;
+    }
+
+    .recording-summary > span {
+        flex: 1 1 100%;
+    }
 }
 
 .multiline-text {
@@ -188,6 +422,99 @@ body {
     margin-bottom: 1rem;
     text-align: center;
 }
+
+.portal-home {
+    display: grid;
+    gap: 1rem;
+}
+
+.portal-home-section {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.portal-home-heading {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.portal-home-heading h2 {
+    color: var(--brand-dark);
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.portal-countdown-card {
+    background: #fff8d8;
+    border: 1px solid #f1c40f;
+    border-radius: 8px;
+    color: #8a5d00;
+    padding: 1rem;
+    text-align: center;
+}
+
+.portal-countdown-card.muted {
+    background: #fff;
+    border-color: var(--line);
+    color: #667085;
+}
+
+.portal-countdown-main {
+    font-size: clamp(1.35rem, 4vw, 2.2rem);
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.portal-countdown-sub {
+    font-size: 0.95rem;
+    margin-top: 0.35rem;
+}
+
+.portal-menu-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.portal-menu-button {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--brand-dark);
+    display: flex;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 72px;
+    padding: 0.85rem;
+    text-align: center;
+}
+
+.portal-menu-button:hover {
+    background: #f0f6fb;
+    border-color: var(--brand);
+}
+
+.portal-menu-button.admin {
+    border-color: #dc3545;
+    color: #b02a37;
+}
+
+@media (max-width: 576px) {
+    .portal-menu-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .portal-menu-button {
+        min-height: 64px;
+    }
+}
+
 .member-photo {
     width: 72px;
     height: 72px;

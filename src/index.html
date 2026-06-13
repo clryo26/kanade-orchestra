@@ -20,6 +20,7 @@
                 <span>奏オケポータル</span>
             </a>
             <div class="d-flex gap-2">
+                <button class="btn btn-outline-success" id="portalReloadBtn" type="button">更新</button>
                 <button class="btn btn-outline-primary d-none" id="adminMenuBtn" type="button">管理メニュー</button>
                 <button class="btn btn-outline-secondary d-none" id="memberMenuBtn" type="button">団員メニュー</button>
             </div>
@@ -27,7 +28,7 @@
     </nav>
 
     <main class="container-fluid py-4">
-        <section id="adminPanel" class="panel">
+        <section id="adminPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-secondary" id="backToPortalBtn" type="button">ポータルに戻る</button>
                 <button class="btn btn-sm btn-outline-primary active" data-tab="upload" type="button">録音管理</button>
@@ -36,6 +37,8 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="auth-devices" type="button">認証端末管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="password" type="button">パスワード管理</button>
             </div>
 
             <div id="uploadTab" class="tab-content">
@@ -61,7 +64,6 @@
                             </div>
                         </div>
 
-                        <p class="text-muted mb-2">保存先: <span id="savePath"></span></p>
                         <div class="mb-3">
                             <button class="btn btn-outline-primary" id="selectFileBtn" type="button">ファイルを選択</button>
                             <small id="selectedFileName" class="text-muted ms-2">未選択</small>
@@ -72,6 +74,7 @@
                             <button class="btn btn-primary" id="uploadBtn" type="button">録音ファイルを保存</button>
                             <button class="btn btn-outline-danger" id="clearBtn" type="button">クリア</button>
                         </div>
+                        <div class="operation-status mt-3" id="uploadProgress" hidden></div>
                     </div>
                 </div>
 
@@ -89,40 +92,54 @@
                     <div class="card-body">
                         <input type="hidden" id="perfId">
                         <div class="row g-3 mb-3">
-                            <div class="col-md-4">
+                            <div class="col-12">
                                 <label class="form-label" for="perfTitle">タイトル</label>
                                 <input type="text" class="form-control" id="perfTitle">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-4">
                                 <label class="form-label" for="perfDate">開催日</label>
                                 <input type="date" class="form-control" id="perfDate">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-4">
                                 <label class="form-label" for="perfOpenTime">開場</label>
                                 <input type="time" class="form-control" id="perfOpenTime" value="18:00">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-4">
                                 <label class="form-label" for="perfStartTime">開演</label>
                                 <input type="time" class="form-control" id="perfStartTime" value="19:00">
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label" for="perfConductor">指揮</label>
-                                <input type="text" class="form-control" id="perfConductor">
-                            </div>
-                            <div class="col-md-6">
+                            <div class="col-12">
                                 <label class="form-label" for="perfVenue">会場</label>
                                 <input type="text" class="form-control" id="perfVenue">
                             </div>
+                            <div class="col-12">
+                                <label class="form-label" for="perfConductor">指揮者</label>
+                                <input type="text" class="form-control" id="perfConductor">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="perfPieceTitle">曲名</label>
+                                <input type="text" class="form-control" id="perfPieceTitle" placeholder="例: 交響曲第5番">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="perfPieceAlias">略称</label>
+                                <input type="text" class="form-control" id="perfPieceAlias" placeholder="例: チャイ5">
+                            </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="perfPieceComposer">作曲者</label>
-                                <input type="text" class="form-control" id="perfPieceComposer" placeholder="例: サン＝サーンス">
-                            </div>
-                            <div class="col-md-5">
-                                <label class="form-label" for="perfPieceTitle">曲名</label>
-                                <input type="text" class="form-control" id="perfPieceTitle" placeholder="例: 交響曲第3番 オルガン付き">
+                                <input type="text" class="form-control" id="perfPieceComposer" placeholder="例: チャイコフスキー">
                             </div>
                             <div class="col-md-2 d-flex align-items-end">
                                 <button class="btn btn-outline-primary w-100" id="addPieceBtn" type="button">曲を追加</button>
+                            </div>
+                            <div class="col-12 d-flex flex-wrap gap-4">
+                                <label class="form-check">
+                                    <input class="form-check-input" id="perfConductorTraining" type="checkbox">
+                                    <span class="form-check-label">指揮トレ</span>
+                                </label>
+                                <label class="form-check">
+                                    <input class="form-check-input" id="perfMainPerformance" type="checkbox">
+                                    <span class="form-check-label">本番</span>
+                                </label>
                             </div>
                             <div class="col-12">
                                 <ul class="list-group" id="perfPieceList"></ul>
@@ -144,35 +161,35 @@
                     <div class="card-body">
                         <input type="hidden" id="schedId">
                         <div class="row g-3 mb-3">
-                            <div class="col-md-2">
-                                <label class="form-label" for="schedDate">練習日</label>
-                                <input type="date" class="form-control" id="schedDate">
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label" for="schedStartTime">開始時間</label>
-                                <input type="time" class="form-control" id="schedStartTime" value="13:00">
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label" for="schedEndTime">終了時間</label>
-                                <input type="time" class="form-control" id="schedEndTime" value="16:30">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="schedVenue">場所</label>
-                                <input type="text" class="form-control" id="schedVenue">
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label" for="schedAvailableStartTime">利用可能開始</label>
-                                <input type="time" class="form-control" id="schedAvailableStartTime" value="12:30">
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label" for="schedAvailableEndTime">利用可能終了</label>
-                                <input type="time" class="form-control" id="schedAvailableEndTime" value="16:30">
-                            </div>
-                            <div class="col-md-3">
+                            <div class="col-12">
                                 <label class="form-label" for="schedPerformance">演奏会</label>
                                 <select class="form-select" id="schedPerformance"></select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="schedDate">練習日</label>
+                                <input type="date" class="form-control" id="schedDate">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="schedStartTime">開始時間</label>
+                                <input type="time" class="form-control" id="schedStartTime" value="13:00">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="schedEndTime">終了時間</label>
+                                <input type="time" class="form-control" id="schedEndTime" value="16:30">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="schedVenue">場所</label>
+                                <input type="text" class="form-control" id="schedVenue">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="schedAvailableStartTime">利用可能開始</label>
+                                <input type="time" class="form-control" id="schedAvailableStartTime" value="12:30">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="schedAvailableEndTime">利用可能終了</label>
+                                <input type="time" class="form-control" id="schedAvailableEndTime" value="16:30">
+                            </div>
+                            <div class="col-12">
                                 <label class="form-label" for="schedPieces">練習曲</label>
                                 <select class="form-select" id="schedPieces"></select>
                             </div>
@@ -231,6 +248,10 @@
                                 <input type="date" class="form-control" id="eventDate">
                             </div>
                             <div class="col-md-2">
+                                <label class="form-label" for="eventStartTime">開始時刻</label>
+                                <input type="time" class="form-control" id="eventStartTime">
+                            </div>
+                            <div class="col-md-2">
                                 <label class="form-label" for="eventDeadline">回答期限</label>
                                 <input type="date" class="form-control" id="eventDeadline">
                             </div>
@@ -238,8 +259,12 @@
                                 <label class="form-label" for="eventUrl">調整URL</label>
                                 <input type="url" class="form-control" id="eventUrl" placeholder="https://...">
                             </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="eventDeletePhrase">削除時の合言葉</label>
+                                <input type="text" class="form-control" id="eventDeletePhrase">
+                            </div>
                             <div class="col-12">
-                                <label class="form-label" for="eventNotes">備考</label>
+                                <label class="form-label" for="eventNotes">イベント概要/備考</label>
                                 <textarea class="form-control" id="eventNotes" rows="3"></textarea>
                             </div>
                         </div>
@@ -283,8 +308,8 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label" for="memberPhotoUrl">写真URL</label>
-                                <input type="url" class="form-control" id="memberPhotoUrl" placeholder="https://...">
+                                <label class="form-label" for="memberPhotoFile">プロフィール写真</label>
+                                <input type="file" class="form-control" id="memberPhotoFile" accept="image/*">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label" for="memberJoinedAt">入団年月</label>
@@ -317,6 +342,34 @@
                             <button class="btn btn-danger" id="deleteMemberBtn" type="button">削除</button>
                         </div>
                         <ul class="list-group" id="memberListItems"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div id="authDevicesTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">認証端末管理</div>
+                    <div class="card-body">
+                        <div id="authDeviceListItems"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="passwordTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">パスワード管理</div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="portalPasswordSetting">ポータルログインパスワード</label>
+                                <input type="text" class="form-control" id="portalPasswordSetting">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="adminPasswordSetting">管理者メニューログインパスワード</label>
+                                <input type="text" class="form-control" id="adminPasswordSetting">
+                            </div>
+                        </div>
+                        <button class="btn btn-success" id="savePasswordSettingsBtn" type="button">保存</button>
                     </div>
                 </div>
             </div>
