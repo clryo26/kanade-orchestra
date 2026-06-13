@@ -101,8 +101,6 @@ class Performance(BaseModel):
     start_time: str
     venue: str
     conductor: str
-    is_conductor_training: bool = False
-    is_main_performance: bool = False
     pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
@@ -121,6 +119,8 @@ class Schedule(BaseModel):
     performance_id: int | None = None
     performance_title: str = ""
     pieces: str = ""
+    is_conductor_training: bool = False
+    is_main_performance: bool = False
     notes: str = ""
     created_at: str | None = None
     updated_at: str | None = None
@@ -159,6 +159,8 @@ class Member(BaseModel):
     part: str = ""
     photo_url: str = ""
     is_founder: bool = False
+    is_recording_manager: bool = False
+    is_sheet_manager: bool = False
     password: str = ""
     permission: str = "一般"
     joined_at: str = ""
@@ -189,6 +191,7 @@ class SheetPartUpdateRequest(BaseModel):
 
 class PortalLoginRequest(BaseModel):
     name: str = ""
+    part: str = ""
     password: str
     device_id: str
     device_name: str = ""
@@ -197,6 +200,7 @@ class PortalLoginRequest(BaseModel):
 
 class MemberPasswordSetupRequest(BaseModel):
     name: str
+    part: str = ""
     password: str
 
 
@@ -307,12 +311,14 @@ def member_login_names(member: dict[str, Any]) -> set[str]:
     return {compact_member_name(name) for name in names if compact_member_name(name)}
 
 
-def find_member_by_login_name(items: list[dict[str, Any]], name: str) -> tuple[int, dict[str, Any]]:
+def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str = "") -> tuple[int, dict[str, Any]]:
     normalized = compact_member_name(name)
     if not normalized:
         raise HTTPException(status_code=400, detail="name is required")
     for index, item in enumerate(items):
         if normalized in member_login_names(item):
+            if part and part != member_part(item):
+                continue
             return index, item
     raise HTTPException(status_code=404, detail="Member not found")
 
@@ -321,18 +327,25 @@ def is_hidden_system_admin_login(login: PortalLoginRequest) -> bool:
     return login.name == "Administrator" and login.password == "systemadminadmin"
 
 
+def member_part(member: dict[str, Any]) -> str:
+    return str(member.get("part") or "")
+
+
 @app.post("/api/auth/portal-login")
 async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str, Any]:
     if is_hidden_system_admin_login(login):
         member = {
             "id": None,
             "name": "Administrator",
+            "part": "System",
             "permission": "システム管理者",
+            "is_recording_manager": True,
+            "is_sheet_manager": True,
             "hidden_user": True,
         }
     else:
         members = load_json_data("members")
-        _, member = find_member_by_login_name(members, login.name)
+        _, member = find_member_by_login_name(members, login.name, login.part)
         member_password = str(member.get("password") or "")
         if not member_password:
             return {
@@ -355,7 +368,10 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         "device_name": login.device_name or "Unknown device",
         "member_id": member.get("id"),
         "member_name": member_display_name(member),
+        "member_part": member_part(member),
         "permission": member.get("permission") or "一般",
+        "is_recording_manager": bool(member.get("is_recording_manager")),
+        "is_sheet_manager": bool(member.get("is_sheet_manager")),
         "hidden_user": bool(member.get("hidden_user")),
         "user_agent": login.user_agent or request.headers.get("user-agent", ""),
         "authenticated_at": now,
@@ -370,8 +386,12 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
     return {
         "authenticated": True,
         "device_id": device_id,
+        "member_id": payload["member_id"],
         "member_name": payload["member_name"],
+        "member_part": payload["member_part"],
         "permission": payload["permission"],
+        "is_recording_manager": payload["is_recording_manager"],
+        "is_sheet_manager": payload["is_sheet_manager"],
         "hidden_user": payload["hidden_user"],
     }
 
@@ -382,7 +402,7 @@ async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, 
     if not password:
         raise HTTPException(status_code=400, detail="password is required")
     members = load_json_data("members")
-    index, member = find_member_by_login_name(members, payload.name)
+    index, member = find_member_by_login_name(members, payload.name, payload.part)
     if member.get("password"):
         raise HTTPException(status_code=409, detail="Member password is already set")
     member["password"] = password
@@ -538,12 +558,14 @@ def sheet_metadata(item: dict[str, Any]) -> dict[str, Any]:
         object_name = str(normalized.get("object_name") or "")
         if object_name:
             encoded_object_name = quote(object_name, safe="/")
-            normalized["url"] = f"/api/sheets/cloud/download/{encoded_object_name}"
-            normalized["download_url"] = normalized["url"]
+            normalized["url"] = f"/api/sheets/cloud/view/{encoded_object_name}"
+            normalized["view_url"] = normalized["url"]
+            normalized["download_url"] = f"/api/sheets/cloud/download/{encoded_object_name}"
     elif normalized.get("path"):
         encoded_path = quote(str(normalized["path"]), safe="/")
-        normalized["url"] = f"/api/sheets/download/{encoded_path}"
-        normalized["download_url"] = normalized["url"]
+        normalized["url"] = f"/api/sheets/view/{encoded_path}"
+        normalized["view_url"] = normalized["url"]
+        normalized["download_url"] = f"/api/sheets/download/{encoded_path}"
     return normalized
 
 
@@ -582,6 +604,24 @@ def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
         return None
     try:
         return local_sheet_path(path).read_bytes()
+    except HTTPException:
+        return None
+
+
+def recording_file_bytes(item: dict[str, Any]) -> bytes | None:
+    if item.get("source") == "google_cloud_storage":
+        object_name = str(item.get("object_name") or "")
+        if object_name and storage_enabled():
+            blob = get_storage_bucket().blob(object_name)
+            if blob.exists():
+                return blob.download_as_bytes()
+        return None
+
+    path = str(item.get("path") or "")
+    if not path:
+        return None
+    try:
+        return local_recording_path(path).read_bytes()
     except HTTPException:
         return None
 
@@ -956,6 +996,44 @@ async def get_recordings() -> dict[str, list[dict[str, Any]]]:
     return recording_payload()
 
 
+@app.get("/api/recordings/download-zip")
+async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
+    recordings = [
+        item
+        for item in recording_payload()["files"]
+        if (not date or str(item.get("date") or "") == date)
+        and (not piece or str(item.get("piece") or "") == piece)
+    ]
+    if not recordings:
+        raise HTTPException(status_code=404, detail="Recordings not found")
+
+    buffer = io.BytesIO()
+    used_names: set[str] = set()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in recordings:
+            data = recording_file_bytes(item)
+            if data is None:
+                continue
+            filename = safe_upload_name(str(item.get("name") or "recording.mp3"))
+            if not Path(filename).suffix:
+                filename = f"{filename}.mp3"
+            filename = unique_zip_name(filename, used_names)
+            archive.writestr(filename, data)
+
+    if not buffer.tell():
+        raise HTTPException(status_code=404, detail="Recording files not found")
+
+    zip_name = safe_segment(f"recordings_{date or 'all'}_{piece or 'all'}", "recordings") + ".zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_name)}",
+            "Cache-Control": "private, max-age=60",
+        },
+    )
+
+
 def local_recording_path(path: str) -> Path:
     requested = (UPLOAD_DIR / path).resolve()
     if not requested.is_file() or UPLOAD_DIR.resolve() not in requested.parents:
@@ -1146,9 +1224,27 @@ async def download_local_sheet(path: str) -> FileResponse:
     return FileResponse(requested, media_type="application/pdf", filename=requested.name)
 
 
+@app.get("/api/sheets/view/{path:path}")
+async def view_local_sheet(path: str) -> Response:
+    requested = local_sheet_path(path)
+    return Response(
+        content=requested.read_bytes(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(requested.name)}",
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
 @app.get("/api/sheets/cloud/download/{object_name:path}")
 async def download_cloud_sheet(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=True, request=request)
+
+
+@app.get("/api/sheets/cloud/view/{object_name:path}")
+async def view_cloud_sheet(object_name: str, request: Request):
+    return stream_storage_blob(object_name, download=False, request=request)
 
 
 @app.get("/api/sheets/download-zip")

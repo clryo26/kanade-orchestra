@@ -15,6 +15,11 @@
 <body>
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
         <div class="container-fluid">
+            <button class="portal-menu-toggle" id="portalDrawerToggle" type="button" aria-label="メニューを開く" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
             <a class="navbar-brand d-flex align-items-center gap-2" href="#">
                 <img src="/static/icons/icon-192.png" alt="奏オケ" class="portal-logo">
                 <span>奏オケポータル</span>
@@ -22,27 +27,29 @@
             <div class="d-flex gap-2">
                 <button class="btn btn-outline-danger" id="portalLogoutBtn" type="button">ログアウト</button>
                 <button class="btn btn-outline-success" id="portalReloadBtn" type="button">更新</button>
-                <button class="btn btn-outline-primary d-none" id="adminMenuBtn" type="button">管理メニュー</button>
-                <button class="btn btn-outline-secondary d-none" id="memberMenuBtn" type="button">団員メニュー</button>
             </div>
         </div>
     </nav>
+    <div class="portal-drawer-backdrop" id="portalDrawerBackdrop" hidden></div>
+    <aside class="portal-drawer" id="portalDrawer" hidden aria-label="メニュー">
+        <div class="portal-drawer-header">
+            <strong>メニュー</strong>
+            <button class="btn btn-sm btn-outline-secondary" id="portalDrawerClose" type="button">閉じる</button>
+        </div>
+        <div class="portal-drawer-body" id="portalDrawerMenu"></div>
+    </aside>
 
     <main class="container-fluid py-4">
         <section id="adminPanel" class="panel" hidden>
             <div class="toolbar mb-3">
-                <button class="btn btn-sm btn-outline-secondary" id="backToPortalBtn" type="button">ポータルに戻る</button>
-                <button class="btn btn-sm btn-outline-primary active" data-tab="upload" type="button">録音管理</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-primary active" data-tab="performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="sheet-admin" type="button">楽譜管理</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="auth-devices" type="button">認証端末管理</button>
             </div>
 
-            <div id="uploadTab" class="tab-content">
+            <div id="uploadTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">録音アップロード</div>
                     <div class="card-body">
@@ -132,16 +139,6 @@
                             <div class="col-md-2 d-flex align-items-end">
                                 <button class="btn btn-outline-primary w-100" id="addPieceBtn" type="button">曲を追加</button>
                             </div>
-                            <div class="col-12 d-flex flex-wrap gap-4">
-                                <label class="form-check">
-                                    <input class="form-check-input" id="perfConductorTraining" type="checkbox">
-                                    <span class="form-check-label">指揮トレ</span>
-                                </label>
-                                <label class="form-check">
-                                    <input class="form-check-input" id="perfMainPerformance" type="checkbox">
-                                    <span class="form-check-label">本番</span>
-                                </label>
-                            </div>
                             <div class="col-12">
                                 <ul class="list-group" id="perfPieceList"></ul>
                             </div>
@@ -193,6 +190,16 @@
                             <div class="col-12">
                                 <label class="form-label" for="schedPieces">練習曲</label>
                                 <select class="form-select" id="schedPieces"></select>
+                            </div>
+                            <div class="col-12 d-flex flex-wrap gap-4">
+                                <label class="form-check">
+                                    <input class="form-check-input" id="schedConductorTraining" type="checkbox">
+                                    <span class="form-check-label">指揮トレ</span>
+                                </label>
+                                <label class="form-check">
+                                    <input class="form-check-input" id="schedMainPerformance" type="checkbox">
+                                    <span class="form-check-label">本番</span>
+                                </label>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedNotes">備考</label>
@@ -338,6 +345,18 @@
                                     <label class="form-check-label" for="memberIsFounder">創設メンバー</label>
                                 </div>
                             </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="memberIsRecordingManager">
+                                    <label class="form-check-label" for="memberIsRecordingManager">録音担当</label>
+                                </div>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="memberIsSheetManager">
+                                    <label class="form-check-label" for="memberIsSheetManager">楽譜担当</label>
+                                </div>
+                            </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="memberPassword">パスワード</label>
                                 <input type="password" class="form-control" id="memberPassword" autocomplete="new-password">
@@ -385,15 +404,6 @@
                 </div>
             </div>
 
-            <div id="authDevicesTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">認証端末管理</div>
-                    <div class="card-body">
-                        <div id="authDeviceListItems"></div>
-                    </div>
-                </div>
-            </div>
-
             <div id="sheetAdminTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">楽譜管理</div>
@@ -422,6 +432,16 @@
 
         </section>
 
+        <section id="systemPanel" class="panel" hidden>
+            <div class="card">
+                <div class="card-header">システム管理</div>
+                <div class="card-body">
+                    <h5>認証端末管理</h5>
+                    <div id="authDeviceListItems"></div>
+                </div>
+            </div>
+        </section>
+
         <section id="memberPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
@@ -436,7 +456,6 @@
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-piece-info" type="button">楽曲情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-album" type="button">アルバム</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-intro" type="button">自己紹介</button>
-                <button class="btn btn-sm btn-outline-danger" id="memberAdminMenuBtn" type="button">管理メニュー</button>
             </div>
 
             <div id="memberAnnounceTab" class="tab-content">

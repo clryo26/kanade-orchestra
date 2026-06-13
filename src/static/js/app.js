@@ -22,7 +22,12 @@ const appState = {
     authDevices: [],
     suppressDerivedRender: false,
     portalAuthVerified: false,
+    currentUserMemberId: null,
     currentUserPermission: '',
+    currentUserPart: '',
+    currentUserIsRecordingManager: false,
+    currentUserIsSheetManager: false,
+    installPromptEvent: null,
     sheetFilters: {
         performanceId: '',
         piece: '',
@@ -63,6 +68,7 @@ function setOperationStatus(id, message, type = 'info') {
 document.addEventListener('DOMContentLoaded', async () => {
     setDefaultDates();
     setupPortalHome();
+    setupMemberManagerTabs();
     bindNavigation();
     bindUpload();
     bindForms();
@@ -72,6 +78,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         showPortalLogin();
     }
+});
+
+window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    appState.installPromptEvent = event;
 });
 
 function setDefaultDates() {
@@ -104,11 +115,208 @@ function setupPortalHome() {
                     <div class="portal-home-heading">
                         <h2>メニュー</h2>
                     </div>
-                    <div class="portal-menu-grid" id="portalHomeMenu"></div>
+                    <div class="portal-menu-groups" id="portalHomeMenu"></div>
                 </div>
             </section>
         </div>
     `);
+    if (!$('memberSheetViewerTab')) {
+        memberPanel.insertAdjacentHTML('beforeend', `
+            <div id="memberSheetViewerTab" class="tab-content" hidden>
+                <div class="card sheet-viewer-card">
+                    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <span id="sheetViewerTitle">楽譜表示</span>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a class="btn btn-sm btn-primary" id="sheetViewerDownload" href="#" download>DL</a>
+                            <button class="btn btn-sm btn-outline-secondary" id="sheetViewerBackBtn" type="button">楽譜ライブラリに戻る</button>
+                            <button class="btn btn-sm btn-outline-primary" id="sheetViewerMenuBtn" type="button">メニューに戻る</button>
+                        </div>
+                    </div>
+                    <div class="card-body sheet-viewer-body">
+                        <iframe id="sheetViewerFrame" title="楽譜PDF"></iframe>
+                    </div>
+                </div>
+            </div>
+        `);
+    }
+}
+
+function setupMemberManagerTabs() {
+    const memberPanel = $('memberPanel');
+    const toolbar = memberPanel?.querySelector('.toolbar');
+    if (!memberPanel || !toolbar) return;
+
+    if (!$('memberUploadAdminBtn')) {
+        toolbar.insertAdjacentHTML('beforeend', '<button class="btn btn-sm btn-outline-primary" id="memberUploadAdminBtn" data-tab="upload" type="button" hidden>録音管理</button>');
+    }
+    if (!$('memberSheetAdminBtn')) {
+        toolbar.insertAdjacentHTML('beforeend', '<button class="btn btn-sm btn-outline-primary" id="memberSheetAdminBtn" data-tab="sheet-admin" type="button" hidden>楽譜管理</button>');
+    }
+
+    const uploadTab = $('uploadTab');
+    if (uploadTab && uploadTab.parentElement !== memberPanel) {
+        memberPanel.appendChild(uploadTab);
+    }
+    const sheetAdminTab = $('sheetAdminTab');
+    if (sheetAdminTab && sheetAdminTab.parentElement !== memberPanel) {
+        memberPanel.appendChild(sheetAdminTab);
+    }
+}
+
+function updateManagerNavigationVisibility() {
+    const uploadButton = $('memberUploadAdminBtn');
+    if (uploadButton) uploadButton.hidden = !canManageRecordings();
+    const sheetButton = $('memberSheetAdminBtn');
+    if (sheetButton) sheetButton.hidden = !canManageSheets();
+}
+
+function portalMenuGroups() {
+    const settingItems = [
+        { action: 'add-screen', label: '画面に追加', admin: false },
+        canManageRecordings() ? { tab: 'upload', label: '録音管理', admin: true } : null,
+        canManageSheets() ? { tab: 'sheet-admin', label: '楽譜管理', admin: true } : null,
+        canAccessAdmin() ? { action: 'admin', label: '管理者メニュー', admin: true } : null,
+        canAccessSystemAdmin() ? { action: 'system', label: 'システム管理', admin: true } : null
+    ].filter(Boolean);
+    return [
+        {
+            title: '練習情報',
+            items: [
+                { tab: 'member-schedule', label: '練習予定' },
+                { tab: 'member-absence', label: '欠席連絡' },
+                { tab: 'member-recording', label: '録音部屋' }
+            ]
+        },
+        {
+            title: '演奏会情報',
+            items: [
+                { tab: 'member-performance', label: '演奏会情報' },
+                { tab: 'member-piece-info', label: '楽曲紹介' },
+                { tab: 'member-sheet', label: '楽譜ライブラリ' }
+            ]
+        },
+        {
+            title: '団員情報',
+            items: [
+                { tab: 'member-intro', label: '団員紹介' },
+                { tab: 'member-casting', label: '乗り番表' },
+                { tab: 'member-payment', label: '支払状況' },
+                { tab: 'member-event', label: 'イベント調整' }
+            ]
+        },
+        {
+            title: '記録',
+            items: [
+                { tab: 'member-album', label: 'アルバム' }
+            ]
+        },
+        {
+            title: '設定',
+            items: settingItems
+        }
+    ].filter((group) => group.items.length);
+}
+
+function renderMenuGroups(container) {
+    if (!container) return;
+    container.innerHTML = portalMenuGroups().map((group) => `
+        <section class="portal-menu-group">
+            <h3>${escapeHtml(group.title)}</h3>
+            <div class="portal-menu-grid">
+                ${group.items.map((item) => `
+                    <button class="portal-menu-button${item.admin ? ' admin' : ''}" type="button" ${item.tab ? `data-home-tab="${escapeHtml(item.tab)}"` : ''} ${item.action ? `data-home-${escapeHtml(item.action)}` : ''}>
+                        <span>${escapeHtml(item.label)}</span>
+                    </button>
+                `).join('')}
+            </div>
+        </section>
+    `).join('');
+    container.querySelectorAll('[data-home-tab]').forEach((button) => {
+        button.addEventListener('click', () => {
+            closePortalDrawer();
+            showMemberTab(button.dataset.homeTab);
+        });
+    });
+    const adminButton = container.querySelector('[data-home-admin]');
+    if (adminButton) adminButton.addEventListener('click', () => {
+        closePortalDrawer();
+        requestAdminPanel();
+    });
+    const systemButton = container.querySelector('[data-home-system]');
+    if (systemButton) systemButton.addEventListener('click', () => {
+        closePortalDrawer();
+        showSystemPanel();
+    });
+    const addScreenButton = container.querySelector('[data-home-add-screen]');
+    if (addScreenButton) addScreenButton.addEventListener('click', () => {
+        closePortalDrawer();
+        handleAddToScreen();
+    });
+}
+
+function renderPortalDrawerMenu() {
+    renderMenuGroups($('portalDrawerMenu'));
+}
+
+function openPortalDrawer() {
+    renderPortalDrawerMenu();
+    const drawer = $('portalDrawer');
+    const backdrop = $('portalDrawerBackdrop');
+    if (drawer) drawer.hidden = false;
+    if (backdrop) backdrop.hidden = false;
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').setAttribute('aria-expanded', 'true');
+}
+
+function closePortalDrawer() {
+    const drawer = $('portalDrawer');
+    const backdrop = $('portalDrawerBackdrop');
+    if (drawer) drawer.hidden = true;
+    if (backdrop) backdrop.hidden = true;
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').setAttribute('aria-expanded', 'false');
+}
+
+async function handleAddToScreen() {
+    if (appState.installPromptEvent) {
+        const promptEvent = appState.installPromptEvent;
+        appState.installPromptEvent = null;
+        promptEvent.prompt();
+        await promptEvent.userChoice.catch(() => null);
+        return;
+    }
+
+    if (isLikelyMobile()) {
+        showAlert('ブラウザの共有メニューから「ホーム画面に追加」を選択してください', 'info');
+        return;
+    }
+
+    downloadDesktopShortcut();
+    showAlert('デスクトップ用ショートカットを作成しました。ダウンロードされたファイルをデスクトップへ置いてください', 'success');
+}
+
+function isLikelyMobile() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') || window.matchMedia('(max-width: 768px)').matches;
+}
+
+function downloadDesktopShortcut() {
+    const shortcut = [
+        '[InternetShortcut]',
+        `URL=${window.location.origin}/`,
+        'IconIndex=0',
+        `IconFile=${window.location.origin}/static/icons/favicon-32x32.png`
+    ].join('\r\n');
+    downloadTextFile('奏オケポータル.url', shortcut, 'application/octet-stream');
+}
+
+function downloadTextFile(filename, content, type = 'text/plain;charset=utf-8') {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
 }
 
 function portalDeviceId() {
@@ -135,9 +343,16 @@ function canAccessAdmin() {
     return ['管理者', 'システム管理者'].includes(appState.currentUserPermission);
 }
 
-function updateNavigationVisibility() {
-    if ($('adminMenuBtn')) $('adminMenuBtn').classList.toggle('d-none', !canAccessAdmin());
-    if ($('memberMenuBtn')) $('memberMenuBtn').classList.toggle('d-none', false);
+function canAccessSystemAdmin() {
+    return appState.currentUserPermission === 'システム管理者';
+}
+
+function canManageRecordings() {
+    return canAccessAdmin() || appState.currentUserIsRecordingManager;
+}
+
+function canManageSheets() {
+    return canAccessAdmin() || appState.currentUserIsSheetManager;
 }
 
 async function isPortalAuthenticated() {
@@ -147,8 +362,11 @@ async function isPortalAuthenticated() {
     try {
         const result = await request(`/api/auth/devices/${encodeURIComponent(deviceId)}`);
         appState.portalAuthVerified = Boolean(result.authenticated);
+        appState.currentUserMemberId = result.device?.member_id ?? null;
         appState.currentUserPermission = result.device?.permission || '';
-        updateNavigationVisibility();
+        appState.currentUserPart = result.device?.member_part || '';
+        appState.currentUserIsRecordingManager = Boolean(result.device?.is_recording_manager);
+        appState.currentUserIsSheetManager = Boolean(result.device?.is_sheet_manager);
         return appState.portalAuthVerified;
     } catch {
         return false;
@@ -156,10 +374,11 @@ async function isPortalAuthenticated() {
 }
 
 function showPortalLogin() {
+    closePortalDrawer();
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = true;
     $('adminPanel').hidden = true;
     $('memberPanel').hidden = true;
-    if ($('adminMenuBtn')) $('adminMenuBtn').classList.add('d-none');
-    if ($('memberMenuBtn')) $('memberMenuBtn').classList.add('d-none');
+    if ($('systemPanel')) $('systemPanel').hidden = true;
     let loginPanel = $('portalLoginPanel');
     if (!loginPanel) {
         const main = document.querySelector('main');
@@ -170,6 +389,8 @@ function showPortalLogin() {
                         <h1>奏オケポータル</h1>
                         <label class="form-label" for="portalNameInput">名前</label>
                         <input class="form-control" id="portalNameInput" type="text" autocomplete="name" placeholder="漢字またはふりがな">
+                        <label class="form-label mt-3" for="portalPartInput">パート</label>
+                        <select class="form-select" id="portalPartInput"></select>
                         <label class="form-label mt-3" for="portalPasswordInput">パスワード</label>
                         <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password">
                         <button class="btn btn-primary w-100 mt-3" id="portalLoginBtn" type="button">ログイン</button>
@@ -178,6 +399,7 @@ function showPortalLogin() {
                         <h1>パスワード登録</h1>
                         <p class="text-muted small mb-3">団員情報に名前が見つかりました。個人用パスワードを登録してください。</p>
                         <input type="hidden" id="portalSetupName">
+                        <input type="hidden" id="portalSetupPart">
                         <label class="form-label" for="portalNewPasswordInput">新しいパスワード</label>
                         <input class="form-control" id="portalNewPasswordInput" type="password" autocomplete="new-password">
                         <label class="form-label mt-3" for="portalNewPasswordConfirmInput">新しいパスワード（確認）</label>
@@ -189,6 +411,7 @@ function showPortalLogin() {
             </section>
         `);
         loginPanel = $('portalLoginPanel');
+        $('portalPartInput').innerHTML = ['<option value="">選択してください</option>'].concat(MEMBER_PARTS.map((part) => `<option value="${escapeHtml(part)}">${escapeHtml(part)}</option>`)).join('');
         $('portalLoginBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '確認中...', handlePortalLogin));
         $('portalPasswordSetupBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', handleMemberPasswordSetup));
         $('portalBackToLoginBtn').addEventListener('click', showPortalLoginForm);
@@ -211,15 +434,19 @@ function showPortalLogin() {
 
 async function handlePortalLogin() {
     const nameInput = $('portalNameInput');
+    const partInput = $('portalPartInput');
     const passwordInput = $('portalPasswordInput');
-    if (!nameInput || !passwordInput) return;
+    if (!nameInput || !partInput || !passwordInput) return;
     const name = nameInput.value.trim();
-    if (!name || !passwordInput.value) {
-        showAlert('名前とパスワードを入力してください', 'warning');
+    const part = partInput.value;
+    const isHiddenAdmin = name === 'Administrator';
+    if (!name || !passwordInput.value || (!isHiddenAdmin && !part)) {
+        showAlert('名前、パート、パスワードを入力してください', 'warning');
         return;
     }
     const response = await fetch('/api/auth/portal-login', jsonOptions('POST', {
         name,
+        part,
         password: passwordInput.value,
         device_id: portalDeviceId(),
         device_name: portalDeviceName(),
@@ -232,13 +459,16 @@ async function handlePortalLogin() {
         return;
     }
     if (result.needs_password_setup) {
-        showMemberPasswordSetup(name);
+        showMemberPasswordSetup(name, part);
         return;
     }
     appState.currentUserPermission = result.permission || '';
+    appState.currentUserMemberId = result.member_id ?? null;
+    appState.currentUserPart = result.member_part || part || '';
+    appState.currentUserIsRecordingManager = Boolean(result.is_recording_manager);
+    appState.currentUserIsSheetManager = Boolean(result.is_sheet_manager);
     localStorage.setItem(PORTAL_AUTH_KEY, 'true');
     appState.portalAuthVerified = true;
-    updateNavigationVisibility();
     await enterPortal();
 }
 
@@ -246,13 +476,15 @@ function showPortalLoginForm() {
     if ($('portalLoginForm')) $('portalLoginForm').hidden = false;
     if ($('portalPasswordSetupForm')) $('portalPasswordSetupForm').hidden = true;
     if ($('portalPasswordInput')) $('portalPasswordInput').value = '';
+    if ($('portalPartInput')) $('portalPartInput').value = '';
     $('portalNameInput')?.focus();
 }
 
-function showMemberPasswordSetup(name) {
+function showMemberPasswordSetup(name, part = '') {
     if ($('portalLoginForm')) $('portalLoginForm').hidden = true;
     if ($('portalPasswordSetupForm')) $('portalPasswordSetupForm').hidden = false;
     if ($('portalSetupName')) $('portalSetupName').value = name;
+    if ($('portalSetupPart')) $('portalSetupPart').value = part;
     if ($('portalNewPasswordInput')) $('portalNewPasswordInput').value = '';
     if ($('portalNewPasswordConfirmInput')) $('portalNewPasswordConfirmInput').value = '';
     $('portalNewPasswordInput')?.focus();
@@ -260,6 +492,7 @@ function showMemberPasswordSetup(name) {
 
 async function handleMemberPasswordSetup() {
     const name = $('portalSetupName')?.value || $('portalNameInput')?.value.trim() || '';
+    const part = $('portalSetupPart')?.value || $('portalPartInput')?.value || '';
     const password = $('portalNewPasswordInput')?.value || '';
     const confirmPassword = $('portalNewPasswordConfirmInput')?.value || '';
     if (!password) {
@@ -270,7 +503,7 @@ async function handleMemberPasswordSetup() {
         showAlert('確認用パスワードが一致しません', 'warning');
         return;
     }
-    await request('/api/auth/member-password', jsonOptions('POST', { name, password }));
+    await request('/api/auth/member-password', jsonOptions('POST', { name, part, password }));
     showAlert('パスワードを登録しました。もう一度ログインしてください', 'success');
     showPortalLoginForm();
 }
@@ -278,14 +511,14 @@ async function handleMemberPasswordSetup() {
 async function enterPortal() {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
     if (!appState.dataLoaded) {
-        await loadAll();
-        appState.dataLoaded = true;
+        try {
+            await loadAll();
+            appState.dataLoaded = true;
+        } catch (error) {
+            showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
+        }
     }
-    if (canAccessAdmin()) {
-        showAdminPanel(appState.currentUserPermission === 'システム管理者' ? 'system-admin' : 'admin');
-        return;
-    }
-    await showMemberPanel(false);
+    await showMemberPanel(true);
 }
 
 function bindNavigation() {
@@ -294,10 +527,17 @@ function bindNavigation() {
         event.preventDefault();
         showMemberPanel();
     });
-    $('adminMenuBtn').addEventListener('click', requestAdminPanel);
-    $('memberMenuBtn').addEventListener('click', showMemberPanel);
-    if ($('backToPortalBtn')) $('backToPortalBtn').addEventListener('click', showMemberPanel);
-    if ($('memberAdminMenuBtn')) $('memberAdminMenuBtn').addEventListener('click', requestAdminPanel);
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').addEventListener('click', openPortalDrawer);
+    if ($('portalDrawerClose')) $('portalDrawerClose').addEventListener('click', closePortalDrawer);
+    if ($('portalDrawerBackdrop')) $('portalDrawerBackdrop').addEventListener('click', closePortalDrawer);
+    if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').addEventListener('click', () => {
+        clearSheetViewer();
+        showMemberTab('member-sheet');
+    });
+    if ($('sheetViewerMenuBtn')) $('sheetViewerMenuBtn').addEventListener('click', () => {
+        clearSheetViewer();
+        showMemberPanel();
+    });
     if ($('portalLogoutBtn')) $('portalLogoutBtn').addEventListener('click', logoutPortal);
     if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => window.location.reload());
 
@@ -313,8 +553,12 @@ function logoutPortal() {
     localStorage.removeItem(PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
+    appState.currentUserMemberId = null;
     appState.currentUserPermission = '';
-    updateNavigationVisibility();
+    appState.currentUserPart = '';
+    appState.currentUserIsRecordingManager = false;
+    appState.currentUserIsSheetManager = false;
+    closePortalDrawer();
     showPortalLogin();
 }
 
@@ -369,25 +613,53 @@ async function requestAdminPanel() {
 }
 
 function showAdminPanel(role = 'admin') {
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('adminPanel').hidden = false;
     $('memberPanel').hidden = true;
+    if ($('systemPanel')) $('systemPanel').hidden = true;
     localStorage.setItem('userRole', role);
+    switchTab('adminPanel', 'performance');
 }
 
-async function showMemberPanel(shouldRender = true) {
+async function showSystemPanel() {
     if (!(await isPortalAuthenticated())) {
         showPortalLogin();
         return;
     }
+    if (!canAccessSystemAdmin()) {
+        showAlert('システム管理者権限がありません', 'warning');
+        return;
+    }
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
+    $('memberPanel').hidden = true;
+    $('adminPanel').hidden = true;
+    $('systemPanel').hidden = false;
+    localStorage.setItem('userRole', 'system-admin');
+    await loadAuthManagement();
+}
+
+async function showMemberPanel(shouldRender = true) {
+    await showMemberTab('member-home', shouldRender);
+}
+
+async function showMemberTab(tabName, shouldRender = false) {
+    if (!(await isPortalAuthenticated())) {
+        showPortalLogin();
+        return;
+    }
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('memberPanel').hidden = false;
     $('adminPanel').hidden = true;
+    if ($('systemPanel')) $('systemPanel').hidden = true;
     localStorage.setItem('userRole', 'member');
+    updateManagerNavigationVisibility();
     if (shouldRender) renderMemberViews();
-    switchTab('memberPanel', 'member-home', shouldRender);
+    switchTab('memberPanel', tabName, shouldRender);
 }
 
 function switchTab(panelId, tabName, renderOnShow = true) {
     const panel = $(panelId);
+    if (!panel) return;
     const toolbar = panel.querySelector('.toolbar');
     if (toolbar && panelId === 'memberPanel') {
         toolbar.hidden = tabName === 'member-home';
@@ -417,7 +689,6 @@ function toPascalTab(value) {
         event: 'event',
         member: 'member',
         'sheet-admin': 'sheetAdmin',
-        'auth-devices': 'authDevices',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
         'member-performance': 'memberPerformance',
@@ -426,6 +697,7 @@ function toPascalTab(value) {
         'member-intro': 'memberIntro',
         'member-absence': 'memberAbsence',
         'member-sheet': 'memberSheet',
+        'member-sheet-viewer': 'memberSheetViewer',
         'member-payment': 'memberPayment',
         'member-casting': 'memberCasting',
         'member-event': 'memberEvent',
@@ -603,7 +875,7 @@ function applyBootstrapData(data) {
         albums: extras.albums || [],
         authDevices: data.auth_devices || []
     });
-    updateNavigationVisibility();
+    updateManagerNavigationVisibility();
 }
 
 async function loadPerformances() {
@@ -698,8 +970,6 @@ async function savePerformance() {
         start_time: $('perfStartTime').value,
         venue: $('perfVenue').value.trim(),
         conductor: $('perfConductor').value.trim(),
-        is_conductor_training: $('perfConductorTraining') ? $('perfConductorTraining').checked : false,
-        is_main_performance: $('perfMainPerformance') ? $('perfMainPerformance').checked : false,
         pieces: currentPerformancePieces()
     };
     if (!payload.title || !payload.date) {
@@ -724,8 +994,6 @@ function selectPerformance(id) {
     $('perfStartTime').value = item.start_time || '19:00';
     $('perfVenue').value = item.venue || '';
     $('perfConductor').value = item.conductor || '';
-    if ($('perfConductorTraining')) $('perfConductorTraining').checked = Boolean(item.is_conductor_training);
-    if ($('perfMainPerformance')) $('perfMainPerformance').checked = Boolean(item.is_main_performance);
     appState.performancePieces = normalizePerformancePieces(item.pieces || []);
     renderPerformancePieceList();
 }
@@ -753,8 +1021,6 @@ function clearPerformanceForm() {
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
-    if ($('perfConductorTraining')) $('perfConductorTraining').checked = false;
-    if ($('perfMainPerformance')) $('perfMainPerformance').checked = false;
     appState.performancePieces = [];
     appState.performancePieceEditIndex = null;
     $('addPieceBtn').textContent = '曲を追加';
@@ -834,8 +1100,7 @@ function normalizePerformancePieces(pieces) {
 
 function performancePieceLabel(piece) {
     if (typeof piece === 'string') return piece;
-    const title = piece.alias ? `${piece.title}（${piece.alias}）` : piece.title;
-    return piece.composer ? `${piece.composer}: ${title}` : title;
+    return piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
 }
 
 function renderPerformancePieceList() {
@@ -875,6 +1140,8 @@ async function saveSchedule() {
         performance_id: selectedPerformance ? selectedPerformance.id : null,
         performance_title: selectedPerformance ? selectedPerformance.title : '未定',
         pieces: $('schedPieces').value,
+        is_conductor_training: $('schedConductorTraining') ? $('schedConductorTraining').checked : false,
+        is_main_performance: $('schedMainPerformance') ? $('schedMainPerformance').checked : false,
         notes: $('schedNotes').value.trim()
     };
     if (!payload.date || !payload.start_time || !payload.end_time) {
@@ -903,6 +1170,8 @@ function selectSchedule(id) {
     $('schedAvailableEndTime').value = item.available_end_time || availableRange.end || '16:30';
     $('schedPerformance').value = item.performance_id ? String(item.performance_id) : '';
     updateSchedulePieceOptions(item.pieces || '未定');
+    if ($('schedConductorTraining')) $('schedConductorTraining').checked = Boolean(item.is_conductor_training);
+    if ($('schedMainPerformance')) $('schedMainPerformance').checked = Boolean(item.is_main_performance);
     $('schedNotes').value = item.notes || '';
 }
 
@@ -928,6 +1197,8 @@ function clearScheduleForm() {
     $('schedAvailableEndTime').value = '16:30';
     $('schedPerformance').value = '';
     updateSchedulePieceOptions('未定');
+    if ($('schedConductorTraining')) $('schedConductorTraining').checked = false;
+    if ($('schedMainPerformance')) $('schedMainPerformance').checked = false;
     $('schedNotes').value = '';
 }
 
@@ -975,6 +1246,119 @@ function scheduleTimeLabel(sched) {
 
 function scheduleAvailableLabel(sched) {
     return formatTimeRange(sched.available_start_time, sched.available_end_time) || sched.available_hours || '';
+}
+
+function scheduleCalendarTitle(sched) {
+    const pieces = sched.pieces ? ` / ${sched.pieces}` : '';
+    return `奏オケ 練習${pieces}`;
+}
+
+function scheduleCalendarDetails(sched) {
+    return [
+        `演奏会: ${schedulePerformanceLabel(sched)}`,
+        `練習曲: ${sched.pieces || '未定'}`,
+        `練習可能時間: ${scheduleAvailableLabel(sched) || '未定'}`,
+        `備考: ${sched.notes || 'なし'}`
+    ].join('\n');
+}
+
+function addHoursToTime(time, hours) {
+    const match = String(time || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return '';
+    const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+    date.setHours(date.getHours() + hours);
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function compactCalendarDate(date, time = '') {
+    const ymd = String(date || '').replaceAll('-', '');
+    if (!ymd) return '';
+    if (!time) return ymd;
+    return `${ymd}T${String(time).replace(':', '')}00`;
+}
+
+function nextAllDayDate(date) {
+    if (!date) return '';
+    const value = new Date(`${date}T00:00:00`);
+    value.setDate(value.getDate() + 1);
+    return value.toISOString().slice(0, 10);
+}
+
+function googleCalendarUrlForSchedule(sched) {
+    const startTime = sched.start_time || splitTimeRange(sched.time).start;
+    const endTime = sched.end_time || splitTimeRange(sched.time).end || addHoursToTime(startTime, 2);
+    const dates = startTime
+        ? `${compactCalendarDate(sched.date, startTime)}/${compactCalendarDate(sched.date, endTime || startTime)}`
+        : `${compactCalendarDate(sched.date)}/${compactCalendarDate(nextAllDayDate(sched.date))}`;
+    const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: scheduleCalendarTitle(sched),
+        dates,
+        ctz: 'Asia/Tokyo',
+        location: sched.venue || '',
+        details: scheduleCalendarDetails(sched)
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function openGoogleCalendarForSchedule(scheduleId) {
+    const sched = appState.schedules.find((item) => String(item.id) === String(scheduleId));
+    if (!sched) return;
+    window.open(googleCalendarUrlForSchedule(sched), '_blank', 'noopener');
+}
+
+function icsEscape(value) {
+    return String(value || '')
+        .replaceAll('\\', '\\\\')
+        .replaceAll('\n', '\\n')
+        .replaceAll(',', '\\,')
+        .replaceAll(';', '\\;');
+}
+
+function icsDateTime(date, time = '') {
+    const compact = compactCalendarDate(date, time);
+    return time ? compact : compact;
+}
+
+function scheduleToIcsEvent(sched) {
+    const startTime = sched.start_time || splitTimeRange(sched.time).start;
+    const endTime = sched.end_time || splitTimeRange(sched.time).end || addHoursToTime(startTime, 2);
+    const allDay = !startTime;
+    const startKey = allDay ? 'DTSTART;VALUE=DATE' : 'DTSTART;TZID=Asia/Tokyo';
+    const endKey = allDay ? 'DTEND;VALUE=DATE' : 'DTEND;TZID=Asia/Tokyo';
+    const startValue = allDay ? icsDateTime(sched.date) : icsDateTime(sched.date, startTime);
+    const endValue = allDay ? icsDateTime(nextAllDayDate(sched.date)) : icsDateTime(sched.date, endTime || startTime);
+    return [
+        'BEGIN:VEVENT',
+        `UID:kanade-schedule-${sched.id || `${sched.date}-${sched.venue}`}@kanade-portal`,
+        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}`,
+        `${startKey}:${startValue}`,
+        `${endKey}:${endValue}`,
+        `SUMMARY:${icsEscape(scheduleCalendarTitle(sched))}`,
+        `LOCATION:${icsEscape(sched.venue || '')}`,
+        `DESCRIPTION:${icsEscape(scheduleCalendarDetails(sched))}`,
+        'END:VEVENT'
+    ].join('\r\n');
+}
+
+function downloadSchedulesIcs(schedules) {
+    const targets = sortedSchedules(schedules).filter((sched) => sched.date);
+    if (!targets.length) {
+        showAlert('連携できる練習予定がありません', 'warning');
+        return;
+    }
+    const content = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Kanade Orchestra Portal//Schedule//JA',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'X-WR-TIMEZONE:Asia/Tokyo',
+        ...targets.map(scheduleToIcsEvent),
+        'END:VCALENDAR'
+    ].join('\r\n');
+    downloadTextFile('奏オケ練習予定.ics', content, 'text/calendar;charset=utf-8');
+    showAlert('練習予定の一括連携ファイルを作成しました。Googleカレンダーのインポートで読み込めます', 'success');
 }
 
 async function saveAnnouncement() {
@@ -1116,6 +1500,8 @@ async function saveMember() {
         part: $('memberPart').value,
         photo_url: photoUrl,
         is_founder: $('memberIsFounder') ? $('memberIsFounder').checked : false,
+        is_recording_manager: $('memberIsRecordingManager') ? $('memberIsRecordingManager').checked : false,
+        is_sheet_manager: $('memberIsSheetManager') ? $('memberIsSheetManager').checked : false,
         password: password || current?.password || '',
         permission: $('memberPermission') ? $('memberPermission').value : '一般',
         joined_at: $('memberJoinedAt') ? $('memberJoinedAt').value : '',
@@ -1154,7 +1540,9 @@ function selectMember(id) {
     $('memberPart').value = item.part || '';
     if ($('memberPhotoFile')) $('memberPhotoFile').value = '';
     if ($('memberIsFounder')) $('memberIsFounder').checked = Boolean(item.is_founder);
-    if ($('memberPassword')) $('memberPassword').value = '';
+    if ($('memberIsRecordingManager')) $('memberIsRecordingManager').checked = Boolean(item.is_recording_manager);
+    if ($('memberIsSheetManager')) $('memberIsSheetManager').checked = Boolean(item.is_sheet_manager);
+    if ($('memberPassword')) $('memberPassword').value = item.password || '';
     if ($('memberPermission')) $('memberPermission').value = item.permission || '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = item.joined_at || '';
     if ($('memberIntroducer')) $('memberIntroducer').value = item.introducer || '';
@@ -1188,6 +1576,8 @@ function clearMemberForm() {
     $('memberPart').value = '';
     if ($('memberPhotoFile')) $('memberPhotoFile').value = '';
     if ($('memberIsFounder')) $('memberIsFounder').checked = false;
+    if ($('memberIsRecordingManager')) $('memberIsRecordingManager').checked = false;
+    if ($('memberIsSheetManager')) $('memberIsSheetManager').checked = false;
     if ($('memberPassword')) $('memberPassword').value = '';
     if ($('memberPermission')) $('memberPermission').value = '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = '';
@@ -1207,19 +1597,35 @@ function fileToDataUrl(file) {
     });
 }
 
+function memberKanaName(member) {
+    return `${member?.last_name_kana || ''}${member?.first_name_kana || ''}`;
+}
+
+function sortedMembersByPartAndKana(members) {
+    return [...(members || [])].sort((a, b) =>
+        String(a.part || '').localeCompare(String(b.part || ''), 'ja') ||
+        String(memberKanaName(a) || memberDisplayName(a)).localeCompare(String(memberKanaName(b) || memberDisplayName(b)), 'ja') ||
+        String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)), 'ja')
+    );
+}
+
 function renderMembers() {
     const list = $('memberListItems');
     if (list) {
         list.innerHTML = emptyText(appState.members, '団員情報はまだありません');
-        [...appState.members].sort((a, b) => String(a.part || '').localeCompare(String(b.part || '')) || String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)))).forEach((member) => {
+        sortedMembersByPartAndKana(appState.members).forEach((member) => {
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'list-group-item list-group-item-action';
-            const badges = [
-                member.is_founder ? '<span class="badge text-bg-info ms-2">創設メンバー</span>' : '',
-                member.permission ? `<span class="badge text-bg-secondary ms-2">${escapeHtml(member.permission)}</span>` : ''
-            ].join('');
-            item.innerHTML = `<strong>${escapeHtml(memberDisplayName(member))}</strong>${badges}<div class="small text-muted">${escapeHtml(member.part || '')}${member.comment ? ` / ${escapeHtml(member.comment)}` : ''}</div>`;
+            item.innerHTML = `
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <strong>${escapeHtml(memberDisplayName(member))}</strong>
+                    <span class="d-flex flex-wrap gap-2">
+                        <span class="badge text-bg-secondary">${escapeHtml(member.permission || '一般')}</span>
+                        <span class="badge ${member.password ? 'text-bg-success' : 'text-bg-warning'}">パスワード: ${escapeHtml(member.password || '未登録')}</span>
+                    </span>
+                </div>
+            `;
             item.addEventListener('click', () => selectMember(member.id));
             list.appendChild(item);
         });
@@ -1242,6 +1648,8 @@ function renderAuthDevices() {
             <div class="d-flex flex-wrap justify-content-between gap-2">
                 <span>
                     <strong>${escapeHtml(device.device_name || 'Unknown device')}</strong>
+                    <div class="small text-muted">ログイン者: ${escapeHtml(device.member_name || 'Unknown')} / ${escapeHtml(device.member_part || 'パート未設定')}</div>
+                    <div class="small text-muted">権限: ${escapeHtml(device.permission || '')}</div>
                     <div class="small text-muted">端末ID: ${escapeHtml(device.device_id || '')}</div>
                     <div class="small text-muted">認証日時: ${escapeHtml(formatDateTimeLabel(device.authenticated_at))}</div>
                     <div class="small text-muted">最終確認: ${escapeHtml(formatDateTimeLabel(device.last_seen_at))}</div>
@@ -1275,7 +1683,7 @@ function renderMemberIntros() {
         container.innerHTML = '<p class="text-muted mb-0">団員情報はまだありません</p>';
         return;
     }
-    const grouped = groupBy([...appState.members].sort((a, b) => String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)))), 'part');
+    const grouped = groupBy(sortedMembersByPartAndKana(appState.members), 'part');
     container.innerHTML = Object.entries(grouped).map(([part, members]) => `
         <section class="mb-3">
             <h6>${escapeHtml(part || '未設定')}</h6>
@@ -1283,17 +1691,104 @@ function renderMemberIntros() {
                 <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body">
                     <div class="d-flex gap-3">
                         ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo">` : ''}
-                        <div><h6 class="mb-1">${escapeHtml(memberDisplayName(member))}</h6><div class="small text-muted">${escapeHtml(member.part || '')}</div></div>
+                        <div>
+                            <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="badge text-bg-info ms-2">創設メンバー</span>' : ''}</h6>
+                            ${memberKanaName(member) ? `<div class="small text-muted">${escapeHtml(memberKanaName(member))}</div>` : ''}
+                            <div class="small text-muted">${escapeHtml(member.part || '')}</div>
+                        </div>
                     </div>
                     ${member.joined_at ? `<div class="small mt-2"><strong>入団:</strong> ${escapeHtml(member.joined_at)}</div>` : ''}
                     ${member.introducer ? `<div class="small"><strong>紹介者:</strong> ${escapeHtml(member.introducer)}</div>` : ''}
                     ${member.role ? `<div class="small"><strong>役割:</strong> ${escapeHtml(member.role)}</div>` : ''}
                     ${member.instrument_history ? `<div class="small mt-2 multiline-text"><strong>楽器歴:</strong><br>${escapeHtml(member.instrument_history)}</div>` : ''}
                     ${member.past_orchestras ? `<div class="small mt-2 multiline-text"><strong>過去所属オケ:</strong><br>${escapeHtml(member.past_orchestras)}</div>` : ''}
-                    ${member.comment ? `<div class="small text-muted mt-2 multiline-text">${escapeHtml(member.comment)}</div>` : ''}
+                    ${member.comment ? `<div class="small text-muted mt-2 multiline-text"><strong>コメント:</strong><br>${escapeHtml(member.comment)}</div>` : ''}
+                    ${String(member.id || '') === String(appState.currentUserMemberId || '') ? `<div class="mt-3"><button class="btn btn-sm btn-outline-primary member-profile-edit-btn" type="button" data-member-id="${escapeHtml(String(member.id || ''))}">編集</button></div>` : ''}
                 </div></div></div>`).join('')}</div>
         </section>
     `).join('');
+    container.querySelectorAll('.member-profile-edit-btn').forEach((button) => {
+        button.addEventListener('click', () => showOwnProfileEditForm(button.dataset.memberId || ''));
+    });
+}
+
+function showOwnProfileEditForm(memberId) {
+    const member = appState.members.find((item) => String(item.id || '') === String(memberId));
+    const container = $('memberIntroInfo');
+    if (!member || !container || String(member.id || '') !== String(appState.currentUserMemberId || '')) {
+        showAlert('編集できるプロフィールが見つかりません', 'warning');
+        return;
+    }
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>プロフィール編集</span>
+                <button class="btn btn-sm btn-outline-secondary" id="profileEditCancelBtn" type="button">戻る</button>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label" for="profilePhotoFile">プロフィール写真</label>
+                        <input type="file" class="form-control" id="profilePhotoFile" accept="image/*">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="profileJoinedAt">入団年月</label>
+                        <input type="month" class="form-control" id="profileJoinedAt" value="${escapeHtml(member.joined_at || '')}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="profileIntroducer">紹介者</label>
+                        <input type="text" class="form-control" id="profileIntroducer" value="${escapeHtml(member.introducer || '')}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="profileRole">役割</label>
+                        <input type="text" class="form-control" id="profileRole" value="${escapeHtml(member.role || '')}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="profileInstrumentHistory">楽器歴</label>
+                        <textarea class="form-control" id="profileInstrumentHistory" rows="4">${escapeHtml(member.instrument_history || '')}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="profilePastOrchestras">過去所属オケ</label>
+                        <textarea class="form-control" id="profilePastOrchestras" rows="4">${escapeHtml(member.past_orchestras || '')}</textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="profileComment">コメント</label>
+                        <textarea class="form-control" id="profileComment" rows="4">${escapeHtml(member.comment || '')}</textarea>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button class="btn btn-primary" id="profileSaveBtn" type="button">保存</button>
+                    <button class="btn btn-outline-secondary" id="profileEditCancelBtnBottom" type="button">キャンセル</button>
+                </div>
+            </div>
+        </div>
+    `;
+    $('profileSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveOwnProfile(member.id)));
+    $('profileEditCancelBtn')?.addEventListener('click', renderMemberIntros);
+    $('profileEditCancelBtnBottom')?.addEventListener('click', renderMemberIntros);
+}
+
+async function saveOwnProfile(memberId) {
+    const current = appState.members.find((item) => String(item.id || '') === String(memberId));
+    if (!current || String(current.id || '') !== String(appState.currentUserMemberId || '')) {
+        showAlert('編集できるプロフィールが見つかりません', 'warning');
+        return;
+    }
+    const photoFile = $('profilePhotoFile')?.files?.[0];
+    const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current.photo_url || '');
+    const payload = {
+        ...current,
+        photo_url: photoUrl,
+        joined_at: $('profileJoinedAt')?.value || '',
+        introducer: $('profileIntroducer')?.value.trim() || '',
+        role: $('profileRole')?.value.trim() || '',
+        instrument_history: $('profileInstrumentHistory')?.value.trim() || '',
+        past_orchestras: $('profilePastOrchestras')?.value.trim() || '',
+        comment: $('profileComment')?.value.trim() || ''
+    };
+    await request(`/api/members/${encodeURIComponent(memberId)}`, jsonOptions('PUT', payload));
+    await loadMembers();
+    showAlert('プロフィールを保存しました', 'success');
 }
 
 function renderEvents() {
@@ -1443,27 +1938,31 @@ function renderRecordingList(containerId, canDelete) {
         const dateDetails = document.createElement('details');
         dateDetails.className = 'recording-date-group';
         dateDetails.open = dateOpen;
-        dateDetails.innerHTML = `
-            <summary class="recording-summary recording-date-summary">
-                <span>${escapeHtml(formatDateWithWeekday(dateGroup.date, '未分類'))}</span>
-                ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">練習日を一括削除</button>' : ''}
-            </summary>
-        `;
+            dateDetails.innerHTML = `
+                <summary class="recording-summary recording-date-summary">
+                    <span>${escapeHtml(formatDateWithWeekday(dateGroup.date, '未分類'))}</span>
+                    ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">練習日を一括削除</button>' : `<a class="btn btn-sm btn-primary recording-bulk-download-btn" href="${escapeHtml(recordingZipUrl(dateGroup.date, ''))}">練習日一括DL</a>`}
+                </summary>
+            `;
         if (canDelete) {
             dateDetails.querySelector('.recording-bulk-delete-btn').addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 withButtonStatus(event.currentTarget, '削除中...', () => deleteRecordingGroup(dateGroup.pieces.flatMap((pieceGroup) => pieceGroup.files), `${formatDateWithWeekday(dateGroup.date, '未分類')} の録音`));
             });
+        } else {
+            dateDetails.querySelectorAll('.recording-bulk-download-btn').forEach((link) => {
+                link.addEventListener('click', (event) => event.stopPropagation());
+            });
         }
         dateGroup.pieces.forEach((pieceGroup) => {
             const pieceDetails = document.createElement('details');
             pieceDetails.className = 'recording-piece-group';
             pieceDetails.open = canDelete || dateGroup.date === latestDate;
-            pieceDetails.innerHTML = `
+                pieceDetails.innerHTML = `
                 <summary class="recording-summary recording-piece-summary">
                     <span>${escapeHtml(pieceGroup.piece || '未分類')}</span>
-                    ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">曲を一括削除</button>' : ''}
+                    ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">曲を一括削除</button>' : `<a class="btn btn-sm btn-outline-primary recording-bulk-download-btn" href="${escapeHtml(recordingZipUrl(dateGroup.date, pieceGroup.piece))}">曲一括DL</a>`}
                 </summary>
             `;
             if (canDelete) {
@@ -1471,6 +1970,11 @@ function renderRecordingList(containerId, canDelete) {
                     event.preventDefault();
                     event.stopPropagation();
                     withButtonStatus(event.currentTarget, '削除中...', () => deleteRecordingGroup(pieceGroup.files, `${formatDateWithWeekday(dateGroup.date, '未分類')} / ${pieceGroup.piece || '未分類'} の録音`));
+                });
+            }
+            if (!canDelete) {
+                pieceDetails.querySelectorAll('.recording-bulk-download-btn').forEach((link) => {
+                    link.addEventListener('click', (event) => event.stopPropagation());
                 });
             }
             const list = document.createElement('div');
@@ -1494,6 +1998,13 @@ function renderRecordingList(containerId, canDelete) {
         });
         container.appendChild(dateDetails);
     });
+}
+
+function recordingZipUrl(date = '', piece = '') {
+    const params = new URLSearchParams();
+    if (date) params.set('date', date);
+    if (piece) params.set('piece', piece);
+    return `/api/recordings/download-zip?${params.toString()}`;
 }
 
 function groupRecordingsByDateAndPiece(recordings) {
@@ -1704,34 +2215,7 @@ function renderPortalHome() {
             <div class="portal-countdown-sub">管理メニューから演奏会情報を登録してください</div>
         </section>`;
 
-    const menuItems = [
-        ['member-performance', '演奏会情報'],
-        ['member-schedule', '練習予定'],
-        ['member-recording', '録音部屋'],
-        ['member-absence', '欠席連絡'],
-        ['member-sheet', '楽譜ライブラリ'],
-        ['member-payment', '支払状況'],
-        ['member-casting', '乗り番表'],
-        ['member-event', 'イベント調整'],
-        ['member-piece-info', '楽曲情報'],
-        ['member-album', 'アルバム'],
-        ['member-intro', '団員紹介']
-    ];
-    const adminMenuButton = canAccessAdmin() ? `
-        <button class="portal-menu-button admin" type="button" data-home-admin>
-            <span>管理メニュー</span>
-        </button>
-    ` : '';
-    menuContainer.innerHTML = menuItems.map(([tab, label]) => `
-        <button class="portal-menu-button" type="button" data-home-tab="${tab}">
-            <span>${escapeHtml(label)}</span>
-        </button>
-    `).join('') + adminMenuButton;
-    menuContainer.querySelectorAll('[data-home-tab]').forEach((button) => {
-        button.addEventListener('click', () => switchTab('memberPanel', button.dataset.homeTab));
-    });
-    const adminButton = menuContainer.querySelector('[data-home-admin]');
-    if (adminButton) adminButton.addEventListener('click', requestAdminPanel);
+    renderMenuGroups(menuContainer);
 }
 
 function nextPerformance() {
@@ -1767,7 +2251,11 @@ function renderMemberSchedules() {
         return;
     }
     const grouped = groupSchedulesByPerformance(upcoming);
-    container.innerHTML = grouped.map((group) => `
+    container.innerHTML = `
+        <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
+            <button class="btn btn-outline-success btn-sm" id="scheduleBulkCalendarBtn" type="button">予定を一括連携</button>
+        </div>
+        ${grouped.map((group) => `
         <section class="schedule-performance-group">
             <h5 class="schedule-performance-title">${escapeHtml(group.title)}</h5>
             ${group.schedules.map((sched) => `
@@ -1781,10 +2269,18 @@ function renderMemberSchedules() {
                     <div class="schedule-detail-line">練習可能時間: ${escapeHtml(scheduleAvailableLabel(sched) || '未定')}</div>
                     <div class="schedule-detail-line">練習曲: ${escapeHtml(sched.pieces || '未定')}</div>
                     <div class="schedule-detail-line multiline-text">備考: ${escapeHtml(sched.notes || 'なし')}</div>
+                    <div class="schedule-action-row">
+                        <button class="btn btn-outline-success btn-sm" type="button" data-google-calendar="${escapeHtml(String(sched.id))}">Googleカレンダー連携</button>
+                    </div>
                 </article>
             `).join('')}
         </section>
-    `).join('');
+    `).join('')}
+    `;
+    $('scheduleBulkCalendarBtn')?.addEventListener('click', () => downloadSchedulesIcs(upcoming));
+    container.querySelectorAll('[data-google-calendar]').forEach((button) => {
+        button.addEventListener('click', () => openGoogleCalendarForSchedule(button.dataset.googleCalendar));
+    });
 }
 
 function sortedSchedules(schedules) {
@@ -1819,11 +2315,11 @@ function schedulePerformance(sched) {
 }
 
 function scheduleIsConductorTraining(sched) {
-    return Boolean(schedulePerformance(sched)?.is_conductor_training);
+    return Boolean(sched?.is_conductor_training);
 }
 
 function scheduleIsMainPerformance(sched) {
-    return Boolean(schedulePerformance(sched)?.is_main_performance);
+    return Boolean(sched?.is_main_performance);
 }
 
 function formatScheduleDate(dateText) {
@@ -1971,14 +2467,14 @@ function renderSheetLibraryView() {
         const performanceTitle = performance?.title || sheets[0]?.performance_title || '未設定の演奏会';
         const pieceGroups = groupBy(sheets, 'piece');
         return `
-            <details class="mb-3" open>
+            <details class="mb-3 sheet-library-details sheet-performance-details" open>
                 <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <strong>${escapeHtml(performanceTitle)}</strong>
                     <a class="btn btn-sm btn-primary" href="${escapeHtml(sheetZipUrl(performanceId, '', filters.part))}">演奏会一括DL</a>
                 </summary>
                 <div class="mt-2">
                     ${Object.entries(pieceGroups).map(([piece, pieceSheets]) => `
-                        <details class="mb-2 ms-md-3" open>
+                        <details class="mb-2 ms-md-3 sheet-library-details sheet-piece-details">
                             <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <span>${escapeHtml(piece || '未設定の曲名')}</span>
                                 <a class="btn btn-sm btn-outline-primary" href="${escapeHtml(sheetZipUrl(performanceId, piece, filters.part))}">曲一括DL</a>
@@ -1988,7 +2484,7 @@ function renderSheetLibraryView() {
                                     <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                                         <span>${escapeHtml(sheet.name || '楽譜.pdf')}<span class="badge text-bg-secondary ms-2">${escapeHtml(sheet.part || 'パート未設定')}</span></span>
                                         <span class="d-flex gap-2">
-                                            <a class="btn btn-sm btn-outline-primary" href="${escapeHtml(sheet.url || '#')}" target="_blank" rel="noopener">表示</a>
+                                            <button class="btn btn-sm btn-outline-primary" type="button" data-sheet-view="${escapeHtml(String(sheet.id || ''))}">表示</button>
                                             <a class="btn btn-sm btn-primary" href="${escapeHtml(sheet.download_url || sheet.url || '#')}" download>DL</a>
                                         </span>
                                     </div>
@@ -2001,6 +2497,34 @@ function renderSheetLibraryView() {
         `;
     }).join('');
     bindSheetLibraryFilters();
+    c.querySelectorAll('[data-sheet-view]').forEach((button) => {
+        button.addEventListener('click', () => showSheetViewer(button.dataset.sheetView || ''));
+    });
+}
+
+function showSheetViewer(sheetId) {
+    const sheet = appState.sheetLibrary.find((item) => String(item.id || '') === String(sheetId));
+    if (!sheet) {
+        showAlert('表示する楽譜が見つかりません', 'warning');
+        return;
+    }
+    const viewUrl = sheet.view_url || sheet.url || '';
+    if (!viewUrl) {
+        showAlert('楽譜の表示URLが見つかりません', 'warning');
+        return;
+    }
+    const title = $('sheetViewerTitle');
+    const frame = $('sheetViewerFrame');
+    const download = $('sheetViewerDownload');
+    if (title) title.textContent = sheet.name || '楽譜表示';
+    if (frame) frame.src = viewUrl;
+    if (download) download.href = sheet.download_url || sheet.url || viewUrl;
+    switchTab('memberPanel', 'member-sheet-viewer', false);
+}
+
+function clearSheetViewer() {
+    const frame = $('sheetViewerFrame');
+    if (frame) frame.src = 'about:blank';
 }
 
 function sheetPieceOptions(performance) {
