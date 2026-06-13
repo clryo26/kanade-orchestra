@@ -15,8 +15,17 @@ body {
 }
 
 .navbar-brand {
+    align-items: center;
     color: var(--brand) !important;
+    display: inline-flex;
+    gap: 0.55rem;
     font-weight: 700;
+}
+
+.portal-brand-icon {
+    border-radius: 12px;
+    height: 42px;
+    width: 42px;
 }
 
 .panel {
@@ -258,6 +267,84 @@ body {
     border-radius: 8px;
     height: min(72vh, 760px);
     width: 100%;
+}
+
+.profile-hero {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.profile-hero-icon {
+    border-radius: 18px;
+    flex: 0 0 auto;
+    height: 86px;
+    width: 86px;
+}
+
+.profile-section-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.profile-section h5 {
+    color: var(--brand-dark);
+    font-weight: 700;
+    margin-bottom: 0.65rem;
+}
+
+.profile-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.profile-card {
+    align-items: flex-start;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: flex;
+    gap: 0.85rem;
+    min-height: 148px;
+    padding: 0.95rem;
+}
+
+.profile-avatar {
+    align-items: center;
+    background: #e9f7f7;
+    border: 1px solid #cfe9ee;
+    border-radius: 50%;
+    color: var(--brand-dark);
+    display: flex;
+    flex: 0 0 auto;
+    font-weight: 700;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+}
+
+.profile-photo {
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 58px;
+    object-fit: cover;
+    width: 58px;
+}
+
+.profile-part,
+.profile-role {
+    color: #667085;
+    font-size: 0.88rem;
+}
+
+.profile-card h6 {
+    font-weight: 700;
+    margin: 0.15rem 0;
 }
 
 .portal-countdown {

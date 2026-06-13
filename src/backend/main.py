@@ -62,7 +62,6 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files")
 PORTAL_DATA_NAMES = (
     "absences",
     "sheet_library",
@@ -72,6 +71,14 @@ PORTAL_DATA_NAMES = (
     "event_responses",
     "song_info",
     "albums",
+    "members",
+)
+JSON_DATA_NAMES = (
+    "performances",
+    "schedules",
+    "announcements",
+    "drive_files",
+    *PORTAL_DATA_NAMES,
 )
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
@@ -291,6 +298,7 @@ def ensure_audio_file(file: UploadFile) -> str:
 def local_recording_metadata(path: Path) -> dict[str, Any]:
     stat = path.stat()
     rel = path.relative_to(UPLOAD_DIR).as_posix()
+    encoded_rel = quote(rel, safe="/")
     parts = path.relative_to(CONVERTED_DIR).parts if path.is_relative_to(CONVERTED_DIR) else path.parts
     date = parts[0] if len(parts) >= 3 else ""
     piece = parts[1] if len(parts) >= 3 else ""
@@ -302,53 +310,10 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
         "duration_seconds": 0,
         "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
         "path": rel,
-        "play_url": f"/api/recordings/play/{rel}",
-        "download_url": f"/api/recordings/download/{rel}",
+        "play_url": f"/api/recordings/play/{encoded_rel}",
+        "download_url": f"/api/recordings/download/{encoded_rel}",
         "source": "local",
     }
-
-
-def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(item)
-    object_name = normalized.get("object_name") or normalized.get("id")
-    duration_seconds = (
-        normalized.get("duration_seconds")
-        or normalized.get("durationSeconds")
-        or normalized.get("duration")
-        or normalized.get("audio_duration_seconds")
-        or 0
-    )
-    try:
-        duration_seconds = float(duration_seconds or 0)
-    except (TypeError, ValueError):
-        duration_seconds = 0
-
-    if normalized.get("source") != "google_cloud_storage" or not object_name:
-        normalized["duration_seconds"] = duration_seconds
-        return normalized
-
-    encoded_object_name = quote(str(object_name), safe="/")
-    normalized["object_name"] = object_name
-    normalized["play_url"] = f"/api/recordings/cloud/play/{encoded_object_name}"
-    normalized["download_url"] = f"/api/recordings/cloud/download/{encoded_object_name}"
-
-    # 旧データなどで曲の長さが未保存の場合は、一覧表示時にGCS上の音声から取得する。
-    # 取得できない場合でも画面側で「未取得」と表示できるよう0を返す。
-    if not duration_seconds and storage_enabled():
-        try:
-            blob = get_storage_bucket().blob(str(object_name))
-            if blob.exists():
-                suffix = Path(str(object_name)).suffix or ".audio"
-                with tempfile.NamedTemporaryFile(suffix=suffix) as temp_file:
-                    blob.download_to_filename(temp_file.name)
-                    duration_seconds = audio_duration_seconds(Path(temp_file.name))
-        except Exception:
-            logger.exception("Failed to read cloud audio duration: %s", object_name)
-            duration_seconds = 0
-
-    normalized["duration_seconds"] = duration_seconds
-    return normalized
-
 
 
 def audio_duration_seconds(path: Path) -> float:
@@ -732,13 +697,85 @@ def local_recording_path(path: str) -> Path:
     return requested
 
 
+def parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | None:
+    if not range_header:
+        return None
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+    if not match:
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid Range header",
+            headers={"Content-Range": f"bytes */{file_size}"},
+        )
+
+    start_text, end_text = match.groups()
+    if not start_text and not end_text:
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid Range header",
+            headers={"Content-Range": f"bytes */{file_size}"},
+        )
+
+    if start_text:
+        start = int(start_text)
+        end = int(end_text) if end_text else file_size - 1
+    else:
+        suffix_length = int(end_text)
+        if suffix_length == 0:
+            raise HTTPException(
+                status_code=416,
+                detail="Invalid Range header",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+        start = max(file_size - suffix_length, 0)
+        end = file_size - 1
+
+    if start >= file_size or end < start:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range not satisfiable",
+            headers={"Content-Range": f"bytes */{file_size}"},
+        )
+    return start, min(end, file_size - 1)
+
+
+def ranged_file_response(path: Path, range_header: str) -> Any:
+    file_size = path.stat().st_size
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    byte_range = parse_range_header(range_header, file_size)
+    if byte_range is None:
+        return FileResponse(
+            path,
+            media_type=content_type,
+            headers={"Accept-Ranges": "bytes"},
+        )
+
+    start, end = byte_range
+    length = end - start + 1
+
+    def chunks():
+        remaining = length
+        with path.open("rb") as source:
+            source.seek(start)
+            while remaining > 0:
+                chunk = source.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Content-Length": str(length),
+    }
+    return StreamingResponse(chunks(), status_code=206, media_type=content_type, headers=headers)
+
+
 @app.get("/api/recordings/play/{path:path}")
-async def play_recording(path: str) -> FileResponse:
+async def play_recording(path: str, request: Request) -> Any:
     requested = local_recording_path(path)
-    return FileResponse(
-        requested,
-        media_type=mimetypes.guess_type(requested.name)[0] or "application/octet-stream",
-    )
+    return ranged_file_response(requested, request.headers.get("range", ""))
 
 
 @app.get("/api/recordings/download/{path:path}")
@@ -813,7 +850,7 @@ async def delete_recording(payload: RecordingDeleteRequest) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
-def stream_storage_blob(object_name: str, download: bool) -> StreamingResponse:
+def stream_storage_blob(object_name: str, download: bool, range_header: str = "") -> StreamingResponse:
     if not storage_enabled():
         raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
     if not object_name:
@@ -827,9 +864,24 @@ def stream_storage_blob(object_name: str, download: bool) -> StreamingResponse:
     filename = Path(object_name).name
     disposition = "attachment" if download else "inline"
     content_type = blob.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    byte_range = None if download or blob.size is None else parse_range_header(range_header, int(blob.size))
     headers = {
         "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+        "Accept-Ranges": "bytes",
     }
+
+    if byte_range is not None:
+        start, end = byte_range
+        data = blob.download_as_bytes(start=start, end=end)
+        headers["Content-Range"] = f"bytes {start}-{end}/{blob.size}"
+        headers["Content-Length"] = str(len(data))
+        return StreamingResponse(
+            io.BytesIO(data),
+            status_code=206,
+            media_type=content_type,
+            headers=headers,
+        )
+
     if blob.size is not None:
         headers["Content-Length"] = str(blob.size)
 
@@ -845,8 +897,8 @@ def stream_storage_blob(object_name: str, download: bool) -> StreamingResponse:
 
 
 @app.get("/api/recordings/cloud/play/{object_name:path}")
-async def play_cloud_recording(object_name: str) -> StreamingResponse:
-    return stream_storage_blob(object_name, download=False)
+async def play_cloud_recording(object_name: str, request: Request) -> StreamingResponse:
+    return stream_storage_blob(object_name, download=False, range_header=request.headers.get("range", ""))
 
 
 @app.get("/api/recordings/cloud/download/{object_name:path}")
@@ -1093,7 +1145,7 @@ async def delete_portal_item(collection: str, item_id: int) -> dict[str, str]:
 
 
 def ensure_upload_kind(kind: str) -> str:
-    if kind not in {"sheets", "albums"}:
+    if kind not in {"sheets", "albums", "member_photos"}:
         raise HTTPException(status_code=404, detail="Upload kind not found")
     return kind
 
@@ -1143,6 +1195,53 @@ async def upload_portal_file(
     payload = normalize_portal_payload({"data": item}, next_id(items))
     items.insert(0, payload)
     save_json_data(collection, items)
+    return payload
+
+
+@app.post("/api/portal-members")
+async def create_portal_member(
+    photo: UploadFile | None = File(None),
+    name: str = Form(""),
+    part: str = Form(""),
+    joined_at: str = Form(""),
+    introducer: str = Form(""),
+    role: str = Form(""),
+    instrument_history: str = Form(""),
+    previous_orchestras: str = Form(""),
+    comment: str = Form(""),
+) -> dict[str, Any]:
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="名前を入力してください")
+
+    photo_data: dict[str, Any] = {}
+    if photo and photo.filename:
+        suffix = Path(photo.filename or "").suffix.lower()
+        if suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+            raise HTTPException(status_code=400, detail="写真ファイルを選択してください")
+        target_dir = portal_upload_dir("member_photos") / safe_segment(part or "common", "common")
+        saved_path = save_upload_to_path(photo, target_dir)
+        rel = saved_path.relative_to(portal_upload_dir("member_photos")).as_posix()
+        photo_data = {
+            "photo_name": saved_path.name,
+            "photo_url": f"/api/portal-files/member_photos/{quote(rel, safe='/')}",
+            "photo_download_url": f"/api/portal-files/member_photos/{quote(rel, safe='/')}?download=1",
+        }
+
+    member = {
+        "name": name.strip(),
+        "part": part.strip(),
+        "joined_at": joined_at.strip(),
+        "introducer": introducer.strip(),
+        "role": role.strip(),
+        "instrument_history": instrument_history.strip(),
+        "previous_orchestras": previous_orchestras.strip(),
+        "comment": comment.strip(),
+        **photo_data,
+    }
+    items = load_json_data("members")
+    payload = normalize_portal_payload({"data": member}, next_id(items))
+    items.insert(0, payload)
+    save_json_data("members", items)
     return payload
 
 

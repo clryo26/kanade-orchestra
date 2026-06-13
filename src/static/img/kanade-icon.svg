@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">福岡奏オーケストラ アイコン</title>
+  <desc id="desc">淡い水色と桃色の背景に奏の文字を配置したポータルアイコン</desc>
+  <defs>
+    <radialGradient id="aqua" cx="35%" cy="35%" r="72%">
+      <stop offset="0%" stop-color="#8be8f5"/>
+      <stop offset="55%" stop-color="#bff4f0"/>
+      <stop offset="100%" stop-color="#f7fbff"/>
+    </radialGradient>
+    <radialGradient id="rose" cx="70%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#f7b1c8"/>
+      <stop offset="58%" stop-color="#f5d0dc" stop-opacity=".78"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#59708a" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="160" height="160" rx="28" fill="#eef3f8"/>
+  <g filter="url(#softShadow)">
+    <path d="M80 14c24 0 45 9 57 28 13 20 10 45-2 64-12 20-32 34-55 35-23 1-45-10-58-29C9 94 10 67 22 47 34 27 56 14 80 14z" fill="url(#aqua)"/>
+    <path d="M98 21c25 7 42 25 44 48 2 25-13 49-35 61-21 12-48 11-66-5-17-15-22-41-15-63 8-22 28-40 49-43 8-1 16 0 23 2z" fill="url(#rose)"/>
+  </g>
+  <text x="80" y="48" text-anchor="middle" font-family="'Yu Gothic UI','Hiragino Sans',sans-serif" font-size="16" font-weight="700" fill="#5f294b">福岡</text>
+  <text x="80" y="106" text-anchor="middle" font-family="'Yu Mincho','Hiragino Mincho ProN',serif" font-size="76" font-weight="600" fill="#3a263b">奏</text>
+  <text x="80" y="126" text-anchor="middle" font-family="Arial,sans-serif" font-size="7" font-weight="700" letter-spacing=".8" fill="#5e5362">FUKUOKA KANADE</text>
+  <text x="80" y="136" text-anchor="middle" font-family="Arial,sans-serif" font-size="7" font-weight="700" letter-spacing=".9" fill="#5e5362">ORCHESTRA</text>
+</svg>

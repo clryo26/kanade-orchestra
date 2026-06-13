@@ -2209,3 +2209,287 @@ gcloud run deploy orchestra-tool \
 - [librosa](https://librosa.org/)
 - [pydub](https://github.com/jiaaro/pydub)
 - [UV](https://docs.astral.sh/uv/)
+# 現行実装仕様メモ（2026-06-13反映）
+
+この章は現在の実装内容を正として追記したもの。既存章に古い設計や文字化けした記述が残っている場合は、この章を優先して参照する。
+
+## 1. ポータル全体
+
+- アプリ名は「奏オケポータル」。
+- FastAPIが `src/index.html` と `src/static/` を配信する単一Webアプリ。
+- フロントエンドは HTML / Bootstrap 5 / Vanilla JavaScript。
+- バックエンドは FastAPI。
+- データ保存は `src/data/*.json` を基本とし、Google Cloud Storage が設定されている場合はJSONデータもGCSへ保存する。
+- ファイル保存はローカルでは `src/uploads/`、Cloud Run運用ではGoogle Cloud Storageを利用する。
+- Google SitesにはCloud RunのURLを埋め込んで利用する。
+
+## 2. 初期表示とメニュー
+
+- 初期表示は団員メニューの「お知らせ」。
+- 管理メニューは簡易パスワードロック付き。
+- 現在の管理者パスワードは `kanadeadmin`。
+- 管理者ロックはフロントエンド側の簡易ロックであり、本番運用ではAPI側の認証強化が必要。
+
+### 管理者メニュー
+
+- 録音管理
+- 演奏会情報
+- 練習予定
+- お知らせ
+
+### 団員メニュー
+
+- お知らせ
+- 演奏会情報
+- 練習予定
+- 録音部屋
+- 団員紹介
+- 欠席連絡
+- 楽譜ライブラリ
+- 支払状況
+- 乗り番表
+- イベント調整
+- 楽曲情報
+- アルバム
+- SNS
+- 演奏会記録
+
+## 3. 団員メニュー機能
+
+### お知らせ
+
+- 管理者が登録したお知らせを一覧表示する。
+- 使用API:
+  - `GET /api/announcements`
+  - `POST /api/announcements`
+  - `PUT /api/announcements/{announcement_id}`
+  - `DELETE /api/announcements/{announcement_id}`
+
+### 演奏会情報
+
+- 管理者が登録した演奏会情報を団員向けに表示する。
+- 一番直近の未来の演奏会を判定し、「本番まであと○日！」のカウントダウンを表示する。
+- 演奏会にはタイトル、開催日、開場時間、開演時間、会場、指揮者、曲目リストを持つ。
+- 曲目は `{ composer, title }` 形式を基本とする。
+
+### 練習予定
+
+- 今後の練習予定を表示する。
+- 各予定は日付、開始/終了時刻、会場、利用可能時間、練習曲、備考、指揮トレ有無を持つ。
+- Googleカレンダー追加用URLを生成する。
+
+### 録音部屋
+
+- 録音ファイルを日付、曲名でグルーピング表示する。
+- 録音一覧は初期表示では読み込まず、録音タブ表示時に遅延読み込みする。
+- 再生用の `<audio>` 要素は一覧描画時には作らず、再生ボタン押下時に対象ファイル分だけ生成する。
+- GCS公開URLが利用できる場合はサーバー中継ではなく直接URLを再生/ダウンロードに使う。
+- 使用API:
+  - `GET /api/recordings?limit=200`
+  - `GET /api/recordings/play/{path}`
+  - `GET /api/recordings/download/{path}`
+  - `POST /api/recordings/download-zip`
+  - `DELETE /api/recordings`
+
+### 団員紹介
+
+- Google Sitesの団員プロフィールページへの導線を表示する。
+- URL: `https://sites.google.com/view/kanadeprof/%E3%83%9B%E3%83%BC%E3%83%A0`
+- 閲覧パスワード: `kanadeprof`
+- iframeで表示を試みるが、Google Sites側の制限で表示できない場合に備え、外部リンクボタンも表示する。
+
+### 欠席連絡
+
+- 団員が名前と欠席する練習日を選択して登録する。
+- 練習日ごとに欠席者をグルーピング表示する。
+- 保存コレクション: `absences`
+- データ例:
+
+```json
+{
+  "name": "山田 太郎",
+  "practice_date": "2026-06-20"
+}
+```
+
+### 楽譜ライブラリ
+
+- 演奏会、曲名ごとにPDF化した楽譜を登録する。
+- 団員はPDFを閲覧、ダウンロードできる。
+- ファイルAPI:
+  - `POST /api/portal-files/sheets`
+  - `GET /api/portal-files/sheets/{path}`
+- メタデータ保存コレクション: `sheet_library`
+
+### 支払状況
+
+- 団員名を選択/入力し、団費と演奏会費の支払状況を確認できる。
+- 現状は管理者専用画面ではなく、団員メニュー内で登録/確認できる簡易実装。
+- 保存コレクション: `payments`
+- データ例:
+
+```json
+{
+  "member": "山田 太郎",
+  "membership_fee": "支払済",
+  "concert_fee": "未払い"
+}
+```
+
+### 乗り番表
+
+- 演奏会ごとに本番に乗る人を確認できる。
+- パート単位で乗り番を登録する。
+- 保存コレクション: `rosters`
+- データ例:
+
+```json
+{
+  "performance": "第1回定期演奏会",
+  "part": "Violin 1",
+  "members": "山田、佐藤、鈴木"
+}
+```
+
+### イベント調整
+
+- 任意のイベントを作成できる。
+- 団員はイベントごとに参加/不参加を登録できる。
+- 保存コレクション:
+  - `events`
+  - `event_responses`
+- データ例:
+
+```json
+{
+  "title": "打ち上げ",
+  "date": "2026-07-01"
+}
+```
+
+```json
+{
+  "event_id": 1,
+  "name": "山田 太郎",
+  "status": "参加"
+}
+```
+
+### 楽曲情報
+
+- 演奏会で演奏する各曲の情報を登録、参照できる。
+- 作曲者、参考情報、注意点などは現状 `memo` にまとめる。
+- 保存コレクション: `song_info`
+
+### アルバム
+
+- 写真をアップロードして共有できる。
+- 団員メニュー内でサムネイル表示する。
+- ファイルAPI:
+  - `POST /api/portal-files/albums`
+  - `GET /api/portal-files/albums/{path}`
+- メタデータ保存コレクション: `albums`
+
+### SNS / 演奏会記録
+
+- 外部リンクを表示する。
+- SNS:
+  - X
+  - Facebook
+  - Instagram
+- 演奏会記録:
+  - YouTubeチャンネル
+
+## 4. 管理者メニュー機能
+
+### 録音管理
+
+- WAV/MP3ファイルを複数選択してアップロードできる。
+- WAVはMP3へ変換して保存する。
+- MP3は変換せずそのまま保存する。
+- 大容量ファイルはCloud Runのリクエストサイズ制限を避けるため、GCSのresumable upload sessionを使い、ブラウザからGCSへ直接アップロードする。
+- 直接アップロード後、バックエンドでメタデータ登録を行う。
+- 使用API:
+  - `POST /api/drive/direct-upload-session`
+  - `POST /api/drive/direct-upload-complete`
+  - `POST /api/drive/upload`
+  - `POST /api/convert`
+
+### 演奏会情報管理
+
+- 演奏会の作成、更新、削除。
+- 曲目リストの登録。
+
+### 練習予定管理
+
+- 練習予定の作成、更新、削除。
+- 指揮トレ有無を登録できる。
+
+### お知らせ管理
+
+- お知らせの作成、更新、削除。
+
+## 5. 追加API
+
+### 汎用ポータルデータAPI
+
+以下のコレクションを汎用APIで扱う。
+
+- `absences`
+- `sheet_library`
+- `payments`
+- `rosters`
+- `events`
+- `event_responses`
+- `song_info`
+- `albums`
+
+API:
+
+```text
+GET    /api/portal/{collection}
+POST   /api/portal/{collection}
+PUT    /api/portal/{collection}/{item_id}
+DELETE /api/portal/{collection}/{item_id}
+```
+
+共通保存形式:
+
+```json
+{
+  "id": 1,
+  "created_at": "2026-06-13T00:00:00",
+  "updated_at": "2026-06-13T00:00:00",
+  "data": {}
+}
+```
+
+### ポータルファイルAPI
+
+```text
+POST /api/portal-files/sheets
+GET  /api/portal-files/sheets/{path}
+POST /api/portal-files/albums
+GET  /api/portal-files/albums/{path}
+```
+
+- `sheets` はPDFのみ許可。
+- `albums` は jpg / jpeg / png / gif / webp を許可。
+- ローカル保存先は `src/uploads/portal/` 配下。
+
+## 6. パフォーマンス方針
+
+- 初期表示では録音一覧を読み込まない。
+- 録音一覧APIでは音声ファイルを開いて長さを計算しない。
+- クラウド音源の長さ取得のための一時ダウンロードは行わない。
+- 録音一覧には `limit` を設ける。デフォルトは200件、最大1000件。
+- 再生用audio要素は遅延生成する。
+- ローカルでGCS認証がない場合はGCSアクセスを試行せず、認証タイムアウトを避ける。
+
+## 7. 注意事項
+
+- 管理者パスワードロックはフロントエンドのみの簡易実装。
+- 支払状況や団員情報は個人情報を含みうるため、本番運用前にAPI認証、閲覧権限、監査ログの設計が必要。
+- Google Sites埋め込み先で外部iframeが制限される場合は、外部リンクボタンで別タブ表示する。
+- Cloud Runで利用する場合は `GOOGLE_CLOUD_STORAGE_BUCKET` を設定する。
+- ローカル開発でGCSを使う場合は `GOOGLE_SERVICE_ACCOUNT_JSON` または実在する `GOOGLE_SERVICE_ACCOUNT_FILE` を設定する。
