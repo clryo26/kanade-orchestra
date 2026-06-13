@@ -59,7 +59,7 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -104,6 +104,8 @@ class Schedule(BaseModel):
     available_hours: str = ""
     available_start_time: str = ""
     available_end_time: str = ""
+    performance_id: int | None = None
+    performance_title: str = ""
     pieces: str = ""
     notes: str = ""
     created_at: str | None = None
@@ -125,6 +127,15 @@ class EventAdjustment(BaseModel):
     deadline: str = ""
     url: str = ""
     notes: str = ""
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class Member(BaseModel):
+    id: int | None = None
+    name: str
+    part: str = ""
+    comment: str = ""
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -432,6 +443,45 @@ async def delete_schedule(schedule_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
+
+
+@app.get("/api/members", response_model=list[Member])
+async def get_members() -> list[dict[str, Any]]:
+    return load_json_data("members")
+
+
+@app.post("/api/members", response_model=Member)
+async def create_member(member: Member) -> dict[str, Any]:
+    items = load_json_data("members")
+    now = datetime.now().isoformat()
+    payload = model_dump(member)
+    payload.update({"id": next_id(items), "created_at": now, "updated_at": now})
+    items.append(payload)
+    save_json_data("members", items)
+    return payload
+
+
+@app.put("/api/members/{member_id}", response_model=Member)
+async def update_member(member_id: int, member: Member) -> dict[str, Any]:
+    items = load_json_data("members")
+    index, current = find_item(items, member_id)
+    payload = model_dump(member)
+    payload.update({
+        "id": member_id,
+        "created_at": current.get("created_at"),
+        "updated_at": datetime.now().isoformat(),
+    })
+    items[index] = payload
+    save_json_data("members", items)
+    return payload
+
+
+@app.delete("/api/members/{member_id}")
+async def delete_member(member_id: int) -> dict[str, str]:
+    items = load_json_data("members")
+    find_item(items, member_id)
+    save_json_data("members", [item for item in items if item.get("id") != member_id])
+    return {"message": "Deleted"}
 
 
 @app.get("/api/events", response_model=list[EventAdjustment])

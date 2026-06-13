@@ -29,11 +29,13 @@
     <main class="container-fluid py-4">
         <section id="adminPanel" class="panel">
             <div class="toolbar mb-3">
+                <button class="btn btn-sm btn-outline-secondary" id="backToPortalBtn" type="button">ポータルに戻る</button>
                 <button class="btn btn-sm btn-outline-primary active" data-tab="upload" type="button">録音管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
             </div>
 
             <div id="uploadTab" class="tab-content">
@@ -167,12 +169,16 @@
                                 <input type="time" class="form-control" id="schedAvailableEndTime" value="16:30">
                             </div>
                             <div class="col-md-3">
+                                <label class="form-label" for="schedPerformance">演奏会</label>
+                                <select class="form-select" id="schedPerformance"></select>
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label" for="schedPieces">練習曲</label>
-                                <input type="text" class="form-control" id="schedPieces">
+                                <select class="form-select" id="schedPieces"></select>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedNotes">備考</label>
-                                <input type="text" class="form-control" id="schedNotes">
+                                <textarea class="form-control" id="schedNotes" rows="3"></textarea>
                             </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2 mb-3">
@@ -246,6 +252,50 @@
                     </div>
                 </div>
             </div>
+            <div id="memberTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">団員登録</div>
+                    <div class="card-body">
+                        <input type="hidden" id="memberId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="memberName">名前</label>
+                                <input type="text" class="form-control" id="memberName" placeholder="例: 山田 太郎">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="memberPart">パート</label>
+                                <select class="form-select" id="memberPart">
+                                    <option value="">選択してください</option>
+                                    <option>Violin</option>
+                                    <option>Viola</option>
+                                    <option>Cello</option>
+                                    <option>Contrabass</option>
+                                    <option>Flute</option>
+                                    <option>Oboe</option>
+                                    <option>Clarinet</option>
+                                    <option>Fagot</option>
+                                    <option>Horn</option>
+                                    <option>Trumpet</option>
+                                    <option>Trombone</option>
+                                    <option>Tuba</option>
+                                    <option>Percussion</option>
+                                    <option>Piano</option>
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label" for="memberComment">ひとこと</label>
+                                <input type="text" class="form-control" id="memberComment">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="addMemberBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearMemberBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deleteMemberBtn" type="button">削除</button>
+                        </div>
+                        <ul class="list-group" id="memberListItems"></ul>
+                    </div>
+                </div>
+            </div>
 
         </section>
 
@@ -255,6 +305,7 @@
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-intro" type="button">自己紹介</button>
             </div>
 
             <div id="memberAnnounceTab" class="tab-content">
@@ -284,6 +335,13 @@
                 <div class="card">
                     <div class="card-header">録音部屋</div>
                     <div class="card-body" id="songTreeMember"></div>
+                </div>
+            </div>
+
+            <div id="memberIntroTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">自己紹介</div>
+                    <div class="card-body" id="memberIntroInfo"></div>
                 </div>
             </div>
         </section>

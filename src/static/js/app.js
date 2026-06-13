@@ -7,11 +7,14 @@ const appState = {
     schedules: [],
     announcements: [],
     events: [],
+    members: [],
     recordings: []
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const $ = (id) => document.getElementById(id);
+const SCHEDULE_EXTRA_PIECES = ['未定', 'ポップス全曲', 'クラシック全曲'];
+const MEMBER_PARTS = ['Violin', 'Viola', 'Cello', 'Contrabass', 'Flute', 'Oboe', 'Clarinet', 'Fagot', 'Horn', 'Trumpet', 'Trombone', 'Tuba', 'Percussion', 'Piano'];
 
 document.addEventListener('DOMContentLoaded', async () => {
     setDefaultDates();
@@ -20,6 +23,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindForms();
     showAdminPanel();
     await loadAll();
+    renderSchedulePerformanceOptions();
+    updateSchedulePieceOptions();
     updateSavePath();
 });
 
@@ -33,6 +38,7 @@ function setDefaultDates() {
 function bindNavigation() {
     $('adminMenuBtn').addEventListener('click', showAdminPanel);
     $('memberMenuBtn').addEventListener('click', showMemberPanel);
+    if ($('backToPortalBtn')) $('backToPortalBtn').addEventListener('click', showMemberPanel);
 
     document.querySelectorAll('#adminPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('adminPanel', button.dataset.tab));
@@ -62,6 +68,7 @@ function bindForms() {
     $('addSchedBtn').addEventListener('click', saveSchedule);
     $('editSchedBtn').addEventListener('click', clearScheduleForm);
     $('deleteSchedBtn').addEventListener('click', deleteSchedule);
+    $('schedPerformance').addEventListener('change', updateSchedulePieceOptions);
 
     $('addAnnBtn').addEventListener('click', saveAnnouncement);
     $('editAnnBtn').addEventListener('click', clearAnnouncementForm);
@@ -70,6 +77,10 @@ function bindForms() {
     $('addEventBtn').addEventListener('click', saveEvent);
     $('clearEventBtn').addEventListener('click', clearEventForm);
     $('deleteEventBtn').addEventListener('click', deleteEvent);
+
+    $('addMemberBtn').addEventListener('click', saveMember);
+    $('clearMemberBtn').addEventListener('click', clearMemberForm);
+    $('deleteMemberBtn').addEventListener('click', deleteMember);
 }
 
 function showAdminPanel() {
@@ -108,10 +119,12 @@ function toPascalTab(value) {
         schedule: 'schedule',
         announcement: 'announcement',
         event: 'event',
+        member: 'member',
         'member-announce': 'memberAnnounce',
         'member-performance': 'memberPerformance',
         'member-schedule': 'memberSchedule',
-        'member-recording': 'memberRecording'
+        'member-recording': 'memberRecording',
+        'member-intro': 'memberIntro'
     };
     return map[value] || value;
 }
@@ -185,12 +198,14 @@ function clearUploadForm() {
     updateSavePath();
 }
 async function loadAll() {
-    await Promise.all([loadPerformances(), loadSchedules(), loadAnnouncements(), loadEvents(), loadRecordings()]);
+    await Promise.all([loadPerformances(), loadSchedules(), loadAnnouncements(), loadEvents(), loadMembers(), loadRecordings()]);
 }
 
 async function loadPerformances() {
     appState.performances = await request('/api/performances');
     renderPerformances();
+    renderSchedulePerformanceOptions();
+    updateSchedulePieceOptions();
 }
 
 async function loadSchedules() {
@@ -206,6 +221,11 @@ async function loadAnnouncements() {
 async function loadEvents() {
     appState.events = await request('/api/events');
     renderEvents();
+}
+
+async function loadMembers() {
+    appState.members = await request('/api/members');
+    renderMembers();
 }
 
 async function loadRecordings() {
@@ -372,6 +392,7 @@ async function saveSchedule() {
     const endTime = $('schedEndTime').value;
     const availableStartTime = $('schedAvailableStartTime').value;
     const availableEndTime = $('schedAvailableEndTime').value;
+    const selectedPerformance = selectedSchedulePerformance();
     const payload = {
         date: $('schedDate').value,
         time: formatTimeRange(startTime, endTime),
@@ -381,7 +402,9 @@ async function saveSchedule() {
         available_hours: formatTimeRange(availableStartTime, availableEndTime),
         available_start_time: availableStartTime,
         available_end_time: availableEndTime,
-        pieces: $('schedPieces').value.trim(),
+        performance_id: selectedPerformance ? selectedPerformance.id : null,
+        performance_title: selectedPerformance ? selectedPerformance.title : '未定',
+        pieces: $('schedPieces').value,
         notes: $('schedNotes').value.trim()
     };
     if (!payload.date || !payload.start_time || !payload.end_time) {
@@ -408,7 +431,8 @@ function selectSchedule(id) {
     $('schedVenue').value = item.venue || '';
     $('schedAvailableStartTime').value = item.available_start_time || availableRange.start || '12:30';
     $('schedAvailableEndTime').value = item.available_end_time || availableRange.end || '16:30';
-    $('schedPieces').value = item.pieces || '';
+    $('schedPerformance').value = item.performance_id ? String(item.performance_id) : '';
+    updateSchedulePieceOptions(item.pieces || '未定');
     $('schedNotes').value = item.notes || '';
 }
 
@@ -432,8 +456,38 @@ function clearScheduleForm() {
     $('schedVenue').value = '';
     $('schedAvailableStartTime').value = '12:30';
     $('schedAvailableEndTime').value = '16:30';
-    $('schedPieces').value = '';
+    $('schedPerformance').value = '';
+    updateSchedulePieceOptions('未定');
     $('schedNotes').value = '';
+}
+
+function selectedSchedulePerformance() {
+    const value = $('schedPerformance').value;
+    if (!value) return null;
+    return appState.performances.find((perf) => String(perf.id) === value) || null;
+}
+
+function renderSchedulePerformanceOptions() {
+    const select = $('schedPerformance');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">未定</option>' + appState.performances.map((perf) =>
+        `<option value="${escapeHtml(perf.id)}">${escapeHtml(perf.title)}</option>`
+    ).join('');
+    if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+    }
+}
+
+function updateSchedulePieceOptions(preferredValue = null) {
+    const select = $('schedPieces');
+    if (!select) return;
+    const current = preferredValue ?? select.value ?? '未定';
+    const performance = selectedSchedulePerformance();
+    const performancePieces = performance ? normalizePerformancePieces(performance.pieces || []).map(performancePieceLabel) : [];
+    const values = [...SCHEDULE_EXTRA_PIECES, ...performancePieces].filter((value, index, array) => value && array.indexOf(value) === index);
+    select.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
+    select.value = values.includes(current) ? current : '未定';
 }
 
 function formatTimeRange(start, end) {
@@ -550,6 +604,88 @@ function clearEventForm() {
     $('eventNotes').value = '';
 }
 
+async function saveMember() {
+    const payload = {
+        name: $('memberName').value.trim(),
+        part: $('memberPart').value,
+        comment: $('memberComment').value.trim()
+    };
+    if (!payload.name) {
+        showAlert('団員名を入力してください', 'warning');
+        return;
+    }
+    if (!payload.part) {
+        showAlert('パートを選択してください', 'warning');
+        return;
+    }
+    const id = $('memberId').value;
+    await request(id ? `/api/members/${id}` : '/api/members', jsonOptions(id ? 'PUT' : 'POST', payload));
+    clearMemberForm();
+    await loadMembers();
+    showAlert('団員情報を保存しました', 'success');
+}
+
+function selectMember(id) {
+    const item = appState.members.find((member) => member.id === id);
+    if (!item) return;
+    $('memberId').value = item.id;
+    $('memberName').value = item.name || '';
+    $('memberPart').value = item.part || '';
+    $('memberComment').value = item.comment || '';
+}
+
+async function deleteMember() {
+    const id = $('memberId').value;
+    if (!id) {
+        showAlert('削除する団員を一覧から選択してください', 'warning');
+        return;
+    }
+    if (!confirm('選択中の団員情報を削除しますか？')) return;
+    await request(`/api/members/${id}`, { method: 'DELETE' });
+    clearMemberForm();
+    await loadMembers();
+    showAlert('団員情報を削除しました', 'success');
+}
+
+function clearMemberForm() {
+    $('memberId').value = '';
+    $('memberName').value = '';
+    $('memberPart').value = '';
+    $('memberComment').value = '';
+}
+
+function renderMembers() {
+    const list = $('memberListItems');
+    if (list) {
+        list.innerHTML = emptyText(appState.members, '団員情報はまだありません');
+        [...appState.members].sort((a, b) => String(a.part || '').localeCompare(String(b.part || '')) || String(a.name || '').localeCompare(String(b.name || ''))).forEach((member) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'list-group-item list-group-item-action';
+            item.innerHTML = `<strong>${escapeHtml(member.name)}</strong><div class="small text-muted">${escapeHtml(member.part || '')}${member.comment ? ` / ${escapeHtml(member.comment)}` : ''}</div>`;
+            item.addEventListener('click', () => selectMember(member.id));
+            list.appendChild(item);
+        });
+    }
+    renderMemberIntros();
+}
+
+function renderMemberIntros() {
+    const container = $('memberIntroInfo');
+    if (!container) return;
+    if (!appState.members.length) {
+        container.innerHTML = '<p class="text-muted mb-0">団員情報はまだありません</p>';
+        return;
+    }
+    const grouped = groupBy([...appState.members].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), 'part');
+    container.innerHTML = Object.entries(grouped).map(([part, members]) => `
+        <section class="mb-3">
+            <h6>${escapeHtml(part || '未設定')}</h6>
+            <ul class="list-group">${members.map((member) => `<li class="list-group-item"><strong>${escapeHtml(member.name)}</strong>${member.comment ? `<div class="small text-muted">${escapeHtml(member.comment)}</div>` : ''}</li>`).join('')}</ul>
+        </section>
+    `).join('');
+}
+
 function renderEvents() {
     const list = $('eventListItems');
     if (!list) return;
@@ -583,6 +719,8 @@ function renderPerformances() {
         list.appendChild(item);
     });
     renderMemberPerformances();
+    renderSchedulePerformanceOptions();
+    updateSchedulePieceOptions();
 }
 
 function renderSchedules() {
@@ -595,19 +733,20 @@ function renderSchedules() {
     container.innerHTML = `
         <div class="table-responsive">
             <table class="table table-sm align-middle">
-                <thead><tr><th>日付</th><th>時間</th><th>場所</th><th>曲</th><th>備考</th></tr></thead>
+                <thead><tr><th>日付</th><th>時間</th><th>場所</th><th>演奏会</th><th>曲</th><th>備考</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
     `;
     const body = container.querySelector('tbody');
-    appState.schedules.forEach((sched) => {
+    sortedSchedules(appState.schedules).forEach((sched) => {
         const row = document.createElement('tr');
         row.className = 'clickable-row';
         row.innerHTML = `
             <td>${escapeHtml(sched.date)}</td>
             <td>${escapeHtml(scheduleTimeLabel(sched))}</td>
             <td>${escapeHtml(sched.venue || '')}</td>
+            <td>${escapeHtml(schedulePerformanceLabel(sched))}</td>
             <td>${escapeHtml(sched.pieces || '')}</td>
             <td>${escapeHtml(sched.notes || '')}</td>
         `;
@@ -750,6 +889,7 @@ function renderMemberViews() {
     renderMemberSchedules();
     renderAnnouncements();
     renderRecordings();
+    renderMemberIntros();
 }
 
 function renderMemberPerformances() {
@@ -770,18 +910,33 @@ function renderMemberPerformances() {
 
 function renderMemberSchedules() {
     const container = $('memberSchedInfo');
-    if (!appState.schedules.length) {
+    const upcoming = sortedSchedules(appState.schedules).filter((sched) => !sched.date || sched.date >= today());
+    if (!upcoming.length) {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
         return;
     }
-    container.innerHTML = appState.schedules.map((sched) => `
+    container.innerHTML = upcoming.map((sched) => `
         <article class="info-block">
             <h5>${escapeHtml(sched.date)} ${escapeHtml(scheduleTimeLabel(sched))}</h5>
             <p>${escapeHtml(sched.venue || '')} / 利用可能: ${escapeHtml(scheduleAvailableLabel(sched))}</p>
-            <p>${escapeHtml(sched.pieces || '')}</p>
-            <p class="mb-0 text-muted">${escapeHtml(sched.notes || '')}</p>
+            <p class="mb-1"><strong>演奏会:</strong> ${escapeHtml(schedulePerformanceLabel(sched))}</p>
+            <p class="mb-1"><strong>練習曲:</strong> ${escapeHtml(sched.pieces || '未定')}</p>
+            <p class="mb-0 text-muted multiline-text">${escapeHtml(sched.notes || '')}</p>
         </article>
     `).join('');
+}
+
+function sortedSchedules(schedules) {
+    return [...(schedules || [])].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(scheduleTimeLabel(a)).localeCompare(String(scheduleTimeLabel(b))));
+}
+
+function schedulePerformanceLabel(sched) {
+    if (sched.performance_title) return sched.performance_title;
+    if (sched.performance_id) {
+        const performance = appState.performances.find((perf) => String(perf.id) === String(sched.performance_id));
+        if (performance) return performance.title;
+    }
+    return '未定';
 }
 
 async function request(url, options = {}) {
