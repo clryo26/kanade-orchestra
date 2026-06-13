@@ -692,7 +692,7 @@ def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | 
     return max(start, 0), min(end, total_size - 1)
 
 
-def stream_storage_blob(object_name: str, download: bool, request: Request) -> Response | StreamingResponse:
+def stream_storage_blob(object_name: str, download: bool, request: Request):
     if not storage_enabled():
         raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
     if not object_name:
@@ -745,7 +745,7 @@ async def play_cloud_recording(object_name: str, request: Request):
 
 
 @app.get("/api/recordings/cloud/download/{object_name:path}")
-async def download_cloud_recording(object_name: str, request: Request) -> Response | StreamingResponse:
+async def download_cloud_recording(object_name: str, request: Request) :
     return stream_storage_blob(object_name, download=True, request=request)
 
 
