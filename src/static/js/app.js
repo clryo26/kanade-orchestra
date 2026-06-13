@@ -5,7 +5,7 @@
     youtube: 'https://www.youtube.com/@fukuoka-kanade-orchestra'
 };
 
-const KANADE_PORTAL_ICON = '/static/img/kanade-icon.svg';
+const KANADE_PORTAL_ICON = '/static/img/kanade-icon.png';
 
 const KANADE_MEMBER_PROFILES = [
     {
@@ -157,24 +157,16 @@ function switchTab(panelId, tabName) {
     }
 }
 
-async function reloadPortal() {
+function reloadPortal() {
     const button = $('portalReloadBtn');
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'リロード中...';
-    try {
-        await Promise.all([loadAll(), loadPortalData()]);
-        if (!$('memberPanel').hidden) {
-            renderMemberViews();
-        }
-        showAlert('最新情報に更新しました', 'success');
-    } catch (error) {
-        console.error(error);
-        showAlert(`リロードに失敗しました: ${error.message}`, 'danger');
-    } finally {
-        button.disabled = false;
-        button.textContent = originalText;
+    if (button) {
+        button.disabled = true;
+        button.textContent = '更新中...';
     }
+
+    // ブラウザの更新ボタンと同じく、ページ全体を再読み込みする。
+    // 再ビルド後のHTML/JS/CSS/アイコンも取り直せるよう、キャッシュ対策はサーバ側ヘッダーで行う。
+    window.location.reload();
 }
 
 function toPascalTab(value) {
