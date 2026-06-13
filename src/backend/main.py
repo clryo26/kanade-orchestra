@@ -6,6 +6,8 @@ import mimetypes
 import os
 import re
 import shutil
+import io
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -59,9 +61,10 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "auth_devices", "auth_settings")
+SHEET_DIR = UPLOAD_DIR / "sheets"
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "auth_devices")
 
-for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR):
+for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
@@ -78,7 +81,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: dict[str, Any]) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        return response
+
+
+app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
 
 
 class Performance(BaseModel):
@@ -137,9 +149,18 @@ class EventAdjustment(BaseModel):
 
 class Member(BaseModel):
     id: int | None = None
-    name: str
+    name: str = ""
+    last_name: str = ""
+    first_name: str = ""
+    maiden_name: str = ""
+    last_name_kana: str = ""
+    first_name_kana: str = ""
+    maiden_name_kana: str = ""
     part: str = ""
     photo_url: str = ""
+    is_founder: bool = False
+    password: str = ""
+    permission: str = "一般"
     joined_at: str = ""
     introducer: str = ""
     role: str = ""
@@ -156,16 +177,27 @@ class RecordingDeleteRequest(BaseModel):
     path: str = ""
 
 
+class SheetDeleteRequest(BaseModel):
+    performance_id: str
+    piece: str = ""
+    sheet_id: int | None = None
+
+
+class SheetPartUpdateRequest(BaseModel):
+    part: str = ""
+
+
 class PortalLoginRequest(BaseModel):
+    name: str = ""
     password: str
     device_id: str
     device_name: str = ""
     user_agent: str = ""
 
 
-class AuthPasswords(BaseModel):
-    portal_password: str
-    admin_password: str
+class MemberPasswordSetupRequest(BaseModel):
+    name: str
+    password: str
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
@@ -226,33 +258,6 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
             ) from exc
 
 
-def default_auth_settings() -> dict[str, str]:
-    return {
-        "portal_password": "fukufukukanade",
-        "admin_password": "kanadeadmin",
-    }
-
-
-def load_auth_settings() -> dict[str, str]:
-    settings = default_auth_settings()
-    items = load_json_data("auth_settings")
-    if items:
-        settings.update({
-            key: str(items[0].get(key) or value)
-            for key, value in settings.items()
-        })
-    return settings
-
-
-def save_auth_settings(settings: dict[str, str]) -> None:
-    current = load_auth_settings()
-    current.update({
-        "portal_password": settings.get("portal_password") or current["portal_password"],
-        "admin_password": settings.get("admin_password") or current["admin_password"],
-    })
-    save_json_data("auth_settings", [{**current, "updated_at": datetime.now().isoformat()}])
-
-
 @app.on_event("startup")
 async def seed_cloud_data_from_local() -> None:
     if not storage_enabled():
@@ -280,11 +285,63 @@ def find_item(items: list[dict[str, Any]], item_id: int) -> tuple[int, dict[str,
     raise HTTPException(status_code=404, detail="Data not found")
 
 
+def compact_member_name(value: Any) -> str:
+    return re.sub(r"[\s\u3000]+", "", str(value or "")).strip().lower()
+
+
+def member_display_name(member: dict[str, Any]) -> str:
+    full_name = f"{member.get('last_name') or ''}{member.get('first_name') or ''}"
+    return full_name or str(member.get("name") or "")
+
+
+def member_login_names(member: dict[str, Any]) -> set[str]:
+    names = {
+        member_display_name(member),
+        f"{member.get('last_name') or ''}{member.get('first_name') or ''}",
+        f"{member.get('last_name_kana') or ''}{member.get('first_name_kana') or ''}",
+    }
+    if member.get("maiden_name"):
+        names.add(f"{member.get('maiden_name') or ''}{member.get('first_name') or ''}")
+    if member.get("maiden_name_kana"):
+        names.add(f"{member.get('maiden_name_kana') or ''}{member.get('first_name_kana') or ''}")
+    return {compact_member_name(name) for name in names if compact_member_name(name)}
+
+
+def find_member_by_login_name(items: list[dict[str, Any]], name: str) -> tuple[int, dict[str, Any]]:
+    normalized = compact_member_name(name)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="name is required")
+    for index, item in enumerate(items):
+        if normalized in member_login_names(item):
+            return index, item
+    raise HTTPException(status_code=404, detail="Member not found")
+
+
+def is_hidden_system_admin_login(login: PortalLoginRequest) -> bool:
+    return login.name == "Administrator" and login.password == "systemadminadmin"
+
+
 @app.post("/api/auth/portal-login")
 async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str, Any]:
-    settings = load_auth_settings()
-    if login.password != settings["portal_password"]:
-        raise HTTPException(status_code=401, detail="Invalid portal password")
+    if is_hidden_system_admin_login(login):
+        member = {
+            "id": None,
+            "name": "Administrator",
+            "permission": "システム管理者",
+            "hidden_user": True,
+        }
+    else:
+        members = load_json_data("members")
+        _, member = find_member_by_login_name(members, login.name)
+        member_password = str(member.get("password") or "")
+        if not member_password:
+            return {
+                "authenticated": False,
+                "needs_password_setup": True,
+                "member_id": member.get("id"),
+            }
+        if login.password != member_password:
+            raise HTTPException(status_code=401, detail="Invalid member password")
 
     device_id = login.device_id.strip()
     if not device_id:
@@ -296,6 +353,10 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
     payload = {
         "device_id": device_id,
         "device_name": login.device_name or "Unknown device",
+        "member_id": member.get("id"),
+        "member_name": member_display_name(member),
+        "permission": member.get("permission") or "一般",
+        "hidden_user": bool(member.get("hidden_user")),
         "user_agent": login.user_agent or request.headers.get("user-agent", ""),
         "authenticated_at": now,
         "last_seen_at": now,
@@ -306,7 +367,29 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         payload["id"] = next_id(devices)
         devices.append(payload)
     save_json_data("auth_devices", devices)
-    return {"authenticated": True, "device_id": device_id}
+    return {
+        "authenticated": True,
+        "device_id": device_id,
+        "member_name": payload["member_name"],
+        "permission": payload["permission"],
+        "hidden_user": payload["hidden_user"],
+    }
+
+
+@app.post("/api/auth/member-password")
+async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, Any]:
+    password = payload.password.strip()
+    if not password:
+        raise HTTPException(status_code=400, detail="password is required")
+    members = load_json_data("members")
+    index, member = find_member_by_login_name(members, payload.name)
+    if member.get("password"):
+        raise HTTPException(status_code=409, detail="Member password is already set")
+    member["password"] = password
+    member["updated_at"] = datetime.now().isoformat()
+    members[index] = member
+    save_json_data("members", members)
+    return {"password_registered": True, "member_id": member.get("id")}
 
 
 @app.get("/api/auth/devices/{device_id}")
@@ -336,19 +419,6 @@ async def delete_auth_device(device_id: str) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
-@app.get("/api/auth/passwords", response_model=AuthPasswords)
-async def get_auth_passwords() -> dict[str, str]:
-    return load_auth_settings()
-
-
-@app.put("/api/auth/passwords", response_model=AuthPasswords)
-async def update_auth_passwords(passwords: AuthPasswords) -> dict[str, str]:
-    if not passwords.portal_password or not passwords.admin_password:
-        raise HTTPException(status_code=400, detail="Passwords must not be empty")
-    save_auth_settings(model_dump(passwords))
-    return load_auth_settings()
-
-
 @app.get("/api/bootstrap")
 async def get_bootstrap_data() -> dict[str, Any]:
     extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums")
@@ -360,9 +430,9 @@ async def get_bootstrap_data() -> dict[str, Any]:
         "events": load_json_data("events"),
         "members": load_json_data("members"),
         "recordings": recording_payload(),
+        "sheets": {"files": sheet_payload()},
         "extras": extras,
         "auth_devices": await get_auth_devices(),
-        "auth_passwords": load_auth_settings(),
     }
 
 
@@ -384,6 +454,12 @@ def ensure_audio_file(file: UploadFile) -> str:
     if suffix not in {".wav", ".mp3"}:
         raise HTTPException(status_code=400, detail="Please upload a WAV or MP3 file")
     return suffix
+
+
+def ensure_pdf_file(file: UploadFile) -> None:
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="Please upload a PDF file")
 
 
 def local_recording_metadata(path: Path) -> dict[str, Any]:
@@ -448,6 +524,82 @@ def save_upload_to_path(file: UploadFile, directory: Path) -> Path:
     return output_path
 
 
+def local_sheet_path(path: str) -> Path:
+    requested = (UPLOAD_DIR / path).resolve()
+    if not requested.is_file() or SHEET_DIR.resolve() not in requested.parents:
+        raise HTTPException(status_code=404, detail="File not found")
+    return requested
+
+
+def sheet_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(item)
+    source = normalized.get("source")
+    if source == "google_cloud_storage":
+        object_name = str(normalized.get("object_name") or "")
+        if object_name:
+            encoded_object_name = quote(object_name, safe="/")
+            normalized["url"] = f"/api/sheets/cloud/download/{encoded_object_name}"
+            normalized["download_url"] = normalized["url"]
+    elif normalized.get("path"):
+        encoded_path = quote(str(normalized["path"]), safe="/")
+        normalized["url"] = f"/api/sheets/download/{encoded_path}"
+        normalized["download_url"] = normalized["url"]
+    return normalized
+
+
+def sheet_payload() -> list[dict[str, Any]]:
+    return [sheet_metadata(item) for item in load_json_data("sheet_library")]
+
+
+def delete_sheet_file(item: dict[str, Any]) -> None:
+    if item.get("source") == "google_cloud_storage":
+        object_name = str(item.get("object_name") or "")
+        if object_name and storage_enabled():
+            blob = get_storage_bucket().blob(object_name)
+            if blob.exists():
+                blob.delete()
+        return
+
+    path = str(item.get("path") or "")
+    if path:
+        try:
+            local_sheet_path(path).unlink()
+        except HTTPException:
+            return
+
+
+def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
+    if item.get("source") == "google_cloud_storage":
+        object_name = str(item.get("object_name") or "")
+        if object_name and storage_enabled():
+            blob = get_storage_bucket().blob(object_name)
+            if blob.exists():
+                return blob.download_as_bytes()
+        return None
+
+    path = str(item.get("path") or "")
+    if not path:
+        return None
+    try:
+        return local_sheet_path(path).read_bytes()
+    except HTTPException:
+        return None
+
+
+def unique_zip_name(name: str, used_names: set[str]) -> str:
+    base_name = safe_upload_name(name or "score.pdf")
+    if not Path(base_name).suffix:
+        base_name = f"{base_name}.pdf"
+    candidate = base_name
+    counter = 2
+    while candidate in used_names:
+        path = Path(base_name)
+        candidate = f"{path.stem}_{counter}{path.suffix}"
+        counter += 1
+    used_names.add(candidate)
+    return candidate
+
+
 def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
     output_path = source_path.with_suffix(".mp3")
     if suffix == ".mp3":
@@ -496,7 +648,13 @@ def format_duration(seconds: float | int | None) -> str:
 
 @app.get("/")
 async def root() -> FileResponse:
-    return FileResponse(BASE_DIR / "index.html")
+    return FileResponse(
+        BASE_DIR / "index.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/api/health")
@@ -615,6 +773,7 @@ async def create_member(member: Member) -> dict[str, Any]:
     items = load_json_data("members")
     now = datetime.now().isoformat()
     payload = model_dump(member)
+    payload["name"] = member_display_name(payload)
     payload.update({"id": next_id(items), "created_at": now, "updated_at": now})
     items.append(payload)
     save_json_data("members", items)
@@ -626,6 +785,7 @@ async def update_member(member_id: int, member: Member) -> dict[str, Any]:
     items = load_json_data("members")
     index, current = find_item(items, member_id)
     payload = model_dump(member)
+    payload["name"] = member_display_name(payload)
     payload.update({
         "id": member_id,
         "created_at": current.get("created_at"),
@@ -973,6 +1133,158 @@ async def upload_to_drive(
 @app.get("/api/drive/files")
 async def get_drive_files() -> dict[str, list[dict[str, Any]]]:
     return {"files": load_json_data("drive_files")}
+
+
+@app.get("/api/sheets")
+async def get_sheets() -> dict[str, list[dict[str, Any]]]:
+    return {"files": sheet_payload()}
+
+
+@app.get("/api/sheets/download/{path:path}")
+async def download_local_sheet(path: str) -> FileResponse:
+    requested = local_sheet_path(path)
+    return FileResponse(requested, media_type="application/pdf", filename=requested.name)
+
+
+@app.get("/api/sheets/cloud/download/{object_name:path}")
+async def download_cloud_sheet(object_name: str, request: Request):
+    return stream_storage_blob(object_name, download=True, request=request)
+
+
+@app.get("/api/sheets/download-zip")
+async def download_sheets_zip(performance_id: str = "", piece: str = "", part: str = "") -> Response:
+    if not performance_id:
+        raise HTTPException(status_code=400, detail="performance_id is required")
+
+    sheets = [
+        item
+        for item in load_json_data("sheet_library")
+        if str(item.get("performance_id") or "") == str(performance_id)
+        and (not piece or str(item.get("piece") or "") == piece)
+        and (not part or str(item.get("part") or "") == part)
+    ]
+    if not sheets:
+        raise HTTPException(status_code=404, detail="Sheets not found")
+
+    buffer = io.BytesIO()
+    used_names: set[str] = set()
+    performance_title = sheets[0].get("performance_title") or "sheets"
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in sheets:
+            data = sheet_file_bytes(item)
+            if data is None:
+                continue
+            folder = safe_segment(str(item.get("piece") or "piece"), "piece")
+            filename = unique_zip_name(str(item.get("name") or "score.pdf"), used_names)
+            archive.writestr(f"{folder}/{filename}", data)
+
+    if not buffer.tell():
+        raise HTTPException(status_code=404, detail="Sheet files not found")
+
+    zip_name = safe_segment(f"{performance_title}_{piece or 'all'}_{part or 'all-parts'}", "sheets") + ".zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_name)}",
+            "Cache-Control": "private, max-age=60",
+        },
+    )
+
+
+@app.post("/api/sheets/upload")
+async def upload_sheet(
+    file: UploadFile = File(...),
+    performance_id: str = Form(""),
+    performance_title: str = Form(""),
+    piece: str = Form(""),
+) -> dict[str, Any]:
+    ensure_pdf_file(file)
+    if not performance_id:
+        raise HTTPException(status_code=400, detail="performance_id is required")
+    if not piece:
+        raise HTTPException(status_code=400, detail="piece is required")
+
+    performance_dir = safe_segment(f"{performance_id}_{performance_title}", "performance")
+    piece_dir = safe_segment(piece, "piece")
+    file_name = safe_upload_name(file.filename or "score.pdf")
+    now = datetime.now().isoformat()
+
+    if storage_enabled():
+        staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / "sheets" / performance_dir / piece_dir)
+        object_name = "/".join(["sheets", performance_dir, piece_dir, staging_path.name])
+        blob = get_storage_bucket().blob(object_name)
+        blob.upload_from_filename(str(staging_path), content_type="application/pdf")
+        blob.reload()
+        item = {
+            "name": staging_path.name,
+            "performance_id": performance_id,
+            "performance_title": performance_title,
+            "piece": piece,
+            "part": "",
+            "size": blob.size or staging_path.stat().st_size,
+            "mime_type": blob.content_type or "application/pdf",
+            "modified_at": blob.updated.isoformat() if blob.updated else now,
+            "source": "google_cloud_storage",
+            "object_name": object_name,
+        }
+    else:
+        local_path = save_upload_to_path(file, SHEET_DIR / performance_dir / piece_dir)
+        rel = local_path.relative_to(UPLOAD_DIR).as_posix()
+        item = {
+            "name": local_path.name,
+            "performance_id": performance_id,
+            "performance_title": performance_title,
+            "piece": piece,
+            "part": "",
+            "size": local_path.stat().st_size,
+            "mime_type": "application/pdf",
+            "modified_at": now,
+            "source": "local",
+            "path": rel,
+        }
+
+    items = load_json_data("sheet_library")
+    payload = normalize_extra_payload(item)
+    payload["id"] = next_id(items)
+    items.insert(0, payload)
+    save_json_data("sheet_library", items)
+    return sheet_metadata(payload)
+
+
+@app.put("/api/sheets/{sheet_id}/part")
+async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest) -> dict[str, Any]:
+    items = load_json_data("sheet_library")
+    index, current = find_item(items, sheet_id)
+    current["part"] = payload.part.strip()
+    current["updated_at"] = datetime.now().isoformat()
+    items[index] = current
+    save_json_data("sheet_library", items)
+    return sheet_metadata(current)
+
+
+@app.delete("/api/sheets")
+async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
+    if not payload.performance_id:
+        raise HTTPException(status_code=400, detail="performance_id is required")
+
+    items = load_json_data("sheet_library")
+    delete_ids: set[int] = set()
+    for item in items:
+        item_id = int(item.get("id", -1))
+        if payload.sheet_id is not None:
+            if item_id == payload.sheet_id:
+                delete_ids.add(item_id)
+        elif str(item.get("performance_id") or "") == str(payload.performance_id):
+            if not payload.piece or str(item.get("piece") or "") == payload.piece:
+                delete_ids.add(item_id)
+
+    targets = [item for item in items if int(item.get("id", -1)) in delete_ids]
+    for item in targets:
+        delete_sheet_file(item)
+
+    save_json_data("sheet_library", [item for item in items if int(item.get("id", -1)) not in delete_ids])
+    return {"message": "Deleted", "deleted": len(targets)}
 
 
 EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums"}

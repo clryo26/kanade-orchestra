@@ -20,6 +20,7 @@
                 <span>奏オケポータル</span>
             </a>
             <div class="d-flex gap-2">
+                <button class="btn btn-outline-danger" id="portalLogoutBtn" type="button">ログアウト</button>
                 <button class="btn btn-outline-success" id="portalReloadBtn" type="button">更新</button>
                 <button class="btn btn-outline-primary d-none" id="adminMenuBtn" type="button">管理メニュー</button>
                 <button class="btn btn-outline-secondary d-none" id="memberMenuBtn" type="button">団員メニュー</button>
@@ -37,8 +38,8 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="sheet-admin" type="button">楽譜管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="auth-devices" type="button">認証端末管理</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="password" type="button">パスワード管理</button>
             </div>
 
             <div id="uploadTab" class="tab-content">
@@ -283,9 +284,29 @@
                     <div class="card-body">
                         <input type="hidden" id="memberId">
                         <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label" for="memberName">名前</label>
-                                <input type="text" class="form-control" id="memberName" placeholder="例: 山田 太郎">
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberLastName">姓</label>
+                                <input type="text" class="form-control" id="memberLastName" placeholder="例: 山田">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberFirstName">名</label>
+                                <input type="text" class="form-control" id="memberFirstName" placeholder="例: 太郎">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberMaidenName">旧姓</label>
+                                <input type="text" class="form-control" id="memberMaidenName">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberLastNameKana">姓ふりがな</label>
+                                <input type="text" class="form-control" id="memberLastNameKana" placeholder="例: やまだ">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberFirstNameKana">名ふりがな</label>
+                                <input type="text" class="form-control" id="memberFirstNameKana" placeholder="例: たろう">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberMaidenNameKana">旧姓ふりがな</label>
+                                <input type="text" class="form-control" id="memberMaidenNameKana">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="memberPart">パート</label>
@@ -310,6 +331,24 @@
                             <div class="col-md-3">
                                 <label class="form-label" for="memberPhotoFile">プロフィール写真</label>
                                 <input type="file" class="form-control" id="memberPhotoFile" accept="image/*">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="memberIsFounder">
+                                    <label class="form-check-label" for="memberIsFounder">創設メンバー</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="memberPassword">パスワード</label>
+                                <input type="password" class="form-control" id="memberPassword" autocomplete="new-password">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="memberPermission">権限</label>
+                                <select class="form-select" id="memberPermission">
+                                    <option value="一般">一般</option>
+                                    <option value="管理者">管理者</option>
+                                    <option value="システム管理者">システム管理者</option>
+                                </select>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label" for="memberJoinedAt">入団年月</label>
@@ -355,21 +394,28 @@
                 </div>
             </div>
 
-            <div id="passwordTab" class="tab-content" hidden>
+            <div id="sheetAdminTab" class="tab-content" hidden>
                 <div class="card">
-                    <div class="card-header">パスワード管理</div>
+                    <div class="card-header">楽譜管理</div>
                     <div class="card-body">
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="portalPasswordSetting">ポータルログインパスワード</label>
-                                <input type="text" class="form-control" id="portalPasswordSetting">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="sheetPerformanceSelect">演奏会</label>
+                                <select class="form-select" id="sheetPerformanceSelect"></select>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="adminPasswordSetting">管理者メニューログインパスワード</label>
-                                <input type="text" class="form-control" id="adminPasswordSetting">
+                            <div class="col-md-4">
+                                <label class="form-label" for="sheetPieceSelect">曲名</label>
+                                <select class="form-select" id="sheetPieceSelect"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="sheetFileInput">楽譜PDF</label>
+                                <input type="file" class="form-control" id="sheetFileInput" accept="application/pdf,.pdf" multiple>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-primary" id="uploadSheetBtn" type="button">楽譜を登録</button>
                             </div>
                         </div>
-                        <button class="btn btn-success" id="savePasswordSettingsBtn" type="button">保存</button>
+                        <div id="sheetAdminList"></div>
                     </div>
                 </div>
             </div>

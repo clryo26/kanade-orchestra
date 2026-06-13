@@ -34,7 +34,15 @@ def get_storage_client() -> storage.Client:
 
 
 def storage_enabled() -> bool:
-    return bool(storage_bucket_name())
+    bucket_name = storage_bucket_name()
+    if not bucket_name or bucket_name in {"your_bucket_name_here", "あなたのGCSバケット名"}:
+        return False
+
+    service_account_file = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
+    if service_account_file and not Path(service_account_file).expanduser().exists():
+        return False
+
+    return True
 
 
 def get_storage_bucket() -> storage.Bucket:
