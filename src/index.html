@@ -15,18 +15,16 @@
 <body>
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
         <div class="container-fluid">
-            <button class="portal-menu-toggle" id="portalDrawerToggle" type="button" aria-label="メニューを開く" aria-expanded="false">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
-            <a class="navbar-brand d-flex align-items-center gap-2" href="#">
-                <img src="/static/icons/icon-192.png" alt="奏オケ" class="portal-logo">
-                <span>奏オケポータル</span>
-            </a>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-danger" id="portalLogoutBtn" type="button">ログアウト</button>
-                <button class="btn btn-outline-success" id="portalReloadBtn" type="button">更新</button>
+            <div class="portal-title-area">
+                <button class="portal-menu-toggle" id="portalDrawerToggle" type="button" aria-label="メニューを開く" aria-expanded="false">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+                    <img src="/static/icons/icon-192.png" alt="奏オケ" class="portal-logo">
+                    <span>奏オケポータル</span>
+                </a>
             </div>
         </div>
     </nav>
@@ -37,6 +35,10 @@
             <button class="btn btn-sm btn-outline-secondary" id="portalDrawerClose" type="button">閉じる</button>
         </div>
         <div class="portal-drawer-body" id="portalDrawerMenu"></div>
+        <div class="portal-drawer-footer">
+            <button class="btn btn-outline-danger w-100" id="portalLogoutBtn" type="button">ログアウト</button>
+            <button class="btn btn-outline-success w-100" id="portalReloadBtn" type="button">更新</button>
+        </div>
     </aside>
 
     <main class="container-fluid py-4">
@@ -466,11 +468,41 @@
         </section>
 
         <section id="systemPanel" class="panel" hidden>
-            <div class="card">
-                <div class="card-header">システム管理</div>
-                <div class="card-body">
-                    <h5>認証端末管理</h5>
+            <div class="toolbar mb-3">
+                <button class="btn btn-sm btn-outline-primary active" data-tab="system-auth" type="button">認証端末管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
+            </div>
+
+            <div id="systemAuthTab" class="tab-content">
+                <div class="card">
+                    <div class="card-header">認証端末管理</div>
+                    <div class="card-body">
                     <div id="authDeviceListItems"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemPartTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">パート管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="partSettingId">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="partSettingName">パート名</label>
+                                <input type="text" class="form-control" id="partSettingName">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="partSettingOrder">表示順</label>
+                                <input type="number" class="form-control" id="partSettingOrder" min="1" step="1">
+                            </div>
+                            <div class="col-md-3 d-flex gap-2">
+                                <button class="btn btn-success flex-fill" id="savePartSettingBtn" type="button">保存</button>
+                                <button class="btn btn-outline-secondary flex-fill" id="clearPartSettingBtn" type="button">クリア</button>
+                            </div>
+                        </div>
+                        <div id="partSettingList"></div>
+                    </div>
                 </div>
             </div>
         </section>

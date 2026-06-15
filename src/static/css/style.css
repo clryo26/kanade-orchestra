@@ -19,6 +19,12 @@ body {
     font-weight: 700;
 }
 
+.portal-title-area {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+}
+
 .portal-menu-toggle {
     align-items: center;
     background: #fff;
@@ -56,14 +62,15 @@ body {
     background: #fff;
     border-right: 1px solid var(--line);
     box-shadow: 0 12px 36px rgba(15, 23, 42, 0.18);
+    display: flex;
+    flex-direction: column;
     height: 100vh;
     left: 0;
-    max-width: min(360px, 88vw);
-    overflow-y: auto;
-    padding: 1rem;
+    max-width: min(190px, 88vw);
+    padding: 0.6rem;
     position: fixed;
     top: 0;
-    width: 360px;
+    width: 190px;
     z-index: 1100;
 }
 
@@ -85,7 +92,23 @@ body {
 }
 
 .portal-drawer .portal-menu-button {
+    height: 48px;
+    justify-content: center;
+    padding: 0.5rem;
     width: 100%;
+}
+
+.portal-drawer-body {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.portal-drawer-footer {
+    border-top: 1px solid var(--line);
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
 }
 
 .portal-logo {
@@ -551,6 +574,15 @@ details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::
 .portal-menu-groups {
     display: grid;
     gap: 1.25rem;
+}
+
+.portal-home-actions {
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
 }
 
 .portal-menu-group h3 {

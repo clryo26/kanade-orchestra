@@ -15,6 +15,7 @@ const appState = {
     castings: [],
     pieceInfos: [],
     albums: [],
+    partSettings: [],
     currentAudio: null,
     currentPlayButton: null,
     continuousPlayback: false,
@@ -43,7 +44,7 @@ const $ = (id) => document.getElementById(id);
 const PORTAL_AUTH_KEY = 'kanadePortalAuthenticated';
 const PORTAL_DEVICE_ID_KEY = 'kanadePortalDeviceId';
 const SCHEDULE_EXTRA_PIECES = ['未定', 'ポップス全曲', 'クラシック全曲'];
-const MEMBER_PARTS = ['Violin', 'Viola', 'Cello', 'Contrabass', 'Flute', 'Oboe', 'Clarinet', 'Fagot', 'Horn', 'Trumpet', 'Trombone', 'Tuba', 'Percussion', 'Piano'];
+const DEFAULT_MEMBER_PARTS = ['Violin', 'Viola', 'Cello', 'Contrabass', 'Flute', 'Oboe', 'Clarinet', 'Fagot', 'Horn', 'Trumpet', 'Trombone', 'Tuba', 'Percussion', 'Piano'];
 
 async function withButtonStatus(button, processingLabel, task) {
     if (!button || button.disabled) return;
@@ -76,12 +77,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindUpload();
     bindForms();
     updateSavePath();
+    await loadPartSettingsForLogin();
     if (await isPortalAuthenticated()) {
         await enterPortal();
     } else {
         showPortalLogin();
     }
 });
+
+async function loadPartSettingsForLogin() {
+    try {
+        appState.partSettings = await request('/api/extra/part_settings');
+        refreshPartSelectOptions();
+    } catch {
+        refreshPartSelectOptions();
+    }
+}
 
 window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
@@ -119,6 +130,10 @@ function setupPortalHome() {
                         <h2>メニュー</h2>
                     </div>
                     <div class="portal-menu-groups" id="portalHomeMenu"></div>
+                    <div class="portal-home-actions">
+                        <button class="btn btn-outline-danger" id="portalHomeLogoutBtn" type="button">ログアウト</button>
+                        <button class="btn btn-outline-success" id="portalHomeReloadBtn" type="button">更新</button>
+                    </div>
                 </div>
             </section>
         </div>
@@ -418,7 +433,7 @@ function showPortalLogin() {
             </section>
         `);
         loginPanel = $('portalLoginPanel');
-        $('portalPartInput').innerHTML = ['<option value="">選択してください</option>'].concat(MEMBER_PARTS.map((part) => `<option value="${escapeHtml(part)}">${escapeHtml(part)}</option>`)).join('');
+        refreshPartSelectOptions();
         $('portalLoginBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '確認中...', handlePortalLogin));
         $('portalPasswordSetupBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', handleMemberPasswordSetup));
         $('portalBackToLoginBtn').addEventListener('click', showPortalLoginForm);
@@ -537,6 +552,8 @@ function bindNavigation() {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').addEventListener('click', openPortalDrawer);
     if ($('portalDrawerClose')) $('portalDrawerClose').addEventListener('click', closePortalDrawer);
     if ($('portalDrawerBackdrop')) $('portalDrawerBackdrop').addEventListener('click', closePortalDrawer);
+    if ($('portalHomeLogoutBtn')) $('portalHomeLogoutBtn').addEventListener('click', logoutPortal);
+    if ($('portalHomeReloadBtn')) $('portalHomeReloadBtn').addEventListener('click', () => window.location.reload());
     if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').addEventListener('click', () => {
         clearSheetViewer();
         showMemberTab('member-sheet');
@@ -556,6 +573,9 @@ function bindNavigation() {
     });
     document.querySelectorAll('#memberPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('memberPanel', button.dataset.tab));
+    });
+    document.querySelectorAll('#systemPanel [data-tab]').forEach((button) => {
+        button.addEventListener('click', () => switchTab('systemPanel', button.dataset.tab));
     });
 }
 
@@ -610,6 +630,9 @@ function bindForms() {
     if ($('savePaymentBtn')) $('savePaymentBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePaymentStatus()));
     if ($('clearPaymentBtn')) $('clearPaymentBtn').addEventListener('click', clearPaymentForm);
 
+    if ($('savePartSettingBtn')) $('savePartSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePartSetting()));
+    if ($('clearPartSettingBtn')) $('clearPartSettingBtn').addEventListener('click', clearPartSettingForm);
+
     if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', updateSheetPieceOptions);
     if ($('uploadSheetBtn')) $('uploadSheetBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', () => uploadSheets()));
 }
@@ -650,6 +673,8 @@ async function showSystemPanel() {
     $('systemPanel').hidden = false;
     localStorage.setItem('userRole', 'system-admin');
     await loadAuthManagement();
+    renderPartManagement();
+    switchTab('systemPanel', 'system-auth');
 }
 
 async function showMemberPanel(shouldRender = true) {
@@ -717,7 +742,9 @@ function toPascalTab(value) {
         'member-casting': 'memberCasting',
         'member-event': 'memberEvent',
         'member-piece-info': 'memberPieceInfo',
-        'member-album': 'memberAlbum'
+        'member-album': 'memberAlbum',
+        'system-auth': 'systemAuth',
+        'system-part': 'systemPart'
     };
     return map[value] || value;
 }
@@ -832,6 +859,7 @@ async function legacyBootstrapData() {
         castings,
         pieceInfos,
         albums,
+        partSettings,
         sheets,
         authDevices
     ] = await Promise.all([
@@ -848,6 +876,7 @@ async function legacyBootstrapData() {
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
         request('/api/extra/albums'),
+        request('/api/extra/part_settings'),
         request('/api/sheets'),
         request('/api/auth/devices')
     ]);
@@ -865,7 +894,8 @@ async function legacyBootstrapData() {
             payments,
             castings,
             piece_infos: pieceInfos,
-            albums
+            albums,
+            part_settings: partSettings
         },
         auth_devices: authDevices,
         sheets
@@ -888,8 +918,10 @@ function applyBootstrapData(data) {
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
         albums: extras.albums || [],
+        partSettings: extras.part_settings || [],
         authDevices: data.auth_devices || []
     });
+    refreshPartSelectOptions();
     updateManagerNavigationVisibility();
 }
 
@@ -937,6 +969,7 @@ function renderInitialViews() {
     renderMemberIntros();
     renderMemberExtraViews();
     renderAuthDevices();
+    renderPartManagement();
     renderSchedulePerformanceOptions();
     updateSchedulePieceOptions();
     renderPortalHome();
@@ -962,19 +995,22 @@ async function loadAuthManagement() {
 }
 
 async function loadExtraData() {
-    const [absences, eventResponses, sheets, payments, castings, pieceInfos, albums] = await Promise.all([
+    const [absences, eventResponses, sheets, payments, castings, pieceInfos, albums, partSettings] = await Promise.all([
         request('/api/extra/absences'),
         request('/api/extra/event_responses'),
         request('/api/sheets'),
         request('/api/extra/payments'),
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
-        request('/api/extra/albums')
+        request('/api/extra/albums'),
+        request('/api/extra/part_settings')
     ]);
-    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, albums });
+    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, albums, partSettings });
+    refreshPartSelectOptions();
     renderMemberExtraViews();
     renderSheetAdmin();
     renderPaymentAdmin();
+    renderPartManagement();
 }
 
 async function saveExtra(name, payload) {
@@ -1622,10 +1658,16 @@ function memberKanaName(member) {
 
 function sortedMembersByPartAndKana(members) {
     return [...(members || [])].sort((a, b) =>
+        partSortIndex(a.part) - partSortIndex(b.part) ||
         String(a.part || '').localeCompare(String(b.part || ''), 'ja') ||
         String(memberKanaName(a) || memberDisplayName(a)).localeCompare(String(memberKanaName(b) || memberDisplayName(b)), 'ja') ||
         String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)), 'ja')
     );
+}
+
+function partSortIndex(partName) {
+    const index = currentPartNames().indexOf(String(partName || ''));
+    return index === -1 ? 9999 : index;
 }
 
 function renderMembers() {
@@ -1693,6 +1735,123 @@ async function deleteAuthDevice(deviceId) {
     }
     await loadAuthManagement();
     showAlert('認証端末を削除しました', 'success');
+}
+
+function sortedPartSettings() {
+    return [...(appState.partSettings || [])].sort((a, b) =>
+        Number(a.display_order || 9999) - Number(b.display_order || 9999) ||
+        String(a.name || '').localeCompare(String(b.name || ''), 'ja')
+    );
+}
+
+function currentPartNames() {
+    const configured = sortedPartSettings()
+        .map((part) => String(part.name || '').trim())
+        .filter(Boolean);
+    return configured.length ? configured : DEFAULT_MEMBER_PARTS;
+}
+
+function partSelectOptionsHtml(selected = '') {
+    return ['<option value="">選択してください</option>']
+        .concat(currentPartNames().map((part) => `<option value="${escapeHtml(part)}" ${part === selected ? 'selected' : ''}>${escapeHtml(part)}</option>`))
+        .join('');
+}
+
+function refreshPartSelectOptions() {
+    const portalPart = $('portalPartInput');
+    if (portalPart) {
+        const selected = portalPart.value;
+        portalPart.innerHTML = partSelectOptionsHtml(selected);
+        if ([...portalPart.options].some((option) => option.value === selected)) portalPart.value = selected;
+    }
+    const memberPart = $('memberPart');
+    if (memberPart) {
+        const selected = memberPart.value;
+        memberPart.innerHTML = partSelectOptionsHtml(selected);
+        if ([...memberPart.options].some((option) => option.value === selected)) memberPart.value = selected;
+    }
+}
+
+function renderPartManagement() {
+    const list = $('partSettingList');
+    if (!list) return;
+    const parts = sortedPartSettings();
+    if ($('partSettingOrder') && !$('partSettingOrder').value) $('partSettingOrder').value = nextPartDisplayOrder();
+    list.innerHTML = parts.length
+        ? `<div class="list-group">${parts.map((part) => `
+            <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <strong>${escapeHtml(part.name || '')}</strong>
+                    <div class="small text-muted">表示順: ${escapeHtml(String(part.display_order || ''))}</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary part-setting-edit-btn" type="button" data-part-id="${escapeHtml(String(part.id || ''))}">編集</button>
+                    <button class="btn btn-sm btn-outline-danger part-setting-delete-btn" type="button" data-part-id="${escapeHtml(String(part.id || ''))}">削除</button>
+                </div>
+            </div>
+        `).join('')}</div>`
+        : '<div class="alert alert-info mb-0">未登録のため、初期パート一覧を使用しています。必要なパートを登録すると、その順番で表示されます。</div>';
+
+    list.querySelectorAll('.part-setting-edit-btn').forEach((button) => {
+        button.addEventListener('click', () => selectPartSetting(button.dataset.partId || ''));
+    });
+    list.querySelectorAll('.part-setting-delete-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePartSetting(button.dataset.partId || '')));
+    });
+}
+
+function selectPartSetting(partId) {
+    const part = appState.partSettings.find((item) => String(item.id || '') === String(partId));
+    if (!part) return;
+    $('partSettingId').value = part.id || '';
+    $('partSettingName').value = part.name || '';
+    $('partSettingOrder').value = part.display_order || '';
+}
+
+function clearPartSettingForm() {
+    if ($('partSettingId')) $('partSettingId').value = '';
+    if ($('partSettingName')) $('partSettingName').value = '';
+    if ($('partSettingOrder')) $('partSettingOrder').value = nextPartDisplayOrder();
+}
+
+function nextPartDisplayOrder() {
+    const maxOrder = Math.max(0, ...appState.partSettings.map((part) => Number(part.display_order || 0)));
+    return maxOrder + 1;
+}
+
+async function savePartSetting() {
+    const name = $('partSettingName')?.value.trim() || '';
+    const displayOrder = Number($('partSettingOrder')?.value || nextPartDisplayOrder());
+    if (!name) {
+        showAlert('パート名を入力してください', 'warning');
+        return;
+    }
+    const duplicate = appState.partSettings.find((part) =>
+        String(part.name || '').trim() === name &&
+        String(part.id || '') !== String($('partSettingId')?.value || '')
+    );
+    if (duplicate) {
+        showAlert('同じパート名が既に登録されています', 'warning');
+        return;
+    }
+    const payload = { name, display_order: displayOrder || nextPartDisplayOrder() };
+    const id = $('partSettingId')?.value || '';
+    if (id) {
+        await request(`/api/extra/part_settings/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+    } else {
+        await saveExtra('part_settings', payload);
+    }
+    clearPartSettingForm();
+    await loadExtraData();
+    showAlert('パートを保存しました', 'success');
+}
+
+async function deletePartSetting(partId) {
+    if (!partId || !confirm('このパートを削除しますか？')) return;
+    await request(`/api/extra/part_settings/${encodeURIComponent(partId)}`, { method: 'DELETE' });
+    clearPartSettingForm();
+    await loadExtraData();
+    showAlert('パートを削除しました', 'success');
 }
 
 function renderMemberIntros() {
@@ -2667,7 +2826,7 @@ function sheetFilterPartOptions(selected = '', performanceId = '', piece = '') {
         .filter((sheet) => !performanceId || String(sheet.performance_id || '') === String(performanceId))
         .filter((sheet) => !piece || String(sheet.piece || '') === piece)
         .map((sheet) => String(sheet.part || ''))
-        .filter(Boolean))];
+        .filter(Boolean))].sort((a, b) => partSortIndex(a) - partSortIndex(b) || a.localeCompare(b, 'ja'));
     return ['<option value="">すべて</option>'].concat(parts.map((part) => `<option value="${escapeHtml(part)}" ${part === selected ? 'selected' : ''}>${escapeHtml(part)}</option>`)).join('');
 }
 
@@ -2697,7 +2856,7 @@ function bindSheetLibraryFilters() {
 }
 
 function sheetPartOptions() {
-    return MEMBER_PARTS;
+    return currentPartNames();
 }
 
 function partOptionHtml(selected = '') {
