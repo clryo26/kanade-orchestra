@@ -1,6 +1,6 @@
 {
-  "name": "奏オケポータル",
-  "short_name": "奏オケ",
+  "name": "楽団ポータル",
+  "short_name": "楽団",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

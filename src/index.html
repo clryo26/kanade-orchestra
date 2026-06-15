@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>奏オケポータル</title>
+    <title id="documentTitle">楽団ポータル</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
@@ -22,8 +22,8 @@
                     <span></span>
                 </button>
                 <a class="navbar-brand d-flex align-items-center gap-2" href="#">
-                    <img src="/static/icons/icon-192.png" alt="奏オケ" class="portal-logo">
-                    <span>奏オケポータル</span>
+                    <img src="/static/icons/icon-192.png" alt="奏オケ" class="portal-logo" id="portalLogo">
+                    <span id="portalBrandTitle">楽団ポータル</span>
                 </a>
             </div>
         </div>
@@ -50,6 +50,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況登録</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
             </div>
 
             <div id="uploadTab" class="tab-content" hidden>
@@ -121,7 +122,8 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="perfVenue">会場</label>
-                                <input type="text" class="form-control" id="perfVenue">
+                                <input type="text" class="form-control" id="perfVenue" list="performanceVenueOptions">
+                                <datalist id="performanceVenueOptions"></datalist>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="perfConductor">指揮者</label>
@@ -180,7 +182,8 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedVenue">場所</label>
-                                <input type="text" class="form-control" id="schedVenue">
+                                <input type="text" class="form-control" id="schedVenue" list="practiceVenueOptions">
+                                <datalist id="practiceVenueOptions"></datalist>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="schedAvailableStartTime">利用可能開始</label>
@@ -465,11 +468,50 @@
                 </div>
             </div>
 
+            <div id="venueAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">会場管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="venueSettingId">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label" for="venueSettingName">会場名</label>
+                                <input type="text" class="form-control" id="venueSettingName">
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-label">用途</div>
+                                <div class="d-flex flex-wrap gap-3">
+                                    <label class="form-check">
+                                        <input class="form-check-input" id="venueForPractice" type="checkbox" checked>
+                                        <span class="form-check-label">練習</span>
+                                    </label>
+                                    <label class="form-check">
+                                        <input class="form-check-input" id="venueForPerformance" type="checkbox">
+                                        <span class="form-check-label">本番</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3 d-flex gap-2">
+                                <button class="btn btn-success flex-fill" id="saveVenueSettingBtn" type="button">保存</button>
+                                <button class="btn btn-outline-secondary flex-fill" id="clearVenueSettingBtn" type="button">クリア</button>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="venueSettingNote">メモ</label>
+                                <textarea class="form-control" id="venueSettingNote" rows="2"></textarea>
+                            </div>
+                        </div>
+                        <div id="venueSettingList"></div>
+                    </div>
+                </div>
+            </div>
+
         </section>
 
         <section id="systemPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="system-auth" type="button">認証端末管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-org" type="button">団体情報管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
             </div>
 
@@ -482,21 +524,78 @@
                 </div>
             </div>
 
+            <div id="systemOrgTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">団体情報管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="orgSettingId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label" for="orgName">団体名</label>
+                                <input type="text" class="form-control" id="orgName">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="orgShortName">略称</label>
+                                <input type="text" class="form-control" id="orgShortName">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="orgIconFile">アイコンイメージ</label>
+                                <input type="file" class="form-control" id="orgIconFile" accept="image/*">
+                            </div>
+                            <div class="col-12">
+                                <img src="/static/icons/icon-192.png" alt="団体アイコン" class="portal-logo" id="orgIconPreview">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-success" id="saveOrgSettingBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearOrgSettingBtn" type="button">クリア</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemSnsTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">SNS情報</div>
+                    <div class="card-body">
+                        <input type="hidden" id="snsSettingId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label" for="snsFacebookUrl">Facebook</label>
+                                <input type="url" class="form-control" id="snsFacebookUrl" placeholder="https://www.facebook.com/...">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="snsInstagramUrl">Instagram</label>
+                                <input type="url" class="form-control" id="snsInstagramUrl" placeholder="https://www.instagram.com/...">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="snsXUrl">X</label>
+                                <input type="url" class="form-control" id="snsXUrl" placeholder="https://x.com/...">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="snsYoutubeUrl">YouTube</label>
+                                <input type="url" class="form-control" id="snsYoutubeUrl" placeholder="https://www.youtube.com/...">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-success" id="saveSnsSettingBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearSnsSettingBtn" type="button">クリア</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="systemPartTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">パート管理</div>
                     <div class="card-body">
                         <input type="hidden" id="partSettingId">
                         <div class="row g-3 align-items-end mb-3">
-                            <div class="col-md-6">
+                            <div class="col-md-8">
                                 <label class="form-label" for="partSettingName">パート名</label>
                                 <input type="text" class="form-control" id="partSettingName">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="partSettingOrder">表示順</label>
-                                <input type="number" class="form-control" id="partSettingOrder" min="1" step="1">
-                            </div>
-                            <div class="col-md-3 d-flex gap-2">
+                            <div class="col-md-4 d-flex gap-2">
                                 <button class="btn btn-success flex-fill" id="savePartSettingBtn" type="button">保存</button>
                                 <button class="btn btn-outline-secondary flex-fill" id="clearPartSettingBtn" type="button">クリア</button>
                             </div>
@@ -581,6 +680,14 @@
             </div>
             <div id="memberAlbumTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">アルバム</div><div class="card-body" id="memberAlbumInfo"></div></div>
+            </div>
+
+            <div id="memberConcertRecordTab" class="tab-content" hidden>
+                <div class="card"><div class="card-header">演奏会記録</div><div class="card-body" id="memberConcertRecordInfo"></div></div>
+            </div>
+
+            <div id="memberSnsTab" class="tab-content" hidden>
+                <div class="card"><div class="card-header">SNS</div><div class="card-body" id="memberSnsInfo"></div></div>
             </div>
         </section>
     </main>

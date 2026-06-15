@@ -62,7 +62,7 @@ DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 SHEET_DIR = UPLOAD_DIR / "sheets"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "auth_devices")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "auth_devices")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -441,7 +441,7 @@ async def delete_auth_device(device_id: str) -> dict[str, str]:
 
 @app.get("/api/bootstrap")
 async def get_bootstrap_data() -> dict[str, Any]:
-    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings")
+    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings")
     extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
@@ -1383,7 +1383,7 @@ async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
     return {"message": "Deleted", "deleted": len(targets)}
 
 
-EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings"}
+EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings"}
 
 def normalize_extra_payload(payload: dict[str, Any], item_id: int | None = None, current: dict[str, Any] | None = None) -> dict[str, Any]:
     now = datetime.now().isoformat()
