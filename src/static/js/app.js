@@ -28,6 +28,9 @@ const appState = {
     currentUserIsRecordingManager: false,
     currentUserIsSheetManager: false,
     installPromptEvent: null,
+    sheetPdfScale: 1,
+    sheetPdfUrl: '',
+    sheetPdfRendering: false,
     sheetFilters: {
         performanceId: '',
         piece: '',
@@ -127,13 +130,17 @@ function setupPortalHome() {
                     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <span id="sheetViewerTitle">楽譜表示</span>
                         <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-sm btn-outline-primary" id="sheetViewerZoomOut" type="button">縮小</button>
+                            <button class="btn btn-sm btn-outline-primary" id="sheetViewerFitWidth" type="button">幅に合わせる</button>
+                            <button class="btn btn-sm btn-outline-primary" id="sheetViewerZoomIn" type="button">拡大</button>
                             <a class="btn btn-sm btn-primary" id="sheetViewerDownload" href="#" download>DL</a>
                             <button class="btn btn-sm btn-outline-secondary" id="sheetViewerBackBtn" type="button">楽譜ライブラリに戻る</button>
                             <button class="btn btn-sm btn-outline-primary" id="sheetViewerMenuBtn" type="button">メニューに戻る</button>
                         </div>
                     </div>
                     <div class="card-body sheet-viewer-body">
-                        <iframe id="sheetViewerFrame" title="楽譜PDF"></iframe>
+                        <div class="sheet-viewer-status" id="sheetViewerStatus">楽譜を読み込み中...</div>
+                        <div class="sheet-viewer-pages" id="sheetViewerPages"></div>
                     </div>
                 </div>
             </div>
@@ -538,6 +545,9 @@ function bindNavigation() {
         clearSheetViewer();
         showMemberPanel();
     });
+    if ($('sheetViewerZoomOut')) $('sheetViewerZoomOut').addEventListener('click', () => zoomSheetViewer(-0.15));
+    if ($('sheetViewerZoomIn')) $('sheetViewerZoomIn').addEventListener('click', () => zoomSheetViewer(0.15));
+    if ($('sheetViewerFitWidth')) $('sheetViewerFitWidth').addEventListener('click', () => fitSheetViewerWidth());
     if ($('portalLogoutBtn')) $('portalLogoutBtn').addEventListener('click', logoutPortal);
     if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => window.location.reload());
 
@@ -595,6 +605,10 @@ function bindForms() {
     $('addMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveMember()));
     $('clearMemberBtn').addEventListener('click', clearMemberForm);
     $('deleteMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteMember()));
+
+    if ($('paymentMemberId')) $('paymentMemberId').addEventListener('change', () => selectPaymentByMember($('paymentMemberId').value));
+    if ($('savePaymentBtn')) $('savePaymentBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePaymentStatus()));
+    if ($('clearPaymentBtn')) $('clearPaymentBtn').addEventListener('click', clearPaymentForm);
 
     if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', updateSheetPieceOptions);
     if ($('uploadSheetBtn')) $('uploadSheetBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', () => uploadSheets()));
@@ -688,6 +702,7 @@ function toPascalTab(value) {
         announcement: 'announcement',
         event: 'event',
         member: 'member',
+        'payment-admin': 'paymentAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
@@ -882,6 +897,7 @@ async function loadPerformances() {
     appState.performances = await request('/api/performances');
     renderPerformances();
     renderSheetAdmin();
+    renderPaymentAdmin();
 }
 
 async function loadSchedules() {
@@ -902,6 +918,7 @@ async function loadEvents() {
 async function loadMembers() {
     appState.members = await request('/api/members');
     renderMembers();
+    renderPaymentAdmin();
 }
 
 function renderInitialViews() {
@@ -913,6 +930,7 @@ function renderInitialViews() {
     renderMembers();
     renderRecordings();
     renderSheetAdmin();
+    renderPaymentAdmin();
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
@@ -956,6 +974,7 @@ async function loadExtraData() {
     Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, albums });
     renderMemberExtraViews();
     renderSheetAdmin();
+    renderPaymentAdmin();
 }
 
 async function saveExtra(name, payload) {
@@ -2514,17 +2533,112 @@ function showSheetViewer(sheetId) {
         return;
     }
     const title = $('sheetViewerTitle');
-    const frame = $('sheetViewerFrame');
     const download = $('sheetViewerDownload');
     if (title) title.textContent = sheet.name || '楽譜表示';
-    if (frame) frame.src = viewUrl;
     if (download) download.href = sheet.download_url || sheet.url || viewUrl;
     switchTab('memberPanel', 'member-sheet-viewer', false);
+    renderPdfViewer(viewUrl);
 }
 
 function clearSheetViewer() {
-    const frame = $('sheetViewerFrame');
-    if (frame) frame.src = 'about:blank';
+    appState.sheetPdfUrl = '';
+    appState.sheetPdfRendering = false;
+    const pages = $('sheetViewerPages');
+    const status = $('sheetViewerStatus');
+    if (pages) pages.innerHTML = '';
+    if (status) status.textContent = '';
+}
+
+async function loadPdfJs() {
+    if (window.pdfjsLib) return window.pdfjsLib;
+    await new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-pdfjs]');
+        if (existing) {
+            existing.addEventListener('load', resolve, { once: true });
+            existing.addEventListener('error', reject, { once: true });
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        script.dataset.pdfjs = 'true';
+        script.addEventListener('load', resolve, { once: true });
+        script.addEventListener('error', reject, { once: true });
+        document.head.appendChild(script);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    return window.pdfjsLib;
+}
+
+async function renderPdfViewer(url, scale = null) {
+    const pages = $('sheetViewerPages');
+    const status = $('sheetViewerStatus');
+    if (!pages || !status) return;
+    appState.sheetPdfUrl = url;
+    appState.sheetPdfRendering = true;
+    pages.innerHTML = '';
+    status.textContent = '楽譜を読み込み中...';
+    try {
+        const pdfjsLib = await loadPdfJs();
+        const data = await fetch(url, { cache: 'no-store' }).then((response) => {
+            if (!response.ok) throw new Error(`PDFを取得できませんでした (${response.status})`);
+            return response.arrayBuffer();
+        });
+        if (appState.sheetPdfUrl !== url) return;
+        const pdf = await pdfjsLib.getDocument({ data }).promise;
+        const firstPage = await pdf.getPage(1);
+        appState.sheetPdfScale = scale || sheetViewerFitScale(firstPage);
+        status.textContent = `${pdf.numPages}ページを表示中`;
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            if (appState.sheetPdfUrl !== url) return;
+            const page = pageNumber === 1 ? firstPage : await pdf.getPage(pageNumber);
+            await renderPdfPage(page, pageNumber, appState.sheetPdfScale, pages);
+        }
+        status.textContent = `${pdf.numPages}ページ`;
+    } catch (error) {
+        status.textContent = 'PDFを表示できませんでした';
+        showAlert(error.message || 'PDFを表示できませんでした', 'danger');
+    } finally {
+        appState.sheetPdfRendering = false;
+    }
+}
+
+function sheetViewerFitScale(page) {
+    const body = $('sheetViewerPages');
+    const viewport = page.getViewport({ scale: 1 });
+    const availableWidth = Math.max((body?.clientWidth || window.innerWidth) - 24, 280);
+    return Math.max(0.35, Math.min(2.5, availableWidth / viewport.width));
+}
+
+async function renderPdfPage(page, pageNumber, scale, container) {
+    const viewport = page.getViewport({ scale });
+    const wrapper = document.createElement('section');
+    wrapper.className = 'sheet-viewer-page';
+    wrapper.innerHTML = `<div class="sheet-viewer-page-label">${pageNumber}</div>`;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const outputScale = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+    await page.render({
+        canvasContext: context,
+        viewport,
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null
+    }).promise;
+}
+
+function zoomSheetViewer(delta) {
+    if (!appState.sheetPdfUrl || appState.sheetPdfRendering) return;
+    const nextScale = Math.max(0.35, Math.min(3, appState.sheetPdfScale + delta));
+    renderPdfViewer(appState.sheetPdfUrl, nextScale);
+}
+
+async function fitSheetViewerWidth() {
+    if (!appState.sheetPdfUrl || appState.sheetPdfRendering) return;
+    renderPdfViewer(appState.sheetPdfUrl, null);
 }
 
 function sheetPieceOptions(performance) {
@@ -2750,6 +2864,150 @@ function renderPaymentView() {
         $('paymentResult').innerHTML = name ? (rows.length ? rows.map((p) => `<div class="info-block"><strong>${escapeHtml(p.title || p.year || '支払')}</strong><div>団費: ${escapeHtml(p.membership_fee || p.dues || '未登録')}</div><div>演奏会費: ${escapeHtml(p.performance_fee || '未登録')}</div></div>`).join('') : '<p class="text-muted">支払情報は未登録です</p>') : '';
     };
     $('paymentMemberName').addEventListener('change', render);
+}
+
+function renderPaymentView() {
+    const c = $('memberPaymentInfo');
+    if (!c) return;
+    c.innerHTML = `<div class="mb-3"><label class="form-label">団員</label><select id="paymentMemberName" class="form-select">${memberOptions()}</select></div><div id="paymentResult"></div>`;
+    const render = () => {
+        const name = $('paymentMemberName').value;
+        const member = appState.members.find((item) => memberDisplayName(item) === name);
+        const payment = findPaymentForMember(member?.id, name);
+        $('paymentResult').innerHTML = name ? (payment ? paymentStatusHtml(payment) : '<p class="text-muted">支払情報は未登録です</p>') : '';
+    };
+    $('paymentMemberName').addEventListener('change', render);
+}
+
+function findPaymentForMember(memberId, name = '') {
+    return appState.payments.find((payment) =>
+        (memberId && String(payment.member_id || '') === String(memberId)) ||
+        (name && payment.name === name)
+    ) || null;
+}
+
+function performanceFeeMap(payment) {
+    return payment?.performance_fees && typeof payment.performance_fees === 'object'
+        ? payment.performance_fees
+        : {};
+}
+
+function paymentStatusHtml(payment) {
+    const feeMap = performanceFeeMap(payment);
+    const performanceFees = appState.performances.map((perf) => {
+        const paid = Boolean(feeMap[String(perf.id)]);
+        return `<div>${escapeHtml(perf.title)}: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span></div>`;
+    }).join('');
+    return `
+        <div class="info-block">
+            <div>団費: ${escapeHtml(payment.paid_until_month || payment.membership_fee || payment.dues || '未登録')} まで</div>
+            <div>最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+            <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
+        </div>
+    `;
+}
+
+function paymentMemberOptionsById(selected = '') {
+    return ['<option value="">選択してください</option>'].concat(sortedMembersByPartAndKana(appState.members).map((member) => {
+        const id = String(member.id || '');
+        const part = member.part ? `（${member.part}）` : '';
+        return `<option value="${escapeHtml(id)}" ${id === String(selected) ? 'selected' : ''}>${escapeHtml(memberDisplayName(member) + part)}</option>`;
+    })).join('');
+}
+
+function renderPaymentAdmin() {
+    const memberSelect = $('paymentMemberId');
+    const feeContainer = $('paymentPerformanceFees');
+    const list = $('paymentAdminList');
+    if (!memberSelect || !feeContainer || !list) return;
+
+    const selected = memberSelect.value;
+    memberSelect.innerHTML = paymentMemberOptionsById(selected);
+    if ([...memberSelect.options].some((option) => option.value === selected)) {
+        memberSelect.value = selected;
+    }
+
+    feeContainer.innerHTML = appState.performances.length
+        ? appState.performances.map((perf) => `
+            <label class="form-check">
+                <input class="form-check-input payment-performance-checkbox" type="checkbox" value="${escapeHtml(String(perf.id))}">
+                <span class="form-check-label">${escapeHtml(perf.title)}</span>
+            </label>
+        `).join('')
+        : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
+
+    list.innerHTML = appState.payments.length
+        ? `<div class="list-group">${appState.payments.map((payment) => {
+            const member = appState.members.find((item) => String(item.id || '') === String(payment.member_id || ''));
+            const name = member ? memberDisplayName(member) : (payment.name || '未設定');
+            return `
+                <button class="list-group-item list-group-item-action payment-admin-item" type="button" data-payment-id="${escapeHtml(String(payment.id || ''))}">
+                    <strong>${escapeHtml(name)}</strong>
+                    <div class="small text-muted">団費: ${escapeHtml(payment.paid_until_month || '未登録')} まで / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+                </button>
+            `;
+        }).join('')}</div>`
+        : '<p class="text-muted mb-0">支払状況はまだ登録されていません</p>';
+
+    list.querySelectorAll('.payment-admin-item').forEach((button) => {
+        button.addEventListener('click', () => selectPaymentRecord(button.dataset.paymentId || ''));
+    });
+}
+
+function selectPaymentByMember(memberId) {
+    const member = appState.members.find((item) => String(item.id || '') === String(memberId));
+    const payment = findPaymentForMember(memberId, member ? memberDisplayName(member) : '');
+    fillPaymentForm(payment, memberId);
+}
+
+function selectPaymentRecord(paymentId) {
+    const payment = appState.payments.find((item) => String(item.id || '') === String(paymentId));
+    if (!payment) return;
+    fillPaymentForm(payment, payment.member_id || '');
+}
+
+function fillPaymentForm(payment, memberId = '') {
+    if (!$('paymentId')) return;
+    $('paymentId').value = payment?.id || '';
+    $('paymentMemberId').value = memberId || payment?.member_id || '';
+    $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
+    $('paymentLatestDate').value = payment?.latest_payment_date || '';
+    const feeMap = performanceFeeMap(payment);
+    document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
+        checkbox.checked = Boolean(feeMap[String(checkbox.value)]);
+    });
+}
+
+function clearPaymentForm() {
+    fillPaymentForm(null, '');
+}
+
+async function savePaymentStatus() {
+    const memberId = $('paymentMemberId')?.value || '';
+    const member = appState.members.find((item) => String(item.id || '') === String(memberId));
+    if (!member) {
+        showAlert('支払状況を登録する団員を選択してください', 'warning');
+        return;
+    }
+    const performanceFees = {};
+    document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
+        performanceFees[String(checkbox.value)] = checkbox.checked;
+    });
+    const payload = {
+        member_id: memberId,
+        name: memberDisplayName(member),
+        paid_until_month: $('paymentPaidUntilMonth')?.value || '',
+        latest_payment_date: $('paymentLatestDate')?.value || '',
+        performance_fees: performanceFees
+    };
+    const id = $('paymentId')?.value || findPaymentForMember(memberId, payload.name)?.id || '';
+    const saved = id
+        ? await request(`/api/extra/payments/${encodeURIComponent(id)}`, jsonOptions('PUT', payload))
+        : await saveExtra('payments', payload);
+    await loadExtraData();
+    renderPaymentView();
+    fillPaymentForm(saved, memberId);
+    showAlert('支払状況を保存しました', 'success');
 }
 
 function renderCastingView() {

@@ -47,6 +47,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況登録</button>
             </div>
 
             <div id="uploadTab" class="tab-content" hidden>
@@ -426,6 +427,38 @@
                             </div>
                         </div>
                         <div id="sheetAdminList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="paymentAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">支払状況登録</div>
+                    <div class="card-body">
+                        <input type="hidden" id="paymentId">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="paymentMemberId">団員</label>
+                                <select class="form-select" id="paymentMemberId"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="paymentPaidUntilMonth">何月分まで支払済み</label>
+                                <input type="month" class="form-control" id="paymentPaidUntilMonth">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="paymentLatestDate">最新の支払日</label>
+                                <input type="date" class="form-control" id="paymentLatestDate">
+                            </div>
+                            <div class="col-12">
+                                <div class="form-label">演奏会費</div>
+                                <div id="paymentPerformanceFees" class="payment-performance-list"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="savePaymentBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearPaymentBtn" type="button">選択解除</button>
+                        </div>
+                        <div id="paymentAdminList"></div>
                     </div>
                 </div>
             </div>
