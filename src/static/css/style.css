@@ -761,3 +761,47 @@ details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::
     gap: 0.35rem;
 }
 .multiline-text { white-space: pre-wrap; }
+
+.member-photo {
+    width: 120px;
+    height: 120px;
+}
+.member-comment {
+    color: #212529;
+}
+.sns-link-button,
+.concert-record-link-button {
+    min-width: 160px;
+    padding: 0.9rem 1.4rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+.performance-flyer-preview {
+    max-width: min(100%, 360px);
+    max-height: 520px;
+    object-fit: contain;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+}
+.absence-row + .absence-row {
+    border-top: 1px solid #e9ecef;
+}
+
+
+.revision-footer {
+    position: fixed;
+    right: 12px;
+    bottom: 6px;
+    z-index: 900;
+    font-size: 0.75rem;
+    color: #6c757d;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 999px;
+    padding: 2px 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.schedule-piece-checks {
+    max-height: 220px;
+    overflow: auto;
+}

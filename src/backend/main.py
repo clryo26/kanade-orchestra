@@ -85,8 +85,13 @@ app.add_middleware(
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict[str, Any]) -> Response:
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
+        # 静的ファイルはブラウザキャッシュを許可して初回以降の表示を高速化する。
+        # index.html は下のルートで no-store にして、画面本体の更新漏れを防ぐ。
+        if path.endswith((".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webmanifest", ".ico")):
+            response.headers["Cache-Control"] = "public, max-age=3600"
+        else:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
         return response
 
 
@@ -101,6 +106,7 @@ class Performance(BaseModel):
     start_time: str
     venue: str
     conductor: str
+    flyer_image: str = ""
     pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
@@ -129,6 +135,7 @@ class Schedule(BaseModel):
 class Announcement(BaseModel):
     id: int | None = None
     date: str
+    title: str = ""
     content: str
     created_at: str | None = None
     updated_at: str | None = None
@@ -143,6 +150,7 @@ class EventAdjustment(BaseModel):
     url: str = ""
     notes: str = ""
     delete_phrase: str = ""
+    fee: str = ""
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -437,6 +445,25 @@ async def delete_auth_device(device_id: str) -> dict[str, str]:
     devices = load_json_data("auth_devices")
     save_json_data("auth_devices", [item for item in devices if item.get("device_id") != device_id])
     return {"message": "Deleted"}
+
+
+@app.get("/api/bootstrap-lite")
+async def get_bootstrap_lite_data() -> dict[str, Any]:
+    """初期表示用の軽量データ。
+
+    録音一覧・楽譜一覧・認証端末一覧は件数が増えると重くなるため、
+    メニュー表示後にバックグラウンドで /api/bootstrap から取得する。
+    """
+    extra_names = ("absences", "event_responses", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings")
+    extras = {name: load_json_data(name) for name in extra_names}
+    return {
+        "performances": load_json_data("performances"),
+        "schedules": load_json_data("schedules"),
+        "announcements": load_json_data("announcements"),
+        "events": load_json_data("events"),
+        "members": load_json_data("members"),
+        "extras": extras,
+    }
 
 
 @app.get("/api/bootstrap")

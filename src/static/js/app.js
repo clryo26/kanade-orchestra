@@ -23,6 +23,8 @@ const appState = {
     currentPlayButton: null,
     continuousPlayback: false,
     dataLoaded: false,
+    essentialDataLoaded: false,
+    fullDataLoading: false,
     authDevices: [],
     suppressDerivedRender: false,
     portalAuthVerified: false,
@@ -47,7 +49,6 @@ const today = () => new Date().toISOString().slice(0, 10);
 const $ = (id) => document.getElementById(id);
 const PORTAL_AUTH_KEY = 'kanadePortalAuthenticated';
 const PORTAL_DEVICE_ID_KEY = 'kanadePortalDeviceId';
-const SCHEDULE_EXTRA_PIECES = ['未定', 'ポップス全曲', 'クラシック全曲'];
 const DEFAULT_MEMBER_PARTS = ['Violin', 'Viola', 'Cello', 'Contrabass', 'Flute', 'Oboe', 'Clarinet', 'Fagot', 'Horn', 'Trumpet', 'Trombone', 'Tuba', 'Percussion', 'Piano'];
 
 async function withButtonStatus(button, processingLabel, task) {
@@ -529,15 +530,16 @@ async function handleMemberPasswordSetup() {
 
 async function enterPortal() {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
-    if (!appState.dataLoaded) {
+    if (!appState.essentialDataLoaded) {
         try {
-            await loadAll();
-            appState.dataLoaded = true;
+            await loadEssentialData();
+            appState.essentialDataLoaded = true;
         } catch (error) {
             showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
         }
     }
     await showMemberPanel(true);
+    loadFullDataInBackground();
 }
 
 function bindNavigation() {
@@ -606,11 +608,16 @@ function bindForms() {
     $('editPerfBtn').addEventListener('click', clearPerformanceForm);
     $('deletePerfBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePerformance()));
     $('addPieceBtn').addEventListener('click', addPerformancePiece);
+    if ($('perfFlyerFile')) $('perfFlyerFile').addEventListener('change', previewPerformanceFlyer);
+    if ($('savePieceInfoBtn')) $('savePieceInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePieceInfoAdmin()));
+    if ($('clearPieceInfoBtn')) $('clearPieceInfoBtn').addEventListener('click', clearPieceInfoForm);
+    if ($('deletePieceInfoBtn')) $('deletePieceInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePieceInfoAdmin()));
+    if ($('pieceInfoPerformance')) $('pieceInfoPerformance').addEventListener('change', updatePieceInfoPieceOptions);
 
     $('addSchedBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveSchedule()));
     $('editSchedBtn').addEventListener('click', clearScheduleForm);
     $('deleteSchedBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteSchedule()));
-    $('schedPerformance').addEventListener('change', updateSchedulePieceOptions);
+    $('schedPerformance').addEventListener('change', () => updateSchedulePieceOptions());
 
     $('addAnnBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveAnnouncement()));
     $('editAnnBtn').addEventListener('click', clearAnnouncementForm);
@@ -661,6 +668,7 @@ function showAdminPanel(role = 'admin') {
     if ($('systemPanel')) $('systemPanel').hidden = true;
     localStorage.setItem('userRole', role);
     switchTab('adminPanel', 'performance');
+    window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 async function showSystemPanel() {
@@ -726,6 +734,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
     if (renderOnShow && tabName === 'sheet-admin') renderSheetAdmin();
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
+    if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
 }
@@ -740,6 +749,7 @@ function toPascalTab(value) {
         member: 'member',
         'payment-admin': 'paymentAdmin',
         'venue-admin': 'venueAdmin',
+        'piece-info-admin': 'pieceInfoAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
@@ -843,6 +853,56 @@ function clearUploadForm() {
     if (progress) progress.hidden = true;
     updateSavePath();
 }
+
+async function loadEssentialData() {
+    let data;
+    try {
+        data = await requestJson('/api/bootstrap-lite');
+    } catch {
+        data = await requestJson('/api/bootstrap');
+    }
+    applyBootstrapData(data);
+    renderEssentialViews();
+}
+
+function renderEssentialViews() {
+    appState.suppressDerivedRender = true;
+    renderPerformances();
+    renderSchedules();
+    renderAnnouncements();
+    renderEvents();
+    renderMembers();
+    renderPaymentAdmin();
+    renderVenueManagement();
+    renderPieceInfoAdmin();
+    renderOrgManagement();
+    renderSnsManagement();
+    appState.suppressDerivedRender = false;
+    renderMemberPerformances();
+    renderMemberSchedules();
+    renderMemberIntros();
+    renderMemberExtraViews();
+    renderPartManagement();
+    renderSchedulePerformanceOptions();
+    updateSchedulePieceOptions();
+    renderPortalHome();
+}
+
+function loadFullDataInBackground() {
+    if (appState.dataLoaded || appState.fullDataLoading) return;
+    appState.fullDataLoading = true;
+    window.setTimeout(async () => {
+        try {
+            await loadAll();
+            appState.dataLoaded = true;
+        } catch (error) {
+            console.warn('Background data load failed', error);
+        } finally {
+            appState.fullDataLoading = false;
+        }
+    }, 0);
+}
+
 async function loadAll() {
     let data;
     try {
@@ -935,10 +995,10 @@ function applyBootstrapData(data) {
         announcements: data.announcements || [],
         events: data.events || [],
         members: data.members || [],
-        recordings: data.recordings?.files || [],
+        recordings: data.recordings?.files || appState.recordings || [],
         absences: extras.absences || [],
         eventResponses: extras.event_responses || [],
-        sheetLibrary: data.sheets?.files || extras.sheet_library || [],
+        sheetLibrary: data.sheets?.files || extras.sheet_library || appState.sheetLibrary || [],
         payments: extras.payments || [],
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
@@ -994,6 +1054,7 @@ function renderInitialViews() {
     renderSheetAdmin();
     renderPaymentAdmin();
     renderVenueManagement();
+    renderPieceInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
     appState.suppressDerivedRender = false;
@@ -1050,6 +1111,7 @@ async function loadExtraData() {
     renderPaymentAdmin();
     renderPartManagement();
     renderVenueManagement();
+    renderPieceInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
 }
@@ -1059,6 +1121,8 @@ async function saveExtra(name, payload) {
 }
 
 async function savePerformance() {
+    const flyerFile = $('perfFlyerFile')?.files?.[0];
+    const flyerImage = flyerFile ? await fileToDataUrl(flyerFile) : ($('perfFlyerImage')?.value || '');
     const payload = {
         title: $('perfTitle').value.trim(),
         date: $('perfDate').value,
@@ -1066,6 +1130,7 @@ async function savePerformance() {
         start_time: $('perfStartTime').value,
         venue: $('perfVenue').value.trim(),
         conductor: $('perfConductor').value.trim(),
+        flyer_image: flyerImage,
         pieces: currentPerformancePieces()
     };
     if (!payload.title || !payload.date) {
@@ -1090,6 +1155,9 @@ function selectPerformance(id) {
     $('perfStartTime').value = item.start_time || '19:00';
     $('perfVenue').value = item.venue || '';
     $('perfConductor').value = item.conductor || '';
+    if ($('perfFlyerImage')) $('perfFlyerImage').value = item.flyer_image || '';
+    renderPerformanceFlyerPreview(item.flyer_image || '');
+    if ($('perfFlyerFile')) $('perfFlyerFile').value = '';
     appState.performancePieces = normalizePerformancePieces(item.pieces || []);
     renderPerformancePieceList();
 }
@@ -1115,6 +1183,9 @@ function clearPerformanceForm() {
     $('perfStartTime').value = '19:00';
     $('perfVenue').value = '';
     $('perfConductor').value = '';
+    if ($('perfFlyerFile')) $('perfFlyerFile').value = '';
+    if ($('perfFlyerImage')) $('perfFlyerImage').value = '';
+    renderPerformanceFlyerPreview('');
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
@@ -1128,12 +1199,13 @@ function addPerformancePiece() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
     const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
+    const isEncore = $('perfPieceEncore') ? $('perfPieceEncore').checked : false;
     if (!title) {
         showAlert('曲名を入力してください', 'warning');
         return;
     }
 
-    const piece = { composer, title, alias };
+    const piece = { composer, title, alias, is_encore: isEncore };
     if (appState.performancePieceEditIndex !== null) {
         appState.performancePieces[appState.performancePieceEditIndex] = piece;
         appState.performancePieceEditIndex = null;
@@ -1144,6 +1216,7 @@ function addPerformancePiece() {
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+    if ($('perfPieceEncore')) $('perfPieceEncore').checked = false;
     renderPerformancePieceList();
 }
 
@@ -1153,6 +1226,7 @@ function editPerformancePiece(index) {
     $('perfPieceComposer').value = piece.composer || '';
     $('perfPieceTitle').value = piece.title || '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = piece.alias || '';
+    if ($('perfPieceEncore')) $('perfPieceEncore').checked = Boolean(piece.is_encore || piece.encore);
     appState.performancePieceEditIndex = index;
     $('addPieceBtn').textContent = '曲を更新';
 }
@@ -1166,6 +1240,7 @@ function removePerformancePiece(index) {
         $('perfPieceComposer').value = '';
         $('perfPieceTitle').value = '';
         if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+        if ($('perfPieceEncore')) $('perfPieceEncore').checked = false;
     } else if (appState.performancePieceEditIndex !== null && appState.performancePieceEditIndex > index) {
         appState.performancePieceEditIndex -= 1;
     }
@@ -1178,7 +1253,7 @@ function currentPerformancePieces() {
     const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
     const pieces = [...appState.performancePieces];
     if (title) {
-        pieces.push({ composer, title, alias });
+        pieces.push({ composer, title, alias, is_encore: $('perfPieceEncore') ? $('perfPieceEncore').checked : false });
     }
     return pieces;
 }
@@ -1191,14 +1266,16 @@ function normalizePerformancePieces(pieces) {
         return {
             composer: piece.composer || '',
             title: piece.title || piece.name || '',
-            alias: piece.alias || piece.short_name || ''
+            alias: piece.alias || piece.short_name || '',
+            is_encore: Boolean(piece.is_encore || piece.encore)
         };
     }).filter((piece) => piece.title);
 }
 
 function performancePieceLabel(piece) {
     if (typeof piece === 'string') return piece;
-    return piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+    const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+    return (piece.is_encore || piece.encore) ? `${label}（アンコール）` : label;
 }
 
 function renderPerformancePieceList() {
@@ -1237,7 +1314,7 @@ async function saveSchedule() {
         available_end_time: availableEndTime,
         performance_id: selectedPerformance ? selectedPerformance.id : null,
         performance_title: selectedPerformance ? selectedPerformance.title : '未定',
-        pieces: $('schedPieces').value,
+        pieces: selectedSchedulePiecesValue(),
         is_conductor_training: $('schedConductorTraining') ? $('schedConductorTraining').checked : false,
         is_main_performance: $('schedMainPerformance') ? $('schedMainPerformance').checked : false,
         notes: $('schedNotes').value.trim()
@@ -1271,7 +1348,9 @@ function selectSchedule(id) {
     if ($('schedConductorTraining')) $('schedConductorTraining').checked = Boolean(item.is_conductor_training);
     if ($('schedMainPerformance')) $('schedMainPerformance').checked = Boolean(item.is_main_performance);
     $('schedNotes').value = item.notes || '';
+    $('scheduleTab')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
+
 
 async function deleteSchedule() {
     const id = $('schedId').value;
@@ -1319,15 +1398,37 @@ function renderSchedulePerformanceOptions() {
     }
 }
 
+function schedulePieceValuesFromText(value) {
+    const text = String(value || '').trim();
+    if (!text || text === '未定') return [];
+    return text.split(/[、,]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function selectedSchedulePiecesValue() {
+    const container = $('schedPieces');
+    if (!container) return '未定';
+    const values = Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+        .map((input) => input.value)
+        .filter(Boolean);
+    return values.length ? values.join('、') : '未定';
+}
+
 function updateSchedulePieceOptions(preferredValue = null) {
-    const select = $('schedPieces');
-    if (!select) return;
-    const current = preferredValue ?? select.value ?? '未定';
+    const container = $('schedPieces');
+    if (!container) return;
+    const currentValues = schedulePieceValuesFromText(preferredValue ?? selectedSchedulePiecesValue());
     const performance = selectedSchedulePerformance();
     const performancePieces = performance ? normalizePerformancePieces(performance.pieces || []).map(performancePieceLabel) : [];
-    const values = [...SCHEDULE_EXTRA_PIECES, ...performancePieces].filter((value, index, array) => value && array.indexOf(value) === index);
-    select.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
-    select.value = values.includes(current) ? current : '未定';
+    const values = performancePieces.filter((value, index, array) => value && array.indexOf(value) === index);
+    if (!values.length) {
+        container.innerHTML = '<p class="text-muted small mb-0">選択中の演奏会に登録されている曲がありません。未選択の場合は「未定」になります。</p>';
+        return;
+    }
+    container.innerHTML = values.map((value, index) => {
+        const checked = currentValues.includes(value) ? ' checked' : '';
+        const id = `schedPieceCheck${index}`;
+        return `<label class="form-check mb-1" for="${id}"><input class="form-check-input" type="checkbox" id="${id}" value="${escapeHtml(value)}"${checked}><span class="form-check-label">${escapeHtml(value)}</span></label>`;
+    }).join('');
 }
 
 function formatTimeRange(start, end) {
@@ -1463,10 +1564,11 @@ function downloadSchedulesIcs(schedules) {
 async function saveAnnouncement() {
     const payload = {
         date: $('annDate').value || today(),
+        title: $('annTitle') ? $('annTitle').value.trim() : '',
         content: $('annContent').value.trim()
     };
-    if (!payload.content) {
-        showAlert('お知らせ内容を入力してください', 'warning');
+    if (!payload.title && !payload.content) {
+        showAlert('お知らせタイトルまたは内容を入力してください', 'warning');
         return;
     }
 
@@ -1482,6 +1584,7 @@ function selectAnnouncement(id) {
     if (!item) return;
     $('annId').value = item.id;
     $('annDate').value = item.date || today();
+    if ($('annTitle')) $('annTitle').value = item.title || '';
     $('annContent').value = item.content || '';
 }
 
@@ -1501,6 +1604,7 @@ async function deleteAnnouncement() {
 function clearAnnouncementForm() {
     $('annId').value = '';
     $('annDate').value = today();
+    if ($('annTitle')) $('annTitle').value = '';
     $('annContent').value = '';
 }
 
@@ -1513,7 +1617,8 @@ async function saveEvent() {
         deadline: $('eventDeadline').value,
         url: $('eventUrl').value.trim(),
         notes: $('eventNotes').value.trim(),
-        delete_phrase: $('eventDeletePhrase') ? $('eventDeletePhrase').value.trim() : ''
+        delete_phrase: $('eventDeletePhrase') ? $('eventDeletePhrase').value.trim() : '',
+        fee: $('eventFee') ? $('eventFee').value.trim() : ''
     };
     if (!payload.title) {
         showAlert('イベント名を入力してください', 'warning');
@@ -1538,6 +1643,7 @@ function selectEvent(id) {
     $('eventUrl').value = item.url || '';
     $('eventNotes').value = item.notes || '';
     if ($('eventDeletePhrase')) $('eventDeletePhrase').value = item.delete_phrase || '';
+    if ($('eventFee')) $('eventFee').value = item.fee || '';
 }
 
 async function deleteEvent() {
@@ -1567,6 +1673,7 @@ function clearEventForm() {
     $('eventUrl').value = '';
     $('eventNotes').value = '';
     if ($('eventDeletePhrase')) $('eventDeletePhrase').value = '';
+    if ($('eventFee')) $('eventFee').value = '';
 }
 
 function sortedEvents(events) {
@@ -1975,8 +2082,8 @@ function renderVenueManagement() {
     list.innerHTML = venues.length
         ? `<div class="list-group">${venues.map((venue) => {
             const uses = [
-                venue.for_practice !== false ? '練習' : '',
-                venue.for_performance !== false ? '本番' : ''
+                venue.for_practice ? '練習' : '',
+                venue.for_performance ? '本番' : ''
             ].filter(Boolean).join(' / ') || '未設定';
             return `
                 <button class="list-group-item list-group-item-action text-start venue-setting-item" type="button" data-venue-id="${escapeHtml(String(venue.id || ''))}">
@@ -1984,7 +2091,7 @@ function renderVenueManagement() {
                         <span>
                             <strong>${escapeHtml(venue.name || '')}</strong>
                             <span class="badge text-bg-secondary ms-2">${escapeHtml(uses)}</span>
-                            ${venue.note ? `<div class="small text-muted mt-1">${escapeHtml(venue.note)}</div>` : ''}
+                            
                         </span>
                         <span class="d-flex gap-2">
                             <button class="btn btn-sm btn-outline-danger venue-setting-delete-btn" type="button" data-venue-id="${escapeHtml(String(venue.id || ''))}">削除</button>
@@ -2012,17 +2119,13 @@ function selectVenueSetting(venueId) {
     if (!venue) return;
     $('venueSettingId').value = venue.id || '';
     $('venueSettingName').value = venue.name || '';
-    $('venueForPractice').checked = venue.for_practice !== false;
-    $('venueForPerformance').checked = venue.for_performance !== false;
-    $('venueSettingNote').value = venue.note || '';
+    if ($('venueUsageType')) $('venueUsageType').value = venue.for_performance ? 'performance' : 'practice';
 }
 
 function clearVenueSettingForm() {
     if ($('venueSettingId')) $('venueSettingId').value = '';
     if ($('venueSettingName')) $('venueSettingName').value = '';
-    if ($('venueForPractice')) $('venueForPractice').checked = true;
-    if ($('venueForPerformance')) $('venueForPerformance').checked = false;
-    if ($('venueSettingNote')) $('venueSettingNote').value = '';
+    if ($('venueUsageType')) $('venueUsageType').value = 'practice';
 }
 
 async function saveVenueSetting() {
@@ -2031,12 +2134,9 @@ async function saveVenueSetting() {
         showAlert('会場名を入力してください', 'warning');
         return;
     }
-    const forPractice = $('venueForPractice')?.checked ?? false;
-    const forPerformance = $('venueForPerformance')?.checked ?? false;
-    if (!forPractice && !forPerformance) {
-        showAlert('用途を1つ以上選択してください', 'warning');
-        return;
-    }
+    const usageType = $('venueUsageType')?.value || 'practice';
+    const forPractice = usageType === 'practice';
+    const forPerformance = usageType === 'performance';
     const id = $('venueSettingId')?.value || '';
     const duplicate = appState.venueSettings.find((venue) =>
         String(venue.name || '').trim() === name &&
@@ -2050,7 +2150,7 @@ async function saveVenueSetting() {
         name,
         for_practice: forPractice,
         for_performance: forPerformance,
-        note: $('venueSettingNote')?.value.trim() || ''
+        note: ''
     };
     if (id) {
         await request(`/api/extra/venue_settings/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
@@ -2217,14 +2317,13 @@ function renderSnsView() {
     const links = [
         { label: 'Facebook', url: sns.facebook_url },
         { label: 'Instagram', url: sns.instagram_url },
-        { label: 'X', url: sns.x_url },
-        { label: 'YouTube', url: sns.youtube_url }
+        { label: 'X', url: sns.x_url }
     ];
     container.innerHTML = `
         <div class="d-flex flex-wrap gap-2">
             ${links.map((item) => item.url
-                ? `<a class="btn btn-outline-primary" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label)}</a>`
-                : `<button class="btn btn-outline-secondary" type="button" disabled>${escapeHtml(item.label)}</button>`
+                ? `<a class="btn btn-outline-primary btn-lg sns-link-button" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label)}</a>`
+                : `<button class="btn btn-outline-secondary btn-lg sns-link-button" type="button" disabled>${escapeHtml(item.label)}</button>`
             ).join('')}
         </div>
     `;
@@ -2235,7 +2334,7 @@ function renderConcertRecordView() {
     if (!container) return;
     const youtubeUrl = currentSnsSetting().youtube_url || '';
     container.innerHTML = youtubeUrl
-        ? `<a class="btn btn-outline-primary" href="${escapeHtml(youtubeUrl)}" target="_blank" rel="noopener noreferrer">YouTube</a>`
+        ? `<a class="btn btn-outline-primary btn-lg sns-link-button" href="${escapeHtml(youtubeUrl)}" target="_blank" rel="noopener noreferrer">YouTube</a>`
         : '<p class="text-muted mb-0">YouTubeリンクはまだ登録されていません</p>';
 }
 
@@ -2265,7 +2364,7 @@ function renderMemberIntros() {
                     ${member.role ? `<div class="small"><strong>役割:</strong> ${escapeHtml(member.role)}</div>` : ''}
                     ${member.instrument_history ? `<div class="small mt-2 multiline-text"><strong>楽器歴:</strong><br>${escapeHtml(member.instrument_history)}</div>` : ''}
                     ${member.past_orchestras ? `<div class="small mt-2 multiline-text"><strong>過去所属オケ:</strong><br>${escapeHtml(member.past_orchestras)}</div>` : ''}
-                    ${member.comment ? `<div class="small text-muted mt-2 multiline-text"><strong>コメント:</strong><br>${escapeHtml(member.comment)}</div>` : ''}
+                    ${member.comment ? `<div class="small mt-2 multiline-text member-comment"><strong>コメント:</strong><br>${escapeHtml(member.comment)}</div>` : ''}
                     ${String(member.id || '') === String(appState.currentUserMemberId || '') ? `<div class="mt-3"><button class="btn btn-sm btn-outline-primary member-profile-edit-btn" type="button" data-member-id="${escapeHtml(String(member.id || ''))}">編集</button></div>` : ''}
                 </div></div></div>`).join('')}</div>
         </section>
@@ -2365,7 +2464,7 @@ function renderEvents() {
             <div class="d-flex flex-wrap justify-content-between gap-2">
                 <span>
                     <strong>${escapeHtml(event.title)}</strong>
-                    <div class="small text-muted">開催日: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}</div>
+                    <div class="small text-muted">開催日: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}${event.fee ? ` / 会費: ${escapeHtml(event.fee)}` : ''}</div>
                     <div class="small text-muted">削除時の合言葉: ${escapeHtml(event.delete_phrase || '未設定')}</div>
                 </span>
                 <span>
@@ -2462,7 +2561,7 @@ function announcementItem(ann, selectable) {
         ? 'list-group-item list-group-item-action'
         : 'list-group-item';
     if (selectable) item.type = 'button';
-    item.innerHTML = `<span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span><br>${escapeHtml(ann.content)}`;
+    item.innerHTML = `<div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>${ann.content ? `<div class="mt-1">${escapeHtml(ann.content)}</div>` : ''}`;
     if (selectable) item.addEventListener('click', () => selectAnnouncement(ann.id));
     return item;
 }
@@ -2628,11 +2727,13 @@ function bindRecordingFileItem(item, file, playUrl, canDelete) {
                 audio.controls = true;
                 audio.preload = 'auto';
                 audio.className = 'w-100';
+                audio.hidden = true;
                 audio.src = withCacheBuster(playUrl);
                 playerArea.appendChild(audio);
                 audio.addEventListener('pause', () => {
                     if (!audio.ended) {
                         playButton.textContent = '再生';
+                        audio.hidden = true;
                         if (appState.currentAudio === audio) {
                             appState.currentAudio = null;
                             appState.currentPlayButton = null;
@@ -2641,6 +2742,7 @@ function bindRecordingFileItem(item, file, playUrl, canDelete) {
                 });
                 audio.addEventListener('ended', () => {
                     playButton.textContent = '再生';
+                    audio.hidden = true;
                     if (appState.currentAudio === audio) {
                         appState.currentAudio = null;
                         appState.currentPlayButton = null;
@@ -2657,11 +2759,13 @@ function bindRecordingFileItem(item, file, playUrl, canDelete) {
             if (audio.paused) {
                 stopCurrentRecording(audio);
                 await audio.play();
+                audio.hidden = false;
                 appState.currentAudio = audio;
                 appState.currentPlayButton = playButton;
                 playButton.textContent = '停止';
             } else {
                 audio.pause();
+                audio.hidden = true;
                 playButton.textContent = '再生';
                 if (appState.currentAudio === audio) {
                     appState.currentAudio = null;
@@ -2685,6 +2789,7 @@ function stopCurrentRecording(exceptAudio = null) {
         } catch {
             // Some streaming sources cannot seek until enough data has loaded.
         }
+        audio.hidden = true;
         if (button) {
             button.textContent = '再生';
         }
@@ -2760,8 +2865,8 @@ function renderPortalHome() {
     announceContainer.innerHTML = announcements.length
         ? `<div class="list-group">${announcements.map((ann) => `
             <article class="list-group-item">
-                <div class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</div>
-                <div class="multiline-text">${escapeHtml(ann.content || '')}</div>
+                <div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>
+                ${ann.content ? `<div class="multiline-text mt-1">${escapeHtml(ann.content || '')}</div>` : ''}
             </article>
         `).join('')}</div>`
         : '<p class="text-muted mb-0">お知らせはまだありません</p>';
@@ -2801,6 +2906,7 @@ function renderMemberPerformances() {
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
+            ${perf.flyer_image ? `<div class="mb-3"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview"></div>` : ''}
             <div class="mb-0">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceLabel(piece))}</div>`).join('')}</div>
         </article>
     `).join('');
@@ -2978,14 +3084,6 @@ function renderAbsenceView() {
         return;
     }
     const grouped = groupBy(appState.absences, 'schedule_id');
-    const ownAbsences = sortedSchedules(appState.schedules)
-        .map((schedule) => ({
-            schedule,
-            absence: appState.absences.find((item) =>
-                String(item.schedule_id || '') === String(schedule.id || '') && absenceBelongsToCurrentUser(item)
-            )
-        }))
-        .filter((item) => item.absence);
     container.innerHTML = `
         <input type="hidden" id="absenceId">
         <div class="row g-2 align-items-end mb-3">
@@ -2998,24 +3096,17 @@ function renderAbsenceView() {
             <button class="btn btn-outline-secondary btn-sm" id="absenceClearBtn" type="button">入力をクリア</button>
             <button class="btn btn-outline-danger btn-sm" id="absenceDeleteBtn" type="button" disabled>選択中の連絡を削除</button>
         </div>
-        <h6>自分の出欠連絡</h6>
-        ${ownAbsences.length ? `<div class="list-group mb-3">${ownAbsences.map(({ schedule, absence }) => `
-            <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <span>
-                    <strong>${escapeHtml(formatDateWithWeekday(schedule.date))} ${escapeHtml(scheduleTimeLabel(schedule))}</strong>
-                    <span class="ms-2">${escapeHtml(absenceEntryLabel(absence, false))}</span>
-                    <div class="small text-muted">${escapeHtml(schedule.venue || '')}</div>
-                </span>
-                <span class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-primary absence-edit-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">編集</button>
-                    <button class="btn btn-sm btn-outline-danger absence-delete-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">削除</button>
-                </span>
-            </div>
-        `).join('')}</div>` : '<p class="text-muted">自分の出欠連絡はまだ登録されていません</p>'}
         <h6>練習日ごとの出欠連絡</h6>
-        ${sortedSchedules(appState.schedules).map((s) => {
-            const abs = (grouped[String(s.id)] || grouped[s.id] || []);
-            return `<div class="info-block"><strong>${escapeHtml(formatDateWithWeekday(s.date))} ${escapeHtml(scheduleTimeLabel(s))}</strong><div class="small text-muted">${escapeHtml(s.venue || '')}</div><div>${abs.length ? abs.map((a) => escapeHtml(absenceEntryLabel(a))).join('、') : '出欠連絡なし'}</div></div>`;
+        ${sortedSchedules(appState.schedules).map((schedule) => {
+            const abs = (grouped[String(schedule.id)] || grouped[schedule.id] || []);
+            const rows = abs.length ? abs.map((absence) => {
+                const own = absenceBelongsToCurrentUser(absence);
+                return `<div class="absence-row d-flex flex-wrap justify-content-between align-items-center gap-2 py-1">
+                    <span>${escapeHtml(absenceEntryLabel(absence))}</span>
+                    ${own ? `<span class="d-flex gap-2"><button class="btn btn-sm btn-outline-primary absence-edit-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger absence-delete-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">削除</button></span>` : ''}
+                </div>`;
+            }).join('') : '出欠連絡なし';
+            return `<div class="info-block"><strong>${escapeHtml(formatDateWithWeekday(schedule.date))} ${escapeHtml(scheduleTimeLabel(schedule))}</strong><div class="small text-muted">${escapeHtml(schedule.venue || '')}</div><div class="mt-1">${rows}</div></div>`;
         }).join('')}
     `;
     const updateAbsenceTimeState = () => {
@@ -3029,59 +3120,23 @@ function renderAbsenceView() {
     };
     $('absenceStatus').addEventListener('change', updateAbsenceTimeState);
     updateAbsenceTimeState();
-    const setSelectedAbsenceId = (id = '') => {
-        $('absenceId').value = id;
-        $('absenceDeleteBtn').disabled = !id;
-    };
+    const setSelectedAbsenceId = (id = '') => { $('absenceId').value = id; $('absenceDeleteBtn').disabled = !id; };
     $('absenceClearBtn').addEventListener('click', () => {
-        setSelectedAbsenceId('');
-        $('absenceScheduleId').value = '';
-        $('absenceStatus').value = 'absent';
-        $('absenceTime').value = '';
-        updateAbsenceTimeState();
+        setSelectedAbsenceId(''); $('absenceScheduleId').value = ''; $('absenceStatus').value = 'absent'; $('absenceTime').value = ''; updateAbsenceTimeState();
     });
     $('absenceDeleteBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteOwnAbsence($('absenceId').value)));
-    container.querySelectorAll('.absence-edit-btn').forEach((button) => {
-        button.addEventListener('click', () => selectOwnAbsence(button.dataset.absenceId || ''));
-    });
-    container.querySelectorAll('.absence-delete-btn').forEach((button) => {
-        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteOwnAbsence(button.dataset.absenceId || '')));
-    });
+    container.querySelectorAll('.absence-edit-btn').forEach((button) => button.addEventListener('click', () => selectOwnAbsence(button.dataset.absenceId || '')));
+    container.querySelectorAll('.absence-delete-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteOwnAbsence(button.dataset.absenceId || ''))));
     $('absenceSaveBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', async () => {
-        const name = currentUserMemberName();
-        const absenceId = $('absenceId').value;
-        const scheduleId = $('absenceScheduleId').value;
-        const status = $('absenceStatus').value;
-        const plannedTime = $('absenceTime').value;
+        const name = currentUserMemberName(); const absenceId = $('absenceId').value; const scheduleId = $('absenceScheduleId').value; const status = $('absenceStatus').value; const plannedTime = $('absenceTime').value;
         if (!name || !scheduleId) { showAlert('練習日を選択してください', 'warning'); return; }
-        if ((status === 'late' || status === 'leave_early') && !plannedTime) {
-            showAlert('予定時刻を入力してください', 'warning');
-            return;
-        }
+        if ((status === 'late' || status === 'leave_early') && !plannedTime) { showAlert('予定時刻を入力してください', 'warning'); return; }
         const sched = appState.schedules.find((s) => String(s.id) === String(scheduleId));
-        const payload = {
-            name,
-            member_id: appState.currentUserMemberId,
-            schedule_id: scheduleId,
-            schedule_date: sched ? sched.date : '',
-            status,
-            planned_time: plannedTime
-        };
-        const existing = appState.absences.find((item) =>
-            String(item.schedule_id || '') === String(scheduleId) &&
-            (String(item.member_id || '') === String(appState.currentUserMemberId || '') || item.name === name)
-        );
-        const saveId = existing?.id || absenceId || '';
-        if (saveId) {
-            await request(`/api/extra/absences/${encodeURIComponent(saveId)}`, jsonOptions('PUT', payload));
-        } else {
-            await saveExtra('absences', payload);
-        }
-        if (absenceId && existing?.id && String(existing.id) !== String(absenceId)) {
-            await request(`/api/extra/absences/${encodeURIComponent(absenceId)}`, { method: 'DELETE' });
-        }
-        showAlert('出欠連絡を登録しました', 'success');
-        await loadExtraData();
+        const payload = { name, member_id: appState.currentUserMemberId, schedule_id: scheduleId, schedule_date: sched ? sched.date : '', status, planned_time: plannedTime };
+        const existing = appState.absences.find((item) => String(item.schedule_id || '') === String(scheduleId) && (String(item.member_id || '') === String(appState.currentUserMemberId || '') || item.name === name));
+        const saveId = absenceId || existing?.id || '';
+        if (saveId) await request(`/api/extra/absences/${encodeURIComponent(saveId)}`, jsonOptions('PUT', payload)); else await saveExtra('absences', payload);
+        showAlert('出欠連絡を登録しました', 'success'); await loadExtraData();
     }));
 }
 
@@ -3126,6 +3181,92 @@ function absenceEntryLabel(absence, includeName = true) {
     const time = absence?.planned_time ? ` ${absence.planned_time}` : '';
     const status = `${absenceStatusLabel(absence)}${time}`;
     return includeName ? `${absence?.name || ''}（${status}）` : status;
+}
+
+
+function renderPerformanceFlyerPreview(src) {
+    const preview = $('perfFlyerPreview');
+    if (!preview) return;
+    preview.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="チラシ画像" class="performance-flyer-preview">` : '';
+}
+
+async function previewPerformanceFlyer(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    if ($('perfFlyerImage')) $('perfFlyerImage').value = dataUrl;
+    renderPerformanceFlyerPreview(dataUrl);
+}
+
+function paymentPaymentRangeLabel(payment) {
+    const from = payment.paid_from_month || '';
+    const until = payment.paid_until_month || payment.membership_fee || payment.dues || '';
+    if (from && until) return `${from}-${until}まで支払い済み`;
+    return until ? `${until}まで支払い済み` : '未登録';
+}
+
+function renderPieceInfoAdmin() {
+    const perfSelect = $('pieceInfoPerformance');
+    const list = $('pieceInfoAdminList');
+    if (!perfSelect || !list) return;
+    const selected = perfSelect.value;
+    perfSelect.innerHTML = '<option value="">演奏会を選択</option>' + appState.performances.map((perf) => `<option value="${escapeHtml(String(perf.id))}">${escapeHtml(perf.title)}</option>`).join('');
+    if ([...perfSelect.options].some((option) => option.value === selected)) perfSelect.value = selected;
+    updatePieceInfoPieceOptions();
+    list.innerHTML = appState.pieceInfos.length ? `<div class="list-group">${appState.pieceInfos.map((info) => {
+        const perf = appState.performances.find((item) => String(item.id || '') === String(info.performance_id || ''));
+        return `<button class="list-group-item list-group-item-action text-start piece-info-admin-item" type="button" data-piece-info-id="${escapeHtml(String(info.id || ''))}"><strong>${escapeHtml(info.piece || info.title || '')}</strong><div class="small text-muted">${escapeHtml(perf?.title || '演奏会未設定')}${info.composer ? ` / ${escapeHtml(info.composer)}` : ''}</div>${info.description ? `<div class="small multiline-text mt-1">${escapeHtml(info.description)}</div>` : ''}</button>`;
+    }).join('')}</div>` : '<p class="text-muted mb-0">楽曲情報はまだ登録されていません</p>';
+    list.querySelectorAll('.piece-info-admin-item').forEach((button) => button.addEventListener('click', () => selectPieceInfoAdmin(button.dataset.pieceInfoId || '')));
+}
+
+function updatePieceInfoPieceOptions() {
+    const datalist = $('pieceInfoPieceOptions');
+    if (!datalist) return;
+    const performanceId = $('pieceInfoPerformance')?.value || '';
+    const perf = appState.performances.find((item) => String(item.id || '') === String(performanceId));
+    datalist.innerHTML = perf ? (perf.pieces || []).map((piece) => `<option value="${escapeHtml(performancePieceLabel(piece))}"></option>`).join('') : '';
+}
+
+function selectPieceInfoAdmin(id) {
+    const info = appState.pieceInfos.find((item) => String(item.id || '') === String(id));
+    if (!info) return;
+    $('pieceInfoId').value = info.id || '';
+    $('pieceInfoPerformance').value = String(info.performance_id || '');
+    updatePieceInfoPieceOptions();
+    $('pieceInfoPiece').value = info.piece || info.title || '';
+    $('pieceInfoComposer').value = info.composer || '';
+    $('pieceInfoDescription').value = info.description || info.notes || '';
+}
+
+function clearPieceInfoForm() {
+    if ($('pieceInfoId')) $('pieceInfoId').value = '';
+    if ($('pieceInfoPerformance')) $('pieceInfoPerformance').value = '';
+    if ($('pieceInfoPiece')) $('pieceInfoPiece').value = '';
+    if ($('pieceInfoComposer')) $('pieceInfoComposer').value = '';
+    if ($('pieceInfoDescription')) $('pieceInfoDescription').value = '';
+    updatePieceInfoPieceOptions();
+}
+
+async function savePieceInfoAdmin() {
+    const payload = {
+        performance_id: $('pieceInfoPerformance')?.value || '',
+        piece: $('pieceInfoPiece')?.value.trim() || '',
+        composer: $('pieceInfoComposer')?.value.trim() || '',
+        description: $('pieceInfoDescription')?.value.trim() || ''
+    };
+    if (!payload.performance_id || !payload.piece) { showAlert('演奏会と曲名を入力してください', 'warning'); return; }
+    const id = $('pieceInfoId')?.value || '';
+    if (id) await request(`/api/extra/piece_infos/${encodeURIComponent(id)}`, jsonOptions('PUT', payload)); else await saveExtra('piece_infos', payload);
+    clearPieceInfoForm(); await loadExtraData(); showAlert('楽曲情報を保存しました', 'success');
+}
+
+async function deletePieceInfoAdmin() {
+    const id = $('pieceInfoId')?.value || '';
+    if (!id) { showAlert('削除する楽曲情報を選択してください', 'warning'); return; }
+    if (!confirmDelete()) return;
+    await request(`/api/extra/piece_infos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    clearPieceInfoForm(); await loadExtraData(); showAlert('楽曲情報を削除しました', 'success');
 }
 
 function renderSheetLibraryView() {
@@ -3577,7 +3718,7 @@ function paymentStatusHtml(payment) {
     }).join('');
     return `
         <div class="info-block">
-            <div>団費: ${escapeHtml(payment.paid_until_month || payment.membership_fee || payment.dues || '未登録')} まで</div>
+            <div>団費: ${escapeHtml(paymentPaymentRangeLabel(payment))}</div>
             <div>最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
             <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
         </div>
@@ -3620,7 +3761,7 @@ function renderPaymentAdmin() {
             return `
                 <button class="list-group-item list-group-item-action payment-admin-item" type="button" data-payment-id="${escapeHtml(String(payment.id || ''))}">
                     <strong>${escapeHtml(name)}</strong>
-                    <div class="small text-muted">団費: ${escapeHtml(payment.paid_until_month || '未登録')} まで / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+                    <div class="small text-muted">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))} / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
                 </button>
             `;
         }).join('')}</div>`
@@ -3647,6 +3788,7 @@ function fillPaymentForm(payment, memberId = '') {
     if (!$('paymentId')) return;
     $('paymentId').value = payment?.id || '';
     $('paymentMemberId').value = memberId || payment?.member_id || '';
+    if ($('paymentPaidFromMonth')) $('paymentPaidFromMonth').value = payment?.paid_from_month || '';
     $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
     $('paymentLatestDate').value = payment?.latest_payment_date || '';
     const feeMap = performanceFeeMap(payment);
@@ -3673,6 +3815,7 @@ async function savePaymentStatus() {
     const payload = {
         member_id: memberId,
         name: memberDisplayName(member),
+        paid_from_month: $('paymentPaidFromMonth')?.value || '',
         paid_until_month: $('paymentPaidUntilMonth')?.value || '',
         latest_payment_date: $('paymentLatestDate')?.value || '',
         performance_fees: performanceFees
@@ -3704,6 +3847,7 @@ function renderMemberEventView() {
                 <div class="col-md-3"><label class="form-label">開催日</label><input id="memberEventDate" type="date" class="form-control"></div>
                 <div class="col-md-2"><label class="form-label">開始時刻</label><input id="memberEventStartTime" type="time" class="form-control"></div>
                 <div class="col-md-3"><label class="form-label">回答期限</label><input id="memberEventDeadline" type="date" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">会費</label><input id="memberEventFee" class="form-control" placeholder="例: 4,000円"></div>
                 <div class="col-12"><label class="form-label">イベント概要/備考</label><textarea id="memberEventNotes" class="form-control" rows="3"></textarea></div>
                 <div class="col-md-6"><label class="form-label">削除時の合言葉</label><input id="memberEventDeletePhrase" class="form-control"></div>
                 <div class="col-md-3 d-flex align-items-end"><button id="memberEventCreateBtn" class="btn btn-primary w-100" type="button">イベント登録</button></div>
@@ -3722,6 +3866,7 @@ function renderMemberEventView() {
             deadline: $('memberEventDeadline').value,
             notes: $('memberEventNotes').value.trim(),
             delete_phrase: $('memberEventDeletePhrase').value.trim(),
+            fee: $('memberEventFee') ? $('memberEventFee').value.trim() : '',
             url: ''
         };
         if (!payload.title || !payload.date || !payload.start_time || !payload.deadline || !payload.delete_phrase) {
@@ -3744,10 +3889,10 @@ function renderMemberEventList() {
         const item = document.createElement('button');
         item.className = 'list-group-item list-group-item-action text-start';
         item.type = 'button';
-        const responseCount = appState.eventResponses.filter((r) => String(r.event_id) === String(event.id)).length;
+        const responseCount = uniqueEventResponses(appState.eventResponses.filter((r) => String(r.event_id) === String(event.id))).length;
         item.innerHTML = `
             <strong>${escapeHtml(event.title)}</strong>
-            <div class="small text-muted">開催: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}</div>
+            <div class="small text-muted">開催: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}${event.fee ? ` / 会費: ${escapeHtml(event.fee)}` : ''}</div>
             ${event.notes ? `<div class="small multiline-text mt-1">${escapeHtml(event.notes)}</div>` : ''}
             <div class="small text-muted mt-1">回答数: ${responseCount}</div>
         `;
@@ -3764,12 +3909,13 @@ function renderMemberEventDetail(id) {
     listView.hidden = true;
     detailView.hidden = false;
     const responses = appState.eventResponses.filter((r) => String(r.event_id) === String(id));
+    const groupedResponsesHtml = renderGroupedEventResponses(responses);
     detailView.innerHTML = `
         <button class="btn btn-sm btn-outline-secondary mb-3" id="memberEventBackBtn" type="button">イベント一覧に戻る</button>
         <section class="info-block pt-0">
             <h5>${escapeHtml(event.title)}</h5>
             <div>開催: ${escapeHtml(eventDateTimeLabel(event))}</div>
-            <div>回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}</div>
+            <div>回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}${event.fee ? ` / 会費: ${escapeHtml(event.fee)}` : ''}</div>
             ${event.notes ? `<div class="multiline-text mt-2">${escapeHtml(event.notes)}</div>` : ''}
         </section>
         <div class="row g-2 align-items-end mb-3">
@@ -3780,7 +3926,7 @@ function renderMemberEventDetail(id) {
             <button class="btn btn-outline-danger" id="memberEventDeleteBtn" type="button">イベント削除</button>
         </div>
         <h6>回答状況</h6>
-        ${responses.length ? responses.map((r) => `<div class="list-group-item">${escapeHtml(r.name)}：${escapeHtml(r.status)}</div>`).join('') : '<p class="text-muted">回答はまだありません</p>'}
+        ${groupedResponsesHtml}
     `;
     $('memberEventBackBtn').addEventListener('click', () => {
         detailView.hidden = true;
@@ -3790,8 +3936,17 @@ function renderMemberEventDetail(id) {
     $('eventResponseSaveBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', async () => {
         const name = currentUserMemberName(); const status = $('eventResponseStatus').value;
         if (!name) { showAlert('ログイン中の団員情報が見つかりません', 'warning'); return; }
-        await saveExtra('event_responses', { event_id: id, name, status });
-        showAlert('イベント出欠を登録しました', 'success');
+        const existingResponses = appState.eventResponses.filter((r) => String(r.event_id) === String(id) && String(r.name || '') === String(name));
+        const existing = existingResponses[0];
+        const payload = { event_id: id, name, status };
+        if (existing?.id) {
+            await request(`/api/extra/event_responses/${existing.id}`, jsonOptions('PUT', payload));
+            await Promise.all(existingResponses.slice(1).filter((r) => r.id).map((r) => request(`/api/extra/event_responses/${r.id}`, { method: 'DELETE' })));
+            showAlert('イベント出欠を上書きしました', 'success');
+        } else {
+            await saveExtra('event_responses', payload);
+            showAlert('イベント出欠を登録しました', 'success');
+        }
         await loadExtraData();
         renderMemberEventDetail(id);
     }));
@@ -3806,6 +3961,29 @@ function renderMemberEventDetail(id) {
         await deleteEventById(id, false);
         renderMemberEventView();
     }));
+}
+
+function uniqueEventResponses(responses) {
+    const byName = new Map();
+    responses.forEach((response) => {
+        const key = String(response.name || '');
+        if (!key) return;
+        byName.set(key, response);
+    });
+    return Array.from(byName.values());
+}
+
+function renderGroupedEventResponses(responses) {
+    const uniqueResponses = uniqueEventResponses(responses);
+    if (!uniqueResponses.length) return '<p class="text-muted">回答はまだありません</p>';
+    const groups = ['参加', '不参加'];
+    return groups.map((status) => {
+        const rows = uniqueResponses.filter((r) => String(r.status || '') === status);
+        const body = rows.length
+            ? `<div class="list-group">${rows.map((r) => `<div class="list-group-item d-flex justify-content-between align-items-center"><span>${escapeHtml(r.name || '')}</span><span class="badge text-bg-secondary">${escapeHtml(status)}</span></div>`).join('')}</div>`
+            : '<p class="text-muted small mb-0">該当者はいません</p>';
+        return `<section class="mb-3"><h6>${status}（${rows.length}名）</h6>${body}</section>`;
+    }).join('');
 }
 
 function renderPieceInfoView() {

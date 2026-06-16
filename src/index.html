@@ -48,6 +48,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="piece-info-admin" type="button">楽曲情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
@@ -129,6 +130,12 @@
                                 <label class="form-label" for="perfConductor">指揮者</label>
                                 <input type="text" class="form-control" id="perfConductor">
                             </div>
+                            <div class="col-12">
+                                <label class="form-label" for="perfFlyerFile">チラシ画像</label>
+                                <input type="file" class="form-control" id="perfFlyerFile" accept="image/*">
+                                <input type="hidden" id="perfFlyerImage">
+                                <div id="perfFlyerPreview" class="mt-2"></div>
+                            </div>
                             <div class="col-md-4">
                                 <label class="form-label" for="perfPieceTitle">曲名</label>
                                 <input type="text" class="form-control" id="perfPieceTitle" placeholder="例: 交響曲第5番">
@@ -140,6 +147,12 @@
                             <div class="col-md-3">
                                 <label class="form-label" for="perfPieceComposer">作曲者</label>
                                 <input type="text" class="form-control" id="perfPieceComposer" placeholder="例: チャイコフスキー">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <label class="form-check mb-2">
+                                    <input class="form-check-input" id="perfPieceEncore" type="checkbox">
+                                    <span class="form-check-label">アンコール</span>
+                                </label>
                             </div>
                             <div class="col-md-2 d-flex align-items-end">
                                 <button class="btn btn-outline-primary w-100" id="addPieceBtn" type="button">曲を追加</button>
@@ -194,8 +207,9 @@
                                 <input type="time" class="form-control" id="schedAvailableEndTime" value="16:30">
                             </div>
                             <div class="col-12">
-                                <label class="form-label" for="schedPieces">練習曲</label>
-                                <select class="form-select" id="schedPieces"></select>
+                                <label class="form-label">練習曲</label>
+                                <div id="schedPieces" class="schedule-piece-checks border rounded p-2 bg-white"></div>
+                                <div class="form-text">未選択の場合は「未定」として保存されます。</div>
                             </div>
                             <div class="col-12 d-flex flex-wrap gap-4">
                                 <label class="form-check">
@@ -232,7 +246,11 @@
                                 <label class="form-label" for="annDate">日付</label>
                                 <input type="date" class="form-control" id="annDate">
                             </div>
-                            <div class="col-md-9">
+                            <div class="col-md-4">
+                                <label class="form-label" for="annTitle">タイトル</label>
+                                <input type="text" class="form-control" id="annTitle">
+                            </div>
+                            <div class="col-md-5">
                                 <label class="form-label" for="annContent">内容</label>
                                 <textarea class="form-control" id="annContent" rows="2"></textarea>
                             </div>
@@ -252,7 +270,8 @@
                     <div class="card-header">イベント調整管理</div>
                     <div class="card-body">
                         <input type="hidden" id="eventId">
-                        <div class="row g-3 mb-3">
+                        <div class="alert alert-info">イベント登録は団員メニュー側で行います。管理者メニューでは登録済みイベントの確認と強制削除のみ行えます。</div>
+                        <div class="row g-3 mb-3 d-none">
                             <div class="col-md-4">
                                 <label class="form-label" for="eventTitle">イベント名</label>
                                 <input type="text" class="form-control" id="eventTitle" placeholder="例: 懇親会出欠調整">
@@ -274,6 +293,10 @@
                                 <input type="url" class="form-control" id="eventUrl" placeholder="https://...">
                             </div>
                             <div class="col-md-4">
+                                <label class="form-label" for="eventFee">会費</label>
+                                <input type="text" class="form-control" id="eventFee" placeholder="例: 4,000円">
+                            </div>
+                            <div class="col-md-4">
                                 <label class="form-label" for="eventDeletePhrase">削除時の合言葉</label>
                                 <input type="text" class="form-control" id="eventDeletePhrase">
                             </div>
@@ -282,7 +305,7 @@
                                 <textarea class="form-control" id="eventNotes" rows="3"></textarea>
                             </div>
                         </div>
-                        <div class="d-flex flex-wrap gap-2 mb-3">
+                        <div class="d-flex flex-wrap gap-2 mb-3 d-none">
                             <button class="btn btn-success" id="addEventBtn" type="button">保存</button>
                             <button class="btn btn-outline-secondary" id="clearEventBtn" type="button">選択解除</button>
                             <button class="btn btn-danger" id="deleteEventBtn" type="button">削除</button>
@@ -291,6 +314,40 @@
                     </div>
                 </div>
             </div>
+            <div id="pieceInfoAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">楽曲情報</div>
+                    <div class="card-body">
+                        <input type="hidden" id="pieceInfoId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="pieceInfoPerformance">演奏会</label>
+                                <select class="form-select" id="pieceInfoPerformance"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="pieceInfoPiece">曲名</label>
+                                <input class="form-control" id="pieceInfoPiece" list="pieceInfoPieceOptions">
+                                <datalist id="pieceInfoPieceOptions"></datalist>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="pieceInfoComposer">作曲者</label>
+                                <input class="form-control" id="pieceInfoComposer">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="pieceInfoDescription">紹介文</label>
+                                <textarea class="form-control" id="pieceInfoDescription" rows="5"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="savePieceInfoBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearPieceInfoBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deletePieceInfoBtn" type="button">削除</button>
+                        </div>
+                        <div id="pieceInfoAdminList"></div>
+                    </div>
+                </div>
+            </div>
+
             <div id="memberTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">団員登録</div>
@@ -442,15 +499,19 @@
                     <div class="card-body">
                         <input type="hidden" id="paymentId">
                         <div class="row g-3 align-items-end mb-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label" for="paymentMemberId">団員</label>
                                 <select class="form-select" id="paymentMemberId"></select>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <label class="form-label" for="paymentPaidFromMonth">何月分から支払済み</label>
+                                <input type="month" class="form-control" id="paymentPaidFromMonth">
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label" for="paymentPaidUntilMonth">何月分まで支払済み</label>
                                 <input type="month" class="form-control" id="paymentPaidUntilMonth">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label" for="paymentLatestDate">最新の支払日</label>
                                 <input type="date" class="form-control" id="paymentLatestDate">
                             </div>
@@ -479,25 +540,15 @@
                                 <input type="text" class="form-control" id="venueSettingName">
                             </div>
                             <div class="col-md-4">
-                                <div class="form-label">用途</div>
-                                <div class="d-flex flex-wrap gap-3">
-                                    <label class="form-check">
-                                        <input class="form-check-input" id="venueForPractice" type="checkbox" checked>
-                                        <span class="form-check-label">練習</span>
-                                    </label>
-                                    <label class="form-check">
-                                        <input class="form-check-input" id="venueForPerformance" type="checkbox">
-                                        <span class="form-check-label">本番</span>
-                                    </label>
-                                </div>
+                                <label class="form-label" for="venueUsageType">用途</label>
+                                <select class="form-select" id="venueUsageType">
+                                    <option value="practice">練習</option>
+                                    <option value="performance">本番</option>
+                                </select>
                             </div>
                             <div class="col-md-3 d-flex gap-2">
                                 <button class="btn btn-success flex-fill" id="saveVenueSettingBtn" type="button">保存</button>
                                 <button class="btn btn-outline-secondary flex-fill" id="clearVenueSettingBtn" type="button">クリア</button>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label" for="venueSettingNote">メモ</label>
-                                <textarea class="form-control" id="venueSettingNote" rows="2"></textarea>
                             </div>
                         </div>
                         <div id="venueSettingList"></div>
@@ -692,6 +743,7 @@
         </section>
     </main>
 
+    <footer class="revision-footer">Revision: <span id="revisionNumber">20260616-2</span></footer>
     <div id="toastArea" class="toast-area"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/app.js"></script>
