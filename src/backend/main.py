@@ -16,6 +16,7 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -62,7 +63,7 @@ DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 SHEET_DIR = UPLOAD_DIR / "sheets"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "auth_devices")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "auth_devices", "recording_metadata", "desired_pieces")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -80,6 +81,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -449,12 +451,22 @@ async def delete_auth_device(device_id: str) -> dict[str, str]:
 
 @app.get("/api/bootstrap-lite")
 async def get_bootstrap_lite_data() -> dict[str, Any]:
-    """初期表示用の軽量データ。
+    """初期表示に必要な最小限のデータだけを返す。"""
+    extra_names = ("payments", "part_settings", "org_settings", "sns_settings")
+    extras = {name: load_json_data(name) for name in extra_names}
+    return {
+        "performances": load_json_data("performances"),
+        "schedules": load_json_data("schedules"),
+        "announcements": load_json_data("announcements"),
+        "members": load_json_data("members"),
+        "extras": extras,
+    }
 
-    録音一覧・楽譜一覧・認証端末一覧は件数が増えると重くなるため、
-    メニュー表示後にバックグラウンドで /api/bootstrap から取得する。
-    """
-    extra_names = ("absences", "event_responses", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings")
+
+@app.get("/api/bootstrap-core")
+async def get_bootstrap_core_data() -> dict[str, Any]:
+    """録音・楽譜一覧のファイル走査を除いた通常データ。"""
+    extra_names = ("absences", "event_responses", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "desired_pieces")
     extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
@@ -463,12 +475,13 @@ async def get_bootstrap_lite_data() -> dict[str, Any]:
         "events": load_json_data("events"),
         "members": load_json_data("members"),
         "extras": extras,
+        "auth_devices": await get_auth_devices(),
     }
 
 
 @app.get("/api/bootstrap")
 async def get_bootstrap_data() -> dict[str, Any]:
-    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings")
+    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "desired_pieces")
     extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
@@ -515,7 +528,9 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
     parts = path.relative_to(CONVERTED_DIR).parts if path.is_relative_to(CONVERTED_DIR) else path.parts
     date = parts[0] if len(parts) >= 3 else ""
     piece = parts[1] if len(parts) >= 3 else ""
-    duration_seconds = get_audio_duration_seconds(path)
+    meta = recording_metadata_map().get(rel, {})
+    duration_seconds = meta.get("duration_seconds")
+    duration_label = meta.get("duration") or format_duration(duration_seconds)
     return {
         "name": path.name,
         "date": date,
@@ -527,7 +542,7 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
         "download_url": f"/api/recordings/download/{rel}",
         "source": "local",
         "duration_seconds": duration_seconds,
-        "duration": format_duration(duration_seconds),
+        "duration": duration_label,
     }
 
 
@@ -539,6 +554,10 @@ def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
     encoded_object_name = quote(str(object_name), safe="/")
     normalized["object_name"] = object_name
+    cached = recording_metadata_map().get(str(object_name), {}) or recording_metadata_map().get(str(normalized.get("id") or ""), {})
+    if cached and not normalized.get("duration"):
+        normalized["duration_seconds"] = cached.get("duration_seconds")
+        normalized["duration"] = cached.get("duration")
     normalized["play_url"] = f"/api/recordings/cloud/play/{encoded_object_name}"
     normalized["download_url"] = f"/api/recordings/cloud/download/{encoded_object_name}"
     return normalized
@@ -711,6 +730,24 @@ def format_duration(seconds: float | int | None) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{sec:02d}"
     return f"{minutes}:{sec:02d}"
+
+def recording_metadata_map() -> dict[str, dict[str, Any]]:
+    return {str(item.get("path") or item.get("object_name") or item.get("id") or ""): item for item in load_json_data("recording_metadata")}
+
+def remember_recording_duration(path_key: str, duration_seconds: float | None) -> None:
+    if not path_key or duration_seconds is None:
+        return
+    items = load_json_data("recording_metadata")
+    now = datetime.now().isoformat()
+    for item in items:
+        if str(item.get("path") or "") == path_key:
+            item["duration_seconds"] = duration_seconds
+            item["duration"] = format_duration(duration_seconds)
+            item["updated_at"] = now
+            save_json_data("recording_metadata", items)
+            return
+    items.append({"id": next_id(items), "path": path_key, "duration_seconds": duration_seconds, "duration": format_duration(duration_seconds), "created_at": now, "updated_at": now})
+    save_json_data("recording_metadata", items)
 
 
 @app.get("/")
@@ -975,11 +1012,13 @@ async def convert_audio(
     output_path = convert_path_to_mp3(source_path, suffix, bitrate)
 
     duration_seconds = get_audio_duration_seconds(output_path)
+    rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
+    remember_recording_duration(rel_path, duration_seconds)
     response = {
         "filename": output_path.name,
-        "path": str(output_path.relative_to(UPLOAD_DIR).as_posix()),
+        "path": rel_path,
         "bitrate": bitrate,
-        "download_url": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
+        "download_url": f"/api/recordings/download/{rel_path}",
         "source": "local",
         "duration_seconds": duration_seconds,
         "duration": format_duration(duration_seconds),
@@ -1201,11 +1240,13 @@ async def upload_to_drive(
     staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
     output_path = convert_path_to_mp3(staging_path, suffix, bitrate)
     duration_seconds = get_audio_duration_seconds(output_path)
+    rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
+    remember_recording_duration(rel_path, duration_seconds)
 
     if not storage_enabled():
         return {
             "drive_file_id": None,
-            "share_link": f"/api/recordings/download/{output_path.relative_to(UPLOAD_DIR).as_posix()}",
+            "share_link": f"/api/recordings/download/{rel_path}",
             "source": "local",
             "duration_seconds": duration_seconds,
             "duration": format_duration(duration_seconds),
@@ -1216,6 +1257,7 @@ async def upload_to_drive(
         drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
         drive_item["duration_seconds"] = duration_seconds
         drive_item["duration"] = format_duration(duration_seconds)
+        remember_recording_duration(str(drive_item.get("object_name") or drive_item.get("id") or ""), duration_seconds)
         remember_drive_file(drive_item)
     except Exception as exc:
         logger.exception("Google Cloud Storage upload failed")
@@ -1410,7 +1452,7 @@ async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
     return {"message": "Deleted", "deleted": len(targets)}
 
 
-EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings"}
+EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "desired_pieces"}
 
 def normalize_extra_payload(payload: dict[str, Any], item_id: int | None = None, current: dict[str, Any] | None = None) -> dict[str, Any]:
     now = datetime.now().isoformat()

@@ -14,6 +14,7 @@ const appState = {
     payments: [],
     castings: [],
     pieceInfos: [],
+    desiredPieces: [],
     albums: [],
     partSettings: [],
     venueSettings: [],
@@ -23,6 +24,8 @@ const appState = {
     currentPlayButton: null,
     continuousPlayback: false,
     dataLoaded: false,
+    recordingsLoaded: false,
+    sheetsLoaded: false,
     essentialDataLoaded: false,
     fullDataLoading: false,
     authDevices: [],
@@ -81,12 +84,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindNavigation();
     bindUpload();
     bindForms();
+    bindDownloadConfirmations();
     updateSavePath();
-    await loadPartSettingsForLogin();
+
     if (await isPortalAuthenticated()) {
         await enterPortal();
     } else {
         showPortalLogin();
+        // ログイン画面は先に表示し、パート一覧などの補助設定は後から反映する。
+        loadPartSettingsForLogin();
     }
 });
 
@@ -108,9 +114,23 @@ async function loadPartSettingsForLogin() {
     }
 }
 
+function bindDownloadConfirmations() {
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest('a');
+        if (!link) return;
+        const label = String(link.textContent || '').trim();
+        const href = link.getAttribute('href') || '';
+        const isDownload = link.hasAttribute('download') || /DL|ダウンロード/.test(label) || href.includes('/download') || href.includes('download-zip');
+        if (isDownload && !confirm('ダウンロードしますか？')) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    }, true);
+}
+
 function setDefaultDates() {
-    ['uploadDate', 'schedDate', 'annDate'].forEach((id) => {
-        $(id).value = today();
+    ['uploadDate', 'schedDate', 'annDate', 'paymentLatestDate'].forEach((id) => {
+        if ($(id)) $(id).value = today();
     });
     $('perfDate').value = today();
 }
@@ -142,6 +162,7 @@ function setupPortalHome() {
                     <div class="portal-home-actions">
                         <button class="btn btn-outline-danger" id="portalHomeLogoutBtn" type="button">ログアウト</button>
                         <button class="btn btn-outline-success" id="portalHomeReloadBtn" type="button">更新</button>
+                        <span class="revision-inline ms-auto">Rev. <span>20260617-1</span></span>
                     </div>
                 </div>
             </section>
@@ -202,6 +223,7 @@ function updateManagerNavigationVisibility() {
 }
 
 function portalMenuGroups() {
+    const paymentAlert = paymentAlertInfo().hasAlert;
     const settingItems = [
         canManageRecordings() ? { tab: 'upload', label: '録音管理', admin: true } : null,
         canManageSheets() ? { tab: 'sheet-admin', label: '楽譜管理', admin: true } : null,
@@ -230,14 +252,15 @@ function portalMenuGroups() {
             items: [
                 { tab: 'member-intro', label: '団員紹介' },
                 { tab: 'member-casting', label: '乗り番表' },
-                { tab: 'member-payment', label: '支払状況' },
+                { tab: 'member-payment', label: '支払状況', alert: paymentAlert },
                 { tab: 'member-event', label: 'イベント調整' }
             ]
         },
         {
             title: `${orgShortName()}情報`,
             items: [
-                { tab: 'member-sns', label: 'SNS' }
+                { tab: 'member-sns', label: 'SNS' },
+                { tab: 'member-desired-piece', label: '演奏希望曲' }
             ]
         },
         {
@@ -261,7 +284,7 @@ function renderMenuGroups(container) {
             <h3>${escapeHtml(group.title)}</h3>
             <div class="portal-menu-grid">
                 ${group.items.map((item) => `
-                    <button class="portal-menu-button${item.admin ? ' admin' : ''}" type="button" ${item.tab ? `data-home-tab="${escapeHtml(item.tab)}"` : ''} ${item.action ? `data-home-${escapeHtml(item.action)}` : ''}>
+                    <button class="portal-menu-button${item.admin ? ' admin' : ''}${item.alert ? ' alert-blink' : ''}" type="button" ${item.tab ? `data-home-tab="${escapeHtml(item.tab)}"` : ''} ${item.action ? `data-home-${escapeHtml(item.action)}` : ''}>
                         <span>${escapeHtml(item.label)}</span>
                     </button>
                 `).join('')}
@@ -343,7 +366,10 @@ function portalDeviceName() {
 }
 
 function memberDisplayName(member) {
-    const splitName = `${member?.last_name || ''}${member?.first_name || ''}`;
+    const last = member?.last_name || '';
+    const first = member?.first_name || '';
+    const maiden = member?.maiden_name || '';
+    const splitName = `${last}${maiden ? `(${maiden})` : ''}${first}`;
     return splitName || member?.name || '';
 }
 
@@ -530,16 +556,21 @@ async function handleMemberPasswordSetup() {
 
 async function enterPortal() {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
+
+    // まずポータルメニューだけを表示し、データ取得待ちによる白画面を避ける。
+    await showMemberPanel(false);
+    renderPortalHome();
+    renderLoadingPlaceholders();
+
     if (!appState.essentialDataLoaded) {
-        try {
-            await loadEssentialData();
-            appState.essentialDataLoaded = true;
-        } catch (error) {
-            showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
-        }
+        loadEssentialData()
+            .then(() => { appState.essentialDataLoaded = true; })
+            .catch((error) => showAlert(error.message || 'データの読み込みに失敗しました', 'danger'))
+            .finally(() => loadFullDataInBackground());
+    } else {
+        renderEssentialViews();
+        loadFullDataInBackground();
     }
-    await showMemberPanel(true);
-    loadFullDataInBackground();
 }
 
 function bindNavigation() {
@@ -637,8 +668,10 @@ function bindForms() {
 
     if ($('savePartSettingBtn')) $('savePartSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePartSetting()));
     if ($('clearPartSettingBtn')) $('clearPartSettingBtn').addEventListener('click', clearPartSettingForm);
-    if ($('saveVenueSettingBtn')) $('saveVenueSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveVenueSetting()));
-    if ($('clearVenueSettingBtn')) $('clearVenueSettingBtn').addEventListener('click', clearVenueSettingForm);
+    document.querySelectorAll('.venue-save-by-type-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveVenueSetting(button.dataset.venueType || 'practice'))));
+    document.querySelectorAll('.venue-clear-by-type-btn').forEach((button) => button.addEventListener('click', () => clearVenueSettingForm(button.dataset.venueType || 'practice')));
+    if ($('saveVenueSettingBtn')) $('saveVenueSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveVenueSetting($('venueUsageType')?.value || 'practice')));
+    if ($('clearVenueSettingBtn')) $('clearVenueSettingBtn').addEventListener('click', () => clearVenueSettingForm());
     if ($('saveOrgSettingBtn')) $('saveOrgSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveOrgSetting()));
     if ($('clearOrgSettingBtn')) $('clearOrgSettingBtn').addEventListener('click', clearOrgSettingForm);
     if ($('orgIconFile')) $('orgIconFile').addEventListener('change', previewOrgIcon);
@@ -732,7 +765,9 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
-    if (renderOnShow && tabName === 'sheet-admin') renderSheetAdmin();
+    if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
+    if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
+    if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
@@ -764,6 +799,7 @@ function toPascalTab(value) {
         'member-casting': 'memberCasting',
         'member-event': 'memberEvent',
         'member-piece-info': 'memberPieceInfo',
+        'member-desired-piece': 'memberDesiredPiece',
         'member-album': 'memberAlbum',
         'member-concert-record': 'memberConcertRecord',
         'member-sns': 'memberSns',
@@ -865,6 +901,14 @@ async function loadEssentialData() {
     renderEssentialViews();
 }
 
+function renderLoadingPlaceholders() {
+    const loadingText = '<p class="text-muted mb-0">読み込み中です...</p>';
+    ['memberPerfInfo', 'memberSchedInfo', 'memberAnnounceList', 'memberPaymentInfo'].forEach((id) => {
+        const element = $(id);
+        if (element && !element.innerHTML.trim()) element.innerHTML = loadingText;
+    });
+}
+
 function renderEssentialViews() {
     appState.suppressDerivedRender = true;
     renderPerformances();
@@ -891,27 +935,34 @@ function renderEssentialViews() {
 function loadFullDataInBackground() {
     if (appState.dataLoaded || appState.fullDataLoading) return;
     appState.fullDataLoading = true;
-    window.setTimeout(async () => {
+    const start = async () => {
         try {
-            await loadAll();
+            await loadAll({ includeHeavyLists: false });
             appState.dataLoaded = true;
         } catch (error) {
             console.warn('Background data load failed', error);
         } finally {
             appState.fullDataLoading = false;
         }
-    }, 0);
+    };
+    // 初回メニュー描画・操作を優先するため、重めの追加取得は少し後ろへ回す。
+    if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(start, { timeout: 3000 });
+    } else {
+        window.setTimeout(start, 1500);
+    }
 }
 
-async function loadAll() {
+async function loadAll(options = {}) {
+    const includeHeavyLists = options.includeHeavyLists !== false;
     let data;
     try {
-        data = await requestJson('/api/bootstrap');
+        data = await requestJson(includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core');
     } catch {
-        data = await legacyBootstrapData();
+        data = await legacyBootstrapData(includeHeavyLists);
     }
     applyBootstrapData(data);
-    renderInitialViews();
+    renderInitialViews({ includeHeavyLists });
 }
 
 async function requestJson(url, options = {}) {
@@ -920,7 +971,7 @@ async function requestJson(url, options = {}) {
     return response.json();
 }
 
-async function legacyBootstrapData() {
+async function legacyBootstrapData(includeHeavyLists = true) {
     const [
         performances,
         schedules,
@@ -934,6 +985,7 @@ async function legacyBootstrapData() {
         payments,
         castings,
         pieceInfos,
+        desiredPieces,
         albums,
         partSettings,
         venueSettings,
@@ -947,19 +999,20 @@ async function legacyBootstrapData() {
         request('/api/announcements'),
         request('/api/events'),
         request('/api/members'),
-        request('/api/recordings'),
+        includeHeavyLists ? request('/api/recordings') : Promise.resolve({ files: appState.recordings || [] }),
         request('/api/extra/absences'),
         request('/api/extra/event_responses'),
         request('/api/extra/sheet_library'),
         request('/api/extra/payments'),
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
+        request('/api/extra/desired_pieces'),
         request('/api/extra/albums'),
         request('/api/extra/part_settings'),
         request('/api/extra/venue_settings'),
         request('/api/extra/org_settings'),
         request('/api/extra/sns_settings'),
-        request('/api/sheets'),
+        includeHeavyLists ? request('/api/sheets') : Promise.resolve({ files: appState.sheetLibrary || [] }),
         request('/api/auth/devices')
     ]);
     return {
@@ -980,7 +1033,8 @@ async function legacyBootstrapData() {
             part_settings: partSettings,
             venue_settings: venueSettings,
             org_settings: orgSettings,
-            sns_settings: snsSettings
+            sns_settings: snsSettings,
+            desired_pieces: desiredPieces
         },
         auth_devices: authDevices,
         sheets
@@ -1002,6 +1056,7 @@ function applyBootstrapData(data) {
         payments: extras.payments || [],
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
+        desiredPieces: extras.desired_pieces || [],
         albums: extras.albums || [],
         partSettings: extras.part_settings || [],
         venueSettings: extras.venue_settings || [],
@@ -1012,6 +1067,8 @@ function applyBootstrapData(data) {
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
+    if (data.recordings) appState.recordingsLoaded = true;
+    if (data.sheets) appState.sheetsLoaded = true;
     updateManagerNavigationVisibility();
 }
 
@@ -1043,15 +1100,16 @@ async function loadMembers() {
     renderPaymentAdmin();
 }
 
-function renderInitialViews() {
+function renderInitialViews(options = {}) {
+    const includeHeavyLists = options.includeHeavyLists !== false;
     appState.suppressDerivedRender = true;
     renderPerformances();
     renderSchedules();
     renderAnnouncements();
     renderEvents();
     renderMembers();
-    renderRecordings();
-    renderSheetAdmin();
+    if (includeHeavyLists) renderRecordings();
+    if (includeHeavyLists) renderSheetAdmin();
     renderPaymentAdmin();
     renderVenueManagement();
     renderPieceInfoAdmin();
@@ -1061,7 +1119,7 @@ function renderInitialViews() {
     renderMemberPerformances();
     renderMemberSchedules();
     renderMemberIntros();
-    renderMemberExtraViews();
+    renderMemberExtraViews({ includeHeavyLists });
     renderAuthDevices();
     renderPartManagement();
     renderSchedulePerformanceOptions();
@@ -1082,6 +1140,29 @@ async function loadSheets() {
     renderSheetLibraryView();
 }
 
+async function ensureRecordingsLoaded() {
+    if (appState.recordingsLoaded) {
+        renderRecordings();
+        return;
+    }
+    const container = $('recordingList');
+    if (container && !container.innerHTML.trim()) container.innerHTML = '<p class="text-muted mb-0">録音一覧を読み込み中です...</p>';
+    await loadRecordings();
+    appState.recordingsLoaded = true;
+}
+
+async function ensureSheetsLoaded() {
+    if (appState.sheetsLoaded) {
+        renderSheetAdmin();
+        renderSheetLibraryView();
+        return;
+    }
+    const container = $('memberSheetInfo');
+    if (container && !container.innerHTML.trim()) container.innerHTML = '<p class="text-muted mb-0">楽譜一覧を読み込み中です...</p>';
+    await loadSheets();
+    appState.sheetsLoaded = true;
+}
+
 async function loadAuthManagement() {
     const devices = await request('/api/auth/devices');
     appState.authDevices = devices || [];
@@ -1089,20 +1170,21 @@ async function loadAuthManagement() {
 }
 
 async function loadExtraData() {
-    const [absences, eventResponses, sheets, payments, castings, pieceInfos, albums, partSettings, venueSettings, orgSettings, snsSettings] = await Promise.all([
+    const [absences, eventResponses, sheets, payments, castings, pieceInfos, desiredPieces, albums, partSettings, venueSettings, orgSettings, snsSettings] = await Promise.all([
         request('/api/extra/absences'),
         request('/api/extra/event_responses'),
         request('/api/sheets'),
         request('/api/extra/payments'),
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
+        request('/api/extra/desired_pieces'),
         request('/api/extra/albums'),
         request('/api/extra/part_settings'),
         request('/api/extra/venue_settings'),
         request('/api/extra/org_settings'),
         request('/api/extra/sns_settings')
     ]);
-    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, albums, partSettings, venueSettings, orgSettings, snsSettings });
+    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, desiredPieces, albums, partSettings, venueSettings, orgSettings, snsSettings });
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
@@ -1275,7 +1357,7 @@ function normalizePerformancePieces(pieces) {
 function performancePieceLabel(piece) {
     if (typeof piece === 'string') return piece;
     const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
-    return (piece.is_encore || piece.encore) ? `${label}（アンコール）` : label;
+    return (piece.is_encore || piece.encore) ? `(${label})` : label;
 }
 
 function renderPerformancePieceList() {
@@ -1401,7 +1483,7 @@ function renderSchedulePerformanceOptions() {
 function schedulePieceValuesFromText(value) {
     const text = String(value || '').trim();
     if (!text || text === '未定') return [];
-    return text.split(/[、,]/).map((item) => item.trim()).filter(Boolean);
+    return text.split(/[、,\n]/).map((item) => item.trim()).filter(Boolean);
 }
 
 function selectedSchedulePiecesValue() {
@@ -1948,7 +2030,6 @@ function renderPartManagement() {
             <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
                     <strong>${escapeHtml(part.name || '')}</strong>
-                    <div class="small text-muted">表示位置: ${parts.indexOf(part) + 1}</div>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
                     <button class="btn btn-sm btn-outline-secondary part-setting-up-btn" type="button" data-part-id="${escapeHtml(String(part.id || ''))}" ${parts.indexOf(part) === 0 ? 'disabled' : ''}>上へ</button>
@@ -2075,69 +2156,71 @@ function refreshVenueOptions() {
     }
 }
 
-function renderVenueManagement() {
-    const list = $('venueSettingList');
-    if (!list) return;
-    const venues = sortedVenueSettings();
-    list.innerHTML = venues.length
-        ? `<div class="list-group">${venues.map((venue) => {
-            const uses = [
-                venue.for_practice ? '練習' : '',
-                venue.for_performance ? '本番' : ''
-            ].filter(Boolean).join(' / ') || '未設定';
-            return `
-                <button class="list-group-item list-group-item-action text-start venue-setting-item" type="button" data-venue-id="${escapeHtml(String(venue.id || ''))}">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <span>
-                            <strong>${escapeHtml(venue.name || '')}</strong>
-                            <span class="badge text-bg-secondary ms-2">${escapeHtml(uses)}</span>
-                            
-                        </span>
-                        <span class="d-flex gap-2">
-                            <button class="btn btn-sm btn-outline-danger venue-setting-delete-btn" type="button" data-venue-id="${escapeHtml(String(venue.id || ''))}">削除</button>
-                        </span>
-                    </div>
-                </button>
-            `;
-        }).join('')}</div>`
-        : '<p class="text-muted mb-0">会場はまだ登録されていません</p>';
+function venueInputId(kind) {
+    return kind === 'performance' ? 'venuePerformanceName' : 'venuePracticeName';
+}
 
-    list.querySelectorAll('.venue-setting-item').forEach((button) => {
-        button.addEventListener('click', () => selectVenueSetting(button.dataset.venueId || ''));
+function renderVenueManagement() {
+    renderVenueListByType('performance', 'venuePerformanceList');
+    renderVenueListByType('practice', 'venuePracticeList');
+}
+
+function renderVenueListByType(kind, listId) {
+    const list = $(listId);
+    if (!list) return;
+    const venues = venueSettingsFor(kind);
+    list.innerHTML = venues.length
+        ? `<div class="list-group">${venues.map((venue) => `
+            <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <strong>${escapeHtml(venue.name || '')}</strong>
+                <span class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary venue-setting-edit-btn" type="button" data-venue-type="${kind}" data-venue-id="${escapeHtml(String(venue.id || ''))}">編集</button>
+                    <button class="btn btn-sm btn-outline-danger venue-setting-delete-btn" type="button" data-venue-id="${escapeHtml(String(venue.id || ''))}">削除</button>
+                </span>
+            </div>
+        `).join('')}</div>`
+        : '<p class="text-muted mb-0">会場はまだ登録されていません</p>';
+    list.querySelectorAll('.venue-setting-edit-btn').forEach((button) => {
+        button.addEventListener('click', () => selectVenueSetting(button.dataset.venueId || '', button.dataset.venueType || kind));
     });
     list.querySelectorAll('.venue-setting-delete-btn').forEach((button) => {
-        button.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            withButtonStatus(event.currentTarget, '削除中...', () => deleteVenueSetting(button.dataset.venueId || ''));
-        });
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteVenueSetting(button.dataset.venueId || '')));
     });
 }
 
-function selectVenueSetting(venueId) {
+function selectVenueSetting(venueId, kind = '') {
     const venue = appState.venueSettings.find((item) => String(item.id || '') === String(venueId));
     if (!venue) return;
-    $('venueSettingId').value = venue.id || '';
-    $('venueSettingName').value = venue.name || '';
-    if ($('venueUsageType')) $('venueUsageType').value = venue.for_performance ? 'performance' : 'practice';
+    const type = kind || (venue.for_performance ? 'performance' : 'practice');
+    if ($('venueSettingId')) $('venueSettingId').value = venue.id || '';
+    if ($('venueUsageType')) $('venueUsageType').value = type;
+    const input = $(venueInputId(type));
+    if (input) input.value = venue.name || '';
 }
 
-function clearVenueSettingForm() {
+function clearVenueSettingForm(kind = '') {
     if ($('venueSettingId')) $('venueSettingId').value = '';
-    if ($('venueSettingName')) $('venueSettingName').value = '';
-    if ($('venueUsageType')) $('venueUsageType').value = 'practice';
+    if (kind) {
+        const input = $(venueInputId(kind));
+        if (input) input.value = '';
+        if ($('venueUsageType')) $('venueUsageType').value = kind;
+        return;
+    }
+    if ($('venuePerformanceName')) $('venuePerformanceName').value = '';
+    if ($('venuePracticeName')) $('venuePracticeName').value = '';
+    if ($('venueUsageType')) $('venueUsageType').value = 'performance';
 }
 
-async function saveVenueSetting() {
-    const name = $('venueSettingName')?.value.trim() || '';
+async function saveVenueSetting(kind = 'practice') {
+    const input = $(venueInputId(kind));
+    const name = input?.value.trim() || '';
     if (!name) {
         showAlert('会場名を入力してください', 'warning');
         return;
     }
-    const usageType = $('venueUsageType')?.value || 'practice';
-    const forPractice = usageType === 'practice';
-    const forPerformance = usageType === 'performance';
-    const id = $('venueSettingId')?.value || '';
+    const forPractice = kind === 'practice';
+    const forPerformance = kind === 'performance';
+    const id = $('venueUsageType')?.value === kind ? ($('venueSettingId')?.value || '') : '';
     const duplicate = appState.venueSettings.find((venue) =>
         String(venue.name || '').trim() === name &&
         String(venue.id || '') !== String(id)
@@ -2146,18 +2229,10 @@ async function saveVenueSetting() {
         showAlert('同じ会場名が既に登録されています', 'warning');
         return;
     }
-    const payload = {
-        name,
-        for_practice: forPractice,
-        for_performance: forPerformance,
-        note: ''
-    };
-    if (id) {
-        await request(`/api/extra/venue_settings/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
-    } else {
-        await saveExtra('venue_settings', payload);
-    }
-    clearVenueSettingForm();
+    const payload = { name, for_practice: forPractice, for_performance: forPerformance, note: '' };
+    if (id) await request(`/api/extra/venue_settings/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+    else await saveExtra('venue_settings', payload);
+    clearVenueSettingForm(kind);
     await loadExtraData();
     showAlert('会場を保存しました', 'success');
 }
@@ -2346,32 +2421,41 @@ function renderMemberIntros() {
         return;
     }
     const grouped = groupBy(sortedMembersByPartAndKana(appState.members), 'part');
-    container.innerHTML = Object.entries(grouped).map(([part, members]) => `
-        <section class="mb-3">
-            <h6>${escapeHtml(part || '未設定')}</h6>
+    const entries = Object.entries(grouped);
+    const nav = `<div class="member-part-nav mb-3">${entries.map(([part]) => {
+        const id = `intro-part-${cssSafeId(part || 'none')}`;
+        return `<a class="btn btn-sm btn-outline-primary" href="#${escapeHtml(id)}">${escapeHtml(part || '未設定')}</a>`;
+    }).join('')}</div>`;
+    container.innerHTML = nav + entries.map(([part, members]) => {
+        const sectionId = `intro-part-${cssSafeId(part || 'none')}`;
+        return `
+        <section class="mb-4" id="${escapeHtml(sectionId)}">
+            <h5>${escapeHtml(part || '未設定')}</h5>
             <div class="row g-3">${members.map((member) => `
-                <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body">
-                    <div class="d-flex gap-3">
-                        ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo">` : ''}
-                        <div>
-                            <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="badge text-bg-info ms-2">創設メンバー</span>' : ''}</h6>
-                            ${memberKanaName(member) ? `<div class="small text-muted">${escapeHtml(memberKanaName(member))}</div>` : ''}
-                            <div class="small text-muted">${escapeHtml(member.part || '')}</div>
-                        </div>
+                <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body member-intro-card-body">
+                    ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo">` : ''}
+                    <div class="member-intro-text mt-2">
+                        <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="badge text-bg-info ms-2">創設メンバー</span>' : ''}</h6>
+                        ${memberKanaName(member) ? `<div class="small text-muted">${escapeHtml(memberKanaName(member))}</div>` : ''}
+                        <div class="small text-muted">${escapeHtml(member.part || '')}</div>
+                        ${member.joined_at ? `<div class="small mt-2"><strong>入団:</strong> ${escapeHtml(member.joined_at)}</div>` : ''}
+                        ${member.introducer ? `<div class="small"><strong>紹介者:</strong> ${escapeHtml(member.introducer)}</div>` : ''}
+                        ${member.role ? `<div class="small"><strong>役割:</strong> ${escapeHtml(member.role)}</div>` : ''}
+                        ${member.instrument_history ? `<div class="small mt-2 multiline-text"><strong>楽器歴:</strong><br>${escapeHtml(member.instrument_history)}</div>` : ''}
+                        ${member.past_orchestras ? `<div class="small mt-2 multiline-text"><strong>過去所属オケ:</strong><br>${escapeHtml(member.past_orchestras)}</div>` : ''}
+                        ${member.comment ? `<div class="small mt-2 multiline-text member-comment"><strong>コメント:</strong><br>${escapeHtml(member.comment)}</div>` : ''}
                     </div>
-                    ${member.joined_at ? `<div class="small mt-2"><strong>入団:</strong> ${escapeHtml(member.joined_at)}</div>` : ''}
-                    ${member.introducer ? `<div class="small"><strong>紹介者:</strong> ${escapeHtml(member.introducer)}</div>` : ''}
-                    ${member.role ? `<div class="small"><strong>役割:</strong> ${escapeHtml(member.role)}</div>` : ''}
-                    ${member.instrument_history ? `<div class="small mt-2 multiline-text"><strong>楽器歴:</strong><br>${escapeHtml(member.instrument_history)}</div>` : ''}
-                    ${member.past_orchestras ? `<div class="small mt-2 multiline-text"><strong>過去所属オケ:</strong><br>${escapeHtml(member.past_orchestras)}</div>` : ''}
-                    ${member.comment ? `<div class="small mt-2 multiline-text member-comment"><strong>コメント:</strong><br>${escapeHtml(member.comment)}</div>` : ''}
                     ${String(member.id || '') === String(appState.currentUserMemberId || '') ? `<div class="mt-3"><button class="btn btn-sm btn-outline-primary member-profile-edit-btn" type="button" data-member-id="${escapeHtml(String(member.id || ''))}">編集</button></div>` : ''}
                 </div></div></div>`).join('')}</div>
-        </section>
-    `).join('');
+        </section>`;
+    }).join('');
     container.querySelectorAll('.member-profile-edit-btn').forEach((button) => {
         button.addEventListener('click', () => showOwnProfileEditForm(button.dataset.memberId || ''));
     });
+}
+
+function cssSafeId(value) {
+    return encodeURIComponent(String(value || 'none')).replace(/%/g, '');
 }
 
 function showOwnProfileEditForm(memberId) {
@@ -2733,20 +2817,18 @@ function bindRecordingFileItem(item, file, playUrl, canDelete) {
                 audio.addEventListener('pause', () => {
                     if (!audio.ended) {
                         playButton.textContent = '再生';
-                        audio.hidden = true;
-                        if (appState.currentAudio === audio) {
-                            appState.currentAudio = null;
-                            appState.currentPlayButton = null;
-                        }
+                        playerArea.innerHTML = '';
+                        audio = null;
+                        appState.currentAudio = null;
+                        appState.currentPlayButton = null;
                     }
                 });
                 audio.addEventListener('ended', () => {
                     playButton.textContent = '再生';
-                    audio.hidden = true;
-                    if (appState.currentAudio === audio) {
-                        appState.currentAudio = null;
-                        appState.currentPlayButton = null;
-                    }
+                    playerArea.innerHTML = '';
+                    audio = null;
+                    appState.currentAudio = null;
+                    appState.currentPlayButton = null;
                     if (!canDelete && appState.continuousPlayback) {
                         playNextRecording(item);
                     }
@@ -2765,7 +2847,8 @@ function bindRecordingFileItem(item, file, playUrl, canDelete) {
                 playButton.textContent = '停止';
             } else {
                 audio.pause();
-                audio.hidden = true;
+                playerArea.innerHTML = '';
+                audio = null;
                 playButton.textContent = '再生';
                 if (appState.currentAudio === audio) {
                     appState.currentAudio = null;
@@ -2789,7 +2872,8 @@ function stopCurrentRecording(exceptAudio = null) {
         } catch {
             // Some streaming sources cannot seek until enough data has loaded.
         }
-        audio.hidden = true;
+        const area = audio.parentElement;
+        if (area) area.innerHTML = '';
         if (button) {
             button.textContent = '再生';
         }
@@ -2864,9 +2948,8 @@ function renderPortalHome() {
         .slice(0, 5);
     announceContainer.innerHTML = announcements.length
         ? `<div class="list-group">${announcements.map((ann) => `
-            <article class="list-group-item">
-                <div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>
-                ${ann.content ? `<div class="multiline-text mt-1">${escapeHtml(ann.content || '')}</div>` : ''}
+            <article class="list-group-item portal-announcement-one-line">
+                <span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</span> <strong>${escapeHtml(ann.title || ann.content || '')}</strong>
             </article>
         `).join('')}</div>`
         : '<p class="text-muted mb-0">お知らせはまだありません</p>';
@@ -3059,13 +3142,15 @@ function formatDurationLabel(file) {
     return '長さ未取得';
 }
 
-function renderMemberExtraViews() {
+function renderMemberExtraViews(options = {}) {
+    const includeHeavyLists = options.includeHeavyLists !== false;
     renderAbsenceView();
-    renderSheetLibraryView();
+    if (includeHeavyLists) renderSheetLibraryView();
     renderPaymentView();
     renderCastingView();
     renderMemberEventView();
     renderPieceInfoView();
+    renderDesiredPieceView();
     renderAlbumView();
     renderConcertRecordView();
     renderSnsView();
@@ -3199,9 +3284,7 @@ async function previewPerformanceFlyer(event) {
 }
 
 function paymentPaymentRangeLabel(payment) {
-    const from = payment.paid_from_month || '';
     const until = payment.paid_until_month || payment.membership_fee || payment.dues || '';
-    if (from && until) return `${from}-${until}まで支払い済み`;
     return until ? `${until}まで支払い済み` : '未登録';
 }
 
@@ -3215,17 +3298,20 @@ function renderPieceInfoAdmin() {
     updatePieceInfoPieceOptions();
     list.innerHTML = appState.pieceInfos.length ? `<div class="list-group">${appState.pieceInfos.map((info) => {
         const perf = appState.performances.find((item) => String(item.id || '') === String(info.performance_id || ''));
-        return `<button class="list-group-item list-group-item-action text-start piece-info-admin-item" type="button" data-piece-info-id="${escapeHtml(String(info.id || ''))}"><strong>${escapeHtml(info.piece || info.title || '')}</strong><div class="small text-muted">${escapeHtml(perf?.title || '演奏会未設定')}${info.composer ? ` / ${escapeHtml(info.composer)}` : ''}</div>${info.description ? `<div class="small multiline-text mt-1">${escapeHtml(info.description)}</div>` : ''}</button>`;
+        return `<button class="list-group-item list-group-item-action text-start piece-info-admin-item" type="button" data-piece-info-id="${escapeHtml(String(info.id || ''))}"><strong>${escapeHtml(info.piece || info.title || '')}</strong><div class="small text-muted">${escapeHtml(perf?.title || '演奏会未設定')}</div>${info.description ? `<div class="small multiline-text mt-1">${escapeHtml(info.description)}</div>` : ''}</button>`;
     }).join('')}</div>` : '<p class="text-muted mb-0">楽曲情報はまだ登録されていません</p>';
     list.querySelectorAll('.piece-info-admin-item').forEach((button) => button.addEventListener('click', () => selectPieceInfoAdmin(button.dataset.pieceInfoId || '')));
 }
 
 function updatePieceInfoPieceOptions() {
-    const datalist = $('pieceInfoPieceOptions');
-    if (!datalist) return;
+    const select = $('pieceInfoPiece');
+    if (!select) return;
+    const current = select.value;
     const performanceId = $('pieceInfoPerformance')?.value || '';
     const perf = appState.performances.find((item) => String(item.id || '') === String(performanceId));
-    datalist.innerHTML = perf ? (perf.pieces || []).map((piece) => `<option value="${escapeHtml(performancePieceLabel(piece))}"></option>`).join('') : '';
+    const pieces = perf ? normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean) : [];
+    select.innerHTML = '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece)}">${escapeHtml(piece)}</option>`).join('');
+    if ([...select.options].some((option) => option.value === current)) select.value = current;
 }
 
 function selectPieceInfoAdmin(id) {
@@ -3235,7 +3321,7 @@ function selectPieceInfoAdmin(id) {
     $('pieceInfoPerformance').value = String(info.performance_id || '');
     updatePieceInfoPieceOptions();
     $('pieceInfoPiece').value = info.piece || info.title || '';
-    $('pieceInfoComposer').value = info.composer || '';
+    if ($('pieceInfoComposer')) $('pieceInfoComposer').value = info.composer || '';
     $('pieceInfoDescription').value = info.description || info.notes || '';
 }
 
@@ -3252,7 +3338,6 @@ async function savePieceInfoAdmin() {
     const payload = {
         performance_id: $('pieceInfoPerformance')?.value || '',
         piece: $('pieceInfoPiece')?.value.trim() || '',
-        composer: $('pieceInfoComposer')?.value.trim() || '',
         description: $('pieceInfoDescription')?.value.trim() || ''
     };
     if (!payload.performance_id || !payload.piece) { showAlert('演奏会と曲名を入力してください', 'warning'); return; }
@@ -3710,15 +3795,57 @@ function performanceFeeMap(payment) {
         : {};
 }
 
+function monthValue(monthText) {
+    if (!monthText || !/^\d{4}-\d{2}$/.test(String(monthText))) return null;
+    const [year, month] = String(monthText).split('-').map(Number);
+    return year * 12 + month;
+}
+
+function currentMonthValue() {
+    return monthValue(today().slice(0, 7));
+}
+
+function addMonths(dateText, months) {
+    if (!dateText) return null;
+    const date = new Date(`${dateText}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setMonth(date.getMonth() + months);
+    return date;
+}
+
+function paymentAlertInfo(payment = null) {
+    const targetPayment = payment || findPaymentForMember(appState.currentUserMemberId, currentUserMemberName());
+    const info = { duesOverdue: false, overduePerformanceIds: new Set(), hasAlert: false };
+    if (!targetPayment) return info;
+    const paidUntil = monthValue(targetPayment.paid_until_month || targetPayment.membership_fee || targetPayment.dues || '');
+    const current = currentMonthValue();
+    if (paidUntil !== null && current !== null && paidUntil <= current - 6) {
+        info.duesOverdue = true;
+    }
+    const feeMap = performanceFeeMap(targetPayment);
+    const now = new Date(`${today()}T00:00:00`);
+    appState.performances.forEach((perf) => {
+        const dueDate = addMonths(perf.date, 6);
+        const paid = Boolean(feeMap[String(perf.id)]);
+        if (dueDate && dueDate < now && !paid) {
+            info.overduePerformanceIds.add(String(perf.id));
+        }
+    });
+    info.hasAlert = info.duesOverdue || info.overduePerformanceIds.size > 0;
+    return info;
+}
+
 function paymentStatusHtml(payment) {
     const feeMap = performanceFeeMap(payment);
+    const alertInfo = paymentAlertInfo(payment);
     const performanceFees = appState.performances.map((perf) => {
         const paid = Boolean(feeMap[String(perf.id)]);
-        return `<div>${escapeHtml(perf.title)}: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span></div>`;
+        const overdue = alertInfo.overduePerformanceIds.has(String(perf.id));
+        return `<div><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
     }).join('');
     return `
         <div class="info-block">
-            <div>団費: ${escapeHtml(paymentPaymentRangeLabel(payment))}</div>
+            <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
             <div>最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
             <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
         </div>
@@ -3790,7 +3917,7 @@ function fillPaymentForm(payment, memberId = '') {
     $('paymentMemberId').value = memberId || payment?.member_id || '';
     if ($('paymentPaidFromMonth')) $('paymentPaidFromMonth').value = payment?.paid_from_month || '';
     $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
-    $('paymentLatestDate').value = payment?.latest_payment_date || '';
+    $('paymentLatestDate').value = payment?.latest_payment_date || today();
     const feeMap = performanceFeeMap(payment);
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         checkbox.checked = Boolean(feeMap[String(checkbox.value)]);
@@ -3815,7 +3942,6 @@ async function savePaymentStatus() {
     const payload = {
         member_id: memberId,
         name: memberDisplayName(member),
-        paid_from_month: $('paymentPaidFromMonth')?.value || '',
         paid_until_month: $('paymentPaidUntilMonth')?.value || '',
         latest_payment_date: $('paymentLatestDate')?.value || '',
         performance_fees: performanceFees
@@ -3992,8 +4118,140 @@ function renderPieceInfoView() {
         const rows = appState.pieceInfos.filter((x) => String(x.performance_id || '') === String(perf.id));
         const fallback = (perf.pieces || []).map((p) => ({ title: performancePieceLabel(p), description: '' }));
         const list = rows.length ? rows : fallback;
-        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${list.map((r) => `<div class="info-block"><strong>${escapeHtml(r.piece || r.title || '')}</strong>${r.composer ? `<div class="small text-muted">${escapeHtml(r.composer)}</div>` : ''}${r.description || r.notes ? `<div class="multiline-text mt-1">${escapeHtml(r.description || r.notes)}</div>` : ''}</div>`).join('')}</section>`;
+        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${list.map((r) => `<div class="info-block"><strong>${escapeHtml(r.piece || r.title || '')}</strong>${r.description || r.notes ? `<div class="multiline-text mt-1">${escapeHtml(r.description || r.notes)}</div>` : ''}</div>`).join('')}</section>`;
     }).join('');
+}
+
+
+function desiredPieceCurrentVoterKey() {
+    return String(appState.currentUserMemberId || currentUserMemberName() || '');
+}
+
+function desiredPieceVotes(item) {
+    return Array.isArray(item.votes) ? item.votes : [];
+}
+
+function desiredPieceHasVoted(item) {
+    const key = desiredPieceCurrentVoterKey();
+    const name = currentUserMemberName();
+    return desiredPieceVotes(item).some((vote) => String(vote.member_id || vote.name || vote) === key || (name && String(vote.name || vote) === name));
+}
+
+function desiredPieceIsOwner(item) {
+    const memberId = String(appState.currentUserMemberId || '');
+    const name = currentUserMemberName();
+    return (memberId && String(item.member_id || '') === memberId) || (name && String(item.registered_by || item.name || '') === name);
+}
+
+function clearDesiredPieceForm() {
+    ['desiredPieceId', 'desiredPieceTitle', 'desiredPieceComposer', 'desiredPieceDuration', 'desiredPieceFormation', 'desiredPieceNotes'].forEach((id) => { if ($(id)) $(id).value = ''; });
+    if ($('desiredPieceGenre')) $('desiredPieceGenre').value = 'クラシック';
+}
+
+function fillDesiredPieceForm(id) {
+    const item = appState.desiredPieces.find((piece) => String(piece.id || '') === String(id));
+    if (!item) return;
+    $('desiredPieceId').value = item.id || '';
+    $('desiredPieceTitle').value = item.title || item.piece || '';
+    $('desiredPieceComposer').value = item.composer || '';
+    $('desiredPieceDuration').value = item.duration || '';
+    $('desiredPieceGenre').value = item.genre || 'クラシック';
+    $('desiredPieceFormation').value = item.formation || '';
+    $('desiredPieceNotes').value = item.notes || '';
+    $('desiredPieceTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function renderDesiredPieceView() {
+    const c = $('memberDesiredPieceInfo');
+    if (!c) return;
+    const items = [...(appState.desiredPieces || [])].sort((a, b) => desiredPieceVotes(b).length - desiredPieceVotes(a).length || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    c.innerHTML = `
+        <div class="info-block">
+            <input type="hidden" id="desiredPieceId">
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label">曲名</label><input class="form-control" id="desiredPieceTitle"></div>
+                <div class="col-md-6"><label class="form-label">作曲者</label><input class="form-control" id="desiredPieceComposer"></div>
+                <div class="col-md-4"><label class="form-label">演奏時間</label><input class="form-control" id="desiredPieceDuration" placeholder="例: 8分 / 00:08:00"></div>
+                <div class="col-md-4"><label class="form-label">ジャンル</label><select class="form-select" id="desiredPieceGenre"><option>クラシック</option><option>ポップス</option></select></div>
+                <div class="col-md-4"><label class="form-label">編成</label><input class="form-control" id="desiredPieceFormation" placeholder="例: 2管編成"></div>
+                <div class="col-12"><label class="form-label">備考</label><textarea class="form-control" id="desiredPieceNotes" rows="3"></textarea></div>
+                <div class="col-12 d-flex flex-wrap gap-2">
+                    <button class="btn btn-success" id="desiredPieceSaveBtn" type="button">登録</button>
+                    <button class="btn btn-outline-secondary" id="desiredPieceClearBtn" type="button">クリア</button>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">${items.length ? items.map((item) => {
+            const voted = desiredPieceHasVoted(item);
+            const own = desiredPieceIsOwner(item);
+            return `<article class="info-block desired-piece-card">
+                <div class="d-flex flex-wrap justify-content-between gap-2">
+                    <div>
+                        <h5 class="mb-1">${escapeHtml(item.title || item.piece || '')}</h5>
+                        <div class="small text-muted">${escapeHtml(item.composer || '作曲者未登録')} / ${escapeHtml(item.duration || '演奏時間未登録')} / ${escapeHtml(item.genre || '')}</div>
+                        ${item.formation ? `<div class="small mt-1"><strong>編成:</strong> ${escapeHtml(item.formation)}</div>` : ''}
+                        ${item.notes ? `<div class="small mt-2 multiline-text">${escapeHtml(item.notes)}</div>` : ''}
+                        <div class="small text-muted mt-2">登録者: ${escapeHtml(item.registered_by || '未登録')}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="vote-count">${desiredPieceVotes(item).length}票</div>
+                        <button class="btn btn-sm ${voted ? 'btn-primary' : 'btn-outline-primary'} desired-piece-vote-btn" type="button" data-desired-piece-id="${escapeHtml(String(item.id || ''))}">${voted ? '投票済み' : '投票'}</button>
+                    </div>
+                </div>
+                ${own ? `<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-sm btn-outline-primary desired-piece-edit-btn" type="button" data-desired-piece-id="${escapeHtml(String(item.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger desired-piece-delete-btn" type="button" data-desired-piece-id="${escapeHtml(String(item.id || ''))}">削除</button></div>` : ''}
+            </article>`;
+        }).join('') : '<p class="text-muted mb-0">演奏希望曲はまだ登録されていません</p>'}</div>
+    `;
+    $('desiredPieceSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveDesiredPiece()));
+    $('desiredPieceClearBtn')?.addEventListener('click', clearDesiredPieceForm);
+    c.querySelectorAll('.desired-piece-vote-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '投票中...', () => toggleDesiredPieceVote(button.dataset.desiredPieceId || ''))));
+    c.querySelectorAll('.desired-piece-edit-btn').forEach((button) => button.addEventListener('click', () => fillDesiredPieceForm(button.dataset.desiredPieceId || '')));
+    c.querySelectorAll('.desired-piece-delete-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteDesiredPiece(button.dataset.desiredPieceId || ''))));
+}
+
+async function saveDesiredPiece() {
+    const title = $('desiredPieceTitle')?.value.trim() || '';
+    if (!title) { showAlert('曲名を入力してください', 'warning'); return; }
+    const member = currentUserMember();
+    const id = $('desiredPieceId')?.value || '';
+    const current = appState.desiredPieces.find((item) => String(item.id || '') === String(id));
+    const payload = {
+        title,
+        composer: $('desiredPieceComposer')?.value.trim() || '',
+        duration: $('desiredPieceDuration')?.value.trim() || '',
+        genre: $('desiredPieceGenre')?.value || 'クラシック',
+        formation: $('desiredPieceFormation')?.value.trim() || '',
+        notes: $('desiredPieceNotes')?.value.trim() || '',
+        member_id: current?.member_id || member?.id || appState.currentUserMemberId || '',
+        registered_by: current?.registered_by || currentUserMemberName(),
+        votes: desiredPieceVotes(current || [])
+    };
+    if (id) await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+    else await saveExtra('desired_pieces', payload);
+    clearDesiredPieceForm();
+    await loadExtraData();
+    showAlert('演奏希望曲を保存しました', 'success');
+}
+
+async function toggleDesiredPieceVote(id) {
+    const item = appState.desiredPieces.find((piece) => String(piece.id || '') === String(id));
+    if (!item) return;
+    const key = desiredPieceCurrentVoterKey();
+    const name = currentUserMemberName();
+    let votes = desiredPieceVotes(item).filter((vote) => String(vote.member_id || vote.name || vote) !== key && (!name || String(vote.name || vote) !== name));
+    if (!desiredPieceHasVoted(item)) {
+        votes.push({ member_id: appState.currentUserMemberId || '', name });
+    }
+    await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', { ...item, votes }));
+    await loadExtraData();
+}
+
+async function deleteDesiredPiece(id) {
+    if (!id || !confirmDelete()) return;
+    await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    clearDesiredPieceForm();
+    await loadExtraData();
+    showAlert('演奏希望曲を削除しました', 'success');
 }
 
 function renderAlbumView() {

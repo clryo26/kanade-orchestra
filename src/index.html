@@ -36,8 +36,11 @@
         </div>
         <div class="portal-drawer-body" id="portalDrawerMenu"></div>
         <div class="portal-drawer-footer">
-            <button class="btn btn-outline-danger w-100" id="portalLogoutBtn" type="button">ログアウト</button>
-            <button class="btn btn-outline-success w-100" id="portalReloadBtn" type="button">更新</button>
+            <div class="portal-drawer-actions">
+                <button class="btn btn-outline-danger flex-fill" id="portalLogoutBtn" type="button">ログアウト</button>
+                <button class="btn btn-outline-success flex-fill" id="portalReloadBtn" type="button">更新</button>
+                <span class="revision-inline">Rev. <span id="revisionNumber">20260617-1</span></span>
+            </div>
         </div>
     </aside>
 
@@ -324,17 +327,12 @@
                                 <label class="form-label" for="pieceInfoPerformance">演奏会</label>
                                 <select class="form-select" id="pieceInfoPerformance"></select>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-8">
                                 <label class="form-label" for="pieceInfoPiece">曲名</label>
-                                <input class="form-control" id="pieceInfoPiece" list="pieceInfoPieceOptions">
-                                <datalist id="pieceInfoPieceOptions"></datalist>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="pieceInfoComposer">作曲者</label>
-                                <input class="form-control" id="pieceInfoComposer">
+                                <select class="form-select" id="pieceInfoPiece"></select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label" for="pieceInfoDescription">紹介文</label>
+                                <label class="form-label" for="pieceInfoDescription">楽曲情報</label>
                                 <textarea class="form-control" id="pieceInfoDescription" rows="5"></textarea>
                             </div>
                         </div>
@@ -504,10 +502,6 @@
                                 <select class="form-select" id="paymentMemberId"></select>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label" for="paymentPaidFromMonth">何月分から支払済み</label>
-                                <input type="month" class="form-control" id="paymentPaidFromMonth">
-                            </div>
-                            <div class="col-md-3">
                                 <label class="form-label" for="paymentPaidUntilMonth">何月分まで支払済み</label>
                                 <input type="month" class="form-control" id="paymentPaidUntilMonth">
                             </div>
@@ -534,24 +528,35 @@
                     <div class="card-header">会場管理</div>
                     <div class="card-body">
                         <input type="hidden" id="venueSettingId">
-                        <div class="row g-3 align-items-end mb-3">
-                            <div class="col-md-5">
-                                <label class="form-label" for="venueSettingName">会場名</label>
-                                <input type="text" class="form-control" id="venueSettingName">
+                        <input type="hidden" id="venueUsageType" value="performance">
+                        <section class="mb-4">
+                            <h5>本番会場</h5>
+                            <div class="row g-3 align-items-end mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label" for="venuePerformanceName">会場名</label>
+                                    <input type="text" class="form-control" id="venuePerformanceName">
+                                </div>
+                                <div class="col-md-4 d-flex gap-2">
+                                    <button class="btn btn-success flex-fill venue-save-by-type-btn" data-venue-type="performance" type="button">登録</button>
+                                    <button class="btn btn-outline-secondary flex-fill venue-clear-by-type-btn" data-venue-type="performance" type="button">クリア</button>
+                                </div>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="venueUsageType">用途</label>
-                                <select class="form-select" id="venueUsageType">
-                                    <option value="practice">練習</option>
-                                    <option value="performance">本番</option>
-                                </select>
+                            <div id="venuePerformanceList"></div>
+                        </section>
+                        <section>
+                            <h5>練習会場</h5>
+                            <div class="row g-3 align-items-end mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label" for="venuePracticeName">会場名</label>
+                                    <input type="text" class="form-control" id="venuePracticeName">
+                                </div>
+                                <div class="col-md-4 d-flex gap-2">
+                                    <button class="btn btn-success flex-fill venue-save-by-type-btn" data-venue-type="practice" type="button">登録</button>
+                                    <button class="btn btn-outline-secondary flex-fill venue-clear-by-type-btn" data-venue-type="practice" type="button">クリア</button>
+                                </div>
                             </div>
-                            <div class="col-md-3 d-flex gap-2">
-                                <button class="btn btn-success flex-fill" id="saveVenueSettingBtn" type="button">保存</button>
-                                <button class="btn btn-outline-secondary flex-fill" id="clearVenueSettingBtn" type="button">クリア</button>
-                            </div>
-                        </div>
-                        <div id="venueSettingList"></div>
+                            <div id="venuePracticeList"></div>
+                        </section>
                     </div>
                 </div>
             </div>
@@ -669,6 +674,7 @@
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-casting" type="button">乗り番表</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-piece-info" type="button">楽曲情報</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-desired-piece" type="button">演奏希望曲</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-album" type="button">アルバム</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-intro" type="button">自己紹介</button>
             </div>
@@ -729,6 +735,9 @@
             <div id="memberPieceInfoTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">楽曲情報</div><div class="card-body" id="memberPieceInfo"></div></div>
             </div>
+            <div id="memberDesiredPieceTab" class="tab-content" hidden>
+                <div class="card"><div class="card-header">演奏希望曲</div><div class="card-body" id="memberDesiredPieceInfo"></div></div>
+            </div>
             <div id="memberAlbumTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">アルバム</div><div class="card-body" id="memberAlbumInfo"></div></div>
             </div>
@@ -743,7 +752,6 @@
         </section>
     </main>
 
-    <footer class="revision-footer">Revision: <span id="revisionNumber">20260616-2</span></footer>
     <div id="toastArea" class="toast-area"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/app.js"></script>

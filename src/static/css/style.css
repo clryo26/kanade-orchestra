@@ -805,3 +805,84 @@ details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::
     max-height: 220px;
     overflow: auto;
 }
+
+.portal-drawer-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}
+.revision-inline {
+    color: #6c757d;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+.revision-footer {
+    display: none;
+}
+.portal-announcement-one-line {
+    align-items: baseline;
+    display: flex;
+    gap: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.portal-announcement-one-line strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.member-part-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.member-intro-card-body {
+    display: flex;
+    flex-direction: column;
+}
+.member-photo {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 0;
+    align-self: center;
+}
+.member-intro-text {
+    color: #212529;
+}
+.member-comment {
+    color: #212529;
+}
+@media (max-width: 576px) {
+    .portal-drawer-actions {
+        flex-wrap: wrap;
+    }
+    .revision-inline {
+        margin-left: auto;
+    }
+}
+
+.alert-blink {
+    animation: payment-alert-blink 1s infinite;
+    border-color: #dc3545 !important;
+    color: #dc3545 !important;
+    font-weight: 700;
+}
+
+@keyframes payment-alert-blink {
+    0%, 100% { background-color: #fff; }
+    50% { background-color: #ffe1e5; }
+}
+
+.payment-overdue {
+    color: #dc3545;
+    font-weight: 700;
+}
+
+.desired-piece-card .vote-count {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
