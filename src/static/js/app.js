@@ -451,7 +451,7 @@ function portalMenuGroups() {
 // メニュー定義から実際のボタン HTML とイベントを生成する。
 function renderMenuGroups(container) {
     if (!container) return;
-    container.innerHTML = portalMenuGroups().map((group) => `
+    const menuHTML = portalMenuGroups().map((group) => `
         <section class="portal-menu-group">
             <h3>${escapeHtml(group.title)}</h3>
             <div class="portal-menu-grid">
@@ -463,6 +463,21 @@ function renderMenuGroups(container) {
             </div>
         </section>
     `).join('');
+    
+    // アクションセクション（マニュアル、ログアウト、更新、リビジョン）を設定グループの下に追加
+    const actionsHTML = `
+        <section class="portal-menu-actions-section">
+            <div class="portal-drawer-actions">
+                <button class="btn btn-outline-primary" id="portalManualBtn" type="button">マニュアル</button>
+                <button class="btn btn-outline-danger" id="portalLogoutBtn" type="button">ログアウト</button>
+                <button class="btn btn-outline-success" id="portalReloadBtn" type="button">更新</button>
+                <span class="revision-inline">Rev. <span id="revisionNumber">20260617-1</span></span>
+            </div>
+        </section>
+    `;
+    
+    container.innerHTML = menuHTML + actionsHTML;
+    
     container.querySelectorAll('[data-home-tab]').forEach((button) => {
         button.addEventListener('click', () => {
             closePortalDrawer();
@@ -990,6 +1005,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-manual') renderManualView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
     if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
+    if (renderOnShow && tabName === 'announcement-detail') renderAnnouncementDetail();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
@@ -997,6 +1013,9 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
+    
+    // 画面上部にスクロール
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // data-tab の識別子を DOM 要素 ID 規則へ変換する。
@@ -1032,6 +1051,7 @@ function toPascalTab(value) {
         'member-album': 'memberAlbum',
         'member-concert-record': 'memberConcertRecord',
         'member-sns': 'memberSns',
+        'announcement-detail': 'announcementDetail',
         'system-auth': 'systemAuth',
         'system-org': 'systemOrg',
         'system-sns': 'systemSns',
@@ -2987,11 +3007,39 @@ function announcementItem(ann, selectable) {
     const item = document.createElement(selectable ? 'button' : 'li');
     item.className = selectable
         ? 'list-group-item list-group-item-action'
-        : 'list-group-item';
+        : 'list-group-item list-group-item-action';
     if (selectable) item.type = 'button';
-    item.innerHTML = `<div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>${ann.content ? `<div class="mt-1">${escapeHtml(ann.content)}</div>` : ''}`;
-    if (selectable) item.addEventListener('click', () => selectAnnouncement(ann.id));
+    else item.style.cursor = 'pointer';
+    
+    // 団員向け（selectable=false）は日付とタイトルのみ表示
+    if (!selectable) {
+        item.innerHTML = `<div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>`;
+        item.addEventListener('click', () => {
+            appState.portalSelectedAnnouncementId = ann.id;
+            showMemberTab('announcement-detail');
+        });
+    } else {
+        // 管理者向け（selectable=true）は内容も表示
+        item.innerHTML = `<div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>${ann.content ? `<div class="mt-1">${escapeHtml(ann.content)}</div>` : ''}`;
+        item.addEventListener('click', () => selectAnnouncement(ann.id));
+    }
     return item;
+}
+
+function renderAnnouncementDetail() {
+    const header = $('annDetailHeader');
+    const content = $('annDetailContent');
+    if (!header || !content) return;
+    
+    const ann = appState.announcements.find((a) => a.id === appState.portalSelectedAnnouncementId);
+    if (!ann) {
+        header.textContent = 'お知らせ詳細';
+        content.innerHTML = '<p class="text-muted">お知らせが見つかりません</p>';
+        return;
+    }
+    
+    header.textContent = `${escapeHtml(formatDateWithWeekday(ann.date))} ${escapeHtml(ann.title || '')}`;
+    content.innerHTML = `<div>${escapeHtml(ann.content || 'コンテンツなし')}</div>`;
 }
 
 function renderRecordings() {
@@ -4295,12 +4343,28 @@ async function bulkSaveSheetParts() {
 function renderPaymentView() {
     const c = $('memberPaymentInfo');
     if (!c) return;
-    const member = currentUserMember();
-    const name = member ? memberDisplayName(member) : '';
-    const payment = findPaymentForMember(member?.id, name);
-    c.innerHTML = payment
-        ? paymentStatusHtml(payment)
-        : '<p class="text-muted">支払情報は未登録です</p>';
+    c.innerHTML = memberPaymentStatusHtml();
+}
+
+function memberPaymentStatusHtml() {
+    const org = currentOrgSetting();
+    const membershipFee = Number(org.membership_fee_amount || 0);
+    const membershipFeeLabel = membershipFee > 0 ? `${membershipFee.toLocaleString('ja-JP')}円/月` : '未登録';
+    
+    const performanceFees = appState.performances.map((perf) => {
+        const amount = Number(perf.performance_fee_amount || 0);
+        const amountLabel = amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
+        return `<div class="small">${escapeHtml(perf.title)} - ${amountLabel}</div>`;
+    }).join('');
+    
+    return `
+        <div class="info-block">
+            <h6>団費</h6>
+            <div>${membershipFeeLabel}</div>
+            <h6 class="mt-3">演奏会費</h6>
+            <div>${performanceFees || '<p class="text-muted mb-0">演奏会情報は未登録です</p>'}</div>
+        </div>
+    `;
 }
 
 function findPaymentForMember(memberId, name = '') {
@@ -4462,44 +4526,42 @@ function clearCastingForm() {
 function renderCastingMembersList() {
     const list = $('castingMembersList');
     if (!list) return;
-    
-    list.innerHTML = appState.castingEditingMembers.map((member, index) => {
-        const memberId = member.member_id || '';
+
+    const selectedIds = new Set(
+        (appState.castingEditingMembers || [])
+            .map((member) => String(member.member_id || ''))
+            .filter(Boolean)
+    );
+    const sortedMembers = sortedMembersByPartAndKana(appState.members || []);
+    if (!sortedMembers.length) {
+        list.innerHTML = '<p class="text-muted mb-0">団員データがありません</p>';
+        return;
+    }
+
+    list.innerHTML = `<div class="row g-2">${sortedMembers.map((member) => {
+        const memberId = String(member.id || '');
+        const isChecked = selectedIds.has(memberId);
+        const part = member.part ? `（${member.part}）` : '';
         return `
-            <div class="d-flex gap-2 mb-2 p-2 border rounded">
-                <select class="form-select form-select-sm flex-grow-1 casting-member-select" data-index="${index}">
-                    <option value="">団員を選択</option>
-                    ${appState.members.map((m) => `<option value="${escapeHtml(String(m.id || ''))}" ${String(m.id || '') === String(memberId) ? 'selected' : ''}>${escapeHtml(memberDisplayName(m))}</option>`).join('')}
-                </select>
-                <input type="text" class="form-control form-control-sm" style="width: 120px;" placeholder="パート" value="${escapeHtml(member.part || '')}" data-part-index="${index}">
-                <button class="btn btn-sm btn-outline-danger casting-member-delete-btn" data-index="${index}" type="button">削除</button>
+            <div class="col-md-6 col-lg-4">
+                <label class="form-check border rounded p-2 h-100">
+                    <input class="form-check-input casting-member-checkbox" type="checkbox" value="${escapeHtml(memberId)}" ${isChecked ? 'checked' : ''}>
+                    <span class="form-check-label">${escapeHtml(memberDisplayName(member) + part)}</span>
+                </label>
             </div>
         `;
-    }).join('');
-    
-    list.querySelectorAll('.casting-member-select').forEach((select) => {
-        select.addEventListener('change', (e) => {
-            const index = Number(e.target.dataset.index || 0);
-            if (appState.castingEditingMembers[index]) {
-                appState.castingEditingMembers[index].member_id = Number(e.target.value) || 0;
-            }
-        });
-    });
-    
-    list.querySelectorAll('[data-part-index]').forEach((input) => {
-        input.addEventListener('change', (e) => {
-            const index = Number(e.target.dataset.partIndex || 0);
-            if (appState.castingEditingMembers[index]) {
-                appState.castingEditingMembers[index].part = e.target.value.trim();
-            }
-        });
-    });
-    
-    list.querySelectorAll('.casting-member-delete-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            const index = Number(e.target.dataset.index || 0);
-            appState.castingEditingMembers.splice(index, 1);
-            renderCastingMembersList();
+    }).join('')}</div>`;
+
+    list.querySelectorAll('.casting-member-checkbox').forEach((checkbox) => {
+        checkbox.addEventListener('change', () => {
+            const checkedIds = Array.from(list.querySelectorAll('.casting-member-checkbox:checked')).map((input) => String(input.value || ''));
+            appState.castingEditingMembers = checkedIds.map((memberId) => {
+                const member = appState.members.find((item) => String(item.id || '') === memberId);
+                return {
+                    member_id: Number(memberId) || 0,
+                    part: member?.part || ''
+                };
+            });
         });
     });
 }
@@ -4510,10 +4572,19 @@ function renderCastingExtrasList() {
     
     list.innerHTML = appState.castingEditingExtras.map((extra, index) => {
         return `
-            <div class="d-flex gap-2 mb-2 p-2 border rounded">
-                <input type="text" class="form-control form-control-sm" placeholder="名前" value="${escapeHtml(extra.name || '')}" data-name-index="${index}">
-                <input type="text" class="form-control form-control-sm" placeholder="ふりがな" value="${escapeHtml(extra.furigana || '')}" data-furigana-index="${index}">
-                <input type="text" class="form-control form-control-sm" style="width: 120px;" placeholder="パート" value="${escapeHtml(extra.part || '')}" data-extra-part-index="${index}">
+            <div class="mb-3 p-2 border rounded">
+                <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">名前</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="名前" value="${escapeHtml(extra.name || '')}" data-name-index="${index}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">フリガナ</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="フリガナ" value="${escapeHtml(extra.furigana || '')}" data-furigana-index="${index}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label form-label-sm mb-1">パート</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="パート" value="${escapeHtml(extra.part || '')}" data-extra-part-index="${index}">
+                </div>
                 <button class="btn btn-sm btn-outline-danger casting-extra-delete-btn" data-index="${index}" type="button">削除</button>
             </div>
         `;
@@ -4603,18 +4674,10 @@ function renderCastingAdminList() {
 }
 
 function bindCastingAdminEvents() {
-    const addMemberBtn = $('castingAddMemberBtn');
     const addExtraBtn = $('castingAddExtraBtn');
     const saveBtn = $('castingSaveBtn');
     const deleteBtn = $('castingDeleteBtn');
     const clearBtn = $('castingClearBtn');
-    
-    if (addMemberBtn) {
-        addMemberBtn.addEventListener('click', () => {
-            appState.castingEditingMembers.push({ member_id: 0, part: '' });
-            renderCastingMembersList();
-        });
-    }
     
     if (addExtraBtn) {
         addExtraBtn.addEventListener('click', () => {
@@ -4986,7 +5049,7 @@ function renderPieceInfoView() {
             <section class="info-block">
                 <div class="small text-muted">${escapeHtml(performance?.title || '演奏会未設定')}</div>
                 <h5 class="mb-2">${escapeHtml(selectedPieceInfo.piece || selectedPieceInfo.title || '')}</h5>
-                ${selectedPieceInfo.description || selectedPieceInfo.notes ? `<div class="multiline-text mb-3">${escapeHtml(selectedPieceInfo.description || selectedPieceInfo.notes)}</div>` : ''}
+                ${selectedPieceInfo.description || selectedPieceInfo.notes ? `<div class="multiline-text mb-3">${convertUrlsToLinks(selectedPieceInfo.description || selectedPieceInfo.notes)}</div>` : ''}
                 ${selectedPieceInfo.url ? `<button class="btn btn-primary btn-sm" id="pieceInfoUrlBtn" type="button">楽曲情報を表示</button>` : ''}
             </section>
         `;
@@ -5070,49 +5133,80 @@ function fillDesiredPieceForm(id) {
 
 // 演奏希望曲は「登録」と「投票」が混在するため、
 // 所有者だけ編集/削除、自分は 1 票だけ投票、というルールを UI 側でも明示する。
-function renderDesiredPieceView() {
-    const c = $('memberDesiredPieceInfo');
-    if (!c) return;
-    const items = [...(appState.desiredPieces || [])].sort((a, b) => desiredPieceVotes(b).length - desiredPieceVotes(a).length || String(b.created_at || '').localeCompare(String(a.created_at || '')));
-    c.innerHTML = `
-        <div class="info-block">
-            <input type="hidden" id="desiredPieceId">
-            <div class="row g-3">
-                <div class="col-md-6"><label class="form-label">曲名</label><input class="form-control" id="desiredPieceTitle"></div>
-                <div class="col-md-6"><label class="form-label">作曲者</label><input class="form-control" id="desiredPieceComposer"></div>
-                <div class="col-md-4"><label class="form-label">演奏時間</label><input class="form-control" id="desiredPieceDuration" placeholder="例: 8分 / 00:08:00"></div>
-                <div class="col-md-4"><label class="form-label">ジャンル</label><select class="form-select" id="desiredPieceGenre"><option>クラシック</option><option>ポップス</option></select></div>
-                <div class="col-md-4"><label class="form-label">編成</label><input class="form-control" id="desiredPieceFormation" placeholder="例: 2管編成"></div>
-                <div class="col-12"><label class="form-label">備考</label><textarea class="form-control" id="desiredPieceNotes" rows="3"></textarea></div>
-                <div class="col-12 d-flex flex-wrap gap-2">
-                    <button class="btn btn-success" id="desiredPieceSaveBtn" type="button">登録</button>
-                    <button class="btn btn-outline-secondary" id="desiredPieceClearBtn" type="button">クリア</button>
+function renderPaymentAdmin() {
+    renderPaymentFeeSettings();
+}
+
+function renderPaymentFeeSettings() {
+    const orgMembershipFee = $('orgMembershipFee');
+    const perfFeeSettings = $('performanceFeeSettings');
+    if (!orgMembershipFee || !perfFeeSettings) return;
+    
+    // 団費設定の読み込み
+    const org = currentOrgSetting();
+    const membershipFee = org.membership_fee_amount || 0;
+    orgMembershipFee.value = membershipFee > 0 ? String(membershipFee) : '';
+    
+    // 演奏会費設定の表示
+    perfFeeSettings.innerHTML = appState.performances.length
+        ? `<div class="list-group">${appState.performances.map((perf) => `
+            <div class="list-group-item">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6">
+                        <strong>${escapeHtml(perf.title)}</strong>
+                        <div class="small text-muted">${escapeHtml(formatDateWithWeekday(perf.date))}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">演奏会費（円）</label>
+                        <input type="number" min="0" step="1" class="form-control performance-fee-amount" data-performance-id="${escapeHtml(String(perf.id))}" value="${Number(perf.performance_fee_amount || 0) > 0 ? perf.performance_fee_amount : ''}" placeholder="例: 5000">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-sm btn-outline-primary save-perf-fee-btn" type="button" data-performance-id="${escapeHtml(String(perf.id))}">保存</button>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="mt-3">${items.length ? items.map((item) => {
-            const voted = desiredPieceHasVoted(item);
-            const own = desiredPieceIsOwner(item);
-            const registeredAt = item.created_at || item.updated_at || '';
-            return `<article class="info-block desired-piece-card">
-                <div class="d-flex flex-wrap justify-content-between gap-2">
-                    <div>
-                        <h5 class="mb-1">${escapeHtml(item.title || item.piece || '')}</h5>
-                        <div class="small text-muted">${escapeHtml(item.composer || '作曲者未登録')} / ${escapeHtml(item.duration || '演奏時間未登録')} / ${escapeHtml(item.genre || '')}</div>
-                        ${item.formation ? `<div class="small mt-1"><strong>編成:</strong> ${escapeHtml(item.formation)}</div>` : ''}
-                        ${item.notes ? `<div class="small mt-2 multiline-text">${escapeHtml(item.notes)}</div>` : ''}
-                        <div class="small text-muted mt-2">登録日: ${escapeHtml(registeredAt ? formatDateTimeLabel(registeredAt) : '未登録')}</div>
-                    </div>
-                    <div class="text-end">
-                        <div class="vote-count">${desiredPieceVotes(item).length}票</div>
-                        <button class="btn btn-sm ${voted ? 'btn-primary' : 'btn-outline-primary'} desired-piece-vote-btn" type="button" data-desired-piece-id="${escapeHtml(String(item.id || ''))}">${voted ? '投票済み' : '投票'}</button>
-                    </div>
-                </div>
-                ${own ? `<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-sm btn-outline-primary desired-piece-edit-btn" type="button" data-desired-piece-id="${escapeHtml(String(item.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger desired-piece-delete-btn" type="button" data-desired-piece-id="${escapeHtml(String(item.id || ''))}">削除</button></div>` : ''}
-            </article>`;
-        }).join('') : '<p class="text-muted mb-0">演奏希望曲はまだ登録されていません</p>'}</div>
-    `;
-    $('desiredPieceSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveDesiredPiece()));
+        `).join('')}</div>`
+        : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
+    
+    // イベントリスナー設定
+    $('saveOrgMembershipFeeBtn')?.addEventListener('click', saveOrgMembershipFee);
+    perfFeeSettings.querySelectorAll('.save-perf-fee-btn').forEach((btn) => {
+        btn.addEventListener('click', () => savePerformanceFee(btn.dataset.performanceId));
+    });
+}
+
+async function saveOrgMembershipFee() {
+    const amount = Number($('orgMembershipFee')?.value || 0);
+    const current = currentOrgSetting();
+    const payload = {
+        name: current.name || '',
+        short_name: current.short_name || current.shortName || '',
+        icon_url: current.icon_url || current.iconUrl || '',
+        membership_fee_amount: amount
+    };
+    if (current.id) {
+        await request(`/api/extra/org_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));
+    } else {
+        await saveExtra('org_settings', payload);
+    }
+    await loadExtraData();
+    showAlert('団費を保存しました', 'success');
+    renderPaymentAdmin();
+}
+
+async function savePerformanceFee(performanceId) {
+    const amount = Number($(`input[data-performance-id="${performanceId}"]`)?.value || 0);
+    const perf = appState.performances.find((p) => String(p.id || '') === String(performanceId));
+    if (!perf) {
+        showAlert('演奏会が見つかりません', 'warning');
+        return;
+    }
+    const payload = { ...perf, performance_fee_amount: amount };
+    await request(`/api/performances/${encodeURIComponent(perf.id)}`, jsonOptions('PUT', payload));
+    await loadEssentialData();
+    showAlert('演奏会費を保存しました', 'success');
+    renderPaymentAdmin();
+}
     $('desiredPieceClearBtn')?.addEventListener('click', clearDesiredPieceForm);
     c.querySelectorAll('.desired-piece-vote-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '投票中...', () => toggleDesiredPieceVote(button.dataset.desiredPieceId || ''))));
     c.querySelectorAll('.desired-piece-edit-btn').forEach((button) => button.addEventListener('click', () => fillDesiredPieceForm(button.dataset.desiredPieceId || '')));
@@ -5386,6 +5480,19 @@ function escapeHtml(value) {
         '"': '&quot;',
         "'": '&#039;'
     }[char]));
+}
+
+// テキスト内のURLを検出してクリック可能なリンクに変換
+function convertUrlsToLinks(text) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return escapeHtml(text).replace(urlRegex, (url) => {
+        try {
+            new URL(url);
+            return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">${escapeHtml(url)}</a>`;
+        } catch {
+            return escapeHtml(url);
+        }
+    });
 }
 
 function showAlert(message, type = 'info') {

@@ -120,6 +120,31 @@ body {
     bottom: 0;
 }
 
+.portal-menu-actions-section {
+    border-top: 1px solid var(--line);
+    margin-top: 1rem;
+    padding-top: 1rem;
+}
+
+.portal-menu-actions-section .portal-drawer-actions {
+    flex-direction: row !important;
+    align-items: center !important;
+}
+
+.portal-menu-actions-section .portal-drawer-actions .btn {
+    width: auto !important;
+    flex: 1;
+    min-width: 0;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.portal-menu-actions-section .portal-drawer-actions .revision-inline {
+    display: inline !important;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+}
+
 .portal-logo {
     height: 48px;
     width: 48px;
