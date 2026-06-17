@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import mimetypes
@@ -53,6 +54,71 @@ load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
+# このファイルはアプリ全体の API とローカル JSON ストレージの仲介役。
+# 基本方針は「JSON ファイルを正としつつ、必要なら Cloud Storage にも同期する」構成で、
+# フロントエンド向けには複数コレクションをまとめた bootstrap API も提供している。
+
+# ===== メモリキャッシング層 =====
+class MemoryCache:
+    """JSONデータをメモリに保持して高速化するキャッシュシステム"""
+    def __init__(self):
+        self._cache: dict[str, list[dict[str, Any]]] = {}
+        self._etags: dict[str, str] = {}
+        self._indexes: dict[str, dict[str, dict[str, Any]]] = {}  # name -> index_type -> index
+    
+    def get(self, name: str) -> list[dict[str, Any]] | None:
+        """キャッシュからデータを取得"""
+        return self._cache.get(name)
+    
+    def set(self, name: str, data: list[dict[str, Any]]) -> None:
+        """キャッシュにデータを保存し、ETAGを更新"""
+        self._cache[name] = data
+        # JSONを文字列化してSHA256ハッシュを生成
+        json_str = json.dumps(data, ensure_ascii=False, sort_keys=True)
+        self._etags[name] = hashlib.sha256(json_str.encode()).hexdigest()
+        # インデックスをリセット
+        self._indexes.pop(name, None)
+    
+    def clear(self, name: str | None = None) -> None:
+        """キャッシュを削除"""
+        if name:
+            self._cache.pop(name, None)
+            self._etags.pop(name, None)
+            self._indexes.pop(name, None)
+        else:
+            self._cache.clear()
+            self._etags.clear()
+            self._indexes.clear()
+    
+    def etag(self, name: str) -> str | None:
+        """データのETAGを取得"""
+        return self._etags.get(name)
+    
+    def get_index(self, name: str, index_type: str = "id") -> dict[str, Any] | None:
+        """インデックスを取得（存在しなければ作成）"""
+        data = self._cache.get(name)
+        if not data:
+            return None
+
+        per_name_indexes = self._indexes.setdefault(name, {})
+        if index_type not in per_name_indexes:
+            if index_type == "id":
+                # IDインデックス：高速ID検索用
+                per_name_indexes[index_type] = {item.get("id"): (idx, item) for idx, item in enumerate(data)}
+            elif index_type == "member_login":
+                # メンバーログインインデックス：正規化された名前から検索
+                member_index: dict[str, Any] = {}
+                for idx, item in enumerate(data):
+                    for name_variant in member_login_names(item):
+                        member_index[name_variant] = (idx, item)
+                per_name_indexes[index_type] = member_index
+            else:
+                return None
+
+        return per_name_indexes.get(index_type)
+
+_memory_cache = MemoryCache()
+
 if AudioSegment is not None and imageio_ffmpeg is not None:
     AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 
@@ -63,7 +129,7 @@ DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 SHEET_DIR = UPLOAD_DIR / "sheets"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "auth_devices", "recording_metadata", "desired_pieces")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "auth_devices", "recording_metadata", "desired_pieces", "promotions")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -174,6 +240,7 @@ class Member(BaseModel):
     password: str = ""
     permission: str = "一般"
     joined_at: str = ""
+    system_access_until: str = ""
     introducer: str = ""
     role: str = ""
     instrument_history: str = ""
@@ -199,6 +266,11 @@ class SheetPartUpdateRequest(BaseModel):
     part: str = ""
 
 
+class SheetBulkPartUpdateRequest(BaseModel):
+    sheet_ids: list[int] = []
+    part: str = ""
+
+
 class PortalLoginRequest(BaseModel):
     name: str = ""
     part: str = ""
@@ -215,14 +287,18 @@ class MemberPasswordSetupRequest(BaseModel):
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
+    # Pydantic v1/v2 両対応で辞書化するための互換ヘルパー。
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
 
+# ===== JSON データ入出力 =====
 def data_file(name: str) -> Path:
+    # コレクション名からローカル JSON ファイルパスを解決する。
     return DATA_DIR / f"{name}.json"
 
 
 def load_local_json_data(name: str) -> list[dict[str, Any]]:
+    # ローカル JSON を読み込み、配列でなければ空配列として扱う。
     path = data_file(name)
     if not path.exists():
         return []
@@ -236,6 +312,12 @@ def load_local_json_data(name: str) -> list[dict[str, Any]]:
 
 
 def load_json_data(name: str) -> list[dict[str, Any]]:
+    # 参照頻度の高い一覧はまずメモリキャッシュを見る。
+    # Cloud Storage が有効ならクラウドを優先し、無ければローカルへフォールバックする。
+    cached = _memory_cache.get(name)
+    if cached is not None:
+        return cached
+    
     if storage_enabled():
         try:
             cloud_data = load_json_from_storage(name)
@@ -249,9 +331,12 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
                 detail=f"Failed to load {name}.json from Cloud Storage: {exc}",
             ) from exc
         if cloud_data is not None:
+            _memory_cache.set(name, cloud_data)
             return cloud_data
 
-    return load_local_json_data(name)
+    local_data = load_local_json_data(name)
+    _memory_cache.set(name, local_data)
+    return local_data
 
 
 def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
@@ -260,6 +345,9 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
     with tmp_path.open("w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
     tmp_path.replace(path)
+    
+    # 書き込み直後の再読込を速くするため、保存成功時点でキャッシュも更新する。
+    _memory_cache.set(name, data)
 
     if storage_enabled():
         try:
@@ -274,6 +362,14 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
 
 @app.on_event("startup")
 async def seed_cloud_data_from_local() -> None:
+    # 起動時に主要コレクションをキャッシュへ温める。
+    # さらに Cloud Storage が空なら、既存ローカル JSON を初回シードとして送る。
+    for name in JSON_DATA_NAMES:
+        try:
+            load_json_data(name)  # キャッシュに読み込み
+        except HTTPException:
+            pass  # キャッシュ失敗は無視
+    
     if not storage_enabled():
         return
 
@@ -289,26 +385,50 @@ async def seed_cloud_data_from_local() -> None:
 
 
 def next_id(items: list[dict[str, Any]]) -> int:
+    # 既存最大 ID + 1 を返す。
     return max((int(item.get("id", 0)) for item in items), default=0) + 1
 
 
 def find_item(items: list[dict[str, Any]], item_id: int) -> tuple[int, dict[str, Any]]:
+    # キャッシュ済みコレクションは ID インデックスを使って O(1) で探す。
+    for data_name in JSON_DATA_NAMES:
+        if _memory_cache.get(data_name) is items:
+            index_map = _memory_cache.get_index(data_name, "id")
+            if index_map and item_id in index_map:
+                return index_map[item_id]
+    
+    # インデックスが無い場合は線形検索
     for index, item in enumerate(items):
         if item.get("id") == item_id:
             return index, item
     raise HTTPException(status_code=404, detail="Data not found")
 
 
+def check_etag(request: Request, data_name: str) -> Response | None:
+    """ETagチェック - 変更がなければ304を返す"""
+    etag = _memory_cache.etag(data_name)
+    if not etag:
+        return None
+    
+    if_none_match = request.headers.get("if-none-match", "")
+    if if_none_match == etag:
+        return Response(status_code=304)
+    return None
+
+
 def compact_member_name(value: Any) -> str:
+    # ログイン名比較用に空白差・大文字小文字差を吸収する。
     return re.sub(r"[\s\u3000]+", "", str(value or "")).strip().lower()
 
 
 def member_display_name(member: dict[str, Any]) -> str:
+    # 団員表示名の標準形を返す。
     full_name = f"{member.get('last_name') or ''}{member.get('first_name') or ''}"
     return full_name or str(member.get("name") or "")
 
 
 def member_login_names(member: dict[str, Any]) -> set[str]:
+    # ログイン時は表記ゆれを許容するため、氏名・かな・旧姓をまとめて候補化する。
     names = {
         member_display_name(member),
         f"{member.get('last_name') or ''}{member.get('first_name') or ''}",
@@ -322,9 +442,23 @@ def member_login_names(member: dict[str, Any]) -> set[str]:
 
 
 def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str = "") -> tuple[int, dict[str, Any]]:
+    # ログイン入力の名前/パートから団員を特定する。
+    # インデックスを優先し、無ければ線形探索する。
     normalized = compact_member_name(name)
     if not normalized:
         raise HTTPException(status_code=400, detail="name is required")
+    
+    # インデックスを使用して高速検索
+    index_map = _memory_cache.get_index("members", "member_login")
+    if index_map and normalized in index_map:
+        index, item = index_map[normalized]
+        if part and part != member_part(item):
+            # パートが指定されている場合はチェック
+            pass
+        else:
+            return index, item
+    
+    # インデックスが無い場合は線形検索
     for index, item in enumerate(items):
         if normalized in member_login_names(item):
             if part and part != member_part(item):
@@ -334,13 +468,36 @@ def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str 
 
 
 def is_hidden_system_admin_login(login: PortalLoginRequest) -> bool:
+    # 非公開の緊急管理者ログイン判定。
     return login.name == "Administrator" and login.password == "systemadminadmin"
 
 
 def member_part(member: dict[str, Any]) -> str:
+    # 団員レコードからパート名を安全に取得する。
     return str(member.get("part") or "")
 
 
+def member_is_extra(member: dict[str, Any]) -> bool:
+    # 権限種別がエキストラかを判定する。
+    return str(member.get("permission") or "") == "エキストラ"
+
+
+def member_access_expired(member: dict[str, Any]) -> bool:
+    if not member_is_extra(member):
+        return False
+    access_until = str(member.get("system_access_until") or "").strip()
+    if not access_until:
+        return False
+    # YYYY-MM-DD 形式のみ期限判定に使用する。
+    # 不正な形式は入力中データとして扱い、ここではアクセス拒否しない。
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", access_until):
+        return False
+    today_str = datetime.now().date().isoformat()
+    return access_until < today_str
+
+
+# ===== 認証・端末管理 API =====
+# ポータルログインを検証し、端末認証情報を発行/更新する。
 @app.post("/api/auth/portal-login")
 async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str, Any]:
     if is_hidden_system_admin_login(login):
@@ -356,6 +513,8 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
     else:
         members = load_json_data("members")
         _, member = find_member_by_login_name(members, login.name, login.part)
+        if member_access_expired(member):
+            raise HTTPException(status_code=403, detail="システム利用期限が終了しています")
         member_password = str(member.get("password") or "")
         if not member_password:
             return {
@@ -372,6 +531,7 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
 
     devices = load_json_data("auth_devices")
     now = datetime.now().isoformat()
+    # 端末ごとのログイン状態を auth_devices に保存し、次回以降の自動ログイン判定に使う。
     existing = next((item for item in devices if item.get("device_id") == device_id), None)
     payload = {
         "device_id": device_id,
@@ -380,6 +540,7 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         "member_name": member_display_name(member),
         "member_part": member_part(member),
         "permission": member.get("permission") or "一般",
+        "system_access_until": member.get("system_access_until") or "",
         "is_recording_manager": bool(member.get("is_recording_manager")),
         "is_sheet_manager": bool(member.get("is_sheet_manager")),
         "hidden_user": bool(member.get("hidden_user")),
@@ -400,14 +561,17 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         "member_name": payload["member_name"],
         "member_part": payload["member_part"],
         "permission": payload["permission"],
+        "system_access_until": payload["system_access_until"],
         "is_recording_manager": payload["is_recording_manager"],
         "is_sheet_manager": payload["is_sheet_manager"],
         "hidden_user": payload["hidden_user"],
     }
 
 
+# 団員の初回パスワード登録を行う。
 @app.post("/api/auth/member-password")
 async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, Any]:
+    # 初回ログイン時の個別パスワード登録 API。
     password = payload.password.strip()
     if not password:
         raise HTTPException(status_code=400, detail="password is required")
@@ -422,17 +586,30 @@ async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, 
     return {"password_registered": True, "member_id": member.get("id")}
 
 
+# 端末ID単位で現在の認証状態を照会する。
 @app.get("/api/auth/devices/{device_id}")
 async def get_auth_device(device_id: str) -> dict[str, Any]:
+    # 端末 ID から認証状態を確認し、最終アクセス時刻を更新する。
     devices = load_json_data("auth_devices")
     item = next((device for device in devices if device.get("device_id") == device_id), None)
     if not item:
         return {"authenticated": False}
+
+    member_id = item.get("member_id")
+    if member_id is not None:
+        members = load_json_data("members")
+        member = next((value for value in members if value.get("id") == member_id), None)
+        if member and member_access_expired(member):
+            # 利用期限切れ時は端末認証を無効化
+            save_json_data("auth_devices", [device for device in devices if device.get("device_id") != device_id])
+            return {"authenticated": False}
+
     item["last_seen_at"] = datetime.now().isoformat()
     save_json_data("auth_devices", devices)
     return {"authenticated": True, "device": item}
 
 
+# 端末認証の履歴一覧を新しい順で返す。
 @app.get("/api/auth/devices")
 async def get_auth_devices() -> list[dict[str, Any]]:
     return sorted(
@@ -442,6 +619,7 @@ async def get_auth_devices() -> list[dict[str, Any]]:
     )
 
 
+# 指定端末の認証情報を削除して再ログインを要求可能にする。
 @app.delete("/api/auth/devices/{device_id}")
 async def delete_auth_device(device_id: str) -> dict[str, str]:
     devices = load_json_data("auth_devices")
@@ -449,26 +627,53 @@ async def delete_auth_device(device_id: str) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
-@app.get("/api/bootstrap-lite")
-async def get_bootstrap_lite_data() -> dict[str, Any]:
+# ===== 初期描画用 bootstrap API =====
+# 初期描画に必要な最小データを返す軽量 bootstrap API。
+@app.get("/api/bootstrap-lite", response_model=None)
+async def get_bootstrap_lite_data(request: Request) -> dict[str, Any] | Response:
     """初期表示に必要な最小限のデータだけを返す。"""
-    extra_names = ("payments", "part_settings", "org_settings", "sns_settings")
+    cached_etag = _memory_cache.etag("performances")
+    
+    # ETagチェック
+    if cached_etag:
+        if_none_match = request.headers.get("if-none-match", "")
+        if if_none_match == cached_etag:
+            return Response(status_code=304, headers={"ETag": cached_etag})
+    
+    extra_names = ("payments", "part_settings", "org_settings", "sns_settings", "connection_settings")
     extras = {name: load_json_data(name) for name in extra_names}
-    return {
+    data = {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
         "members": load_json_data("members"),
         "extras": extras,
     }
+    
+    # レスポンスにETagを追加
+    if cached_etag:
+        return Response(
+            content=json.dumps(data, ensure_ascii=False),
+            media_type="application/json",
+            headers={"ETag": cached_etag}
+        )
+    return data
 
 
-@app.get("/api/bootstrap-core")
-async def get_bootstrap_core_data() -> dict[str, Any]:
+# 録音/楽譜の重い走査を除いた通常 bootstrap API。
+@app.get("/api/bootstrap-core", response_model=None)
+async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response:
     """録音・楽譜一覧のファイル走査を除いた通常データ。"""
-    extra_names = ("absences", "event_responses", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "desired_pieces")
+    cached_etag = _memory_cache.etag("performances")
+    
+    if cached_etag:
+        if_none_match = request.headers.get("if-none-match", "")
+        if if_none_match == cached_etag:
+            return Response(status_code=304, headers={"ETag": cached_etag})
+    
+    extra_names = ("absences", "event_responses", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
     extras = {name: load_json_data(name) for name in extra_names}
-    return {
+    data = {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
@@ -477,13 +682,29 @@ async def get_bootstrap_core_data() -> dict[str, Any]:
         "extras": extras,
         "auth_devices": await get_auth_devices(),
     }
+    
+    if cached_etag:
+        return Response(
+            content=json.dumps(data, ensure_ascii=False),
+            media_type="application/json",
+            headers={"ETag": cached_etag}
+        )
+    return data
 
 
-@app.get("/api/bootstrap")
-async def get_bootstrap_data() -> dict[str, Any]:
-    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "desired_pieces")
+# 画面に必要なデータを包括的に返すフル bootstrap API。
+@app.get("/api/bootstrap", response_model=None)
+async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
+    cached_etag = _memory_cache.etag("performances")
+    
+    if cached_etag:
+        if_none_match = request.headers.get("if-none-match", "")
+        if if_none_match == cached_etag:
+            return Response(status_code=304, headers={"ETag": cached_etag})
+    
+    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
     extras = {name: load_json_data(name) for name in extra_names}
-    return {
+    data = {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
@@ -494,9 +715,19 @@ async def get_bootstrap_data() -> dict[str, Any]:
         "extras": extras,
         "auth_devices": await get_auth_devices(),
     }
+    
+    if cached_etag:
+        return Response(
+            content=json.dumps(data, ensure_ascii=False),
+            media_type="application/json",
+            headers={"ETag": cached_etag}
+        )
+    return data
 
 
+# ===== アップロード・ファイル補助 =====
 def safe_segment(value: str, default: str) -> str:
+    # ファイル/フォルダ名として危険な文字を除去して安全化する。
     value = (value or default).strip()
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
     value = re.sub(r"\s+", " ", value).strip(" .")
@@ -504,25 +735,29 @@ def safe_segment(value: str, default: str) -> str:
 
 
 def safe_upload_name(filename: str) -> str:
+    # 元ファイル名を安全な保存名へ変換する。
     suffix = Path(filename).suffix.lower()
     stem = safe_segment(Path(filename).stem, "audio")
     return f"{stem}{suffix}"
 
 
 def ensure_audio_file(file: UploadFile) -> str:
+    # 録音アップロード対象が mp3/m4a かを検証する。
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".wav", ".mp3"}:
-        raise HTTPException(status_code=400, detail="Please upload a WAV or MP3 file")
+    if suffix not in {".mp3", ".m4a"}:
+        raise HTTPException(status_code=400, detail="Please upload an MP3 or M4A file")
     return suffix
 
 
 def ensure_pdf_file(file: UploadFile) -> None:
+    # 楽譜アップロード対象が PDF かを検証する。
     suffix = Path(file.filename or "").suffix.lower()
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail="Please upload a PDF file")
 
 
 def local_recording_metadata(path: Path) -> dict[str, Any]:
+    # 物理ファイルの属性と、別管理している録音時間メタデータを合成して返す。
     stat = path.stat()
     rel = path.relative_to(UPLOAD_DIR).as_posix()
     parts = path.relative_to(CONVERTED_DIR).parts if path.is_relative_to(CONVERTED_DIR) else path.parts
@@ -547,6 +782,7 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
 
 
 def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    # Cloud 録音メタデータに再生/ダウンロード API URL を補完する。
     normalized = dict(item)
     object_name = normalized.get("object_name") or normalized.get("id")
     if normalized.get("source") != "google_cloud_storage" or not object_name:
@@ -564,6 +800,7 @@ def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def remember_drive_file(item: dict[str, Any]) -> None:
+    # Cloud 録音一覧へ最新項目を先頭追加で保存する。
     items = load_json_data("drive_files")
     items = [existing for existing in items if existing.get("id") != item.get("id")]
     items.insert(0, item)
@@ -571,6 +808,7 @@ def remember_drive_file(item: dict[str, Any]) -> None:
 
 
 def forget_drive_file(object_name: str) -> None:
+    # Cloud 録音一覧から object_name に一致する項目を除去する。
     items = load_json_data("drive_files")
     save_json_data(
         "drive_files",
@@ -583,6 +821,7 @@ def forget_drive_file(object_name: str) -> None:
 
 
 def save_upload_to_path(file: UploadFile, directory: Path) -> Path:
+    # アップロードファイルを指定ディレクトリへ保存し、保存パスを返す。
     directory.mkdir(parents=True, exist_ok=True)
     output_path = directory / safe_upload_name(file.filename or "audio")
     with output_path.open("wb") as target:
@@ -591,6 +830,7 @@ def save_upload_to_path(file: UploadFile, directory: Path) -> Path:
 
 
 def local_sheet_path(path: str) -> Path:
+    # 楽譜のローカル実体パスを検証付きで解決する。
     requested = (UPLOAD_DIR / path).resolve()
     if not requested.is_file() or SHEET_DIR.resolve() not in requested.parents:
         raise HTTPException(status_code=404, detail="File not found")
@@ -598,6 +838,8 @@ def local_sheet_path(path: str) -> Path:
 
 
 def sheet_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    # 保存先がローカルか Cloud Storage かにかかわらず、
+    # フロントが同じキー名で扱えるよう view/download URL を正規化する。
     normalized = dict(item)
     source = normalized.get("source")
     if source == "google_cloud_storage":
@@ -616,10 +858,12 @@ def sheet_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def sheet_payload() -> list[dict[str, Any]]:
+    # 楽譜一覧をフロント表示向けメタデータ形式へ変換する。
     return [sheet_metadata(item) for item in load_json_data("sheet_library")]
 
 
 def delete_sheet_file(item: dict[str, Any]) -> None:
+    # 楽譜実体を保存先（Cloud/ローカル）に応じて削除する。
     if item.get("source") == "google_cloud_storage":
         object_name = str(item.get("object_name") or "")
         if object_name and storage_enabled():
@@ -637,6 +881,7 @@ def delete_sheet_file(item: dict[str, Any]) -> None:
 
 
 def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
+    # 楽譜 ZIP 作成用にファイル実体を bytes で取得する。
     if item.get("source") == "google_cloud_storage":
         object_name = str(item.get("object_name") or "")
         if object_name and storage_enabled():
@@ -655,6 +900,7 @@ def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
 
 
 def recording_file_bytes(item: dict[str, Any]) -> bytes | None:
+    # 録音 ZIP 作成用にファイル実体を bytes で取得する。
     if item.get("source") == "google_cloud_storage":
         object_name = str(item.get("object_name") or "")
         if object_name and storage_enabled():
@@ -673,6 +919,7 @@ def recording_file_bytes(item: dict[str, Any]) -> bytes | None:
 
 
 def unique_zip_name(name: str, used_names: set[str]) -> str:
+    # ZIP 内でファイル名が衝突しないよう連番付きで一意化する。
     base_name = safe_upload_name(name or "score.pdf")
     if not Path(base_name).suffix:
         base_name = f"{base_name}.pdf"
@@ -711,6 +958,7 @@ def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
 
 
 def get_audio_duration_seconds(path: Path) -> float | None:
+    # 録音ファイル長（秒）を取得する。失敗時は None。
     if AudioSegment is None:
         return None
     try:
@@ -722,6 +970,7 @@ def get_audio_duration_seconds(path: Path) -> float | None:
 
 
 def format_duration(seconds: float | int | None) -> str:
+    # 秒数を mm:ss / h:mm:ss 形式へ整形する。
     if seconds is None:
         return ""
     total = int(round(float(seconds)))
@@ -732,9 +981,12 @@ def format_duration(seconds: float | int | None) -> str:
     return f"{minutes}:{sec:02d}"
 
 def recording_metadata_map() -> dict[str, dict[str, Any]]:
-    return {str(item.get("path") or item.get("object_name") or item.get("id") or ""): item for item in load_json_data("recording_metadata")}
+    # 録音時間メタデータを path/object_name キーの辞書に展開する。
+    items = load_json_data("recording_metadata")  # キャッシュから高速取得
+    return {str(item.get("path") or item.get("object_name") or item.get("id") or ""): item for item in items}
 
 def remember_recording_duration(path_key: str, duration_seconds: float | None) -> None:
+    # 録音時間メタデータを upsert する。
     if not path_key or duration_seconds is None:
         return
     items = load_json_data("recording_metadata")
@@ -750,6 +1002,8 @@ def remember_recording_duration(path_key: str, duration_seconds: float | None) -
     save_json_data("recording_metadata", items)
 
 
+# ===== ルート・死活監視 =====
+# SPA のエントリ HTML を返すルート。
 @app.get("/")
 async def root() -> FileResponse:
     return FileResponse(
@@ -761,6 +1015,7 @@ async def root() -> FileResponse:
     )
 
 
+# サービスの死活と基本状態を返すヘルスチェック API。
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:
     return {
@@ -771,11 +1026,14 @@ async def health_check() -> dict[str, str]:
     }
 
 
+# ===== 基本マスタ CRUD =====
+# 演奏会一覧を取得する。
 @app.get("/api/performances", response_model=list[Performance])
 async def get_performances() -> list[dict[str, Any]]:
     return load_json_data("performances")
 
 
+# 演奏会を新規作成する。
 @app.post("/api/performances", response_model=Performance)
 async def create_performance(performance: Performance) -> dict[str, Any]:
     items = load_json_data("performances")
@@ -787,12 +1045,14 @@ async def create_performance(performance: Performance) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID の演奏会を取得する。
 @app.get("/api/performances/{performance_id}", response_model=Performance)
 async def get_performance(performance_id: int) -> dict[str, Any]:
     _, item = find_item(load_json_data("performances"), performance_id)
     return item
 
 
+# 指定 ID の演奏会を更新する。
 @app.put("/api/performances/{performance_id}", response_model=Performance)
 async def update_performance(performance_id: int, performance: Performance) -> dict[str, Any]:
     items = load_json_data("performances")
@@ -810,6 +1070,7 @@ async def update_performance(performance_id: int, performance: Performance) -> d
     return payload
 
 
+# 指定 ID の演奏会を削除する。
 @app.delete("/api/performances/{performance_id}")
 async def delete_performance(performance_id: int) -> dict[str, str]:
     items = load_json_data("performances")
@@ -818,11 +1079,13 @@ async def delete_performance(performance_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
+# 練習予定一覧を取得する。
 @app.get("/api/schedules", response_model=list[Schedule])
 async def get_schedules() -> list[dict[str, Any]]:
     return load_json_data("schedules")
 
 
+# 練習予定を新規作成する。
 @app.post("/api/schedules", response_model=Schedule)
 async def create_schedule(schedule: Schedule) -> dict[str, Any]:
     items = load_json_data("schedules")
@@ -834,12 +1097,14 @@ async def create_schedule(schedule: Schedule) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID の練習予定を取得する。
 @app.get("/api/schedules/{schedule_id}", response_model=Schedule)
 async def get_schedule(schedule_id: int) -> dict[str, Any]:
     _, item = find_item(load_json_data("schedules"), schedule_id)
     return item
 
 
+# 指定 ID の練習予定を更新する。
 @app.put("/api/schedules/{schedule_id}", response_model=Schedule)
 async def update_schedule(schedule_id: int, schedule: Schedule) -> dict[str, Any]:
     items = load_json_data("schedules")
@@ -857,6 +1122,7 @@ async def update_schedule(schedule_id: int, schedule: Schedule) -> dict[str, Any
     return payload
 
 
+# 指定 ID の練習予定を削除する。
 @app.delete("/api/schedules/{schedule_id}")
 async def delete_schedule(schedule_id: int) -> dict[str, str]:
     items = load_json_data("schedules")
@@ -867,11 +1133,13 @@ async def delete_schedule(schedule_id: int) -> dict[str, str]:
 
 
 
+# 団員一覧を取得する。
 @app.get("/api/members", response_model=list[Member])
 async def get_members() -> list[dict[str, Any]]:
     return load_json_data("members")
 
 
+# 団員を新規作成する。
 @app.post("/api/members", response_model=Member)
 async def create_member(member: Member) -> dict[str, Any]:
     items = load_json_data("members")
@@ -884,6 +1152,7 @@ async def create_member(member: Member) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID の団員情報を更新する。
 @app.put("/api/members/{member_id}", response_model=Member)
 async def update_member(member_id: int, member: Member) -> dict[str, Any]:
     items = load_json_data("members")
@@ -900,6 +1169,7 @@ async def update_member(member_id: int, member: Member) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID の団員情報を削除する。
 @app.delete("/api/members/{member_id}")
 async def delete_member(member_id: int) -> dict[str, str]:
     items = load_json_data("members")
@@ -908,11 +1178,13 @@ async def delete_member(member_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
+# イベント一覧を取得する。
 @app.get("/api/events", response_model=list[EventAdjustment])
 async def get_events() -> list[dict[str, Any]]:
     return load_json_data("events")
 
 
+# イベントを新規作成する。
 @app.post("/api/events", response_model=EventAdjustment)
 async def create_event(event: EventAdjustment) -> dict[str, Any]:
     items = load_json_data("events")
@@ -924,6 +1196,7 @@ async def create_event(event: EventAdjustment) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID のイベントを更新する。
 @app.put("/api/events/{event_id}", response_model=EventAdjustment)
 async def update_event(event_id: int, event: EventAdjustment) -> dict[str, Any]:
     items = load_json_data("events")
@@ -939,6 +1212,7 @@ async def update_event(event_id: int, event: EventAdjustment) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID のイベントを削除する。
 @app.delete("/api/events/{event_id}")
 async def delete_event(event_id: int) -> dict[str, str]:
     items = load_json_data("events")
@@ -947,11 +1221,13 @@ async def delete_event(event_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
+# お知らせ一覧を取得する。
 @app.get("/api/announcements", response_model=list[Announcement])
 async def get_announcements() -> list[dict[str, Any]]:
     return load_json_data("announcements")
 
 
+# お知らせを新規作成する。
 @app.post("/api/announcements", response_model=Announcement)
 async def create_announcement(announcement: Announcement) -> dict[str, Any]:
     items = load_json_data("announcements")
@@ -963,12 +1239,14 @@ async def create_announcement(announcement: Announcement) -> dict[str, Any]:
     return payload
 
 
+# 指定 ID のお知らせを取得する。
 @app.get("/api/announcements/{announcement_id}", response_model=Announcement)
 async def get_announcement(announcement_id: int) -> dict[str, Any]:
     _, item = find_item(load_json_data("announcements"), announcement_id)
     return item
 
 
+# 指定 ID のお知らせを更新する。
 @app.put("/api/announcements/{announcement_id}", response_model=Announcement)
 async def update_announcement(announcement_id: int, announcement: Announcement) -> dict[str, Any]:
     items = load_json_data("announcements")
@@ -986,6 +1264,7 @@ async def update_announcement(announcement_id: int, announcement: Announcement) 
     return payload
 
 
+# 指定 ID のお知らせを削除する。
 @app.delete("/api/announcements/{announcement_id}")
 async def delete_announcement(announcement_id: int) -> dict[str, str]:
     items = load_json_data("announcements")
@@ -994,22 +1273,20 @@ async def delete_announcement(announcement_id: int) -> dict[str, str]:
     return {"message": "Deleted"}
 
 
+# ===== 録音ファイル API =====
+# 録音ファイルを受け取り、必要に応じてクラウドへ同期して登録する。
 @app.post("/api/convert")
 async def convert_audio(
     file: UploadFile = File(...),
-    bitrate: int = Form(192),
     date: str = Form(""),
     piece: str = Form(""),
 ) -> dict[str, Any]:
-    suffix = ensure_audio_file(file)
-    if bitrate not in {128, 192, 320}:
-        raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
+    ensure_audio_file(file)
 
     date_dir = safe_segment(date, datetime.now().date().isoformat())
     piece_dir = safe_segment(piece, "uncategorized")
     output_dir = CONVERTED_DIR / date_dir / piece_dir
-    source_path = save_upload_to_path(file, output_dir)
-    output_path = convert_path_to_mp3(source_path, suffix, bitrate)
+    output_path = save_upload_to_path(file, output_dir)
 
     duration_seconds = get_audio_duration_seconds(output_path)
     rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
@@ -1017,12 +1294,11 @@ async def convert_audio(
     response = {
         "filename": output_path.name,
         "path": rel_path,
-        "bitrate": bitrate,
         "download_url": f"/api/recordings/download/{rel_path}",
         "source": "local",
         "duration_seconds": duration_seconds,
         "duration": format_duration(duration_seconds),
-        "message": "Converted",
+        "message": "Uploaded",
     }
 
     if storage_enabled():
@@ -1041,7 +1317,7 @@ async def convert_audio(
                 "share_link": storage_file.get("view_url") or storage_file.get("download_url"),
                 "download_url": storage_file.get("download_url") or response["download_url"],
                 "source": "google_cloud_storage",
-                "message": "Converted and uploaded to Google Cloud Storage",
+                "message": "Uploaded and mirrored to Google Cloud Storage",
             }
         )
 
@@ -1049,19 +1325,28 @@ async def convert_audio(
 
 
 def recording_payload() -> dict[str, list[dict[str, Any]]]:
+    # Cloud 上の録音を先頭に、ローカル録音を更新日時降順で続けて返す。
+    # フロントではこの並びをそのまま一覧表示に利用する。
     drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
+    local_paths = sorted(
+        [*CONVERTED_DIR.rglob("*.mp3"), *CONVERTED_DIR.rglob("*.m4a")],
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
     local_files = [
         local_recording_metadata(path)
-        for path in sorted(CONVERTED_DIR.rglob("*.mp3"), key=lambda item: item.stat().st_mtime, reverse=True)
+        for path in local_paths
     ]
     return {"files": drive_files + local_files}
 
 
+# 録音一覧（Cloud + ローカル統合）を返す。
 @app.get("/api/recordings")
 async def get_recordings() -> dict[str, list[dict[str, Any]]]:
     return recording_payload()
 
 
+# 条件に一致する録音を ZIP にまとめてダウンロードさせる。
 @app.get("/api/recordings/download-zip")
 async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
     recordings = [
@@ -1107,6 +1392,7 @@ def local_recording_path(path: str) -> Path:
     return requested
 
 
+# ローカル録音を再生用途で返す。
 @app.get("/api/recordings/play/{path:path}")
 async def play_recording(path: str) -> FileResponse:
     requested = local_recording_path(path)
@@ -1116,12 +1402,14 @@ async def play_recording(path: str) -> FileResponse:
     )
 
 
+# ローカル録音を添付ダウンロードで返す。
 @app.get("/api/recordings/download/{path:path}")
 async def download_recording(path: str) -> FileResponse:
     requested = local_recording_path(path)
     return FileResponse(requested, filename=requested.name)
 
 
+# 録音（Cloud またはローカル）を削除する。
 @app.delete("/api/recordings")
 async def delete_recording(payload: RecordingDeleteRequest) -> dict[str, str]:
     if payload.source == "google_cloud_storage":
@@ -1166,6 +1454,8 @@ def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | 
 
 
 def stream_storage_blob(object_name: str, download: bool, request: Request):
+    # Cloud Storage 上のファイルを、再生時は Range 対応で、
+    # ダウンロード時は通常添付として配信する共通ストリーマー。
     if not storage_enabled():
         raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
     if not object_name:
@@ -1212,33 +1502,32 @@ def stream_storage_blob(object_name: str, download: bool, request: Request):
     return StreamingResponse(chunks(), media_type=content_type, headers=headers)
 
 
+# Cloud 録音を Range 対応で再生配信する。
 @app.get("/api/recordings/cloud/play/{object_name:path}")
 async def play_cloud_recording(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=False, request=request)
 
 
+# Cloud 録音を添付ダウンロードで配信する。
 @app.get("/api/recordings/cloud/download/{object_name:path}")
 async def download_cloud_recording(object_name: str, request: Request) :
     return stream_storage_blob(object_name, download=True, request=request)
 
 
+# 録音を Cloud Storage へアップロードしメタデータを返す。
 @app.post("/api/drive/upload")
 async def upload_to_drive(
     file: UploadFile = File(...),
-    bitrate: int = Form(192),
     date: str = Form(""),
     piece: str = Form(""),
 ) -> dict[str, Any]:
-    suffix = ensure_audio_file(file)
-    if bitrate not in {128, 192, 320}:
-        raise HTTPException(status_code=400, detail="bitrate must be 128, 192, or 320")
+    ensure_audio_file(file)
 
     date_dir = safe_segment(date, datetime.now().date().isoformat())
     logger.info(f"date={date}")
     logger.info(f"piece={piece}")
     piece_dir = safe_segment(piece, "uncategorized")
-    staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / date_dir / piece_dir)
-    output_path = convert_path_to_mp3(staging_path, suffix, bitrate)
+    output_path = save_upload_to_path(file, CONVERTED_DIR / date_dir / piece_dir)
     duration_seconds = get_audio_duration_seconds(output_path)
     rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
     remember_recording_duration(rel_path, duration_seconds)
@@ -1277,22 +1566,27 @@ async def upload_to_drive(
     }
 
 
+# Cloud 録音メタデータ一覧を返す。
 @app.get("/api/drive/files")
 async def get_drive_files() -> dict[str, list[dict[str, Any]]]:
     return {"files": load_json_data("drive_files")}
 
 
+# ===== 楽譜 API =====
+# 楽譜一覧を返す。
 @app.get("/api/sheets")
 async def get_sheets() -> dict[str, list[dict[str, Any]]]:
     return {"files": sheet_payload()}
 
 
+# ローカル楽譜を添付ダウンロードで返す。
 @app.get("/api/sheets/download/{path:path}")
 async def download_local_sheet(path: str) -> FileResponse:
     requested = local_sheet_path(path)
     return FileResponse(requested, media_type="application/pdf", filename=requested.name)
 
 
+# ローカル楽譜をインライン表示用に返す。
 @app.get("/api/sheets/view/{path:path}")
 async def view_local_sheet(path: str) -> Response:
     requested = local_sheet_path(path)
@@ -1306,16 +1600,19 @@ async def view_local_sheet(path: str) -> Response:
     )
 
 
+# Cloud 楽譜を添付ダウンロードで返す。
 @app.get("/api/sheets/cloud/download/{object_name:path}")
 async def download_cloud_sheet(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=True, request=request)
 
 
+# Cloud 楽譜をインライン表示用に返す。
 @app.get("/api/sheets/cloud/view/{object_name:path}")
 async def view_cloud_sheet(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=False, request=request)
 
 
+# 条件に一致する楽譜を ZIP にまとめて返す。
 @app.get("/api/sheets/download-zip")
 async def download_sheets_zip(performance_id: str = "", piece: str = "", part: str = "") -> Response:
     if not performance_id:
@@ -1357,6 +1654,7 @@ async def download_sheets_zip(performance_id: str = "", piece: str = "", part: s
     )
 
 
+# 楽譜 PDF を受け取り、保存先に応じて登録する。
 @app.post("/api/sheets/upload")
 async def upload_sheet(
     file: UploadFile = File(...),
@@ -1417,6 +1715,7 @@ async def upload_sheet(
     return sheet_metadata(payload)
 
 
+# 指定楽譜のパート情報を更新する。
 @app.put("/api/sheets/{sheet_id}/part")
 async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest) -> dict[str, Any]:
     items = load_json_data("sheet_library")
@@ -1428,6 +1727,34 @@ async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest) -> d
     return sheet_metadata(current)
 
 
+# 複数楽譜のパート情報を一括更新する。
+@app.put("/api/sheets/parts")
+async def update_sheets_parts(payload: SheetBulkPartUpdateRequest) -> dict[str, Any]:
+    if not payload.sheet_ids:
+        raise HTTPException(status_code=400, detail="sheet_ids is required")
+    if not payload.part.strip():
+        raise HTTPException(status_code=400, detail="part is required")
+    
+    items = load_json_data("sheet_library")
+    updated_count = 0
+    part_value = payload.part.strip()
+    now_str = datetime.now().isoformat()
+    
+    # 一括更新は件数が比較的小さい前提のため、
+    # 既存の順序を保ったまま対象だけを書き換える単純な更新にしている。
+    for sheet_id in payload.sheet_ids:
+        for i, item in enumerate(items):
+            if item.get("id") == sheet_id:
+                items[i]["part"] = part_value
+                items[i]["updated_at"] = now_str
+                updated_count += 1
+                break
+    
+    save_json_data("sheet_library", items)
+    return {"updated_count": updated_count, "message": f"{updated_count} sheets updated"}
+
+
+# 条件指定で楽譜を削除する（単票/曲単位/演奏会単位）。
 @app.delete("/api/sheets")
 async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
     if not payload.performance_id:
@@ -1452,8 +1779,11 @@ async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
     return {"message": "Deleted", "deleted": len(targets)}
 
 
-EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "desired_pieces"}
+EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions"}
 
+# ===== 汎用 extra コレクション CRUD =====
+# 機能追加のたびに専用 API を増やさずに済むよう、
+# JSON 配列ベースの補助データはこの共通エンドポイントで扱う。
 def normalize_extra_payload(payload: dict[str, Any], item_id: int | None = None, current: dict[str, Any] | None = None) -> dict[str, Any]:
     now = datetime.now().isoformat()
     data = dict(payload or {})
@@ -1476,10 +1806,12 @@ def collection_items(name: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=404, detail="Collection not found")
     return load_json_data(name)
 
+# 指定 extra コレクションの一覧を返す。
 @app.get("/api/extra/{name}")
 async def get_extra_items(name: str) -> list[dict[str, Any]]:
     return collection_items(name)
 
+# 指定 extra コレクションへ新規項目を追加する。
 @app.post("/api/extra/{name}")
 async def create_extra_item(name: str, request: Request) -> dict[str, Any]:
     items = collection_items(name)
@@ -1488,6 +1820,7 @@ async def create_extra_item(name: str, request: Request) -> dict[str, Any]:
     save_json_data(name, items)
     return payload
 
+# 指定 extra コレクションの項目を更新する。
 @app.put("/api/extra/{name}/{item_id}")
 async def update_extra_item(name: str, item_id: int, request: Request) -> dict[str, Any]:
     items = collection_items(name)
@@ -1497,6 +1830,7 @@ async def update_extra_item(name: str, item_id: int, request: Request) -> dict[s
     save_json_data(name, items)
     return payload
 
+# 指定 extra コレクションの項目を削除する。
 @app.delete("/api/extra/{name}/{item_id}")
 async def delete_extra_item(name: str, item_id: int) -> dict[str, str]:
     items = collection_items(name)

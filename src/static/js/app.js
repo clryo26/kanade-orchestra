@@ -1,59 +1,214 @@
+// このファイルはポータル全体のフロントエンド制御を一手に担う。
+// 画面初期化、API 通信、描画、団員向け機能、管理機能を 1 つの状態ストアから動かしている。
+
+// ===== IndexedDB キャッシング層 =====
+const DB_NAME = 'OrchestraAppCache';
+const DB_VERSION = 1;
+const CACHE_STORE = 'bootstrap_cache';
+
+class IndexedDBCache {
+    constructor() {
+        this.db = null;
+        this.etags = new Map(); // メモリ内ETagキャッシュ
+    }
+
+    async init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                this.db = request.result;
+                resolve();
+            };
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(CACHE_STORE)) {
+                    db.createObjectStore(CACHE_STORE, { keyPath: 'key' });
+                }
+            };
+        });
+    }
+
+    async get(key) {
+        if (!this.db) return null;
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([CACHE_STORE], 'readonly');
+            const store = transaction.objectStore(CACHE_STORE);
+            const request = store.get(key);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result?.data ?? null);
+        });
+    }
+
+    async set(key, data, etag = null) {
+        if (!this.db) return;
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([CACHE_STORE], 'readwrite');
+            const store = transaction.objectStore(CACHE_STORE);
+            const request = store.put({ key, data, etag, timestamp: Date.now() });
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                if (etag) this.etags.set(key, etag);
+                resolve();
+            };
+        });
+    }
+
+    async clear() {
+        if (!this.db) return;
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([CACHE_STORE], 'readwrite');
+            const store = transaction.objectStore(CACHE_STORE);
+            const request = store.clear();
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                this.etags.clear();
+                resolve();
+            };
+        });
+    }
+
+    getETag(key) {
+        return this.etags.get(key);
+    }
+}
+
+// API レスポンスの永続キャッシュ（IndexedDB）を扱う実体。
+const dbCache = new IndexedDBCache();
+// 同一 GET リクエストの多重発行を防ぐための進行中リクエスト管理。
+const inFlightGetRequests = new Map();
+
+// 画面全体で共有する単一の状態ストア。
+// 各 render 系関数は基本的にこの状態を読み取り、保存系関数は API 更新後にこの状態を再同期する。
 const appState = {
+    // アップロード対象として選択された録音ファイル群。
     selectedFiles: [],
+    // 演奏会フォームで編集中の曲目リスト。
     performancePieces: [],
+    // 曲目編集時の対象インデックス（未選択時は null）。
     performancePieceEditIndex: null,
+    // 演奏会マスタ一覧。
     performances: [],
+    // 練習予定一覧。
     schedules: [],
+    // お知らせ一覧。
     announcements: [],
+    // イベント調整一覧。
     events: [],
+    // 団員マスタ一覧。
     members: [],
+    // 録音ファイル一覧（ローカル + Cloud 統合）。
     recordings: [],
+    // 欠席連絡データ一覧。
     absences: [],
+    // イベント回答データ一覧。
     eventResponses: [],
+    // 楽譜ライブラリ一覧。
     sheetLibrary: [],
+    // 支払状況一覧。
     payments: [],
+    // 乗り番データ一覧。
     castings: [],
+    // 楽曲情報一覧。
     pieceInfos: [],
+    // 演奏希望曲一覧。
     desiredPieces: [],
+    // 宣伝投稿一覧。
+    promotions: [],
+    // アルバム画像一覧。
     albums: [],
+    // パート設定一覧。
     partSettings: [],
+    // 会場設定一覧（本番/練習）。
     venueSettings: [],
+    // 団体情報設定。
     orgSettings: [],
+    // SNS 設定。
     snsSettings: [],
+    // 接続先設定（Google Cloud など）。
+    connectionSettings: [],
+    // 現在再生中の audio 要素。
     currentAudio: null,
+    // 現在再生中アイテムのボタン要素。
     currentPlayButton: null,
+    // 連続再生の有効/無効。
     continuousPlayback: false,
+    // フルデータロード完了フラグ。
     dataLoaded: false,
+    // 録音一覧のロード完了フラグ。
     recordingsLoaded: false,
+    // 楽譜一覧のロード完了フラグ。
     sheetsLoaded: false,
+    // 最小限データ（lite）のロード完了フラグ。
     essentialDataLoaded: false,
+    // バックグラウンド全件ロード中フラグ。
     fullDataLoading: false,
+    // 認証済み端末一覧。
     authDevices: [],
+    // 連鎖描画抑制フラグ（初期描画最適化用）。
     suppressDerivedRender: false,
+    // 端末認証検証済みフラグ。
     portalAuthVerified: false,
+    // 現在ログイン中団員 ID。
     currentUserMemberId: null,
+    // 現在ログイン中団員名。
     currentUserName: '',
+    // 現在ログイン中権限。
     currentUserPermission: '',
+    // 現在ログイン中パート。
     currentUserPart: '',
+    // 録音担当権限フラグ。
     currentUserIsRecordingManager: false,
+    // 楽譜担当権限フラグ。
     currentUserIsSheetManager: false,
+    // 楽譜 PDF ビューアの現在倍率。
     sheetPdfScale: 1,
+    // 楽譜 PDF ビューアの表示中 URL。
     sheetPdfUrl: '',
+    // 楽譜 PDF 描画中フラグ。
     sheetPdfRendering: false,
+    // 動的 manifest 用の Object URL（再生成時に解放するため保持）。
     manifestObjectUrl: '',
+    // 団員ホームで選択中のお知らせ ID。
+    portalSelectedAnnouncementId: null,
+    // 団員向け楽曲情報で選択中の楽曲 ID。
+    selectedPieceInfoId: null,
+    // 楽譜管理で一括操作対象として選択された楽譜 ID 群。
+    selectedSheetIds: [],
+    // 乗り番フォームで編集中のレコード ID。
+    castingEditingId: null,
+    // 乗り番フォームで編集中の演奏会 ID。
+    castingEditingPerformanceId: null,
+    // 乗り番フォームで編集中の曲名。
+    castingEditingPiece: '',
+    // 乗り番フォームで編集中の団員配列。
+    castingEditingMembers: [],
+    // 乗り番フォームで編集中のエキストラ配列。
+    castingEditingExtras: [],
+    // 団員向け楽譜一覧の絞り込み条件。
     sheetFilters: {
+        // 絞り込み対象の演奏会 ID。
         performanceId: '',
+        // 絞り込み対象の曲名。
         piece: '',
+        // 絞り込み対象のパート。
         part: ''
     }
 };
 
+// 当日の日付文字列（YYYY-MM-DD）を返す。
 const today = () => new Date().toISOString().slice(0, 10);
+// DOM 取得の短縮ヘルパー。
 const $ = (id) => document.getElementById(id);
+// ローカルストレージ上の認証フラグキー。
 const PORTAL_AUTH_KEY = 'kanadePortalAuthenticated';
+// ローカルストレージ上の端末識別子キー。
 const PORTAL_DEVICE_ID_KEY = 'kanadePortalDeviceId';
+// パート設定が未読込のときに使う既定パート一覧。
 const DEFAULT_MEMBER_PARTS = ['Violin', 'Viola', 'Cello', 'Contrabass', 'Flute', 'Oboe', 'Clarinet', 'Fagot', 'Horn', 'Trumpet', 'Trombone', 'Tuba', 'Percussion', 'Piano'];
 
+// ボタン連打防止の共通ラッパー。
+// 実行中はボタン文言を切り替え、失敗時はトーストを出して元の状態に戻す。
 async function withButtonStatus(button, processingLabel, task) {
     if (!button || button.disabled) return;
     const originalText = button.textContent;
@@ -69,6 +224,7 @@ async function withButtonStatus(button, processingLabel, task) {
     }
 }
 
+// 各処理パネルの進捗表示領域を更新する。
 function setOperationStatus(id, message, type = 'info') {
     const element = $(id);
     if (!element) return;
@@ -78,6 +234,15 @@ function setOperationStatus(id, message, type = 'info') {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // 起動時は「最低限の画面を早く出す」ことを優先し、
+    // 詳細データは後段で読み足す二段階ロードにしている。
+    // IndexedDBキャッシュを初期化
+    try {
+        await dbCache.init();
+    } catch (error) {
+        console.warn('IndexedDB initialization failed:', error);
+    }
+    
     setDefaultDates();
     setupPortalHome();
     setupMemberManagerTabs();
@@ -96,6 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+// ログイン画面に必要な最小設定だけ先読みする。
 async function loadPartSettingsForLogin() {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
@@ -114,6 +280,7 @@ async function loadPartSettingsForLogin() {
     }
 }
 
+// ダウンロード系リンクをクリックしたときに確認ダイアログを挟む。
 function bindDownloadConfirmations() {
     document.addEventListener('click', (event) => {
         const link = event.target.closest('a');
@@ -128,6 +295,7 @@ function bindDownloadConfirmations() {
     }, true);
 }
 
+// 新規入力フォームの日付初期値を当日にそろえる。
 function setDefaultDates() {
     ['uploadDate', 'schedDate', 'annDate', 'paymentLatestDate'].forEach((id) => {
         if ($(id)) $(id).value = today();
@@ -135,6 +303,8 @@ function setDefaultDates() {
     $('perfDate').value = today();
 }
 
+// 団員トップ画面と楽譜ビューワー枠を初期化する。
+// 既に生成済みなら重複生成しない。
 function setupPortalHome() {
     const memberPanel = $('memberPanel');
     if (!memberPanel || $('memberHomeTab')) return;
@@ -159,11 +329,6 @@ function setupPortalHome() {
                         <h2>メニュー</h2>
                     </div>
                     <div class="portal-menu-groups" id="portalHomeMenu"></div>
-                    <div class="portal-home-actions">
-                        <button class="btn btn-outline-danger" id="portalHomeLogoutBtn" type="button">ログアウト</button>
-                        <button class="btn btn-outline-success" id="portalHomeReloadBtn" type="button">更新</button>
-                        <span class="revision-inline ms-auto">Rev. <span>20260617-1</span></span>
-                    </div>
                 </div>
             </section>
         </div>
@@ -193,6 +358,8 @@ function setupPortalHome() {
     }
 }
 
+// 団員パネル側に管理者用の導線タブを差し込む。
+// 録音管理・楽譜管理を団員ビューからも開けるようにするための初期化。
 function setupMemberManagerTabs() {
     const memberPanel = $('memberPanel');
     const toolbar = memberPanel?.querySelector('.toolbar');
@@ -215,6 +382,7 @@ function setupMemberManagerTabs() {
     }
 }
 
+// ログイン中ユーザーの権限に応じて、管理導線ボタンの表示/非表示を切り替える。
 function updateManagerNavigationVisibility() {
     const uploadButton = $('memberUploadAdminBtn');
     if (uploadButton) uploadButton.hidden = !canManageRecordings();
@@ -222,6 +390,8 @@ function updateManagerNavigationVisibility() {
     if (sheetButton) sheetButton.hidden = !canManageSheets();
 }
 
+// ホーム/ドロワーに表示するメニュー群の定義を返す。
+// 表示可否は現在の権限やアラート状態に応じて動的に決まる。
 function portalMenuGroups() {
     const paymentAlert = paymentAlertInfo().hasAlert;
     const settingItems = [
@@ -266,6 +436,7 @@ function portalMenuGroups() {
         {
             title: '記録',
             items: [
+                { tab: 'member-promotion', label: '宣伝' },
                 { tab: 'member-album', label: 'アルバム' },
                 { tab: 'member-concert-record', label: '演奏会記録' }
             ]
@@ -277,6 +448,7 @@ function portalMenuGroups() {
     ].filter((group) => group.items.length);
 }
 
+// メニュー定義から実際のボタン HTML とイベントを生成する。
 function renderMenuGroups(container) {
     if (!container) return;
     container.innerHTML = portalMenuGroups().map((group) => `
@@ -313,6 +485,7 @@ function renderPortalDrawerMenu() {
     renderMenuGroups($('portalDrawerMenu'));
 }
 
+// サイドドロワーを開く。
 function openPortalDrawer() {
     renderPortalDrawerMenu();
     const drawer = $('portalDrawer');
@@ -322,6 +495,7 @@ function openPortalDrawer() {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').setAttribute('aria-expanded', 'true');
 }
 
+// サイドドロワーを閉じる。
 function closePortalDrawer() {
     const drawer = $('portalDrawer');
     const backdrop = $('portalDrawerBackdrop');
@@ -330,6 +504,7 @@ function closePortalDrawer() {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').setAttribute('aria-expanded', 'false');
 }
 
+// テキストをその場でダウンロードさせるためのヘルパー。
 function downloadTextFile(filename, content, type = 'text/plain;charset=utf-8') {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
@@ -342,6 +517,7 @@ function downloadTextFile(filename, content, type = 'text/plain;charset=utf-8') 
     URL.revokeObjectURL(url);
 }
 
+// ファイル名から拡張子だけを除去して表示用文字列を作る。
 function displayNameWithoutExtension(name = '') {
     return String(name || '').replace(/\.[^.\\/]+$/, '');
 }
@@ -350,6 +526,8 @@ function confirmDelete() {
     return confirm('本当に削除しますか？');
 }
 
+// 端末識別子を取得する。
+// 未発行なら生成して localStorage に保存する。
 function portalDeviceId() {
     let deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY);
     if (!deviceId) {
@@ -359,12 +537,14 @@ function portalDeviceId() {
     return deviceId;
 }
 
+// 端末名として保存する簡易情報を生成する。
 function portalDeviceName() {
     const platform = navigator.platform || 'unknown';
     const language = navigator.language || '';
     return `${platform}${language ? ` / ${language}` : ''}`;
 }
 
+// 団員表示名を統一形式（姓 + 旧姓 + 名）で作る。
 function memberDisplayName(member) {
     const last = member?.last_name || '';
     const first = member?.first_name || '';
@@ -373,31 +553,38 @@ function memberDisplayName(member) {
     return splitName || member?.name || '';
 }
 
+// 現在ログイン中の団員レコードを状態ストアから取得する。
 function currentUserMember() {
     return appState.members.find((member) => String(member.id || '') === String(appState.currentUserMemberId || '')) || null;
 }
 
+// 現在ログイン中の表示名を返す（団員レコード優先）。
 function currentUserMemberName() {
     const member = currentUserMember();
     return member ? memberDisplayName(member) : appState.currentUserName || '';
 }
 
+// 管理者メニューへ入れるか判定する。
 function canAccessAdmin() {
     return ['管理者', 'システム管理者'].includes(appState.currentUserPermission);
 }
 
+// システム管理メニューへ入れるか判定する。
 function canAccessSystemAdmin() {
     return appState.currentUserPermission === 'システム管理者';
 }
 
+// 録音管理権限の判定（管理者または録音担当）。
 function canManageRecordings() {
     return canAccessAdmin() || appState.currentUserIsRecordingManager;
 }
 
+// 楽譜管理権限の判定（管理者または楽譜担当）。
 function canManageSheets() {
     return canAccessAdmin() || appState.currentUserIsSheetManager;
 }
 
+// 端末認証状態をバックエンドで検証し、現在ユーザー情報を appState に反映する。
 async function isPortalAuthenticated() {
     if (appState.portalAuthVerified) return true;
     const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY);
@@ -417,6 +604,7 @@ async function isPortalAuthenticated() {
     }
 }
 
+// ログイン画面を表示し、必要ならログインフォーム DOM を初回生成する。
 function showPortalLogin() {
     closePortalDrawer();
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = true;
@@ -477,6 +665,8 @@ function showPortalLogin() {
     showPortalLoginForm();
 }
 
+// ログインフォームの入力値を検証して認証 API を呼び出す。
+// 初回パスワード未設定時は登録フォームへ切り替える。
 async function handlePortalLogin() {
     const nameInput = $('portalNameInput');
     const partInput = $('portalPartInput');
@@ -499,7 +689,9 @@ async function handlePortalLogin() {
     }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-        showAlert(response.status === 404 ? '該当する団員が見つかりません' : '名前またはパスワードが違います', 'danger');
+        const detail = typeof result === 'object' && result.detail ? String(result.detail) : '';
+        const message = detail || (response.status === 404 ? '該当する団員が見つかりません' : '名前またはパスワードが違います');
+        showAlert(message, 'danger');
         passwordInput.value = '';
         return;
     }
@@ -518,6 +710,7 @@ async function handlePortalLogin() {
     await enterPortal();
 }
 
+// パスワード登録フォームからログインフォームに戻す。
 function showPortalLoginForm() {
     if ($('portalLoginForm')) $('portalLoginForm').hidden = false;
     if ($('portalPasswordSetupForm')) $('portalPasswordSetupForm').hidden = true;
@@ -526,6 +719,7 @@ function showPortalLoginForm() {
     $('portalNameInput')?.focus();
 }
 
+// パスワード初期登録フォームを表示する。
 function showMemberPasswordSetup(name, part = '') {
     if ($('portalLoginForm')) $('portalLoginForm').hidden = true;
     if ($('portalPasswordSetupForm')) $('portalPasswordSetupForm').hidden = false;
@@ -536,6 +730,7 @@ function showMemberPasswordSetup(name, part = '') {
     $('portalNewPasswordInput')?.focus();
 }
 
+// 団員の初回パスワード登録を実行する。
 async function handleMemberPasswordSetup() {
     const name = $('portalSetupName')?.value || $('portalNameInput')?.value.trim() || '';
     const part = $('portalSetupPart')?.value || $('portalPartInput')?.value || '';
@@ -554,6 +749,8 @@ async function handleMemberPasswordSetup() {
     showPortalLoginForm();
 }
 
+// ポータル入場後の初期表示シーケンス。
+// 先に画面骨格を見せ、データは段階的に読み込む。
 async function enterPortal() {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
 
@@ -573,6 +770,7 @@ async function enterPortal() {
     }
 }
 
+// 主要ボタンやタブ切り替えのイベントを束ねてバインドする。
 function bindNavigation() {
     const brand = document.querySelector('.navbar-brand');
     if (brand) brand.addEventListener('click', (event) => {
@@ -582,8 +780,6 @@ function bindNavigation() {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').addEventListener('click', openPortalDrawer);
     if ($('portalDrawerClose')) $('portalDrawerClose').addEventListener('click', closePortalDrawer);
     if ($('portalDrawerBackdrop')) $('portalDrawerBackdrop').addEventListener('click', closePortalDrawer);
-    if ($('portalHomeLogoutBtn')) $('portalHomeLogoutBtn').addEventListener('click', logoutPortal);
-    if ($('portalHomeReloadBtn')) $('portalHomeReloadBtn').addEventListener('click', () => window.location.reload());
     if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').addEventListener('click', () => {
         clearSheetViewer();
         showMemberTab('member-sheet');
@@ -595,6 +791,10 @@ function bindNavigation() {
     if ($('sheetViewerZoomOut')) $('sheetViewerZoomOut').addEventListener('click', () => zoomSheetViewer(-0.15));
     if ($('sheetViewerZoomIn')) $('sheetViewerZoomIn').addEventListener('click', () => zoomSheetViewer(0.15));
     if ($('sheetViewerFitWidth')) $('sheetViewerFitWidth').addEventListener('click', () => fitSheetViewerWidth());
+    if ($('portalManualBtn')) $('portalManualBtn').addEventListener('click', () => {
+        closePortalDrawer();
+        showMemberTab('member-manual');
+    });
     if ($('portalLogoutBtn')) $('portalLogoutBtn').addEventListener('click', logoutPortal);
     if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => window.location.reload());
 
@@ -609,6 +809,8 @@ function bindNavigation() {
     });
 }
 
+// ログアウト処理。
+// 認証情報を破棄し、状態を初期化してログイン画面へ戻す。
 function logoutPortal() {
     localStorage.removeItem(PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
@@ -623,17 +825,20 @@ function logoutPortal() {
     showPortalLogin();
 }
 
+// 録音アップロード関連 UI のイベントを設定する。
 function bindUpload() {
     const fileInput = $('fileInput');
 
     $('selectFileBtn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (event) => handleFiles(event.target.files));
+    if ($('memberIntroTopBtn')) $('memberIntroTopBtn').addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     $('uploadDate').addEventListener('input', updateSavePath);
     $('uploadPiece').addEventListener('input', updateSavePath);
     $('uploadBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => uploadToLocalStore()));
     $('clearBtn').addEventListener('click', clearUploadForm);
 }
 
+// 管理画面の各フォーム操作イベントをまとめて設定する。
 function bindForms() {
     $('addPerfBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePerformance()));
     $('editPerfBtn').addEventListener('click', clearPerformanceForm);
@@ -661,6 +866,8 @@ function bindForms() {
     $('addMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveMember()));
     $('clearMemberBtn').addEventListener('click', clearMemberForm);
     $('deleteMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteMember()));
+    if ($('memberPermission')) $('memberPermission').addEventListener('change', syncMemberPermissionFields);
+    syncMemberPermissionFields();
 
     if ($('paymentMemberId')) $('paymentMemberId').addEventListener('change', () => selectPaymentByMember($('paymentMemberId').value));
     if ($('savePaymentBtn')) $('savePaymentBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePaymentStatus()));
@@ -677,11 +884,17 @@ function bindForms() {
     if ($('orgIconFile')) $('orgIconFile').addEventListener('change', previewOrgIcon);
     if ($('saveSnsSettingBtn')) $('saveSnsSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveSnsSetting()));
     if ($('clearSnsSettingBtn')) $('clearSnsSettingBtn').addEventListener('click', clearSnsSettingForm);
+    if ($('saveConnectionSettingBtn')) $('saveConnectionSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveConnectionSetting()));
+    if ($('clearConnectionSettingBtn')) $('clearConnectionSettingBtn').addEventListener('click', clearConnectionSettingForm);
 
     if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', updateSheetPieceOptions);
     if ($('uploadSheetBtn')) $('uploadSheetBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', () => uploadSheets()));
+    
+    bindCastingAdminEvents();
 }
 
+// 管理者パネル表示要求のガード処理。
+// 認証状態と権限を確認してからパネルを開く。
 async function requestAdminPanel() {
     if (!(await isPortalAuthenticated())) {
         showPortalLogin();
@@ -694,6 +907,7 @@ async function requestAdminPanel() {
     showAdminPanel(appState.currentUserPermission === 'システム管理者' ? 'system-admin' : 'admin');
 }
 
+// 管理者パネルを表示し、初期タブへ切り替える。
 function showAdminPanel(role = 'admin') {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('adminPanel').hidden = false;
@@ -704,6 +918,8 @@ function showAdminPanel(role = 'admin') {
     window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
+// システム管理パネルを表示する。
+// 事前に必要データを読み込み、最初のタブ状態を整える。
 async function showSystemPanel() {
     if (!(await isPortalAuthenticated())) {
         showPortalLogin();
@@ -722,15 +938,19 @@ async function showSystemPanel() {
     await loadAuthManagement();
     renderOrgManagement();
     renderSnsManagement();
+    renderConnectionSettingsManagement();
     renderPartManagement();
     switchTab('systemPanel', 'system-auth');
+    window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
+// 団員パネルの既定タブ（ホーム）を表示する。
 async function showMemberPanel(shouldRender = true) {
     await showMemberTab('member-home', shouldRender);
 }
 
-async function showMemberTab(tabName, shouldRender = false) {
+// 指定した団員タブを表示する共通入口。
+async function showMemberTab(tabName, shouldRender = true) {
     if (!(await isPortalAuthenticated())) {
         showPortalLogin();
         return;
@@ -745,6 +965,8 @@ async function showMemberTab(tabName, shouldRender = false) {
     switchTab('memberPanel', tabName, shouldRender);
 }
 
+// パネル内タブを切り替える共通処理。
+// タブ表示と同時に必要な再描画/遅延ロードを行う。
 function switchTab(panelId, tabName, renderOnShow = true) {
     const panel = $(panelId);
     if (!panel) return;
@@ -765,15 +987,19 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
+    if (renderOnShow && tabName === 'member-manual') renderManualView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
     if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
+    if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
+    if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
 }
 
+// data-tab の識別子を DOM 要素 ID 規則へ変換する。
 function toPascalTab(value) {
     const map = {
         upload: 'upload',
@@ -784,6 +1010,7 @@ function toPascalTab(value) {
         member: 'member',
         'payment-admin': 'paymentAdmin',
         'venue-admin': 'venueAdmin',
+        'casting-admin': 'castingAdmin',
         'piece-info-admin': 'pieceInfoAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
@@ -800,17 +1027,21 @@ function toPascalTab(value) {
         'member-event': 'memberEvent',
         'member-piece-info': 'memberPieceInfo',
         'member-desired-piece': 'memberDesiredPiece',
+        'member-promotion': 'memberPromotion',
+        'member-manual': 'memberManual',
         'member-album': 'memberAlbum',
         'member-concert-record': 'memberConcertRecord',
         'member-sns': 'memberSns',
         'system-auth': 'systemAuth',
         'system-org': 'systemOrg',
         'system-sns': 'systemSns',
+        'system-connection': 'systemConnection',
         'system-part': 'systemPart'
     };
     return map[value] || value;
 }
 
+// アップロード先パスのプレビュー表示を更新する。
 function updateSavePath() {
     if (!$('savePath')) return;
     const date = $('uploadDate').value || today();
@@ -818,16 +1049,17 @@ function updateSavePath() {
     $('savePath').textContent = `/converted/${date}/${piece}/`;
 }
 
+// 選択された録音ファイルを検証し、状態へ保持する。
 function handleFiles(files) {
     const selected = Array.from(files || []);
     if (!selected.length) return;
 
     const validFiles = selected.filter((file) => {
         const extension = file.name.split('.').pop().toLowerCase();
-        return ['wav', 'mp3'].includes(extension);
+        return ['mp3', 'm4a'].includes(extension);
     });
     if (validFiles.length !== selected.length) {
-        showAlert('WAV または MP3 ファイルを選択してください', 'warning');
+        showAlert('MP3 または M4A ファイルを選択してください', 'warning');
     }
     if (!validFiles.length) return;
 
@@ -836,6 +1068,8 @@ function handleFiles(files) {
     showAlert(`${validFiles.length} 件のファイルを選択しました`, 'success');
 }
 
+// 選択済み録音ファイルを順次アップロードする。
+// 進捗表示を更新しながら失敗時は途中件数を通知する。
 async function uploadToLocalStore() {
     if (!appState.selectedFiles.length) {
         showAlert('先にファイルを選択してください', 'warning');
@@ -860,10 +1094,10 @@ async function uploadToLocalStore() {
     }
 }
 
+// 録音アップロード API 用 FormData を組み立てる。
 function audioFormData(file) {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('bitrate', $('bitrate').value);
     formData.append('date', document.getElementById('uploadDate').value);
     formData.append('piece', document.getElementById('uploadPiece').value);
     return formData;
@@ -884,12 +1118,13 @@ function clearUploadForm() {
     $('selectedFileName').textContent = '未選択';
     $('uploadDate').value = today();
     $('uploadPiece').value = '';
-    $('bitrate').value = '192';
     const progress = $('uploadProgress');
     if (progress) progress.hidden = true;
     updateSavePath();
 }
 
+// 初回表示に必要な最小データだけを先に取得する。
+// 演奏会・練習予定・お知らせなど、ホーム表示に直結する内容を優先する。
 async function loadEssentialData() {
     let data;
     try {
@@ -910,6 +1145,8 @@ function renderLoadingPlaceholders() {
 }
 
 function renderEssentialViews() {
+    // 依存描画の連鎖を一時停止し、基本ビューをまとめて描画してから
+    // 団員向け派生ビューを最後に再描画することで無駄な再計算を抑える。
     appState.suppressDerivedRender = true;
     renderPerformances();
     renderSchedules();
@@ -986,11 +1223,13 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         castings,
         pieceInfos,
         desiredPieces,
+        promotions,
         albums,
         partSettings,
         venueSettings,
         orgSettings,
         snsSettings,
+        connectionSettings,
         sheets,
         authDevices
     ] = await Promise.all([
@@ -1007,11 +1246,13 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
         request('/api/extra/desired_pieces'),
+        request('/api/extra/promotions'),
         request('/api/extra/albums'),
         request('/api/extra/part_settings'),
         request('/api/extra/venue_settings'),
         request('/api/extra/org_settings'),
         request('/api/extra/sns_settings'),
+        request('/api/extra/connection_settings'),
         includeHeavyLists ? request('/api/sheets') : Promise.resolve({ files: appState.sheetLibrary || [] }),
         request('/api/auth/devices')
     ]);
@@ -1029,11 +1270,13 @@ async function legacyBootstrapData(includeHeavyLists = true) {
             payments,
             castings,
             piece_infos: pieceInfos,
+            promotions,
             albums,
             part_settings: partSettings,
             venue_settings: venueSettings,
             org_settings: orgSettings,
             sns_settings: snsSettings,
+            connection_settings: connectionSettings,
             desired_pieces: desiredPieces
         },
         auth_devices: authDevices,
@@ -1041,6 +1284,8 @@ async function legacyBootstrapData(includeHeavyLists = true) {
     };
 }
 
+// backend の bootstrap 系 API が返す複合レスポンスを
+// フロントの単一状態ストアへ正規化して流し込む。
 function applyBootstrapData(data) {
     const extras = data.extras || {};
     Object.assign(appState, {
@@ -1057,11 +1302,13 @@ function applyBootstrapData(data) {
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
         desiredPieces: extras.desired_pieces || [],
+        promotions: extras.promotions || [],
         albums: extras.albums || [],
         partSettings: extras.part_settings || [],
         venueSettings: extras.venue_settings || [],
         orgSettings: extras.org_settings || [],
         snsSettings: extras.sns_settings || [],
+        connectionSettings: extras.connection_settings || [],
         authDevices: data.auth_devices || []
     });
     refreshPartSelectOptions();
@@ -1112,9 +1359,11 @@ function renderInitialViews(options = {}) {
     if (includeHeavyLists) renderSheetAdmin();
     renderPaymentAdmin();
     renderVenueManagement();
+    renderCastingAdmin();
     renderPieceInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
+    renderConnectionSettingsManagement();
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
@@ -1130,6 +1379,7 @@ function renderInitialViews(options = {}) {
 async function loadRecordings() {
     const data = await request('/api/recordings');
     appState.recordings = data.files || [];
+    appState.recordingsLoaded = true;
     renderRecordings();
 }
 
@@ -1145,10 +1395,13 @@ async function ensureRecordingsLoaded() {
         renderRecordings();
         return;
     }
-    const container = $('recordingList');
-    if (container && !container.innerHTML.trim()) container.innerHTML = '<p class="text-muted mb-0">録音一覧を読み込み中です...</p>';
+    ['songTreeMember', 'songTreeAdmin'].forEach((id) => {
+        const container = $(id);
+        if (container && !container.innerHTML.trim()) container.innerHTML = '<p class="text-muted mb-0">録音一覧を読み込み中です...</p>';
+    });
     await loadRecordings();
     appState.recordingsLoaded = true;
+    renderRecordings();
 }
 
 async function ensureSheetsLoaded() {
@@ -1170,7 +1423,7 @@ async function loadAuthManagement() {
 }
 
 async function loadExtraData() {
-    const [absences, eventResponses, sheets, payments, castings, pieceInfos, desiredPieces, albums, partSettings, venueSettings, orgSettings, snsSettings] = await Promise.all([
+    const [absences, eventResponses, sheets, payments, castings, pieceInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings] = await Promise.all([
         request('/api/extra/absences'),
         request('/api/extra/event_responses'),
         request('/api/sheets'),
@@ -1178,13 +1431,15 @@ async function loadExtraData() {
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
         request('/api/extra/desired_pieces'),
+        request('/api/extra/promotions'),
         request('/api/extra/albums'),
         request('/api/extra/part_settings'),
         request('/api/extra/venue_settings'),
         request('/api/extra/org_settings'),
-        request('/api/extra/sns_settings')
+        request('/api/extra/sns_settings'),
+        request('/api/extra/connection_settings')
     ]);
-    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, desiredPieces, albums, partSettings, venueSettings, orgSettings, snsSettings });
+    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings });
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
@@ -1193,9 +1448,11 @@ async function loadExtraData() {
     renderPaymentAdmin();
     renderPartManagement();
     renderVenueManagement();
+    renderCastingAdmin();
     renderPieceInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
+    renderConnectionSettingsManagement();
 }
 
 async function saveExtra(name, payload) {
@@ -1235,6 +1492,7 @@ function selectPerformance(id) {
     $('perfDate').value = item.date || today();
     $('perfOpenTime').value = item.open_time || '18:00';
     $('perfStartTime').value = item.start_time || '19:00';
+    if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', item.venue || '');
     $('perfVenue').value = item.venue || '';
     $('perfConductor').value = item.conductor || '';
     if ($('perfFlyerImage')) $('perfFlyerImage').value = item.flyer_image || '';
@@ -1263,6 +1521,7 @@ function clearPerformanceForm() {
     $('perfDate').value = today();
     $('perfOpenTime').value = '18:00';
     $('perfStartTime').value = '19:00';
+    if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', '');
     $('perfVenue').value = '';
     $('perfConductor').value = '';
     if ($('perfFlyerFile')) $('perfFlyerFile').value = '';
@@ -1422,6 +1681,7 @@ function selectSchedule(id) {
     const availableRange = splitTimeRange(item.available_hours);
     $('schedStartTime').value = item.start_time || practiceRange.start || '13:00';
     $('schedEndTime').value = item.end_time || practiceRange.end || '16:30';
+    if ($('schedVenue')) $('schedVenue').innerHTML = venueSelectOptionsHtml('practice', item.venue || '');
     $('schedVenue').value = item.venue || '';
     $('schedAvailableStartTime').value = item.available_start_time || availableRange.start || '12:30';
     $('schedAvailableEndTime').value = item.available_end_time || availableRange.end || '16:30';
@@ -1452,6 +1712,7 @@ function clearScheduleForm() {
     $('schedDate').value = today();
     $('schedStartTime').value = '13:00';
     $('schedEndTime').value = '16:30';
+    if ($('schedVenue')) $('schedVenue').innerHTML = venueSelectOptionsHtml('practice', '');
     $('schedVenue').value = '';
     $('schedAvailableStartTime').value = '12:30';
     $('schedAvailableEndTime').value = '16:30';
@@ -1794,6 +2055,7 @@ async function saveMember() {
         password: password || current?.password || '',
         permission: $('memberPermission') ? $('memberPermission').value : '一般',
         joined_at: $('memberJoinedAt') ? $('memberJoinedAt').value : '',
+        system_access_until: $('memberSystemAccessUntil') ? $('memberSystemAccessUntil').value : '',
         introducer: $('memberIntroducer') ? $('memberIntroducer').value.trim() : '',
         role: $('memberRole') ? $('memberRole').value.trim() : '',
         instrument_history: $('memberInstrumentHistory') ? $('memberInstrumentHistory').value.trim() : '',
@@ -1807,6 +2069,13 @@ async function saveMember() {
     if (!payload.part) {
         showAlert('パートを選択してください', 'warning');
         return;
+    }
+    if (payload.permission === 'エキストラ' && !payload.system_access_until) {
+        showAlert('エキストラの場合はシステム利用終了日を入力してください', 'warning');
+        return;
+    }
+    if (payload.permission !== 'エキストラ') {
+        payload.system_access_until = '';
     }
     const id = $('memberId').value;
     await request(id ? `/api/members/${id}` : '/api/members', jsonOptions(id ? 'PUT' : 'POST', payload));
@@ -1834,11 +2103,13 @@ function selectMember(id) {
     if ($('memberPassword')) $('memberPassword').value = item.password || '';
     if ($('memberPermission')) $('memberPermission').value = item.permission || '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = item.joined_at || '';
+    if ($('memberSystemAccessUntil')) $('memberSystemAccessUntil').value = item.system_access_until || '';
     if ($('memberIntroducer')) $('memberIntroducer').value = item.introducer || '';
     if ($('memberRole')) $('memberRole').value = item.role || '';
     if ($('memberInstrumentHistory')) $('memberInstrumentHistory').value = item.instrument_history || '';
     if ($('memberPastOrchestras')) $('memberPastOrchestras').value = item.past_orchestras || '';
     $('memberComment').value = item.comment || '';
+    syncMemberPermissionFields();
 }
 
 async function deleteMember() {
@@ -1870,11 +2141,23 @@ function clearMemberForm() {
     if ($('memberPassword')) $('memberPassword').value = '';
     if ($('memberPermission')) $('memberPermission').value = '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = '';
+    if ($('memberSystemAccessUntil')) $('memberSystemAccessUntil').value = '';
     if ($('memberIntroducer')) $('memberIntroducer').value = '';
     if ($('memberRole')) $('memberRole').value = '';
     if ($('memberInstrumentHistory')) $('memberInstrumentHistory').value = '';
     if ($('memberPastOrchestras')) $('memberPastOrchestras').value = '';
     $('memberComment').value = '';
+    syncMemberPermissionFields();
+}
+
+function syncMemberPermissionFields() {
+    const permission = $('memberPermission')?.value || '一般';
+    const accessUntil = $('memberSystemAccessUntil');
+    if (!accessUntil) return;
+    const isExtra = permission === 'エキストラ';
+    accessUntil.disabled = !isExtra;
+    accessUntil.required = isExtra;
+    if (!isExtra) accessUntil.value = '';
 }
 
 function fileToDataUrl(file) {
@@ -1917,6 +2200,7 @@ function renderMembers() {
                     <strong>${escapeHtml(memberDisplayName(member))}</strong>
                     <span class="d-flex flex-wrap gap-2">
                         <span class="badge text-bg-secondary">${escapeHtml(member.permission || '一般')}</span>
+                        ${member.permission === 'エキストラ' ? `<span class="badge text-bg-info">利用終了: ${escapeHtml(member.system_access_until || '未設定')}</span>` : ''}
                         <span class="badge ${member.password ? 'text-bg-success' : 'text-bg-warning'}">パスワード: ${escapeHtml(member.password || '未登録')}</span>
                     </span>
                 </div>
@@ -2141,18 +2425,28 @@ function venueSettingsFor(kind) {
     });
 }
 
-function refreshVenueOptions() {
-    const performanceList = $('performanceVenueOptions');
-    if (performanceList) {
-        performanceList.innerHTML = venueSettingsFor('performance')
-            .map((venue) => `<option value="${escapeHtml(venue.name || '')}"></option>`)
-            .join('');
+function venueSelectOptionsHtml(kind, selected = '') {
+    const normalizedSelected = String(selected || '');
+    const venues = venueSettingsFor(kind);
+    const options = ['<option value="">選択してください</option>'];
+    options.push(...venues.map((venue) => {
+        const name = String(venue.name || '');
+        return `<option value="${escapeHtml(name)}" ${name === normalizedSelected ? 'selected' : ''}>${escapeHtml(name)}</option>`;
+    }));
+    if (normalizedSelected && !venues.some((venue) => String(venue.name || '') === normalizedSelected)) {
+        options.push(`<option value="${escapeHtml(normalizedSelected)}" selected>${escapeHtml(normalizedSelected)}（未登録会場）</option>`);
     }
-    const practiceList = $('practiceVenueOptions');
-    if (practiceList) {
-        practiceList.innerHTML = venueSettingsFor('practice')
-            .map((venue) => `<option value="${escapeHtml(venue.name || '')}"></option>`)
-            .join('');
+    return options.join('');
+}
+
+function refreshVenueOptions() {
+    const performanceSelect = $('perfVenue');
+    if (performanceSelect) {
+        performanceSelect.innerHTML = venueSelectOptionsHtml('performance', performanceSelect.value);
+    }
+    const practiceSelect = $('schedVenue');
+    if (practiceSelect) {
+        practiceSelect.innerHTML = venueSelectOptionsHtml('practice', practiceSelect.value);
     }
 }
 
@@ -2385,6 +2679,56 @@ async function saveSnsSetting() {
     showAlert('SNS情報を保存しました', 'success');
 }
 
+function currentConnectionSetting() {
+    return (appState.connectionSettings || [])[0] || {};
+}
+
+function renderConnectionSettingsManagement() {
+    const current = currentConnectionSetting();
+    if ($('connectionSettingId')) $('connectionSettingId').value = current.id || '';
+    if ($('connectionGoogleProjectId')) $('connectionGoogleProjectId').value = current.google_project_id || '';
+    if ($('connectionBucketName')) $('connectionBucketName').value = current.google_cloud_storage_bucket || '';
+    if ($('connectionDataPrefix')) $('connectionDataPrefix').value = current.google_cloud_storage_data_prefix || 'app-data';
+    if ($('connectionPublicFlag')) $('connectionPublicFlag').checked = String(current.google_cloud_storage_public || '').toLowerCase() === 'true';
+    if ($('connectionServiceAccountFile')) $('connectionServiceAccountFile').value = current.google_service_account_file || '';
+    if ($('connectionServiceAccountJson')) $('connectionServiceAccountJson').value = current.google_service_account_json || '';
+}
+
+function clearConnectionSettingForm() {
+    if ($('connectionGoogleProjectId')) $('connectionGoogleProjectId').value = '';
+    if ($('connectionBucketName')) $('connectionBucketName').value = '';
+    if ($('connectionDataPrefix')) $('connectionDataPrefix').value = 'app-data';
+    if ($('connectionPublicFlag')) $('connectionPublicFlag').checked = false;
+    if ($('connectionServiceAccountFile')) $('connectionServiceAccountFile').value = '';
+    if ($('connectionServiceAccountJson')) $('connectionServiceAccountJson').value = '';
+}
+
+async function saveConnectionSetting() {
+    const current = currentConnectionSetting();
+    const bucket = $('connectionBucketName')?.value.trim() || '';
+    if (!bucket) {
+        showAlert('GCSバケット名を入力してください', 'warning');
+        return;
+    }
+
+    const payload = {
+        google_project_id: $('connectionGoogleProjectId')?.value.trim() || '',
+        google_cloud_storage_bucket: bucket,
+        google_cloud_storage_data_prefix: $('connectionDataPrefix')?.value.trim() || 'app-data',
+        google_cloud_storage_public: $('connectionPublicFlag')?.checked ? 'true' : 'false',
+        google_service_account_file: $('connectionServiceAccountFile')?.value.trim() || '',
+        google_service_account_json: $('connectionServiceAccountJson')?.value.trim() || ''
+    };
+
+    if (current.id) {
+        await request(`/api/extra/connection_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));
+    } else {
+        await saveExtra('connection_settings', payload);
+    }
+    await loadExtraData();
+    showAlert('接続先情報を保存しました', 'success');
+}
+
 function renderSnsView() {
     const container = $('memberSnsInfo');
     if (!container) return;
@@ -2433,7 +2777,7 @@ function renderMemberIntros() {
             <h5>${escapeHtml(part || '未設定')}</h5>
             <div class="row g-3">${members.map((member) => `
                 <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body member-intro-card-body">
-                    ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo">` : ''}
+                    ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo" loading="lazy">` : ''}
                     <div class="member-intro-text mt-2">
                         <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="badge text-bg-info ms-2">創設メンバー</span>' : ''}</h6>
                         ${memberKanaName(member) ? `<div class="small text-muted">${escapeHtml(memberKanaName(member))}</div>` : ''}
@@ -2946,13 +3290,29 @@ function renderPortalHome() {
     const announcements = [...(appState.announcements || [])]
         .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
         .slice(0, 5);
+    const selectedAnnId = String(appState.portalSelectedAnnouncementId || announcements[0]?.id || '');
+    const selectedAnn = announcements.find((ann) => String(ann.id || '') === selectedAnnId) || null;
+    appState.portalSelectedAnnouncementId = selectedAnn?.id || null;
     announceContainer.innerHTML = announcements.length
         ? `<div class="list-group">${announcements.map((ann) => `
             <article class="list-group-item portal-announcement-one-line">
-                <span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</span> <strong>${escapeHtml(ann.title || ann.content || '')}</strong>
+                <button class="btn btn-link p-0 small text-muted portal-announcement-link" type="button" data-portal-announcement-id="${escapeHtml(String(ann.id || ''))}">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</button>
+                <button class="btn btn-link p-0 portal-announcement-link portal-announcement-title" type="button" data-portal-announcement-id="${escapeHtml(String(ann.id || ''))}">${escapeHtml(ann.title || ann.content || '')}</button>
             </article>
-        `).join('')}</div>`
+        `).join('')}</div>
+        <section class="portal-announcement-detail mt-2">
+            <div class="small text-muted">${escapeHtml(formatDateWithWeekday(selectedAnn?.date || '', ''))}</div>
+            <h6 class="mb-1">${escapeHtml(selectedAnn?.title || '')}</h6>
+            <div class="mb-0 multiline-text">${escapeHtml(selectedAnn?.content || '')}</div>
+        </section>`
         : '<p class="text-muted mb-0">お知らせはまだありません</p>';
+
+    announceContainer.querySelectorAll('[data-portal-announcement-id]').forEach((button) => {
+        button.addEventListener('click', () => {
+            appState.portalSelectedAnnouncementId = button.dataset.portalAnnouncementId || null;
+            renderPortalHome();
+        });
+    });
 
     const nextPerf = nextPerformance();
     const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
@@ -2989,7 +3349,7 @@ function renderMemberPerformances() {
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
-            ${perf.flyer_image ? `<div class="mb-3"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview"></div>` : ''}
+            ${perf.flyer_image ? `<div class="mb-3"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy"></div>` : ''}
             <div class="mb-0">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceLabel(piece))}</div>`).join('')}</div>
         </article>
     `).join('');
@@ -3103,7 +3463,8 @@ function formatDateWithWeekday(dateText, fallback = '未定') {
     const date = new Date(`${dateText}T00:00:00`);
     if (Number.isNaN(date.getTime())) return dateText;
     const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-    return `${dateText}（${weekdays[date.getDay()]}）`;
+    const formattedDate = dateText.replace(/-/g, '/');
+    return `${formattedDate}（${weekdays[date.getDay()]}）`;
 }
 
 function formatDateTimeLabel(value) {
@@ -3142,6 +3503,8 @@ function formatDurationLabel(file) {
     return '長さ未取得';
 }
 
+// 団員向けタブは 1 つずつ個別描画せず、この関数からまとめて再描画する。
+// 重い一覧は options で抑制でき、初期表示時の体感速度を落とさないようにしている。
 function renderMemberExtraViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
     renderAbsenceView();
@@ -3151,9 +3514,65 @@ function renderMemberExtraViews(options = {}) {
     renderMemberEventView();
     renderPieceInfoView();
     renderDesiredPieceView();
+    renderManualView();
+    renderPromotionView();
     renderAlbumView();
     renderConcertRecordView();
     renderSnsView();
+}
+
+// マニュアルは固定文面だが、団体名など動的な表示には現在の設定値を反映する。
+function renderManualView() {
+    const container = $('memberManualInfo');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="info-block">
+            <h5>${escapeHtml(portalTitleText())} の使い方</h5>
+            <p class="mb-0">このポータルでは、練習・演奏会・連絡事項・団員向け機能をまとめて確認できます。困ったときはこのマニュアルを開いて基本操作を確認してください。</p>
+        </div>
+        <div class="info-block">
+            <h6>1. メニューの開き方</h6>
+            <ul class="mb-0">
+                <li>画面左上のメニューボタンからポータルメニューを開きます。</li>
+                <li>各カテゴリのボタンを押すと目的の画面に移動できます。</li>
+                <li>メニュー下部の「更新」で最新情報を再読み込みできます。</li>
+            </ul>
+        </div>
+        <div class="info-block">
+            <h6>2. 日常的によく使う機能</h6>
+            <ul class="mb-0">
+                <li>練習予定: 次回以降の練習日、時間、場所、練習曲を確認します。</li>
+                <li>欠席連絡: 欠席・遅刻・早退を登録します。</li>
+                <li>録音部屋: 録音の再生やダウンロードを行います。</li>
+                <li>楽譜ライブラリ: 楽譜の表示やダウンロードを行います。</li>
+                <li>支払状況: 団費や演奏会費の登録状況を確認します。</li>
+            </ul>
+        </div>
+        <div class="info-block">
+            <h6>3. 団員向けの登録機能</h6>
+            <ul class="mb-0">
+                <li>イベント調整: 出欠や回答内容を登録します。</li>
+                <li>演奏希望曲: 希望曲の登録や投票ができます。</li>
+                <li>宣伝: タイトル・概要・画像付きの宣伝内容を登録できます。</li>
+            </ul>
+        </div>
+        <div class="info-block">
+            <h6>4. 管理系の機能</h6>
+            <ul class="mb-0">
+                <li>管理者は管理者メニューから演奏会情報、練習予定、お知らせなどを登録できます。</li>
+                <li>録音担当・楽譜担当には専用の管理ボタンが表示されます。</li>
+                <li>システム管理者は接続先情報や端末管理などの設定を行えます。</li>
+            </ul>
+        </div>
+        <div class="info-block">
+            <h6>5. 困ったとき</h6>
+            <ul class="mb-0">
+                <li>表示が古い場合は、メニュー下部の「更新」を押してください。</li>
+                <li>ログインできない場合は、名前・パート・パスワードを確認してください。</li>
+                <li>権限が必要な操作は、管理者またはシステム管理者に依頼してください。</li>
+            </ul>
+        </div>
+    `;
 }
 
 function scheduleOptions(selected = '') {
@@ -3168,11 +3587,14 @@ function renderAbsenceView() {
         container.innerHTML = '<p class="text-muted mb-0">ログイン中の団員情報が見つかりません</p>';
         return;
     }
-    const grouped = groupBy(appState.absences, 'schedule_id');
+    const visibleSchedules = sortedSchedules(appState.schedules).filter((schedule) => !schedule?.date || String(schedule.date) >= today());
+    const visibleScheduleIds = new Set(visibleSchedules.map((schedule) => String(schedule.id || '')));
+    const grouped = groupBy(appState.absences.filter((absence) => visibleScheduleIds.has(String(absence.schedule_id || ''))), 'schedule_id');
+    const absenceScheduleOptions = ['<option value="">選択してください</option>'].concat(visibleSchedules.map((s) => `<option value="${escapeHtml(String(s.id))}">${escapeHtml(formatDateWithWeekday(s.date))} ${escapeHtml(scheduleTimeLabel(s))} ${escapeHtml(s.venue || '')}</option>`)).join('');
     container.innerHTML = `
         <input type="hidden" id="absenceId">
         <div class="row g-2 align-items-end mb-3">
-            <div class="col-md-5"><label class="form-label">練習日</label><select id="absenceScheduleId" class="form-select">${scheduleOptions()}</select></div>
+            <div class="col-md-5"><label class="form-label">練習日</label><select id="absenceScheduleId" class="form-select">${absenceScheduleOptions}</select></div>
             <div class="col-md-2"><label class="form-label">連絡区分</label><select id="absenceStatus" class="form-select"><option value="absent">欠席</option><option value="late">遅刻</option><option value="leave_early">早退</option></select></div>
             <div class="col-md-2"><label class="form-label" id="absenceTimeLabel" for="absenceTime">予定時刻</label><input id="absenceTime" class="form-control" type="time" disabled></div>
             <div class="col-md-3"><button class="btn btn-primary w-100" id="absenceSaveBtn" type="button">連絡を保存</button></div>
@@ -3182,7 +3604,7 @@ function renderAbsenceView() {
             <button class="btn btn-outline-danger btn-sm" id="absenceDeleteBtn" type="button" disabled>選択中の連絡を削除</button>
         </div>
         <h6>練習日ごとの出欠連絡</h6>
-        ${sortedSchedules(appState.schedules).map((schedule) => {
+        ${visibleSchedules.map((schedule) => {
             const abs = (grouped[String(schedule.id)] || grouped[schedule.id] || []);
             const rows = abs.length ? abs.map((absence) => {
                 const own = absenceBelongsToCurrentUser(absence);
@@ -3272,7 +3694,7 @@ function absenceEntryLabel(absence, includeName = true) {
 function renderPerformanceFlyerPreview(src) {
     const preview = $('perfFlyerPreview');
     if (!preview) return;
-    preview.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="チラシ画像" class="performance-flyer-preview">` : '';
+    preview.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy">` : '';
 }
 
 async function previewPerformanceFlyer(event) {
@@ -3354,6 +3776,9 @@ async function deletePieceInfoAdmin() {
     clearPieceInfoForm(); await loadExtraData(); showAlert('楽曲情報を削除しました', 'success');
 }
 
+// 団員向け楽譜ビュー。
+// 演奏会 -> 曲 -> ファイルの順で段階的に絞り込めるようにし、
+// 大量の楽譜があっても目的のファイルへ辿り着きやすくしている。
 function renderSheetLibraryView() {
     const c = $('memberSheetInfo');
     if (!c) return;
@@ -3465,6 +3890,7 @@ function clearSheetViewer() {
     if (status) status.textContent = '';
 }
 
+// PDF.js は楽譜ビューを開くまで遅延ロードし、通常利用時の初期コストを避ける。
 async function loadPdfJs() {
     if (window.pdfjsLib) return window.pdfjsLib;
     await new Promise((resolve, reject) => {
@@ -3571,11 +3997,25 @@ function sheetFilterPerformanceOptions(selected = '') {
 }
 
 function sheetFilterPieceOptions(selected = '', performanceId = '') {
+    const performance = appState.performances.find((perf) => String(perf.id) === String(performanceId));
+    const performancePieceOrder = performance ? (performance.pieces || []).map(performancePieceLabel) : [];
+    
     const pieces = [...new Set(appState.sheetLibrary
         .filter((sheet) => !performanceId || String(sheet.performance_id || '') === String(performanceId))
         .map((sheet) => String(sheet.piece || ''))
         .filter(Boolean))];
-    return ['<option value="">すべて</option>'].concat(pieces.map((piece) => `<option value="${escapeHtml(piece)}" ${piece === selected ? 'selected' : ''}>${escapeHtml(piece)}</option>`)).join('');
+    
+    // Sort by performance piece order
+    const sortedPieces = pieces.sort((a, b) => {
+        const aIndex = performancePieceOrder.indexOf(a);
+        const bIndex = performancePieceOrder.indexOf(b);
+        if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex;
+        if (aIndex >= 0) return -1;
+        if (bIndex >= 0) return 1;
+        return a.localeCompare(b, 'ja');
+    });
+    
+    return ['<option value="">すべて</option>'].concat(sortedPieces.map((piece) => `<option value="${escapeHtml(piece)}" ${piece === selected ? 'selected' : ''}>${escapeHtml(piece)}</option>`)).join('');
 }
 
 function sheetFilterPartOptions(selected = '', performanceId = '', piece = '') {
@@ -3629,6 +4069,8 @@ function sheetZipUrl(performanceId, piece = '', part = '') {
     return `/api/sheets/download-zip?${params.toString()}`;
 }
 
+// 楽譜管理画面の入口。
+// 演奏会・曲目選択の状態を保ちながら一覧と操作部品を組み直す。
 function renderSheetAdmin() {
     const performanceSelect = $('sheetPerformanceSelect');
     const list = $('sheetAdminList');
@@ -3674,19 +4116,32 @@ async function uploadSheets() {
         return;
     }
 
-    for (const file of pdfFiles) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('performance_id', performanceId);
-        formData.append('performance_title', performance.title || '');
-        formData.append('piece', piece);
-        await request('/api/sheets/upload', { method: 'POST', body: formData });
+    let completed = 0;
+    setOperationStatus('sheetUploadProgress', `楽譜を登録しています。0 / ${pdfFiles.length} 件`);
+    try {
+        for (const file of pdfFiles) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('performance_id', performanceId);
+            formData.append('performance_title', performance.title || '');
+            formData.append('piece', piece);
+            setOperationStatus('sheetUploadProgress', `登録中: ${file.name}（${completed + 1} / ${pdfFiles.length} 件）`);
+            await request('/api/sheets/upload', { method: 'POST', body: formData });
+            completed += 1;
+            setOperationStatus('sheetUploadProgress', `登録完了: ${completed} / ${pdfFiles.length} 件`);
+        }
+        $('sheetFileInput').value = '';
+        await loadSheets();
+        setOperationStatus('sheetUploadProgress', `登録が完了しました。${completed} 件の楽譜を一覧に反映しました。`);
+        showAlert(`${completed}件の楽譜を登録しました`, 'success');
+    } catch (error) {
+        setOperationStatus('sheetUploadProgress', `登録に失敗しました。${completed} / ${pdfFiles.length} 件まで完了しています。`, 'danger');
+        throw error;
     }
-    $('sheetFileInput').value = '';
-    await loadSheets();
-    showAlert(`${pdfFiles.length}件の楽譜を登録しました`, 'success');
 }
 
+// 楽譜管理一覧。
+// 単票更新と一括更新を同じ一覧の中で扱えるよう、選択状態を appState に保持している。
 function renderSheetAdminList() {
     const list = $('sheetAdminList');
     if (!list) return;
@@ -3695,8 +4150,25 @@ function renderSheetAdminList() {
         return;
     }
 
+    const selectedCount = appState.selectedSheetIds.length;
+    const selectedSheetIdSet = new Set(appState.selectedSheetIds.map(String));
+    const selectionHtml = selectedCount > 0 ? `
+        <div class="alert alert-info mb-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span><strong>${selectedCount} 件の楽譜を選択中</strong></span>
+                <div class="d-flex flex-wrap gap-2">
+                    <select class="form-select form-select-sm" id="bulkPartSelect" style="width: 12rem;">
+                        ${partOptionHtml('')}
+                    </select>
+                    <button class="btn btn-sm btn-success" id="bulkPartSaveBtn" type="button">一括パート設定</button>
+                    <button class="btn btn-sm btn-outline-secondary" id="clearSelectionBtn" type="button">選択解除</button>
+                </div>
+            </div>
+        </div>
+    ` : '';
+
     const performanceGroups = groupBy(appState.sheetLibrary, 'performance_id');
-    list.innerHTML = Object.entries(performanceGroups).map(([performanceId, sheets]) => {
+    list.innerHTML = selectionHtml + Object.entries(performanceGroups).map(([performanceId, sheets]) => {
         const performance = appState.performances.find((perf) => String(perf.id) === String(performanceId));
         const performanceTitle = performance?.title || sheets[0]?.performance_title || '未設定の演奏会';
         const pieceGroups = groupBy(sheets, 'piece');
@@ -3712,9 +4184,14 @@ function renderSheetAdminList() {
                             <strong>${escapeHtml(piece || '未設定の曲名')}</strong>
                             <button class="btn btn-sm btn-outline-danger sheet-delete-piece-btn" type="button" data-performance-id="${escapeHtml(performanceId)}" data-piece="${escapeHtml(piece)}">曲名配下を削除</button>
                         </div>
-                        ${pieceSheets.map((sheet) => `
+                        ${pieceSheets.map((sheet) => {
+                            const isSelected = selectedSheetIdSet.has(String(sheet.id || ''));
+                            return `
                             <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
-                                <span>${escapeHtml(displayNameWithoutExtension(sheet.name || '楽譜'))}<span class="badge text-bg-secondary ms-2">${escapeHtml(sheet.part || 'パート未設定')}</span></span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="checkbox" class="form-check-input sheet-select-checkbox" data-sheet-id="${escapeHtml(String(sheet.id || ''))}" ${isSelected ? 'checked' : ''} style="cursor: pointer; margin: 0;">
+                                    <span>${escapeHtml(displayNameWithoutExtension(sheet.name || '楽譜'))}<span class="badge text-bg-secondary ms-2">${escapeHtml(sheet.part || 'パート未設定')}</span></span>
+                                </div>
                                 <span class="d-flex flex-wrap gap-2 align-items-center">
                                     <select class="form-select form-select-sm sheet-part-assign-select" data-sheet-id="${escapeHtml(String(sheet.id || ''))}" style="width: 12rem;">
                                         ${partOptionHtml(sheet.part || '')}
@@ -3725,12 +4202,38 @@ function renderSheetAdminList() {
                                     <button class="btn btn-sm btn-outline-danger sheet-delete-file-btn" type="button" data-performance-id="${escapeHtml(performanceId)}" data-sheet-id="${escapeHtml(String(sheet.id || ''))}">削除</button>
                                 </span>
                             </div>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </div>
                 `).join('')}
             </section>
         `;
     }).join('');
+
+    list.querySelectorAll('.sheet-select-checkbox').forEach((checkbox) => {
+        checkbox.addEventListener('change', (event) => {
+            const sheetId = event.currentTarget.dataset.sheetId || '';
+            if (event.currentTarget.checked) {
+                if (!appState.selectedSheetIds.includes(sheetId)) {
+                    appState.selectedSheetIds.push(sheetId);
+                }
+            } else {
+                appState.selectedSheetIds = appState.selectedSheetIds.filter((id) => id !== sheetId);
+            }
+            renderSheetAdminList();
+        });
+    });
+
+    if ($('bulkPartSaveBtn')) {
+        $('bulkPartSaveBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => bulkSaveSheetParts()));
+    }
+
+    if ($('clearSelectionBtn')) {
+        $('clearSelectionBtn').addEventListener('click', () => {
+            appState.selectedSheetIds = [];
+            renderSheetAdminList();
+        });
+    }
 
     list.querySelectorAll('.sheet-part-save-btn').forEach((button) => {
         button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveSheetPart(button.dataset.sheetId || '')));
@@ -3771,6 +4274,24 @@ async function saveSheetPart(sheetId) {
     showAlert('楽譜のパートを保存しました', 'success');
 }
 
+async function bulkSaveSheetParts() {
+    const part = $('bulkPartSelect')?.value.trim() || '';
+    if (!part) {
+        showAlert('パートを選択してください', 'warning');
+        return;
+    }
+    if (!appState.selectedSheetIds.length) {
+        showAlert('楽譜を選択してください', 'warning');
+        return;
+    }
+    const sheetIds = appState.selectedSheetIds.map((id) => Number(id) || 0).filter((id) => id > 0);
+    await request('/api/sheets/parts', jsonOptions('PUT', { sheet_ids: sheetIds, part }));
+    const count = sheetIds.length;
+    appState.selectedSheetIds = [];
+    await loadSheets();
+    showAlert(`${count} 件の楽譜のパートを一括更新しました`, 'success');
+}
+
 function renderPaymentView() {
     const c = $('memberPaymentInfo');
     if (!c) return;
@@ -3792,6 +4313,12 @@ function findPaymentForMember(memberId, name = '') {
 function performanceFeeMap(payment) {
     return payment?.performance_fees && typeof payment.performance_fees === 'object'
         ? payment.performance_fees
+        : {};
+}
+
+function performanceFeeAmountMap(payment) {
+    return payment?.performance_fee_amounts && typeof payment.performance_fee_amounts === 'object'
+        ? payment.performance_fee_amounts
         : {};
 }
 
@@ -3837,15 +4364,20 @@ function paymentAlertInfo(payment = null) {
 
 function paymentStatusHtml(payment) {
     const feeMap = performanceFeeMap(payment);
+    const feeAmountMap = performanceFeeAmountMap(payment);
     const alertInfo = paymentAlertInfo(payment);
+    const membershipFeeAmount = Number(payment.membership_fee_amount || 0);
     const performanceFees = appState.performances.map((perf) => {
         const paid = Boolean(feeMap[String(perf.id)]);
         const overdue = alertInfo.overduePerformanceIds.has(String(perf.id));
-        return `<div><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
+        const amount = Number(feeAmountMap[String(perf.id)] || 0);
+        const amountLabel = amount > 0 ? ` / 金額: ${amount.toLocaleString('ja-JP')}円` : '';
+        return `<div><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${amountLabel}${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
     }).join('');
     return `
         <div class="info-block">
             <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
+            <div>団員費用額: ${membershipFeeAmount > 0 ? `${membershipFeeAmount.toLocaleString('ja-JP')}円` : '未登録'}</div>
             <div>最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
             <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
         </div>
@@ -3860,6 +4392,313 @@ function paymentMemberOptionsById(selected = '') {
     })).join('');
 }
 
+// 乗り番管理は「演奏会単位で 1 レコードを編集する」前提で組んでいる。
+// 一覧表示と編集フォームは別管理せず、選択中の演奏会を appState に展開して同期する。
+function renderCastingAdmin() {
+    const performanceSelect = $('castingPerformanceSelect');
+    if (!performanceSelect) return;
+
+    const previousValue = performanceSelect.value;
+    performanceSelect.innerHTML = appState.performances.map((perf) => 
+        `<option value="${escapeHtml(String(perf.id || ''))}">${escapeHtml(perf.title || '未設定')}</option>`
+    ).join('');
+
+    const hasPrevious = appState.performances.some((perf) => String(perf.id || '') === String(previousValue));
+    if (hasPrevious) {
+        performanceSelect.value = previousValue;
+    }
+
+    performanceSelect.onchange = () => loadCastingById(Number(performanceSelect.value) || 0);
+
+    if (!performanceSelect.value && appState.performances.length) {
+        performanceSelect.value = String(appState.performances[0].id || '');
+    }
+    loadCastingById(Number(performanceSelect.value) || 0);
+    renderCastingAdminList();
+}
+
+function loadCastingById(performanceId) {
+    if (!performanceId) {
+        appState.castingEditingId = null;
+        appState.castingEditingPerformanceId = null;
+        appState.castingEditingPiece = '';
+        appState.castingEditingMembers = [];
+        appState.castingEditingExtras = [];
+        clearCastingForm();
+        return;
+    }
+    
+    // 保存済みデータを直接参照し続けると編集中に一覧側へ影響するため、
+    // フォーム編集用には浅いコピーで別配列を持つ。
+    const casting = appState.castings.find((c) => String(c.performance_id || '') === String(performanceId));
+    if (casting) {
+        appState.castingEditingId = casting.id || null;
+        appState.castingEditingPerformanceId = casting.performance_id || null;
+        appState.castingEditingPiece = casting.piece || '';
+        appState.castingEditingMembers = Array.isArray(casting.members) ? casting.members.map(m => ({ ...m })) : [];
+        appState.castingEditingExtras = Array.isArray(casting.extras) ? casting.extras.map(e => ({ ...e })) : [];
+    } else {
+        appState.castingEditingId = null;
+        appState.castingEditingPerformanceId = performanceId;
+        appState.castingEditingPiece = '';
+        appState.castingEditingMembers = [];
+        appState.castingEditingExtras = [];
+    }
+    
+    clearCastingForm();
+    $('castingPieceInput').value = appState.castingEditingPiece;
+    renderCastingMembersList();
+    renderCastingExtrasList();
+}
+
+function clearCastingForm() {
+    $('castingPieceInput').value = '';
+    appState.castingEditingMembers = [];
+    appState.castingEditingExtras = [];
+    renderCastingMembersList();
+    renderCastingExtrasList();
+}
+
+function renderCastingMembersList() {
+    const list = $('castingMembersList');
+    if (!list) return;
+    
+    list.innerHTML = appState.castingEditingMembers.map((member, index) => {
+        const memberId = member.member_id || '';
+        return `
+            <div class="d-flex gap-2 mb-2 p-2 border rounded">
+                <select class="form-select form-select-sm flex-grow-1 casting-member-select" data-index="${index}">
+                    <option value="">団員を選択</option>
+                    ${appState.members.map((m) => `<option value="${escapeHtml(String(m.id || ''))}" ${String(m.id || '') === String(memberId) ? 'selected' : ''}>${escapeHtml(memberDisplayName(m))}</option>`).join('')}
+                </select>
+                <input type="text" class="form-control form-control-sm" style="width: 120px;" placeholder="パート" value="${escapeHtml(member.part || '')}" data-part-index="${index}">
+                <button class="btn btn-sm btn-outline-danger casting-member-delete-btn" data-index="${index}" type="button">削除</button>
+            </div>
+        `;
+    }).join('');
+    
+    list.querySelectorAll('.casting-member-select').forEach((select) => {
+        select.addEventListener('change', (e) => {
+            const index = Number(e.target.dataset.index || 0);
+            if (appState.castingEditingMembers[index]) {
+                appState.castingEditingMembers[index].member_id = Number(e.target.value) || 0;
+            }
+        });
+    });
+    
+    list.querySelectorAll('[data-part-index]').forEach((input) => {
+        input.addEventListener('change', (e) => {
+            const index = Number(e.target.dataset.partIndex || 0);
+            if (appState.castingEditingMembers[index]) {
+                appState.castingEditingMembers[index].part = e.target.value.trim();
+            }
+        });
+    });
+    
+    list.querySelectorAll('.casting-member-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            const index = Number(e.target.dataset.index || 0);
+            appState.castingEditingMembers.splice(index, 1);
+            renderCastingMembersList();
+        });
+    });
+}
+
+function renderCastingExtrasList() {
+    const list = $('castingExtrasList');
+    if (!list) return;
+    
+    list.innerHTML = appState.castingEditingExtras.map((extra, index) => {
+        return `
+            <div class="d-flex gap-2 mb-2 p-2 border rounded">
+                <input type="text" class="form-control form-control-sm" placeholder="名前" value="${escapeHtml(extra.name || '')}" data-name-index="${index}">
+                <input type="text" class="form-control form-control-sm" placeholder="ふりがな" value="${escapeHtml(extra.furigana || '')}" data-furigana-index="${index}">
+                <input type="text" class="form-control form-control-sm" style="width: 120px;" placeholder="パート" value="${escapeHtml(extra.part || '')}" data-extra-part-index="${index}">
+                <button class="btn btn-sm btn-outline-danger casting-extra-delete-btn" data-index="${index}" type="button">削除</button>
+            </div>
+        `;
+    }).join('');
+    
+    list.querySelectorAll('[data-name-index]').forEach((input) => {
+        input.addEventListener('change', (e) => {
+            const index = Number(e.target.dataset.nameIndex || 0);
+            if (appState.castingEditingExtras[index]) {
+                appState.castingEditingExtras[index].name = e.target.value.trim();
+            }
+        });
+    });
+    
+    list.querySelectorAll('[data-furigana-index]').forEach((input) => {
+        input.addEventListener('change', (e) => {
+            const index = Number(e.target.dataset.furiganaIndex || 0);
+            if (appState.castingEditingExtras[index]) {
+                appState.castingEditingExtras[index].furigana = e.target.value.trim();
+            }
+        });
+    });
+    
+    list.querySelectorAll('[data-extra-part-index]').forEach((input) => {
+        input.addEventListener('change', (e) => {
+            const index = Number(e.target.dataset.extraPartIndex || 0);
+            if (appState.castingEditingExtras[index]) {
+                appState.castingEditingExtras[index].part = e.target.value.trim();
+            }
+        });
+    });
+    
+    list.querySelectorAll('.casting-extra-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            const index = Number(e.target.dataset.index || 0);
+            appState.castingEditingExtras.splice(index, 1);
+            renderCastingExtrasList();
+        });
+    });
+}
+
+function renderCastingAdminList() {
+    const list = $('castingAdminList');
+    if (!list) return;
+    
+    const grouped = groupBy(appState.castings, 'performance_id');
+    const performanceMap = new Map(appState.performances.map((performance) => [String(performance.id || ''), performance]));
+    const memberNameMap = new Map(appState.members.map((member) => [String(member.id || ''), memberDisplayName(member)]));
+    list.innerHTML = Object.entries(grouped).map(([perfId, castings]) => {
+        const perf = performanceMap.get(String(perfId));
+        const perfTitle = perf?.title || '未設定の演奏会';
+        
+        return `
+            <section class="mb-4">
+                <h6>${escapeHtml(perfTitle)}</h6>
+                ${castings.map((c) => {
+                    const members = Array.isArray(c.members) ? c.members.map((m) => {
+                        const memberName = memberNameMap.get(String(m.member_id || '')) || m.name || '';
+                        return `${memberName}${m.part ? `（${m.part}）` : ''}`;
+                    }).join(', ') : '';
+                    const extras = Array.isArray(c.extras) ? c.extras.map((e) => `${e.name || ''}${e.part ? `（${e.part}）` : ''}`).join(', ') : '';
+                    const allCasting = [members, extras].filter(Boolean).join(' / ') || '(出演者未設定)';
+                    
+                    return `
+                        <div class="p-2 border rounded mb-2">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong>${escapeHtml(c.piece || '全曲')}</strong><br>
+                                    <small class="text-muted">${escapeHtml(allCasting)}</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary casting-edit-btn" data-performance-id="${escapeHtml(String(c.performance_id || ''))}" data-piece="${escapeHtml(c.piece || '')}" type="button">編集</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </section>
+        `;
+    }).join('') || '<p class="text-muted">乗り番データがありません</p>';
+    
+    list.querySelectorAll('.casting-edit-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            const perfId = e.target.dataset.performanceId || '';
+            $('castingPerformanceSelect').value = perfId;
+            loadCastingById(Number(perfId) || 0);
+        });
+    });
+}
+
+function bindCastingAdminEvents() {
+    const addMemberBtn = $('castingAddMemberBtn');
+    const addExtraBtn = $('castingAddExtraBtn');
+    const saveBtn = $('castingSaveBtn');
+    const deleteBtn = $('castingDeleteBtn');
+    const clearBtn = $('castingClearBtn');
+    
+    if (addMemberBtn) {
+        addMemberBtn.addEventListener('click', () => {
+            appState.castingEditingMembers.push({ member_id: 0, part: '' });
+            renderCastingMembersList();
+        });
+    }
+    
+    if (addExtraBtn) {
+        addExtraBtn.addEventListener('click', () => {
+            appState.castingEditingExtras.push({ name: '', furigana: '', part: '' });
+            renderCastingExtrasList();
+        });
+    }
+    
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => saveCasting());
+    }
+    
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => deleteCasting());
+    }
+    
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => clearCastingForm());
+    }
+}
+
+async function saveCasting() {
+    const perfId = Number($('castingPerformanceSelect')?.value || 0);
+    if (!perfId) {
+        showAlert('演奏会を選択してください', 'warning');
+        return;
+    }
+    
+    const piece = $('castingPieceInput')?.value.trim() || '';
+    const members = appState.castingEditingMembers.filter((m) => m.member_id);
+    const extras = appState.castingEditingExtras.filter((e) => e.name);
+    
+    if (!members.length && !extras.length) {
+        showAlert('団員またはエキストラを追加してください', 'warning');
+        return;
+    }
+    
+    const payload = {
+        performance_id: perfId,
+        piece,
+        members,
+        extras
+    };
+    
+    try {
+        setOperationStatus('castingOperationStatus', '保存中...');
+        if (appState.castingEditingId) {
+            await request(`/api/extra/castings/${appState.castingEditingId}`, jsonOptions('PUT', payload));
+        } else {
+            await request('/api/extra/castings', jsonOptions('POST', payload));
+        }
+        await loadExtraData();
+        renderCastingAdmin();
+        showAlert('乗り番を保存しました', 'success');
+        setOperationStatus('castingOperationStatus', null);
+    } catch (error) {
+        setOperationStatus('castingOperationStatus', '保存に失敗しました', 'danger');
+        console.error('Save casting failed', error);
+    }
+}
+
+async function deleteCasting() {
+    if (!appState.castingEditingId) {
+        showAlert('削除対象が選択されていません', 'warning');
+        return;
+    }
+    if (!confirmDelete()) return;
+    
+    try {
+        setOperationStatus('castingOperationStatus', '削除中...');
+        await request(`/api/extra/castings/${appState.castingEditingId}`, jsonOptions('DELETE'));
+        await loadExtraData();
+        renderCastingAdmin();
+        clearCastingForm();
+        showAlert('乗り番を削除しました', 'success');
+        setOperationStatus('castingOperationStatus', null);
+    } catch (error) {
+        setOperationStatus('castingOperationStatus', '削除に失敗しました', 'danger');
+        console.error('Delete casting failed', error);
+    }
+}
+
+// 支払管理画面。
+// 団費と演奏会費の両方を 1 レコードに集約し、団員単位で入力・参照できる形にしている。
 function renderPaymentAdmin() {
     const memberSelect = $('paymentMemberId');
     const feeContainer = $('paymentPerformanceFees');
@@ -3874,10 +4713,13 @@ function renderPaymentAdmin() {
 
     feeContainer.innerHTML = appState.performances.length
         ? appState.performances.map((perf) => `
-            <label class="form-check">
-                <input class="form-check-input payment-performance-checkbox" type="checkbox" value="${escapeHtml(String(perf.id))}">
-                <span class="form-check-label">${escapeHtml(perf.title)}</span>
-            </label>
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <label class="form-check mb-0">
+                    <input class="form-check-input payment-performance-checkbox" type="checkbox" value="${escapeHtml(String(perf.id))}">
+                    <span class="form-check-label">${escapeHtml(perf.title)}</span>
+                </label>
+                <input class="form-control form-control-sm payment-performance-amount" type="number" min="0" step="1" value="" data-performance-id="${escapeHtml(String(perf.id))}" style="width: 12rem;" placeholder="演奏会費（円）">
+            </div>
         `).join('')
         : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
 
@@ -3885,10 +4727,12 @@ function renderPaymentAdmin() {
         ? `<div class="list-group">${appState.payments.map((payment) => {
             const member = appState.members.find((item) => String(item.id || '') === String(payment.member_id || ''));
             const name = member ? memberDisplayName(member) : (payment.name || '未設定');
+            const membershipFeeAmount = Number(payment.membership_fee_amount || 0);
+            const membershipFeeLabel = membershipFeeAmount > 0 ? `${membershipFeeAmount.toLocaleString('ja-JP')}円` : '未登録';
             return `
                 <button class="list-group-item list-group-item-action payment-admin-item" type="button" data-payment-id="${escapeHtml(String(payment.id || ''))}">
                     <strong>${escapeHtml(name)}</strong>
-                    <div class="small text-muted">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))} / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+                    <div class="small text-muted">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))} / 団員費用額: ${escapeHtml(membershipFeeLabel)} / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
                 </button>
             `;
         }).join('')}</div>`
@@ -3918,9 +4762,16 @@ function fillPaymentForm(payment, memberId = '') {
     if ($('paymentPaidFromMonth')) $('paymentPaidFromMonth').value = payment?.paid_from_month || '';
     $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
     $('paymentLatestDate').value = payment?.latest_payment_date || today();
+    if ($('paymentMembershipFeeAmount')) $('paymentMembershipFeeAmount').value = Number(payment?.membership_fee_amount || 0) > 0 ? String(payment.membership_fee_amount) : '';
     const feeMap = performanceFeeMap(payment);
+    const feeAmountMap = performanceFeeAmountMap(payment);
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         checkbox.checked = Boolean(feeMap[String(checkbox.value)]);
+    });
+    document.querySelectorAll('.payment-performance-amount').forEach((input) => {
+        const performanceId = String(input.dataset.performanceId || '');
+        const amount = Number(feeAmountMap[performanceId] || 0);
+        input.value = amount > 0 ? String(amount) : '';
     });
 }
 
@@ -3936,15 +4787,23 @@ async function savePaymentStatus() {
         return;
     }
     const performanceFees = {};
+    const performanceFeeAmounts = {};
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         performanceFees[String(checkbox.value)] = checkbox.checked;
+    });
+    document.querySelectorAll('.payment-performance-amount').forEach((input) => {
+        const performanceId = String(input.dataset.performanceId || '');
+        const amount = Number(input.value || 0);
+        performanceFeeAmounts[performanceId] = amount > 0 ? amount : 0;
     });
     const payload = {
         member_id: memberId,
         name: memberDisplayName(member),
         paid_until_month: $('paymentPaidUntilMonth')?.value || '',
         latest_payment_date: $('paymentLatestDate')?.value || '',
-        performance_fees: performanceFees
+        membership_fee_amount: Number($('paymentMembershipFeeAmount')?.value || 0),
+        performance_fees: performanceFees,
+        performance_fee_amounts: performanceFeeAmounts
     };
     const id = $('paymentId')?.value || findPaymentForMember(memberId, payload.name)?.id || '';
     const saved = id
@@ -3968,6 +4827,9 @@ function renderMemberEventView() {
     const c = $('memberEventInfo'); if (!c) return;
     c.innerHTML = `
         <div id="memberEventListView">
+            <h6>イベント一覧</h6>
+            <div class="list-group mb-3" id="memberEventList"></div>
+            <h6>イベント登録</h6>
             <div class="row g-2 mb-3">
                 <div class="col-md-4"><label class="form-label">イベント名</label><input id="memberEventTitle" class="form-control"></div>
                 <div class="col-md-3"><label class="form-label">開催日</label><input id="memberEventDate" type="date" class="form-control"></div>
@@ -3978,8 +4840,6 @@ function renderMemberEventView() {
                 <div class="col-md-6"><label class="form-label">削除時の合言葉</label><input id="memberEventDeletePhrase" class="form-control"></div>
                 <div class="col-md-3 d-flex align-items-end"><button id="memberEventCreateBtn" class="btn btn-primary w-100" type="button">イベント登録</button></div>
             </div>
-            <h6>イベント一覧</h6>
-            <div class="list-group" id="memberEventList"></div>
         </div>
         <div id="memberEventDetailView" hidden></div>`;
     $('memberEventDate').value = today();
@@ -4112,14 +4972,61 @@ function renderGroupedEventResponses(responses) {
     }).join('');
 }
 
+// 楽曲情報は一覧表示と詳細表示を同じ領域で切り替える。
+// 選択中の ID を appState に持たせ、戻る操作でも余計な再取得をしない。
 function renderPieceInfoView() {
     const c = $('memberPieceInfo'); if (!c) return;
-    c.innerHTML = appState.performances.map((perf) => {
-        const rows = appState.pieceInfos.filter((x) => String(x.performance_id || '') === String(perf.id));
-        const fallback = (perf.pieces || []).map((p) => ({ title: performancePieceLabel(p), description: '' }));
-        const list = rows.length ? rows : fallback;
-        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${list.map((r) => `<div class="info-block"><strong>${escapeHtml(r.piece || r.title || '')}</strong>${r.description || r.notes ? `<div class="multiline-text mt-1">${escapeHtml(r.description || r.notes)}</div>` : ''}</div>`).join('')}</section>`;
-    }).join('');
+    const selectedPieceInfo = appState.pieceInfos.find((info) => String(info.id || '') === String(appState.selectedPieceInfoId || ''));
+    
+    if (selectedPieceInfo) {
+        // Detail view: show selected piece info with all details and URL button
+        const performance = appState.performances.find((perf) => String(perf.id || '') === String(selectedPieceInfo.performance_id || ''));
+        c.innerHTML = `
+            <button class="btn btn-sm btn-outline-secondary mb-3" id="pieceInfoBackBtn" type="button">曲リストに戻る</button>
+            <section class="info-block">
+                <div class="small text-muted">${escapeHtml(performance?.title || '演奏会未設定')}</div>
+                <h5 class="mb-2">${escapeHtml(selectedPieceInfo.piece || selectedPieceInfo.title || '')}</h5>
+                ${selectedPieceInfo.description || selectedPieceInfo.notes ? `<div class="multiline-text mb-3">${escapeHtml(selectedPieceInfo.description || selectedPieceInfo.notes)}</div>` : ''}
+                ${selectedPieceInfo.url ? `<button class="btn btn-primary btn-sm" id="pieceInfoUrlBtn" type="button">楽曲情報を表示</button>` : ''}
+            </section>
+        `;
+        $('pieceInfoBackBtn')?.addEventListener('click', () => {
+            appState.selectedPieceInfoId = null;
+            renderPieceInfoView();
+        });
+        $('pieceInfoUrlBtn')?.addEventListener('click', () => {
+            if (selectedPieceInfo.url) window.open(selectedPieceInfo.url, '_blank', 'noopener');
+        });
+    } else {
+        // List view: show all performances and their pieces (without descriptions)
+        c.innerHTML = appState.performances.map((perf) => {
+            const rows = appState.pieceInfos.filter((x) => String(x.performance_id || '') === String(perf.id));
+            const fallback = (perf.pieces || []).map((p) => ({ title: performancePieceLabel(p), description: '', id: null }));
+            let list = rows.length ? rows : fallback;
+            
+            // Sort by performance piece order
+            const performancePieceOrder = (perf.pieces || []).map(p => performancePieceLabel(p));
+            list = list.sort((a, b) => {
+                const aLabel = a.piece || a.title || '';
+                const bLabel = b.piece || b.title || '';
+                const aIndex = performancePieceOrder.indexOf(aLabel);
+                const bIndex = performancePieceOrder.indexOf(bLabel);
+                return (aIndex >= 0 ? aIndex : 999) - (bIndex >= 0 ? bIndex : 999);
+            });
+            
+            return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5><div class="list-group">${list.map((r) => `
+                <button class="list-group-item list-group-item-action text-start" type="button" ${r.id ? `data-piece-info-id="${escapeHtml(String(r.id))}"` : ''}>
+                    ${escapeHtml(r.piece || r.title || '')}
+                </button>
+            `).join('')}</div></section>`;
+        }).join('');
+        c.querySelectorAll('[data-piece-info-id]').forEach((button) => {
+            button.addEventListener('click', () => {
+                appState.selectedPieceInfoId = button.dataset.pieceInfoId || null;
+                renderPieceInfoView();
+            });
+        });
+    }
 }
 
 
@@ -4161,6 +5068,8 @@ function fillDesiredPieceForm(id) {
     $('desiredPieceTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+// 演奏希望曲は「登録」と「投票」が混在するため、
+// 所有者だけ編集/削除、自分は 1 票だけ投票、というルールを UI 側でも明示する。
 function renderDesiredPieceView() {
     const c = $('memberDesiredPieceInfo');
     if (!c) return;
@@ -4184,6 +5093,7 @@ function renderDesiredPieceView() {
         <div class="mt-3">${items.length ? items.map((item) => {
             const voted = desiredPieceHasVoted(item);
             const own = desiredPieceIsOwner(item);
+            const registeredAt = item.created_at || item.updated_at || '';
             return `<article class="info-block desired-piece-card">
                 <div class="d-flex flex-wrap justify-content-between gap-2">
                     <div>
@@ -4191,7 +5101,7 @@ function renderDesiredPieceView() {
                         <div class="small text-muted">${escapeHtml(item.composer || '作曲者未登録')} / ${escapeHtml(item.duration || '演奏時間未登録')} / ${escapeHtml(item.genre || '')}</div>
                         ${item.formation ? `<div class="small mt-1"><strong>編成:</strong> ${escapeHtml(item.formation)}</div>` : ''}
                         ${item.notes ? `<div class="small mt-2 multiline-text">${escapeHtml(item.notes)}</div>` : ''}
-                        <div class="small text-muted mt-2">登録者: ${escapeHtml(item.registered_by || '未登録')}</div>
+                        <div class="small text-muted mt-2">登録日: ${escapeHtml(registeredAt ? formatDateTimeLabel(registeredAt) : '未登録')}</div>
                     </div>
                     <div class="text-end">
                         <div class="vote-count">${desiredPieceVotes(item).length}票</div>
@@ -4254,13 +5164,175 @@ async function deleteDesiredPiece(id) {
     showAlert('演奏希望曲を削除しました', 'success');
 }
 
+function promotionIsOwner(item) {
+    const currentId = String(appState.currentUserMemberId || '');
+    const currentName = currentUserMemberName();
+    return (currentId && String(item?.member_id || '') === currentId)
+        || (currentName && String(item?.registered_by || '') === currentName);
+}
+
+function fillPromotionForm(id) {
+    const item = appState.promotions.find((promotion) => String(promotion.id || '') === String(id));
+    if (!item) return;
+    if ($('promotionId')) $('promotionId').value = item.id || '';
+    if ($('promotionTitle')) $('promotionTitle').value = item.title || '';
+    if ($('promotionSummary')) $('promotionSummary').value = item.summary || item.description || '';
+    if ($('promotionImageFile')) $('promotionImageFile').value = '';
+    if ($('promotionImagePreview')) $('promotionImagePreview').innerHTML = item.image_url ? `<img src="${escapeHtml(item.image_url)}" class="img-fluid rounded border" alt="宣伝画像">` : '';
+}
+
+function clearPromotionForm() {
+    if ($('promotionId')) $('promotionId').value = '';
+    if ($('promotionTitle')) $('promotionTitle').value = '';
+    if ($('promotionSummary')) $('promotionSummary').value = '';
+    if ($('promotionImageFile')) $('promotionImageFile').value = '';
+    if ($('promotionImagePreview')) $('promotionImagePreview').innerHTML = '';
+}
+
+async function previewPromotionImage(event) {
+    const file = event?.target?.files?.[0];
+    if (!file || !$('promotionImagePreview')) return;
+    const dataUrl = await fileToDataUrl(file);
+    $('promotionImagePreview').innerHTML = `<img src="${escapeHtml(dataUrl)}" class="img-fluid rounded border" alt="宣伝画像プレビュー">`;
+}
+
+// 宣伝機能は画像付き投稿のため、一覧描画時は本文よりも
+// 投稿者・登録日・所有権判定が追いやすい構造を優先している。
+function renderPromotionView() {
+    const c = $('memberPromotionInfo');
+    if (!c) return;
+    const items = [...(appState.promotions || [])].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    c.innerHTML = `
+        <div class="info-block">
+            <input type="hidden" id="promotionId">
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label">タイトル</label><input class="form-control" id="promotionTitle"></div>
+                <div class="col-12"><label class="form-label">概要</label><textarea class="form-control" id="promotionSummary" rows="3"></textarea></div>
+                <div class="col-md-6"><label class="form-label">画像登録</label><input class="form-control" id="promotionImageFile" type="file" accept="image/*"></div>
+                <div class="col-md-6"><div id="promotionImagePreview"></div></div>
+                <div class="col-12 d-flex flex-wrap gap-2">
+                    <button class="btn btn-success" id="promotionSaveBtn" type="button">登録</button>
+                    <button class="btn btn-outline-secondary" id="promotionClearBtn" type="button">クリア</button>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">${items.length ? items.map((item) => {
+            const own = promotionIsOwner(item);
+            const registeredAt = item.created_at || item.updated_at || '';
+            return `<article class="info-block desired-piece-card">
+                <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start">
+                    <div class="flex-grow-1">
+                        <h5 class="mb-1">${escapeHtml(item.title || '')}</h5>
+                        ${item.summary ? `<div class="small multiline-text mt-2">${escapeHtml(item.summary)}</div>` : ''}
+                        <div class="small text-muted mt-2">登録者: ${escapeHtml(item.registered_by || '未登録')}</div>
+                        <div class="small text-muted">登録日: ${escapeHtml(registeredAt ? formatDateTimeLabel(registeredAt) : '未登録')}</div>
+                    </div>
+                    ${item.image_url ? `<div style="max-width: 240px;"><img src="${escapeHtml(item.image_url)}" class="img-fluid rounded border" alt="宣伝画像"></div>` : ''}
+                </div>
+                ${own ? `<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-sm btn-outline-primary promotion-edit-btn" type="button" data-promotion-id="${escapeHtml(String(item.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger promotion-delete-btn" type="button" data-promotion-id="${escapeHtml(String(item.id || ''))}">削除</button></div>` : ''}
+            </article>`;
+        }).join('') : '<p class="text-muted mb-0">宣伝はまだ登録されていません</p>'}</div>
+    `;
+    $('promotionSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePromotion()));
+    $('promotionClearBtn')?.addEventListener('click', clearPromotionForm);
+    $('promotionImageFile')?.addEventListener('change', previewPromotionImage);
+    c.querySelectorAll('.promotion-edit-btn').forEach((button) => button.addEventListener('click', () => fillPromotionForm(button.dataset.promotionId || '')));
+    c.querySelectorAll('.promotion-delete-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePromotion(button.dataset.promotionId || ''))));
+}
+
+async function savePromotion() {
+    const title = $('promotionTitle')?.value.trim() || '';
+    if (!title) {
+        showAlert('タイトルを入力してください', 'warning');
+        return;
+    }
+    const id = $('promotionId')?.value || '';
+    const current = appState.promotions.find((item) => String(item.id || '') === String(id));
+    const imageFile = $('promotionImageFile')?.files?.[0];
+    const imageUrl = imageFile ? await fileToDataUrl(imageFile) : (current?.image_url || '');
+    const payload = {
+        title,
+        summary: $('promotionSummary')?.value.trim() || '',
+        image_url: imageUrl,
+        member_id: current?.member_id || appState.currentUserMemberId || '',
+        registered_by: current?.registered_by || currentUserMemberName()
+    };
+    if (id) await request(`/api/extra/promotions/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+    else await saveExtra('promotions', payload);
+    clearPromotionForm();
+    await loadExtraData();
+    showAlert('宣伝を保存しました', 'success');
+}
+
+async function deletePromotion(id) {
+    if (!id || !confirmDelete()) return;
+    await request(`/api/extra/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    clearPromotionForm();
+    await loadExtraData();
+    showAlert('宣伝を削除しました', 'success');
+}
+
 function renderAlbumView() {
     const c = $('memberAlbumInfo'); if (!c) return;
-    c.innerHTML = appState.albums.length ? `<div class="row g-3">${appState.albums.map((a) => `<div class="col-6 col-md-4 col-xl-3"><a href="${escapeHtml(a.url || '#')}" target="_blank"><img src="${escapeHtml(a.thumbnail_url || a.url || '')}" class="album-photo" alt="${escapeHtml(a.title || '写真')}"></a><div class="small mt-1">${escapeHtml(a.title || '')}</div></div>`).join('')}</div>` : '<p class="text-muted">写真はまだ登録されていません</p>';
+    c.innerHTML = appState.albums.length ? `<div class="row g-3">${appState.albums.map((a) => `<div class="col-6 col-md-4 col-xl-3"><a href="${escapeHtml(a.url || '#')}" target="_blank"><img src="${escapeHtml(a.thumbnail_url || a.url || '')}" class="album-photo" alt="${escapeHtml(a.title || '写真')}" loading="lazy"></a><div class="small mt-1">${escapeHtml(a.title || '')}</div></div>`).join('')}</div>` : '<p class="text-muted">写真はまだ登録されていません</p>';
 }
 
 
+// すべての API 通信の共通窓口。
+// GET は ETag + IndexedDB キャッシュ + in-flight dedupe を使い、
+// 更新系は成功後にキャッシュを破棄して次回取得時の不整合を防ぐ。
 async function request(url, options = {}) {
+    const method = options.method || 'GET';
+    const cacheKey = url;
+    
+    // GETリクエストはキャッシュを確認
+    if (method === 'GET') {
+        if (inFlightGetRequests.has(cacheKey)) {
+            return inFlightGetRequests.get(cacheKey);
+        }
+
+        const pending = (async () => {
+            const cached = await dbCache.get(cacheKey);
+            const etag = dbCache.getETag(cacheKey);
+
+            const headers = { ...options.headers };
+            if (etag) {
+                headers['If-None-Match'] = etag;
+            }
+
+            const response = await fetch(url, { ...options, method, headers });
+
+            // 304 Not Modifiedの場合はキャッシュを使用
+            if (response.status === 304 && cached) {
+                return cached;
+            }
+
+            if (!response.ok) {
+                const contentType = response.headers.get('content-type') || '';
+                const data = contentType.includes('application/json') ? await response.json() : await response.text();
+                const message = typeof data === 'object' && data.detail ? data.detail : '通信に失敗しました';
+                showAlert(message, 'danger');
+                throw new Error(message);
+            }
+
+            const contentType = response.headers.get('content-type') || '';
+            const data = contentType.includes('application/json') ? await response.json() : await response.text();
+            const newETag = response.headers.get('ETag');
+            if (newETag) {
+                await dbCache.set(cacheKey, data, newETag);
+            }
+            return data;
+        })();
+
+        inFlightGetRequests.set(cacheKey, pending);
+        try {
+            return await pending;
+        } finally {
+            inFlightGetRequests.delete(cacheKey);
+        }
+    }
+    
+    // POSTやPUT、DELETEの場合は通常のリクエスト
     const response = await fetch(url, options);
     const contentType = response.headers.get('content-type') || '';
     const data = contentType.includes('application/json') ? await response.json() : await response.text();
@@ -4269,6 +5341,9 @@ async function request(url, options = {}) {
         showAlert(message, 'danger');
         throw new Error(message);
     }
+    
+    // 更新系のリクエスト後はキャッシュをクリア
+    await dbCache.clear();
     return data;
 }
 
@@ -4284,6 +5359,7 @@ function emptyText(items, message) {
     return items.length ? '' : `<li class="list-group-item text-muted">${message}</li>`;
 }
 
+// 一覧描画で多用する単純なグループ化ヘルパー。
 function groupBy(items, key) {
     return items.reduce((groups, item) => {
         const value = item[key] || '未分類';
@@ -4300,6 +5376,8 @@ function formatBytes(bytes) {
     return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
 }
 
+// API 由来の文字列をそのまま innerHTML に差し込む箇所が多いため、
+// 画面生成前に必ずこの関数でエスケープする。
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({
         '&': '&amp;',

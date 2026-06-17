@@ -10,9 +10,10 @@
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#235789">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260617-15">
 </head>
 <body>
+    <!-- グローバルヘッダー: ドロワー開閉とブランド表示 -->
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
         <div class="container-fluid">
             <div class="portal-title-area">
@@ -28,6 +29,8 @@
             </div>
         </div>
     </nav>
+
+    <!-- サイドドロワー: ポータル内ナビゲーション（主要導線） -->
     <div class="portal-drawer-backdrop" id="portalDrawerBackdrop" hidden></div>
     <aside class="portal-drawer" id="portalDrawer" hidden aria-label="メニュー">
         <div class="portal-drawer-header">
@@ -36,6 +39,9 @@
         </div>
         <div class="portal-drawer-body" id="portalDrawerMenu"></div>
         <div class="portal-drawer-footer">
+            <div class="mb-2">
+                <button class="btn btn-outline-primary w-100" id="portalManualBtn" type="button">マニュアル</button>
+            </div>
             <div class="portal-drawer-actions">
                 <button class="btn btn-outline-danger flex-fill" id="portalLogoutBtn" type="button">ログアウト</button>
                 <button class="btn btn-outline-success flex-fill" id="portalReloadBtn" type="button">更新</button>
@@ -45,6 +51,7 @@
     </aside>
 
     <main class="container-fluid py-4">
+        <!-- 管理者向け管理パネル: 各マスタ・運用データ登録 -->
         <section id="adminPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="performance" type="button">演奏会情報</button>
@@ -55,8 +62,10 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="casting-admin" type="button">乗り番管理</button>
             </div>
 
+            <!-- 録音管理 -->
             <div id="uploadTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">録音アップロード</div>
@@ -66,24 +75,16 @@
                                 <label class="form-label" for="uploadDate">練習日</label>
                                 <input type="date" id="uploadDate" class="form-control">
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-9">
                                 <label class="form-label" for="uploadPiece">曲名</label>
                                 <input type="text" id="uploadPiece" class="form-control" placeholder="例: 交響曲第5番 第1楽章">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="bitrate">変換品質</label>
-                                <select id="bitrate" class="form-select">
-                                    <option value="128">128 kbps</option>
-                                    <option value="192" selected>192 kbps</option>
-                                    <option value="320">320 kbps</option>
-                                </select>
                             </div>
                         </div>
 
                         <div class="mb-3">
                             <button class="btn btn-outline-primary" id="selectFileBtn" type="button">ファイルを選択</button>
                             <small id="selectedFileName" class="text-muted ms-2">未選択</small>
-                            <input type="file" id="fileInput" accept=".wav,.mp3,audio/wav,audio/mpeg" multiple hidden>
+                            <input type="file" id="fileInput" accept=".mp3,.m4a,audio/mpeg,audio/mp4" multiple hidden>
                         </div>
 
                         <div class="d-flex flex-wrap gap-2">
@@ -102,6 +103,7 @@
                 </div>
             </div>
 
+            <!-- 演奏会情報管理 -->
             <div id="performanceTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">演奏会情報管理</div>
@@ -126,8 +128,7 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="perfVenue">会場</label>
-                                <input type="text" class="form-control" id="perfVenue" list="performanceVenueOptions">
-                                <datalist id="performanceVenueOptions"></datalist>
+                                <select class="form-select" id="perfVenue"></select>
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="perfConductor">指揮者</label>
@@ -174,6 +175,7 @@
                 </div>
             </div>
 
+            <!-- 練習予定管理 -->
             <div id="scheduleTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">練習予定管理</div>
@@ -198,8 +200,7 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="schedVenue">場所</label>
-                                <input type="text" class="form-control" id="schedVenue" list="practiceVenueOptions">
-                                <datalist id="practiceVenueOptions"></datalist>
+                                <select class="form-select" id="schedVenue"></select>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="schedAvailableStartTime">利用可能開始</label>
@@ -239,6 +240,7 @@
                 </div>
             </div>
 
+            <!-- お知らせ管理 -->
             <div id="announcementTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">お知らせ管理</div>
@@ -268,6 +270,7 @@
                 </div>
             </div>
 
+            <!-- イベント調整管理（管理者は確認/削除中心） -->
             <div id="eventTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">イベント調整管理</div>
@@ -317,6 +320,7 @@
                     </div>
                 </div>
             </div>
+            <!-- 楽曲情報管理 -->
             <div id="pieceInfoAdminTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">楽曲情報</div>
@@ -346,6 +350,7 @@
                 </div>
             </div>
 
+            <!-- 団員情報管理 -->
             <div id="memberTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">団員登録</div>
@@ -426,6 +431,7 @@
                                 <label class="form-label" for="memberPermission">権限</label>
                                 <select class="form-select" id="memberPermission">
                                     <option value="一般">一般</option>
+                                    <option value="エキストラ">エキストラ</option>
                                     <option value="管理者">管理者</option>
                                     <option value="システム管理者">システム管理者</option>
                                 </select>
@@ -433,6 +439,10 @@
                             <div class="col-md-2">
                                 <label class="form-label" for="memberJoinedAt">入団年月</label>
                                 <input type="month" class="form-control" id="memberJoinedAt">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="memberSystemAccessUntil">システム利用終了日</label>
+                                <input type="date" class="form-control" id="memberSystemAccessUntil" disabled>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="memberIntroducer">紹介者</label>
@@ -465,6 +475,7 @@
                 </div>
             </div>
 
+            <!-- 楽譜管理 -->
             <div id="sheetAdminTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">楽譜管理</div>
@@ -486,11 +497,13 @@
                                 <button class="btn btn-primary" id="uploadSheetBtn" type="button">楽譜を登録</button>
                             </div>
                         </div>
+                        <div class="operation-status mt-3" id="sheetUploadProgress" hidden></div>
                         <div id="sheetAdminList"></div>
                     </div>
                 </div>
             </div>
 
+            <!-- 支払状況管理 -->
             <div id="paymentAdminTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">支払状況登録</div>
@@ -509,6 +522,10 @@
                                 <label class="form-label" for="paymentLatestDate">最新の支払日</label>
                                 <input type="date" class="form-control" id="paymentLatestDate">
                             </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="paymentMembershipFeeAmount">団員費用額（円）</label>
+                                <input type="number" min="0" step="1" class="form-control" id="paymentMembershipFeeAmount" placeholder="例: 3000">
+                            </div>
                             <div class="col-12">
                                 <div class="form-label">演奏会費</div>
                                 <div id="paymentPerformanceFees" class="payment-performance-list"></div>
@@ -523,6 +540,7 @@
                 </div>
             </div>
 
+            <!-- 会場マスタ管理（本番/練習） -->
             <div id="venueAdminTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">会場管理</div>
@@ -561,13 +579,66 @@
                 </div>
             </div>
 
+            <!-- 乗り番管理 -->
+            <div id="castingAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">乗り番管理</div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="castingPerformanceSelect">演奏会選択</label>
+                                <select class="form-select" id="castingPerformanceSelect"></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="castingPieceInput">曲名（オプション）</label>
+                                <input type="text" class="form-control" id="castingPieceInput" placeholder="曲名を指定しない場合は空白">
+                            </div>
+                        </div>
+
+                        <div class="card mb-4">
+                            <div class="card-header">団員</div>
+                            <div class="card-body">
+                                <div id="castingMembersList"></div>
+                                <div class="mt-3">
+                                    <button class="btn btn-sm btn-outline-primary" id="castingAddMemberBtn" type="button">+ 団員を追加</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mb-4">
+                            <div class="card-header">エキストラ</div>
+                            <div class="card-body">
+                                <div id="castingExtrasList"></div>
+                                <div class="mt-3">
+                                    <button class="btn btn-sm btn-outline-primary" id="castingAddExtraBtn" type="button">+ エキストラを追加</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-success" id="castingSaveBtn" type="button">乗り番を保存</button>
+                            <button class="btn btn-outline-danger" id="castingDeleteBtn" type="button">この乗り番を削除</button>
+                            <button class="btn btn-outline-secondary" id="castingClearBtn" type="button">クリア</button>
+                        </div>
+                        <div class="operation-status mt-3" id="castingOperationStatus" hidden></div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">乗り番一覧</div>
+                    <div class="card-body" id="castingAdminList"></div>
+                </div>
+            </div>
+
         </section>
 
+        <!-- システム管理パネル: 認証/組織設定/接続設定/パート設定 -->
         <section id="systemPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="system-auth" type="button">認証端末管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-org" type="button">団体情報管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
             </div>
 
@@ -641,6 +712,48 @@
                 </div>
             </div>
 
+            <div id="systemConnectionTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">接続先情報（Google Cloud / Storage）</div>
+                    <div class="card-body">
+                        <input type="hidden" id="connectionSettingId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="connectionGoogleProjectId">Google Project ID</label>
+                                <input type="text" class="form-control" id="connectionGoogleProjectId" placeholder="your-gcp-project-id">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="connectionBucketName">GCS バケット名</label>
+                                <input type="text" class="form-control" id="connectionBucketName" placeholder="your-bucket-name">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="connectionDataPrefix">データ保存プレフィックス</label>
+                                <input type="text" class="form-control" id="connectionDataPrefix" placeholder="app-data">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check mt-4 pt-2">
+                                    <input class="form-check-input" type="checkbox" id="connectionPublicFlag">
+                                    <label class="form-check-label" for="connectionPublicFlag">公開URLを有効化</label>
+                                </div>
+                            </div>
+                            <div class="col-md-9">
+                                <label class="form-label" for="connectionServiceAccountFile">サービスアカウントJSONファイルパス</label>
+                                <input type="text" class="form-control" id="connectionServiceAccountFile" placeholder="C:/path/to/service-account.json">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="connectionServiceAccountJson">サービスアカウントJSON（直接設定）</label>
+                                <textarea class="form-control" id="connectionServiceAccountJson" rows="6" placeholder='{"type":"service_account", ... }'></textarea>
+                                <small class="text-muted">注意: 秘密情報を含むため、取扱いに注意してください。</small>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-success" id="saveConnectionSettingBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearConnectionSettingBtn" type="button">クリア</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="systemPartTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">パート管理</div>
@@ -662,6 +775,7 @@
             </div>
         </section>
 
+        <!-- 団員向けパネル: 日常利用機能の参照・登録 -->
         <section id="memberPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
@@ -675,10 +789,12 @@
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-piece-info" type="button">楽曲情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-desired-piece" type="button">演奏希望曲</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-promotion" type="button">宣伝</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-album" type="button">アルバム</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-intro" type="button">自己紹介</button>
             </div>
 
+            <!-- 団員向け: お知らせ -->
             <div id="memberAnnounceTab" class="tab-content">
                 <div class="card">
                     <div class="card-header">お知らせ</div>
@@ -688,6 +804,7 @@
                 </div>
             </div>
 
+            <!-- 団員向け: 演奏会情報 -->
             <div id="memberPerformanceTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">演奏会情報</div>
@@ -695,6 +812,7 @@
                 </div>
             </div>
 
+            <!-- 団員向け: 練習予定 -->
             <div id="memberScheduleTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">練習予定</div>
@@ -702,6 +820,7 @@
                 </div>
             </div>
 
+            <!-- 団員向け: 録音部屋 -->
             <div id="memberRecordingTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">録音部屋</div>
@@ -709,11 +828,13 @@
                 </div>
             </div>
 
+            <!-- 団員向け: 自己紹介 -->
             <div id="memberIntroTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">自己紹介</div>
                     <div class="card-body" id="memberIntroInfo"></div>
                 </div>
+                <button class="member-intro-top-btn" id="memberIntroTopBtn" type="button">Top</button>
             </div>
 
 
@@ -738,6 +859,12 @@
             <div id="memberDesiredPieceTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">演奏希望曲</div><div class="card-body" id="memberDesiredPieceInfo"></div></div>
             </div>
+            <div id="memberPromotionTab" class="tab-content" hidden>
+                <div class="card"><div class="card-header">宣伝</div><div class="card-body" id="memberPromotionInfo"></div></div>
+            </div>
+            <div id="memberManualTab" class="tab-content" hidden>
+                <div class="card"><div class="card-header">マニュアル</div><div class="card-body" id="memberManualInfo"></div></div>
+            </div>
             <div id="memberAlbumTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">アルバム</div><div class="card-body" id="memberAlbumInfo"></div></div>
             </div>
@@ -754,6 +881,6 @@
 
     <div id="toastArea" class="toast-area"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=20260617-15"></script>
 </body>
 </html>

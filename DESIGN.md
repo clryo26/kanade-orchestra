@@ -1,318 +1,230 @@
 # 奏オケポータル 全体設計書
 
-## 1. 目的
+## 1. システム目的
 
-奏オケポータルは、福岡奏オーケストラの団員向け情報共有と管理作業を一つにまとめるWebポータルである。
+奏オケポータルは、団員向け情報共有と運営管理業務を 1 つの Web システムに統合することを目的とする。
 
-主な目的は以下。
+達成対象:
 
-- 団員が練習、演奏会、録音、楽譜、イベント、支払い、写真をインターネット経由で確認できること
-- 管理者が演奏会情報、練習予定、お知らせ、録音、団員プロフィールを管理できること
-- Google Sitesに埋め込めること
-- Cloud Runで運用できること
-- iPhoneホーム画面に追加したとき、奏オケのアイコンと名称で表示されること
+- 団員が日常的に必要な情報を即時参照できる
+- 団員自身が欠席連絡やイベント回答などを入力できる
+- 管理者が演奏会関連データを運用できる
+- システム管理者が接続設定や権限基盤を管理できる
 
-## 2. システム名
+## 2. システム境界
 
-- 表示名: 奏オケポータル
-- iPhoneホーム画面名: 奏オケポータル
-- manifest名: 奏オケポータル
+### 2.1 フロント
 
-## 3. 技術構成
+- src/index.html
+- src/static/js/app.js
+- src/static/css/style.css
 
-### 3.1 フロントエンド
+### 2.2 バック
 
-- HTML
-- CSS
-- Vanilla JavaScript
-- Bootstrap 5
+- src/backend/main.py
+- src/backend/drive_storage.py
 
-### 3.2 バックエンド
+### 2.3 永続化
 
-- Python 3.10+
-- FastAPI
-- Uvicorn
-- pydub / imageio-ffmpeg
-- Google Cloud Storage
-- Google Drive API互換のアップロード処理
+- ローカル: src/data/*.json, src/uploads
+- クラウド: Google Cloud Storage（設定有効時）
 
-### 3.3 データ保存
+## 3. 役割モデル
 
-- ローカル開発: `src/data/*.json`
-- ファイル: `src/uploads/`
-- Cloud Storage設定時: JSONと録音メタデータをCloud Storageへ同期
+### 3.1 ユーザー権限
 
-## 4. 主要ファイル
+- 一般
+- エキストラ
+- 管理者
+- システム管理者
 
-```text
-src/
-  index.html
-  backend/
-    main.py
-    drive_storage.py
-    requirements.txt
-  static/
-    css/style.css
-    js/app.js
-    icons/
-      favicon-32x32.png
-      apple-touch-icon.png
-      icon-192.png
-      icon-512.png
-      kanade-original.png
-    manifest.webmanifest
-    site.webmanifest
-  data/
-  uploads/
-```
+### 3.2 補助フラグ
 
-## 5. 画面構成
+- 録音担当
+- 楽譜担当
 
-### 5.1 初期表示
+### 3.3 認証方針
 
-初期表示は団員メニューのみとし、「お知らせ」を表示する。
+- 団員ログイン + 端末認証
+- 端末情報は auth_devices へ保存
+- エキストラは利用期限でアクセス制御
 
-ヘッダーには以下を表示する。
+## 4. 画面体系
 
-- 奏オケアイコン
-- 奏オケポータル
-- 更新ボタン
+### 4.1 団員パネル
 
-更新ボタンはブラウザ更新と同じ `window.location.reload()` を実行する。
-
-### 5.2 団員メニュー
+主要機能:
 
 - お知らせ
 - 演奏会情報
 - 練習予定
 - 録音部屋
-- 団員紹介
-- SNS
-- 演奏会記録
 - 欠席連絡
 - 楽譜ライブラリ
 - 支払状況
 - 乗り番表
 - イベント調整
 - 楽曲情報
+- 演奏希望曲
+- 宣伝
 - アルバム
-- 管理メニュー
+- 団員紹介
+- 演奏会記録
+- SNS
+- マニュアル
 
-### 5.3 管理メニュー
+### 4.2 管理パネル
 
-管理メニューはパスワード入力後に表示する。
+主要機能:
 
 - 録音管理
-- 演奏会情報
-- 練習予定
-- お知らせ
+- 演奏会情報管理
+- 練習予定管理
+- お知らせ管理
+- イベント管理
+- 楽曲情報管理
 - 団員登録
+- 支払状況登録
+- 会場管理
+- 乗り番管理
+- 楽譜管理
+
+### 4.3 システム管理パネル
+
+主要機能:
+
+- 認証端末管理
+- 団体情報設定
+- SNS 設定
+- 接続先設定
+- パート設定
+
+## 5. データ設計
+
+### 5.1 管理対象コレクション
+
+- performances
+- schedules
+- announcements
+- drive_files
+- events
+- members
+- absences
+- event_responses
+- sheet_library
+- payments
+- castings
+- piece_infos
+- albums
+- part_settings
+- venue_settings
+- org_settings
+- sns_settings
+- connection_settings
+- auth_devices
+- recording_metadata
+- desired_pieces
+- promotions
+
+### 5.2 特記事項
+
+- connection_settings を設定ソースの第一優先とし、環境変数はフォールバック
+- recording_metadata で再生時間などを保持
+
+## 6. API 構成
+
+### 6.1 共通・起動
+
+- GET /
+- GET /api/health
+- GET /api/bootstrap-lite
+- GET /api/bootstrap-core
+- GET /api/bootstrap
+
+### 6.2 認証
+
+- POST /api/auth/portal-login
+- POST /api/auth/member-password
+- GET /api/auth/devices/{device_id}
+- GET /api/auth/devices
+- DELETE /api/auth/devices/{device_id}
+
+### 6.3 基本 CRUD
+
+- /api/performances
+- /api/schedules
+- /api/members
+- /api/events
+- /api/announcements
+
+### 6.4 録音
+
+- POST /api/convert
+- GET /api/recordings
+- GET /api/recordings/download-zip
+- GET /api/recordings/play/{path}
+- GET /api/recordings/download/{path}
+- DELETE /api/recordings
+- GET /api/recordings/cloud/play/{object_name}
+- GET /api/recordings/cloud/download/{object_name}
+- POST /api/drive/upload
+- GET /api/drive/files
+
+### 6.5 楽譜
+
+- GET /api/sheets
+- GET /api/sheets/download/{path}
+- GET /api/sheets/view/{path}
+- GET /api/sheets/cloud/download/{object_name}
+- GET /api/sheets/cloud/view/{object_name}
+- GET /api/sheets/download-zip
+- POST /api/sheets/upload
+- PUT /api/sheets/{sheet_id}/part
+- PUT /api/sheets/parts
+- DELETE /api/sheets
+
+### 6.6 汎用 extra
+
+- GET /api/extra/{name}
+- POST /api/extra/{name}
+- PUT /api/extra/{name}/{item_id}
+- DELETE /api/extra/{name}/{item_id}
 
-## 6. 機能一覧
+## 7. 非機能設計
 
-### 6.1 録音管理
+### 7.1 性能
 
-- WAV/MP3ファイルをアップロードできる。
-- WAVはMP3へ変換する。
-- MP3はそのまま保存できる。
-- Google Cloud Storage直接アップロードに対応する。
-- 録音一覧は練習日、曲名ごとにグルーピングする。
-- 団員側では再生とダウンロードを提供する。
-- 管理側では削除を提供する。
-- 再生APIはHTTP Rangeに対応し、再生開始を速くする。
-- 日本語パスをURLエンコードして再生URLを生成する。
+- メモリキャッシュとインデックスによる検索高速化
+- ETag と IndexedDB による通信最適化
+- 初期描画高速化のための段階ロード
 
-### 6.2 演奏会情報
+### 7.2 可用性
 
-- タイトル
-- 日付
-- 開場時刻
-- 開演時刻
-- 会場
-- 指揮者
-- 曲目
+- ローカル JSON を基準にクラウド同期
+- Cloud 接続不可時はローカル処理継続
 
-曲目は以下を持つ。
+### 7.3 セキュリティ
 
-- 作曲者
-- 曲名
-- 略称
+- 端末単位認証の保存
+- エキストラ期限切れ時のアクセス拒否
+- extra コレクション名のホワイトリスト制御
 
-入力例は以下。
+## 8. 運用
 
-- 作曲者: チャイコフスキー
-- 曲名: 交響曲第5番
-- 略称: チャイ5
+### 8.1 配備想定
 
-団員メニューでは直近の演奏会までのカウントダウンを表示する。
+- Cloud Run 運用
+- Google Sites 埋め込み利用
 
-### 6.3 練習予定
+### 8.2 保守規約
 
-登録項目は以下。
+- 実装変更時は API、データ定義、画面定義を同時に更新
+- コメント規約に従い関数・変数の責務を明記
+- 設計変更は DESIGN_WEB.md と本書の両方へ反映
 
-- 練習日
-- 開始時刻
-- 終了時刻
-- 練習場所
-- 利用可能開始時刻
-- 利用可能終了時刻
-- 練習曲
-- 指揮者トレ
-- 備考
+## 9. 参照ドキュメント
 
-練習場所は以下から選択する。
-
-- 千早音楽練習場　大練習室
-- 千早音楽練習場　中練習室
-- パピオ
-- その他
-
-「その他」の場合は任意入力欄を表示する。
-
-### 6.4 お知らせ
-
-- 日付と本文を登録する。
-- 団員メニューと管理メニューの両方で表示する。
-
-### 6.5 団員紹介
-
-- 外部リンクやiframeではなく、ポータル内にプロフィールカードを表示する。
-- 管理メニューの団員登録データを利用する。
-- 未登録時は仮プロフィールを表示する。
-
-### 6.6 団員登録
-
-管理メニューから以下を登録する。
-
-- 写真
-- 名前
-- パート
-- 入団年月
-- 紹介者
-- 役割
-- 楽器歴
-- 過去所属オケ
-- コメント
-
-写真は `member_photos` として保存し、団員紹介に表示する。
-
-### 6.7 欠席連絡
-
-- 名前と練習日を登録する。
-- 練習日ごとの欠席者を表示する。
-
-### 6.8 楽譜ライブラリ
-
-- 演奏会、曲名、PDFを登録する。
-- PDFの閲覧とダウンロードを提供する。
-
-### 6.9 支払状況
-
-- 団員ごとに団費、演奏会費の支払い状況を登録する。
-
-### 6.10 乗り番表
-
-- 演奏会、パート、乗り番メンバーを登録する。
-
-### 6.11 イベント調整
-
-- 最初にイベント名と日付を登録する。
-- 登録済みイベントを選択すると、子画面で名前と参加/不参加を登録する。
-- イベントごとに回答一覧を表示する。
-
-### 6.12 楽曲情報
-
-- 演奏会ごとに曲名、作曲者、参考情報、注意点などを登録する。
-
-### 6.13 アルバム
-
-- 写真タイトルと画像ファイルを登録する。
-- 投稿者入力は不要。
-- 写真は一覧で共有する。
-
-## 7. 日付表示
-
-画面表示では日付に曜日を付ける。
-
-例:
-
-```text
-2026-06-13（土）
-```
-
-保存値は `YYYY-MM-DD` のままとする。
-
-## 8. API概要
-
-### 8.1 基本
-
-- `GET /api/health`
-- `GET /`
-
-### 8.2 CRUD
-
-- `/api/performances`
-- `/api/schedules`
-- `/api/announcements`
-- `/api/portal/{collection}`
-
-### 8.3 録音
-
-- `GET /api/recordings`
-- `GET /api/recordings/play/{path}`
-- `GET /api/recordings/download/{path}`
-- `POST /api/recordings/download-zip`
-- `DELETE /api/recordings`
-- `GET /api/recordings/cloud/play/{object_name}`
-- `GET /api/recordings/cloud/download/{object_name}`
-
-### 8.4 アップロード
-
-- `POST /api/drive/upload`
-- `POST /api/drive/direct-upload-session`
-- `POST /api/drive/direct-upload-complete`
-- `POST /api/portal-files/{kind}`
-- `GET /api/portal-files/{kind}/{path}`
-- `POST /api/portal-members`
-
-## 9. PWA / iPhoneホーム画面
-
-`src/index.html` で以下を指定する。
-
-- `link rel="apple-touch-icon"`: `/static/icons/apple-touch-icon.png`
-- `link rel="manifest"`: `/static/manifest.webmanifest`
-- `theme-color`: `#235789`
-
-`manifest.webmanifest` には以下を指定する。
-
-- `name`: 奏オケポータル
-- `short_name`: 奏オケ
-- `icons`: `/static/icons/icon-192.png`, `/static/icons/icon-512.png`
-
-## 10. デプロイ
-
-### 10.1 Cloud Run
-
-Dockerfileでコンテナ化してCloud Runへデプロイする。
-
-### 10.2 Google Sites
-
-Cloud RunのURLをGoogle Sitesへ埋め込む。
-
-```html
-<iframe
-  src="https://...run.app/"
-  width="100%"
-  height="900"
-  frameborder="0"
-  allow="microphone"
-  sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation-by-user-activation"
-></iframe>
-```
-
-## 11. 運用注意
-
-- Cloud Runへ再デプロイしたあと画面が古い場合は、ポータルの「更新」ボタンを押す。
-- iPhoneホーム画面アイコンはキャッシュされやすいため、変更が反映されない場合はホーム画面リンクを削除して追加し直す。
-- 大容量録音はCloud Storage直接アップロードを優先する。
-- 管理メニューのパスワードはフロント側簡易ロックなので、本格運用ではサーバー側認証の導入を検討する。
+- DESIGN_WEB.md: Web 実装詳細
+- SYSTEM_DESIGN.md: システム横断設計
+- FRONTEND_DESIGN.md: UI 詳細
+- API_DATABASE_SPEC.md: API とデータ仕様
