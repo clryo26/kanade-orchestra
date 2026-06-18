@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import os
 from datetime import datetime
@@ -13,6 +14,7 @@ from google.oauth2 import service_account
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
+logger = logging.getLogger(__name__)
 
 
 # 接続設定はまず JSON 管理の connection_settings を参照し、
@@ -143,24 +145,45 @@ def _legacy_data_object_name(name: str) -> str:
     return f"{name}.json"
 
 
+def storage_debug_info() -> dict[str, str]:
+    # 実際にどの設定で Storage を見に行っているかをログ出力するための診断情報。
+    return {
+        "bucket": storage_bucket_name(),
+        "project_id": _setting_value("google_project_id", "GOOGLE_CLOUD_PROJECT"),
+        "prefix": _setting_value("google_cloud_storage_data_prefix", "GOOGLE_CLOUD_STORAGE_DATA_PREFIX", "app-data").strip("/"),
+        "public": str(_setting_bool("google_cloud_storage_public", "GOOGLE_CLOUD_STORAGE_PUBLIC", False)).lower(),
+        "service_account_file": _setting_value("google_service_account_file", "GOOGLE_SERVICE_ACCOUNT_FILE"),
+        "service_account_json": "set" if _setting_value("google_service_account_json", "GOOGLE_SERVICE_ACCOUNT_JSON") else "",
+    }
+
+
+def candidate_data_object_names(name: str) -> list[str]:
+    # 旧配置との互換のため、複数のprefix候補を順番に試す。
+    filename = f"{name}.json"
+    prefix = _setting_value("google_cloud_storage_data_prefix", "GOOGLE_CLOUD_STORAGE_DATA_PREFIX", "app-data").strip("/")
+    candidates = [f"{prefix}/{filename}" if prefix else filename, f"data/{filename}", filename]
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in candidates:
+        if item and item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return ordered
+
+
 def load_json_from_storage(name: str) -> list[dict[str, Any]] | None:
     # Cloud Storage 上の JSON コレクションを読み込む。
     # 未存在の場合は None を返し、呼び出し側でフォールバック判断させる。
     bucket = get_storage_bucket()
-    object_name = data_object_name(name)
-    blob = bucket.blob(object_name)
-    if not blob.exists():
-        # 旧配置（prefix なし）互換: members.json などをルート配置していた環境を読む。
-        legacy_name = _legacy_data_object_name(name)
-        if legacy_name != object_name:
-            legacy_blob = bucket.blob(legacy_name)
-            if legacy_blob.exists():
-                loaded = json.loads(legacy_blob.download_as_text(encoding="utf-8"))
-                return loaded if isinstance(loaded, list) else []
-        return None
-
-    loaded = json.loads(blob.download_as_text(encoding="utf-8"))
-    return loaded if isinstance(loaded, list) else []
+    for object_name in candidate_data_object_names(name):
+        blob = bucket.blob(object_name)
+        if not blob.exists():
+            continue
+        logger.info("load_json_from_storage(%s): using %s", name, object_name)
+        loaded = json.loads(blob.download_as_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, list) else []
+    logger.info("load_json_from_storage(%s): not found in any candidate object", name)
+    return None
 
 
 def save_json_to_storage(name: str, data: list[dict[str, Any]]) -> None:

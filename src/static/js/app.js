@@ -2645,7 +2645,18 @@ function currentOrgSetting() {
 }
 
 function orgShortName() {
-    return String(currentOrgSetting().short_name || currentOrgSetting().shortName || '楽団').trim() || '楽団';
+    const org = currentOrgSetting();
+    return String(
+        org.short_name
+        || org.shortName
+        || org.organization_abbreviation
+        || org.organizationAbbreviation
+        || org.organization_name
+        || org.organizationName
+        || org.organization_name_full
+        || org.organizationNameFull
+        || '楽団'
+    ).trim() || '楽団';
 }
 
 function portalTitleText() {

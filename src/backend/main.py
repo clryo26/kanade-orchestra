@@ -28,6 +28,7 @@ try:
         get_storage_bucket,
         load_json_from_storage,
         save_json_to_storage,
+        storage_debug_info,
         storage_enabled,
         upload_file_to_drive,
     )
@@ -36,6 +37,7 @@ except ImportError:  # pragma: no cover - allows running main.py directly.
         get_storage_bucket,
         load_json_from_storage,
         save_json_to_storage,
+        storage_debug_info,
         storage_enabled,
         upload_file_to_drive,
     )
@@ -595,27 +597,38 @@ def seed_connection_settings_from_legacy_env() -> None:
 async def seed_cloud_data_from_local() -> None:
     # 旧環境変数運用から移行した環境では接続設定を先に補完する。
     seed_connection_settings_from_legacy_env()
+    logger.info("Storage diagnostics: %s", storage_debug_info())
 
     # 起動時に主要コレクションをキャッシュへ温める。
     # さらに Cloud Storage が空なら、既存ローカル JSON を初回シードとして送る。
     for name in JSON_DATA_NAMES:
+        logger.info("Startup preload begin: %s", name)
         try:
-            load_json_data(name)  # キャッシュに読み込み
-        except HTTPException:
-            pass  # キャッシュ失敗は無視
+            loaded = load_json_data(name)  # キャッシュに読み込み
+            logger.info("Startup preload done: %s (%s items)", name, len(loaded))
+        except HTTPException as exc:
+            logger.exception("Startup preload failed: %s (%s)", name, exc)
     
     if not storage_enabled():
+        logger.info("Storage disabled; skipping cloud seeding")
         return
 
     for name in JSON_DATA_NAMES:
-        if not data_file(name).exists():
+        logger.info("Cloud seed check begin: %s", name)
+        local_path = data_file(name)
+        if not local_path.exists():
+            logger.info("Cloud seed skipped (local missing): %s", name)
             continue
         try:
-            if load_json_from_storage(name) is None:
-                save_json_to_storage(name, load_local_json_data(name))
-                logger.info("Seeded %s.json to Cloud Storage", name)
+            cloud_data = load_json_from_storage(name)
+            if cloud_data is None:
+                local_data = load_local_json_data(name)
+                save_json_to_storage(name, local_data)
+                logger.info("Cloud seed done: %s (%s items)", name, len(local_data))
+            else:
+                logger.info("Cloud seed skipped (already exists): %s (%s items)", name, len(cloud_data))
         except Exception:
-            logger.exception("Failed to seed %s.json to Cloud Storage", name)
+            logger.exception("Cloud seed failed: %s", name)
 
 
 @asynccontextmanager

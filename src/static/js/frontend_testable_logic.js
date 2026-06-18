@@ -133,6 +133,24 @@
         return targets;
     }
 
+    function resolveOrgShortName(org) {
+        return String(
+            org?.short_name
+            || org?.shortName
+            || org?.organization_abbreviation
+            || org?.organizationAbbreviation
+            || org?.organization_name
+            || org?.organizationName
+            || org?.organization_name_full
+            || org?.organizationNameFull
+            || '楽団'
+        ).trim() || '楽団';
+    }
+
+    function portalTitleTextFromOrg(org) {
+        return `${resolveOrgShortName(org)}ポータル`;
+    }
+
     function buildRequestHeadersForApi(headers, deviceId) {
         return {
             ...(headers || {}),
@@ -272,6 +290,8 @@
         mutationRelatedCacheKeys,
         loadAllEndpointFromOptions,
         renderInitialViewTargets,
+        resolveOrgShortName,
+        portalTitleTextFromOrg,
         buildRequestHeadersForApi,
         buildConditionalGetHeadersForApi,
         moveDateAdjustmentCandidateRow,
