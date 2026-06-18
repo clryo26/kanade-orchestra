@@ -59,6 +59,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="piece-info-admin" type="button">楽曲情報</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="practice-instruction-admin" type="button">練習指示</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払設定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
@@ -346,6 +347,40 @@
                             <button class="btn btn-danger" id="deletePieceInfoBtn" type="button">削除</button>
                         </div>
                         <div id="pieceInfoAdminList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 練習指示管理 -->
+            <div id="practiceInstructionAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">練習指示</div>
+                    <div class="card-body">
+                        <input type="hidden" id="practiceInstructionId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="practiceInstructionPerformance">演奏会</label>
+                                <select class="form-select" id="practiceInstructionPerformance"></select>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label" for="practiceInstructionPiece">曲名</label>
+                                <select class="form-select" id="practiceInstructionPiece"></select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="practiceInstructionNotes">練習時の指摘内容</label>
+                                <textarea class="form-control" id="practiceInstructionNotes" rows="4"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="practiceInstructionPerformanceNotes">演奏指示</label>
+                                <textarea class="form-control" id="practiceInstructionPerformanceNotes" rows="4"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="savePracticeInstructionBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearPracticeInstructionBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deletePracticeInstructionBtn" type="button">削除</button>
+                        </div>
+                        <div id="practiceInstructionAdminList"></div>
                     </div>
                 </div>
             </div>
@@ -769,12 +804,14 @@
                 <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-practice-instruction" type="button">練習指示</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-absence" type="button">欠席連絡</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-sheet" type="button">楽譜ライブラリ</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-payment" type="button">支払状況</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-casting" type="button">乗り番表</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-event" type="button">イベント調整</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-date-adjustment" type="button">日程調整</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-piece-info" type="button">楽曲情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-desired-piece" type="button">演奏希望曲</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-promotion" type="button">宣伝</button>
@@ -816,6 +853,14 @@
                 </div>
             </div>
 
+            <!-- 団員向け: 練習指示 -->
+            <div id="memberPracticeInstructionTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">練習指示</div>
+                    <div class="card-body" id="memberPracticeInstructionInfo"></div>
+                </div>
+            </div>
+
             <!-- 団員向け: 録音部屋 -->
             <div id="memberRecordingTab" class="tab-content" hidden>
                 <div class="card">
@@ -849,6 +894,9 @@
             <div id="memberEventTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">イベント調整</div><div class="card-body" id="memberEventInfo"></div></div>
             </div>
+            <div id="memberDateAdjustmentTab" class="tab-content" hidden>
+                <div class="card"><div class="card-header">日程調整</div><div class="card-body" id="memberDateAdjustmentInfo"></div></div>
+            </div>
             <div id="memberPieceInfoTab" class="tab-content" hidden>
                 <div class="card"><div class="card-header">楽曲情報</div><div class="card-body" id="memberPieceInfo"></div></div>
             </div>
@@ -877,6 +925,6 @@
 
     <div id="toastArea" class="toast-area"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/app.js?v=20260617-15"></script>
+    <script src="/static/js/app.js?v=20260618-1"></script>
 </body>
 </html>

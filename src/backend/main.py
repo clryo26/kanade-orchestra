@@ -9,13 +9,14 @@ import re
 import shutil
 import io
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -129,7 +130,7 @@ DATA_DIR = BASE_DIR / "data"
 CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 SHEET_DIR = UPLOAD_DIR / "sheets"
-JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "auth_devices", "recording_metadata", "desired_pieces", "promotions")
+JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "auth_devices", "recording_metadata", "desired_pieces", "promotions")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -286,9 +287,172 @@ class MemberPasswordSetupRequest(BaseModel):
     password: str
 
 
+class ExtraUpsertRequest(BaseModel):
+    payload: dict[str, Any] = Field(default_factory=dict)
+    expected_updated_at: str = ""
+
+
 def model_dump(model: BaseModel) -> dict[str, Any]:
     # Pydantic v1/v2 両対応で辞書化するための互換ヘルパー。
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
+
+
+def normalize_bool_text(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return "true"
+    if text in {"0", "false", "no", "off"}:
+        return "false"
+    return ""
+
+
+def candidate_sort_key(candidate: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(candidate.get("date") or ""),
+        str(candidate.get("start_time") or ""),
+        str(candidate.get("end_time") or ""),
+    )
+
+
+def validate_date_adjustment_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+
+    raw_candidates = payload.get("candidates")
+    if not isinstance(raw_candidates, list) or not raw_candidates:
+        raise HTTPException(status_code=400, detail="candidates is required")
+
+    normalized_candidates: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str, str]] = set()
+    for index, item in enumerate(raw_candidates):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail=f"candidates[{index}] must be object")
+        date = str(item.get("date") or "").strip()
+        start_time = str(item.get("start_time") or "").strip()
+        end_time = str(item.get("end_time") or "").strip()
+        note = str(item.get("note") or "").strip()
+        if not date:
+            raise HTTPException(status_code=400, detail=f"candidates[{index}].date is required")
+        candidate_id = str(item.get("id") or f"cand-{index + 1}").strip()
+        normalized = {
+            "id": candidate_id,
+            "date": date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "note": note,
+        }
+        key = candidate_sort_key(normalized)
+        if key in seen_keys:
+            raise HTTPException(status_code=400, detail="duplicate candidates are not allowed")
+        seen_keys.add(key)
+        normalized_candidates.append(normalized)
+
+    data = dict(payload)
+    data["title"] = title
+    data["deadline"] = str(payload.get("deadline") or "").strip()
+    data["notes"] = str(payload.get("notes") or "").strip()
+    data["delete_phrase"] = str(payload.get("delete_phrase") or "").strip()
+    data["created_by"] = str(payload.get("created_by") or "").strip()
+    data["member_id"] = payload.get("member_id")
+    data["candidates"] = normalized_candidates
+    return data
+
+
+def validate_date_adjustment_response_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    adjustment_id = payload.get("adjustment_id")
+    candidate_id = str(payload.get("candidate_id") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    status = str(payload.get("status") or "").strip().lower()
+    if adjustment_id in {None, ""}:
+        raise HTTPException(status_code=400, detail="adjustment_id is required")
+    if not candidate_id:
+        raise HTTPException(status_code=400, detail="candidate_id is required")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    if status not in {"ok", "maybe", "ng"}:
+        raise HTTPException(status_code=400, detail="status must be one of ok/maybe/ng")
+
+    data = dict(payload)
+    data["candidate_id"] = candidate_id
+    data["name"] = name
+    data["status"] = status
+    data["note"] = str(payload.get("note") or "").strip()
+    return data
+
+
+def validate_connection_settings_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(payload)
+    data["google_project_id"] = str(payload.get("google_project_id") or "").strip()
+    data["google_cloud_storage_bucket"] = str(payload.get("google_cloud_storage_bucket") or "").strip()
+    data["google_cloud_storage_data_prefix"] = str(payload.get("google_cloud_storage_data_prefix") or "").strip()
+    data["google_cloud_storage_public"] = normalize_bool_text(payload.get("google_cloud_storage_public"))
+    data["google_service_account_file"] = str(payload.get("google_service_account_file") or "").strip()
+    data["google_service_account_json"] = str(payload.get("google_service_account_json") or "").strip()
+    return data
+
+
+def normalize_extra_for_collection(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if name == "date_adjustments":
+        return validate_date_adjustment_payload(payload)
+    if name == "date_adjustment_responses":
+        return validate_date_adjustment_response_payload(payload)
+    if name == "connection_settings":
+        return validate_connection_settings_payload(payload)
+    return payload
+
+
+def device_auth_record(device_id: str) -> dict[str, Any]:
+    if not device_id:
+        raise HTTPException(status_code=401, detail="X-Device-Id is required")
+    devices = load_json_data("auth_devices")
+    device = next((item for item in devices if item.get("device_id") == device_id), None)
+    if not device:
+        raise HTTPException(status_code=401, detail="Device is not authenticated")
+    member_id = device.get("member_id")
+    if member_id is not None:
+        members = load_json_data("members")
+        member = next((value for value in members if value.get("id") == member_id), None)
+        if member and member_access_expired(member):
+            raise HTTPException(status_code=403, detail="Member access expired")
+    return device
+
+
+def require_device(device_id: str) -> dict[str, Any]:
+    return device_auth_record(device_id)
+
+
+def require_admin_device(device_id: str) -> dict[str, Any]:
+    device = device_auth_record(device_id)
+    permission = str(device.get("permission") or "")
+    if permission not in {"管理者", "システム管理者"}:
+        raise HTTPException(status_code=403, detail="Admin permission is required")
+    return device
+
+
+def require_recording_manager_device(device_id: str) -> dict[str, Any]:
+    device = device_auth_record(device_id)
+    permission = str(device.get("permission") or "")
+    if permission in {"管理者", "システム管理者"} or bool(device.get("is_recording_manager")):
+        return device
+    raise HTTPException(status_code=403, detail="Recording manager permission is required")
+
+
+def require_sheet_manager_device(device_id: str) -> dict[str, Any]:
+    device = device_auth_record(device_id)
+    permission = str(device.get("permission") or "")
+    if permission in {"管理者", "システム管理者"} or bool(device.get("is_sheet_manager")):
+        return device
+    raise HTTPException(status_code=403, detail="Sheet manager permission is required")
+
+
+def ensure_expected_updated_at(current: dict[str, Any], expected_updated_at: str | None) -> None:
+    expected = str(expected_updated_at or "").strip()
+    if not expected:
+        return
+    current_updated = str(current.get("updated_at") or "")
+    if current_updated != expected:
+        raise HTTPException(status_code=409, detail="Data has been updated by another user")
 
 
 # ===== JSON データ入出力 =====
@@ -360,8 +524,76 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
             ) from exc
 
 
-@app.on_event("startup")
+def has_connection_setting(items: list[dict[str, Any]]) -> bool:
+    # 接続設定として意味のある値が1件でもあれば設定済みとみなす。
+    keys = (
+        "google_project_id",
+        "google_cloud_storage_bucket",
+        "google_cloud_storage_data_prefix",
+        "google_service_account_file",
+        "google_service_account_json",
+        "google_cloud_storage_public",
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if any(str(item.get(key) or "").strip() for key in keys):
+            return True
+    return False
+
+
+def legacy_connection_setting_from_env() -> dict[str, Any]:
+    # 旧運用の環境変数を新しい connection_settings レコードへ変換する。
+    bucket = os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip()
+    if not bucket:
+        return {}
+
+    public_raw = os.getenv("GOOGLE_CLOUD_STORAGE_PUBLIC", "").strip().lower()
+    if public_raw in {"1", "true", "yes", "on"}:
+        public_value = "true"
+    elif public_raw in {"0", "false", "no", "off"}:
+        public_value = "false"
+    else:
+        public_value = ""
+
+    return {
+        "google_project_id": os.getenv("GOOGLE_CLOUD_PROJECT", "").strip(),
+        "google_cloud_storage_bucket": bucket,
+        # 旧運用互換のため、未設定時は空文字のまま登録する。
+        "google_cloud_storage_data_prefix": os.getenv("GOOGLE_CLOUD_STORAGE_DATA_PREFIX", "").strip(),
+        "google_cloud_storage_public": public_value,
+        "google_service_account_file": os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip(),
+        "google_service_account_json": os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip(),
+    }
+
+
+def seed_connection_settings_from_legacy_env() -> None:
+    # connection_settings が空の環境では、旧環境変数値を1件自動登録する。
+    # これにより接続情報メニュー導入後も既存デプロイの設定を引き継げる。
+    items = load_json_data("connection_settings")
+    if has_connection_setting(items):
+        return
+
+    legacy = legacy_connection_setting_from_env()
+    if not legacy:
+        return
+
+    now = datetime.now().isoformat()
+    payload = {
+        "id": next_id(items),
+        "created_at": now,
+        "updated_at": now,
+        **legacy,
+    }
+    items.append(payload)
+    save_json_data("connection_settings", items)
+    logger.info("Seeded connection_settings from legacy environment variables")
+
+
 async def seed_cloud_data_from_local() -> None:
+    # 旧環境変数運用から移行した環境では接続設定を先に補完する。
+    seed_connection_settings_from_legacy_env()
+
     # 起動時に主要コレクションをキャッシュへ温める。
     # さらに Cloud Storage が空なら、既存ローカル JSON を初回シードとして送る。
     for name in JSON_DATA_NAMES:
@@ -382,6 +614,15 @@ async def seed_cloud_data_from_local() -> None:
                 logger.info("Seeded %s.json to Cloud Storage", name)
         except Exception:
             logger.exception("Failed to seed %s.json to Cloud Storage", name)
+
+
+@asynccontextmanager
+async def app_lifespan(_: FastAPI):
+    await seed_cloud_data_from_local()
+    yield
+
+
+app.router.lifespan_context = app_lifespan
 
 
 def next_id(items: list[dict[str, Any]]) -> int:
@@ -621,7 +862,8 @@ async def get_auth_devices() -> list[dict[str, Any]]:
 
 # 指定端末の認証情報を削除して再ログインを要求可能にする。
 @app.delete("/api/auth/devices/{device_id}")
-async def delete_auth_device(device_id: str) -> dict[str, str]:
+async def delete_auth_device(device_id: str, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_admin_device(x_device_id)
     devices = load_json_data("auth_devices")
     save_json_data("auth_devices", [item for item in devices if item.get("device_id") != device_id])
     return {"message": "Deleted"}
@@ -671,7 +913,7 @@ async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response
         if if_none_match == cached_etag:
             return Response(status_code=304, headers={"ETag": cached_etag})
     
-    extra_names = ("absences", "event_responses", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
+    extra_names = ("absences", "event_responses", "date_adjustments", "date_adjustment_responses", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
     extras = {name: load_json_data(name) for name in extra_names}
     data = {
         "performances": load_json_data("performances"),
@@ -702,7 +944,7 @@ async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
         if if_none_match == cached_etag:
             return Response(status_code=304, headers={"ETag": cached_etag})
     
-    extra_names = ("absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
+    extra_names = ("absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
     extras = {name: load_json_data(name) for name in extra_names}
     data = {
         "performances": load_json_data("performances"),
@@ -1035,7 +1277,8 @@ async def get_performances() -> list[dict[str, Any]]:
 
 # 演奏会を新規作成する。
 @app.post("/api/performances", response_model=Performance)
-async def create_performance(performance: Performance) -> dict[str, Any]:
+async def create_performance(performance: Performance, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("performances")
     now = datetime.now().isoformat()
     payload = model_dump(performance)
@@ -1054,7 +1297,8 @@ async def get_performance(performance_id: int) -> dict[str, Any]:
 
 # 指定 ID の演奏会を更新する。
 @app.put("/api/performances/{performance_id}", response_model=Performance)
-async def update_performance(performance_id: int, performance: Performance) -> dict[str, Any]:
+async def update_performance(performance_id: int, performance: Performance, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("performances")
     index, current = find_item(items, performance_id)
     payload = model_dump(performance)
@@ -1072,7 +1316,8 @@ async def update_performance(performance_id: int, performance: Performance) -> d
 
 # 指定 ID の演奏会を削除する。
 @app.delete("/api/performances/{performance_id}")
-async def delete_performance(performance_id: int) -> dict[str, str]:
+async def delete_performance(performance_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_admin_device(x_device_id)
     items = load_json_data("performances")
     find_item(items, performance_id)
     save_json_data("performances", [item for item in items if item.get("id") != performance_id])
@@ -1087,7 +1332,8 @@ async def get_schedules() -> list[dict[str, Any]]:
 
 # 練習予定を新規作成する。
 @app.post("/api/schedules", response_model=Schedule)
-async def create_schedule(schedule: Schedule) -> dict[str, Any]:
+async def create_schedule(schedule: Schedule, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("schedules")
     now = datetime.now().isoformat()
     payload = model_dump(schedule)
@@ -1106,7 +1352,8 @@ async def get_schedule(schedule_id: int) -> dict[str, Any]:
 
 # 指定 ID の練習予定を更新する。
 @app.put("/api/schedules/{schedule_id}", response_model=Schedule)
-async def update_schedule(schedule_id: int, schedule: Schedule) -> dict[str, Any]:
+async def update_schedule(schedule_id: int, schedule: Schedule, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("schedules")
     index, current = find_item(items, schedule_id)
     payload = model_dump(schedule)
@@ -1124,7 +1371,8 @@ async def update_schedule(schedule_id: int, schedule: Schedule) -> dict[str, Any
 
 # 指定 ID の練習予定を削除する。
 @app.delete("/api/schedules/{schedule_id}")
-async def delete_schedule(schedule_id: int) -> dict[str, str]:
+async def delete_schedule(schedule_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_admin_device(x_device_id)
     items = load_json_data("schedules")
     find_item(items, schedule_id)
     save_json_data("schedules", [item for item in items if item.get("id") != schedule_id])
@@ -1141,7 +1389,8 @@ async def get_members() -> list[dict[str, Any]]:
 
 # 団員を新規作成する。
 @app.post("/api/members", response_model=Member)
-async def create_member(member: Member) -> dict[str, Any]:
+async def create_member(member: Member, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("members")
     now = datetime.now().isoformat()
     payload = model_dump(member)
@@ -1154,7 +1403,8 @@ async def create_member(member: Member) -> dict[str, Any]:
 
 # 指定 ID の団員情報を更新する。
 @app.put("/api/members/{member_id}", response_model=Member)
-async def update_member(member_id: int, member: Member) -> dict[str, Any]:
+async def update_member(member_id: int, member: Member, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("members")
     index, current = find_item(items, member_id)
     payload = model_dump(member)
@@ -1171,7 +1421,8 @@ async def update_member(member_id: int, member: Member) -> dict[str, Any]:
 
 # 指定 ID の団員情報を削除する。
 @app.delete("/api/members/{member_id}")
-async def delete_member(member_id: int) -> dict[str, str]:
+async def delete_member(member_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_admin_device(x_device_id)
     items = load_json_data("members")
     find_item(items, member_id)
     save_json_data("members", [item for item in items if item.get("id") != member_id])
@@ -1186,7 +1437,8 @@ async def get_events() -> list[dict[str, Any]]:
 
 # イベントを新規作成する。
 @app.post("/api/events", response_model=EventAdjustment)
-async def create_event(event: EventAdjustment) -> dict[str, Any]:
+async def create_event(event: EventAdjustment, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("events")
     now = datetime.now().isoformat()
     payload = model_dump(event)
@@ -1198,7 +1450,8 @@ async def create_event(event: EventAdjustment) -> dict[str, Any]:
 
 # 指定 ID のイベントを更新する。
 @app.put("/api/events/{event_id}", response_model=EventAdjustment)
-async def update_event(event_id: int, event: EventAdjustment) -> dict[str, Any]:
+async def update_event(event_id: int, event: EventAdjustment, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("events")
     index, current = find_item(items, event_id)
     payload = model_dump(event)
@@ -1214,7 +1467,8 @@ async def update_event(event_id: int, event: EventAdjustment) -> dict[str, Any]:
 
 # 指定 ID のイベントを削除する。
 @app.delete("/api/events/{event_id}")
-async def delete_event(event_id: int) -> dict[str, str]:
+async def delete_event(event_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_admin_device(x_device_id)
     items = load_json_data("events")
     find_item(items, event_id)
     save_json_data("events", [item for item in items if item.get("id") != event_id])
@@ -1229,7 +1483,8 @@ async def get_announcements() -> list[dict[str, Any]]:
 
 # お知らせを新規作成する。
 @app.post("/api/announcements", response_model=Announcement)
-async def create_announcement(announcement: Announcement) -> dict[str, Any]:
+async def create_announcement(announcement: Announcement, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("announcements")
     now = datetime.now().isoformat()
     payload = model_dump(announcement)
@@ -1248,7 +1503,8 @@ async def get_announcement(announcement_id: int) -> dict[str, Any]:
 
 # 指定 ID のお知らせを更新する。
 @app.put("/api/announcements/{announcement_id}", response_model=Announcement)
-async def update_announcement(announcement_id: int, announcement: Announcement) -> dict[str, Any]:
+async def update_announcement(announcement_id: int, announcement: Announcement, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_admin_device(x_device_id)
     items = load_json_data("announcements")
     index, current = find_item(items, announcement_id)
     payload = model_dump(announcement)
@@ -1266,7 +1522,8 @@ async def update_announcement(announcement_id: int, announcement: Announcement) 
 
 # 指定 ID のお知らせを削除する。
 @app.delete("/api/announcements/{announcement_id}")
-async def delete_announcement(announcement_id: int) -> dict[str, str]:
+async def delete_announcement(announcement_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_admin_device(x_device_id)
     items = load_json_data("announcements")
     find_item(items, announcement_id)
     save_json_data("announcements", [item for item in items if item.get("id") != announcement_id])
@@ -1280,7 +1537,9 @@ async def convert_audio(
     file: UploadFile = File(...),
     date: str = Form(""),
     piece: str = Form(""),
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
 ) -> dict[str, Any]:
+    require_recording_manager_device(x_device_id)
     ensure_audio_file(file)
 
     date_dir = safe_segment(date, datetime.now().date().isoformat())
@@ -1411,7 +1670,8 @@ async def download_recording(path: str) -> FileResponse:
 
 # 録音（Cloud またはローカル）を削除する。
 @app.delete("/api/recordings")
-async def delete_recording(payload: RecordingDeleteRequest) -> dict[str, str]:
+async def delete_recording(payload: RecordingDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    require_recording_manager_device(x_device_id)
     if payload.source == "google_cloud_storage":
         object_name = payload.object_name.strip()
         if not object_name:
@@ -1520,7 +1780,9 @@ async def upload_to_drive(
     file: UploadFile = File(...),
     date: str = Form(""),
     piece: str = Form(""),
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
 ) -> dict[str, Any]:
+    require_recording_manager_device(x_device_id)
     ensure_audio_file(file)
 
     date_dir = safe_segment(date, datetime.now().date().isoformat())
@@ -1661,7 +1923,9 @@ async def upload_sheet(
     performance_id: str = Form(""),
     performance_title: str = Form(""),
     piece: str = Form(""),
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
 ) -> dict[str, Any]:
+    require_sheet_manager_device(x_device_id)
     ensure_pdf_file(file)
     if not performance_id:
         raise HTTPException(status_code=400, detail="performance_id is required")
@@ -1717,7 +1981,8 @@ async def upload_sheet(
 
 # 指定楽譜のパート情報を更新する。
 @app.put("/api/sheets/{sheet_id}/part")
-async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest) -> dict[str, Any]:
+async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_sheet_manager_device(x_device_id)
     items = load_json_data("sheet_library")
     index, current = find_item(items, sheet_id)
     current["part"] = payload.part.strip()
@@ -1729,7 +1994,8 @@ async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest) -> d
 
 # 複数楽譜のパート情報を一括更新する。
 @app.put("/api/sheets/parts")
-async def update_sheets_parts(payload: SheetBulkPartUpdateRequest) -> dict[str, Any]:
+async def update_sheets_parts(payload: SheetBulkPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_sheet_manager_device(x_device_id)
     if not payload.sheet_ids:
         raise HTTPException(status_code=400, detail="sheet_ids is required")
     if not payload.part.strip():
@@ -1756,7 +2022,8 @@ async def update_sheets_parts(payload: SheetBulkPartUpdateRequest) -> dict[str, 
 
 # 条件指定で楽譜を削除する（単票/曲単位/演奏会単位）。
 @app.delete("/api/sheets")
-async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
+async def delete_sheets(payload: SheetDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    require_sheet_manager_device(x_device_id)
     if not payload.performance_id:
         raise HTTPException(status_code=400, detail="performance_id is required")
 
@@ -1779,7 +2046,86 @@ async def delete_sheets(payload: SheetDeleteRequest) -> dict[str, Any]:
     return {"message": "Deleted", "deleted": len(targets)}
 
 
-EXTRA_COLLECTIONS = {"absences", "event_responses", "sheet_library", "payments", "castings", "piece_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions"}
+EXTRA_COLLECTIONS = {"absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions"}
+ADMIN_ONLY_EXTRA_COLLECTIONS = {
+    "sheet_library",
+    "payments",
+    "castings",
+    "piece_infos",
+    "practice_instructions",
+    "albums",
+    "part_settings",
+    "venue_settings",
+    "org_settings",
+    "sns_settings",
+    "connection_settings",
+    "desired_pieces",
+    "promotions",
+}
+
+
+def parse_extra_upsert_request(raw_body: dict[str, Any]) -> ExtraUpsertRequest:
+    payload = raw_body
+    expected_updated_at = ""
+    if isinstance(raw_body.get("payload"), dict):
+        payload = dict(raw_body.get("payload") or {})
+        expected_updated_at = str(raw_body.get("expected_updated_at") or "")
+    else:
+        payload = dict(raw_body or {})
+        expected_updated_at = str(raw_body.get("expected_updated_at") or "")
+        payload.pop("expected_updated_at", None)
+    return ExtraUpsertRequest(payload=payload, expected_updated_at=expected_updated_at)
+
+
+def assert_extra_collection_permission(name: str, device: dict[str, Any], payload: dict[str, Any] | None = None, current: dict[str, Any] | None = None) -> None:
+    if name in ADMIN_ONLY_EXTRA_COLLECTIONS:
+        permission = str(device.get("permission") or "")
+        if permission not in {"管理者", "システム管理者"}:
+            raise HTTPException(status_code=403, detail="Admin permission is required")
+        return
+
+    if name == "date_adjustments":
+        if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
+            return
+        member_id = str(device.get("member_id") or "")
+        member_name = str(device.get("member_name") or "")
+        target = current or payload or {}
+        owner_id = str(target.get("member_id") or "")
+        owner_name = str(target.get("created_by") or "")
+        if member_id and owner_id and member_id == owner_id:
+            return
+        if member_name and owner_name and member_name == owner_name:
+            return
+        raise HTTPException(status_code=403, detail="Only owner can modify date adjustment")
+
+    if name == "date_adjustment_responses":
+        if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
+            return
+        member_id = str(device.get("member_id") or "")
+        member_name = str(device.get("member_name") or "")
+        target = current or payload or {}
+        owner_id = str(target.get("member_id") or "")
+        owner_name = str(target.get("name") or "")
+        if member_id and owner_id and member_id == owner_id:
+            return
+        if member_name and owner_name and member_name == owner_name:
+            return
+        raise HTTPException(status_code=403, detail="Only owner can modify response")
+
+    # absences / event_responses は本人入力想定。
+    if name in {"absences", "event_responses"}:
+        if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
+            return
+        member_id = str(device.get("member_id") or "")
+        member_name = str(device.get("member_name") or "")
+        target = current or payload or {}
+        owner_id = str(target.get("member_id") or "")
+        owner_name = str(target.get("name") or "")
+        if member_id and owner_id and member_id == owner_id:
+            return
+        if member_name and owner_name and member_name == owner_name:
+            return
+        raise HTTPException(status_code=403, detail="Only owner can modify this record")
 
 # ===== 汎用 extra コレクション CRUD =====
 # 機能追加のたびに専用 API を増やさずに済むよう、
@@ -1813,28 +2159,39 @@ async def get_extra_items(name: str) -> list[dict[str, Any]]:
 
 # 指定 extra コレクションへ新規項目を追加する。
 @app.post("/api/extra/{name}")
-async def create_extra_item(name: str, request: Request) -> dict[str, Any]:
+async def create_extra_item(name: str, request: Request, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    device = require_device(x_device_id)
     items = collection_items(name)
-    payload = normalize_extra_payload(await read_json_body(request), next_id(items))
+    upsert = parse_extra_upsert_request(await read_json_body(request))
+    normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    assert_extra_collection_permission(name, device, payload=normalized_body)
+    payload = normalize_extra_payload(normalized_body, next_id(items))
     items.append(payload)
     save_json_data(name, items)
     return payload
 
 # 指定 extra コレクションの項目を更新する。
 @app.put("/api/extra/{name}/{item_id}")
-async def update_extra_item(name: str, item_id: int, request: Request) -> dict[str, Any]:
+async def update_extra_item(name: str, item_id: int, request: Request, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    device = require_device(x_device_id)
     items = collection_items(name)
     index, current = find_item(items, item_id)
-    payload = normalize_extra_payload(await read_json_body(request), item_id, current)
+    upsert = parse_extra_upsert_request(await read_json_body(request))
+    ensure_expected_updated_at(current, upsert.expected_updated_at)
+    normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
+    payload = normalize_extra_payload(normalized_body, item_id, current)
     items[index] = payload
     save_json_data(name, items)
     return payload
 
 # 指定 extra コレクションの項目を削除する。
 @app.delete("/api/extra/{name}/{item_id}")
-async def delete_extra_item(name: str, item_id: int) -> dict[str, str]:
+async def delete_extra_item(name: str, item_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    device = require_device(x_device_id)
     items = collection_items(name)
-    find_item(items, item_id)
+    _, current = find_item(items, item_id)
+    assert_extra_collection_permission(name, device, current=current)
     save_json_data(name, [item for item in items if item.get("id") != item_id])
     return {"message": "Deleted"}
 

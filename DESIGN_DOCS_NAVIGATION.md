@@ -15,6 +15,12 @@
 - FRONTEND_DESIGN.md: フロント実装観点
 - API_DATABASE_SPEC.md: API と JSON データ仕様
 - PERFORMANCE_IMPROVEMENTS.md: 性能改善履歴
+- UNIT_TEST_SPEC.md: 単体テスト仕様（全体網羅）
+- INTEGRATION_TEST_SPEC.md: 結合テスト親仕様（担当別ハブ）
+- INTEGRATION_TEST_SPEC_BACKEND.md: 結合テスト仕様（バックエンド担当）
+- INTEGRATION_TEST_SPEC_FRONTEND.md: 結合テスト仕様（フロント担当）
+- INTEGRATION_TEST_SPEC_CI.md: 結合テスト仕様（CI/運用担当）
+- OPERATION_TEST_SPEC.md: 運用テスト仕様（運用スモーク/CI運用）
 
 ## 3. 読み順
 
@@ -30,6 +36,9 @@
 1. DESIGN_WEB.md の該当機能章
 2. API_DATABASE_SPEC.md の API 章
 3. FRONTEND_DESIGN.md または SYSTEM_DESIGN.md
+4. 単体テスト観点を UNIT_TEST_SPEC.md へ反映
+5. 結合テスト観点を INTEGRATION_TEST_SPEC.md + 担当別仕様へ反映
+6. 運用テスト観点を OPERATION_TEST_SPEC.md へ反映
 
 ## 4. 同期ルール
 

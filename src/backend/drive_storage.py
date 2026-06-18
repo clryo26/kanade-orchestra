@@ -43,9 +43,9 @@ def _connection_setting_record() -> dict[str, Any]:
 def _setting_value(json_key: str, env_key: str, default: str = "") -> str:
     # 文字列設定値を JSON 優先で取得する。
     record = _connection_setting_record()
-    value = str(record.get(json_key) or "").strip()
-    if value:
-        return value
+    # JSON 側にキーがある場合は空文字も明示値として扱う。
+    if json_key in record:
+        return str(record.get(json_key) or "").strip()
     return os.getenv(env_key, default).strip()
 
 

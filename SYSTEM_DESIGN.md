@@ -34,6 +34,7 @@
 - 基本は JSON コレクションを正として扱う
 - Cloud 設定有効時は JSON も Cloud へ保存
 - 起動時にキャッシュを温めて応答速度を確保
+- connection_settings が空の場合は旧環境変数から1件自動登録して互換運用する
 
 ## 3. ロール・認可
 
@@ -56,6 +57,11 @@
 - 録音管理: 管理者または録音担当
 - 楽譜管理: 管理者または楽譜担当
 - エキストラ: system_access_until 超過時はログイン不可
+- 更新系 API は `X-Device-Id` を必須とし、auth_devices の認証済み端末のみ許可
+- 基本マスタ（performances/schedules/members/events/announcements）は管理者以上のみ更新可
+- extra のうち運用設定系（connection_settings 等）は管理者以上のみ更新可
+- date_adjustments / date_adjustment_responses / absences / event_responses は本人または管理者のみ更新可
+- extra PUT は `expected_updated_at` 指定時に競合検知を行い、不一致は 409
 
 ## 4. 画面構造
 
@@ -69,7 +75,7 @@
 
 - お知らせ、演奏会、練習予定、録音部屋
 - 欠席連絡、楽譜ライブラリ、支払状況、乗り番表
-- イベント、楽曲情報、演奏希望曲、宣伝、アルバム
+- イベント、日程調整、楽曲情報、練習指示、演奏希望曲、宣伝、アルバム
 - 団員紹介、演奏会記録、SNS、マニュアル
 
 ### 4.3 管理パネル
@@ -94,9 +100,12 @@
 - members
 - absences
 - event_responses
+- date_adjustments
+- date_adjustment_responses
 - payments
 - castings
 - piece_infos
+- practice_instructions
 - desired_pieces
 - promotions
 - albums
@@ -176,6 +185,13 @@
 ## 9. 正本ドキュメント
 
 本書は全体設計の正本であり、実装詳細は DESIGN_WEB.md と API_DATABASE_SPEC.md を参照する。
+
+単体テスト仕様は UNIT_TEST_SPEC.md を参照する。
+
+結合テスト仕様は INTEGRATION_TEST_SPEC.md を親として、
+INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATION_TEST_SPEC_CI.md を参照する。
+
+運用テスト仕様は OPERATION_TEST_SPEC.md を参照する。
 
 │  │  - システム設定                                    │    │
 │  └────────────────────────────────────────────────────┘    │
@@ -1080,7 +1096,10 @@ gcloud run deploy orchestra-tool \
 ### 4. 環境変数
 ```
 GOOGLE_CLOUD_STORAGE_BUCKET     # GCS バケット名
+GOOGLE_CLOUD_PROJECT            # GCP プロジェクトID
+GOOGLE_CLOUD_STORAGE_DATA_PREFIX # JSON保存プレフィックス（空文字可）
 GOOGLE_SERVICE_ACCOUNT_JSON     # GCS 認証JSON
+GOOGLE_SERVICE_ACCOUNT_FILE     # サービスアカウントJSONファイルパス
 GOOGLE_CLOUD_STORAGE_PUBLIC     # 公開設定
 LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 ```
@@ -1110,6 +1129,7 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 
 | 版 | 日付 | 変更内容 |
 |----|------|---------|
+| 1.1 | 2026-06-18 | 接続設定の旧環境変数自動移行を追記 |
 | 1.0 | 2026-06-17 | 初版 - 性能最適化実装済み |
 
 ---

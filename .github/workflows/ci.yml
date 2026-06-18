@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    env:
+      UV_SYSTEM_CERTS: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Prepare backend coverage directory
+        run: mkdir -p coverage/backend
+
+      - name: Run backend unit tests with coverage
+        run: uv run pytest -q tests/backend --cov=src/backend --cov-report=term-missing --cov-report=xml:coverage/backend/coverage.xml
+
+      - name: Run backend integration tests
+        run: uv run pytest -q tests/integration/backend
+
+      - name: Run backend operation tests
+        run: uv run pytest -q tests/operations
+
+      - name: Upload backend coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/backend/coverage.xml
+          if-no-files-found: error
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend test dependencies
+        run: npm install
+
+      - name: Run frontend integration tests
+        run: npm run test:frontend:integration
+
+      - name: Run frontend unit tests with coverage
+        run: npm run test:frontend:coverage
+
+      - name: Upload frontend coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: |
+            coverage/frontend/lcov.info
+            coverage/frontend/coverage-summary.json
+          if-no-files-found: error
+
+  coverage-summary:
+    runs-on: ubuntu-latest
+    needs:
+      - backend-tests
+      - frontend-tests
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Download backend coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/backend
+
+      - name: Download frontend coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/frontend
+
+      - name: Build coverage summary markdown
+        id: coverage_summary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          backend_xml = Path('coverage/backend/coverage.xml')
+          frontend_json = Path('coverage/frontend/coverage-summary.json')
+
+          backend_rate = 0.0
+          if backend_xml.exists():
+            root = ET.parse(backend_xml).getroot()
+            backend_rate = float(root.attrib.get('line-rate', 0.0)) * 100
+
+          frontend_rate = 0.0
+          if frontend_json.exists():
+            data = json.loads(frontend_json.read_text(encoding='utf-8'))
+            frontend_rate = float(data.get('total', {}).get('lines', {}).get('pct', 0.0))
+
+          avg_rate = (backend_rate + frontend_rate) / 2
+
+          lines = [
+              '## Coverage Summary',
+              '',
+              '| Target | Coverage |',
+              '|---|---:|',
+              f'| Backend (pytest-cov) | {backend_rate:.2f}% |',
+              f'| Frontend (Vitest) | {frontend_rate:.2f}% |',
+              f'| Simple Average | {avg_rate:.2f}% |',
+              '',
+              '_This comment is updated on each CI run._',
+          ]
+
+          output_path = Path('coverage-summary.md')
+          output_path.write_text('\n'.join(lines), encoding='utf-8')
+          PY
+
+      - name: Post sticky PR coverage comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage-summary
+          path: coverage-summary.md

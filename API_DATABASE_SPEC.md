@@ -89,14 +89,26 @@
 - PUT /api/extra/{name}/{item_id}
 - DELETE /api/extra/{name}/{item_id}
 
+更新系リクエスト（POST/PUT/DELETE）は `X-Device-Id` ヘッダ必須。
+
+PUT は以下を許容:
+
+- 従来形式: 更新したい JSON 本体
+- 競合検知形式: `{ payload: {...}, expected_updated_at: "..." }`
+
+`expected_updated_at` が現行 `updated_at` と不一致の場合は `409` を返す。
+
 対象 name は以下。
 
 - absences
 - event_responses
+- date_adjustments
+- date_adjustment_responses
 - sheet_library
 - payments
 - castings
 - piece_infos
+- practice_instructions
 - albums
 - part_settings
 - venue_settings
@@ -189,10 +201,13 @@
 - members
 - absences
 - event_responses
+- date_adjustments
+- date_adjustment_responses
 - sheet_library
 - payments
 - castings
 - piece_infos
+- practice_instructions
 - albums
 - part_settings
 - venue_settings
@@ -226,6 +241,43 @@ castings:
 - piece
 - members[]
 - extras[]
+
+date_adjustments:
+
+- title
+- deadline
+- notes
+- delete_phrase
+- created_by
+- member_id
+- candidates[]
+
+制約:
+
+- title 必須
+- candidates は1件以上必須
+- candidates の date/start_time/end_time 重複は禁止
+
+date_adjustment_responses:
+
+- adjustment_id
+- candidate_id
+- name
+- member_id
+- status (ok / maybe / ng)
+- note
+
+制約:
+
+- status は ok / maybe / ng のみ
+- candidate_id/name 必須
+
+practice_instructions:
+
+- performance_id
+- piece
+- practice_notes
+- performance_instruction
 
 connection_settings:
 

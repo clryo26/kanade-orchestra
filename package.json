@@ -1,0 +1,14 @@
+{
+  "name": "oke-portal-frontend-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test:frontend": "vitest run",
+    "test:frontend:integration": "vitest run tests/integration/frontend",
+    "test:frontend:coverage": "vitest run --coverage tests/frontend"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
+    "vitest": "^2.1.9"
+  }
+}

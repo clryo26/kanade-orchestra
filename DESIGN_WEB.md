@@ -117,11 +117,13 @@
 - お知らせ
 - イベント調整（管理者側は主に確認/削除）
 - 楽曲情報管理
+- 練習指示管理
 - 団員登録
 - 支払状況登録
 - 会場管理
 - 乗り番管理
 - 楽譜管理
+- 日程調整
 
 ### 5.3 システム管理メニュー
 
@@ -188,25 +190,44 @@
 - 回答一覧表示
 - 削除合言葉による削除保護
 
-### 6.9 楽曲情報
+### 6.9 日程調整
+
+- 調整さん形式で候補日を複数登録
+- 候補日の並び替え（上下移動）
+- 団員ごとに候補日へ ○ / △ / × で回答
+- 候補日ごとの集計、回答者一覧を表示
+- 候補日ごとの回答コメント集計を表示
+- 候補日ごとの頻出キーワードを表示
+- 回答一覧で「コメントあり回答のみ抽出」フィルタを提供
+- 候補日をスコア（○=2, △=1, ×=0）で順位付けして第1候補を表示
+- 未回答団員を抽出して一覧表示し、リマインド文面コピーを提供
+- 作成者または管理者が削除可能（合言葉設定時は入力必須）
+
+### 6.10 楽曲情報
 
 - 演奏会と曲の紐付け情報
 - 説明文管理
 - 団員側は一覧/詳細表示
 
-### 6.10 演奏希望曲
+### 6.11 練習指示
+
+- 演奏会と曲ごとの練習指摘内容を管理
+- 演奏会と曲ごとの演奏指示を管理
+- 団員側は演奏会/曲単位で参照
+
+### 6.12 演奏希望曲
 
 - 団員投稿（曲名、作曲者、演奏時間、ジャンル、編成、備考）
 - 投票機能
 - 投稿者のみ編集・削除
 
-### 6.11 宣伝
+### 6.13 宣伝
 
 - タイトル、概要、画像投稿
 - 投稿者情報保持
 - 投稿者のみ編集・削除
 
-### 6.12 団体・SNS・接続設定
+### 6.14 団体・SNS・接続設定
 
 - 団体名、略称、アイコン
 - SNS URL 群
@@ -231,10 +252,13 @@ main.py で管理する現行 JSON_DATA_NAMES:
 - members
 - absences
 - event_responses
+- date_adjustments
+- date_adjustment_responses
 - sheet_library
 - payments
 - castings
 - piece_infos
+- practice_instructions
 - albums
 - part_settings
 - venue_settings
@@ -250,6 +274,9 @@ main.py で管理する現行 JSON_DATA_NAMES:
 
 - connection_settings: 接続先設定
 - promotions: 宣伝投稿
+- practice_instructions: 練習指示
+- date_adjustments: 日程調整本体
+- date_adjustment_responses: 日程調整回答
 
 ## 8. API 設計
 
@@ -311,6 +338,13 @@ main.py で管理する現行 JSON_DATA_NAMES:
 - DELETE /api/extra/{name}/{item_id}
 
 対象 name は EXTRA_COLLECTIONS で制限。
+
+更新系は `X-Device-Id` を必須とし、コレクション単位で認可を適用。
+
+- 管理者限定: connection_settings / practice_instructions / piece_infos / castings / payments / sheet_library ほか
+- 所有者更新可: date_adjustments / date_adjustment_responses / absences / event_responses
+
+PUT では `expected_updated_at` を受け付け、サーバの `updated_at` と不一致時は 409 を返す。
 
 ## 9. パフォーマンス設計
 

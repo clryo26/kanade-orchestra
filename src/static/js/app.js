@@ -68,6 +68,20 @@ class IndexedDBCache {
         });
     }
 
+    async delete(key) {
+        if (!this.db) return;
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([CACHE_STORE], 'readwrite');
+            const store = transaction.objectStore(CACHE_STORE);
+            const request = store.delete(key);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                this.etags.delete(key);
+                resolve();
+            };
+        });
+    }
+
     getETag(key) {
         return this.etags.get(key);
     }
@@ -103,6 +117,10 @@ const appState = {
     absences: [],
     // イベント回答データ一覧。
     eventResponses: [],
+    // 日程調整一覧。
+    dateAdjustments: [],
+    // 日程調整への回答一覧。
+    dateAdjustmentResponses: [],
     // 楽譜ライブラリ一覧。
     sheetLibrary: [],
     // 支払状況一覧。
@@ -111,6 +129,8 @@ const appState = {
     castings: [],
     // 楽曲情報一覧。
     pieceInfos: [],
+    // 練習指示一覧。
+    practiceInstructions: [],
     // 演奏希望曲一覧。
     desiredPieces: [],
     // 宣伝投稿一覧。
@@ -405,6 +425,7 @@ function portalMenuGroups() {
             title: '練習情報',
             items: [
                 { tab: 'member-schedule', label: '練習予定' },
+                { tab: 'member-practice-instruction', label: '練習指示' },
                 { tab: 'member-absence', label: '欠席連絡' },
                 { tab: 'member-recording', label: '録音部屋' }
             ]
@@ -427,9 +448,10 @@ function portalMenuGroups() {
             ]
         },
         {
-            title: `${orgShortName()}情報`,
+            title: 'オケ情報',
             items: [
                 { tab: 'member-sns', label: 'SNS' },
+                { tab: 'member-date-adjustment', label: '日程調整' },
                 { tab: 'member-desired-piece', label: '演奏希望曲' }
             ]
         },
@@ -864,6 +886,10 @@ function bindForms() {
     if ($('clearPieceInfoBtn')) $('clearPieceInfoBtn').addEventListener('click', clearPieceInfoForm);
     if ($('deletePieceInfoBtn')) $('deletePieceInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePieceInfoAdmin()));
     if ($('pieceInfoPerformance')) $('pieceInfoPerformance').addEventListener('change', updatePieceInfoPieceOptions);
+    if ($('savePracticeInstructionBtn')) $('savePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePracticeInstructionAdmin()));
+    if ($('clearPracticeInstructionBtn')) $('clearPracticeInstructionBtn').addEventListener('click', clearPracticeInstructionForm);
+    if ($('deletePracticeInstructionBtn')) $('deletePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePracticeInstructionAdmin()));
+    if ($('practiceInstructionPerformance')) $('practiceInstructionPerformance').addEventListener('change', updatePracticeInstructionPieceOptions);
 
     $('addSchedBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveSchedule()));
     $('editSchedBtn').addEventListener('click', clearScheduleForm);
@@ -1005,11 +1031,13 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-manual') renderManualView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
     if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
+    if (renderOnShow && tabName === 'member-date-adjustment') renderDateAdjustmentView();
     if (renderOnShow && tabName === 'announcement-detail') renderAnnouncementDetail();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
+    if (renderOnShow && tabName === 'practice-instruction-admin') renderPracticeInstructionAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
@@ -1031,11 +1059,13 @@ function toPascalTab(value) {
         'venue-admin': 'venueAdmin',
         'casting-admin': 'castingAdmin',
         'piece-info-admin': 'pieceInfoAdmin',
+        'practice-instruction-admin': 'practiceInstructionAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
         'member-performance': 'memberPerformance',
         'member-schedule': 'memberSchedule',
+        'member-practice-instruction': 'memberPracticeInstruction',
         'member-recording': 'memberRecording',
         'member-intro': 'memberIntro',
         'member-absence': 'memberAbsence',
@@ -1044,6 +1074,7 @@ function toPascalTab(value) {
         'member-payment': 'memberPayment',
         'member-casting': 'memberCasting',
         'member-event': 'memberEvent',
+        'member-date-adjustment': 'memberDateAdjustment',
         'member-piece-info': 'memberPieceInfo',
         'member-desired-piece': 'memberDesiredPiece',
         'member-promotion': 'memberPromotion',
@@ -1238,10 +1269,13 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         recordings,
         absences,
         eventResponses,
+        dateAdjustments,
+        dateAdjustmentResponses,
         sheetLibrary,
         payments,
         castings,
         pieceInfos,
+        practiceInstructions,
         desiredPieces,
         promotions,
         albums,
@@ -1261,10 +1295,13 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         includeHeavyLists ? request('/api/recordings') : Promise.resolve({ files: appState.recordings || [] }),
         request('/api/extra/absences'),
         request('/api/extra/event_responses'),
+        request('/api/extra/date_adjustments'),
+        request('/api/extra/date_adjustment_responses'),
         request('/api/extra/sheet_library'),
         request('/api/extra/payments'),
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
+        request('/api/extra/practice_instructions'),
         request('/api/extra/desired_pieces'),
         request('/api/extra/promotions'),
         request('/api/extra/albums'),
@@ -1286,10 +1323,13 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         extras: {
             absences,
             event_responses: eventResponses,
+            date_adjustments: dateAdjustments,
+            date_adjustment_responses: dateAdjustmentResponses,
             sheet_library: sheetLibrary,
             payments,
             castings,
             piece_infos: pieceInfos,
+            practice_instructions: practiceInstructions,
             promotions,
             albums,
             part_settings: partSettings,
@@ -1317,10 +1357,13 @@ function applyBootstrapData(data) {
         recordings: data.recordings?.files || appState.recordings || [],
         absences: extras.absences || [],
         eventResponses: extras.event_responses || [],
+        dateAdjustments: extras.date_adjustments || [],
+        dateAdjustmentResponses: extras.date_adjustment_responses || [],
         sheetLibrary: data.sheets?.files || extras.sheet_library || appState.sheetLibrary || [],
         payments: extras.payments || [],
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
+        practiceInstructions: extras.practice_instructions || [],
         desiredPieces: extras.desired_pieces || [],
         promotions: extras.promotions || [],
         albums: extras.albums || [],
@@ -1381,6 +1424,7 @@ function renderInitialViews(options = {}) {
     renderVenueManagement();
     renderCastingAdmin();
     renderPieceInfoAdmin();
+    renderPracticeInstructionAdmin();
     renderOrgManagement();
     renderSnsManagement();
     renderConnectionSettingsManagement();
@@ -1443,23 +1487,59 @@ async function loadAuthManagement() {
 }
 
 async function loadExtraData() {
-    const [absences, eventResponses, sheets, payments, castings, pieceInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings] = await Promise.all([
-        request('/api/extra/absences'),
-        request('/api/extra/event_responses'),
-        request('/api/sheets'),
-        request('/api/extra/payments'),
-        request('/api/extra/castings'),
-        request('/api/extra/piece_infos'),
-        request('/api/extra/desired_pieces'),
-        request('/api/extra/promotions'),
-        request('/api/extra/albums'),
-        request('/api/extra/part_settings'),
-        request('/api/extra/venue_settings'),
-        request('/api/extra/org_settings'),
-        request('/api/extra/sns_settings'),
-        request('/api/extra/connection_settings')
-    ]);
-    Object.assign(appState, { absences, eventResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings });
+    const requestSpecs = [
+        ['absences', request('/api/extra/absences')],
+        ['eventResponses', request('/api/extra/event_responses')],
+        ['dateAdjustments', request('/api/extra/date_adjustments')],
+        ['dateAdjustmentResponses', request('/api/extra/date_adjustment_responses')],
+        ['sheets', request('/api/sheets')],
+        ['payments', request('/api/extra/payments')],
+        ['castings', request('/api/extra/castings')],
+        ['pieceInfos', request('/api/extra/piece_infos')],
+        ['practiceInstructions', request('/api/extra/practice_instructions')],
+        ['desiredPieces', request('/api/extra/desired_pieces')],
+        ['promotions', request('/api/extra/promotions')],
+        ['albums', request('/api/extra/albums')],
+        ['partSettings', request('/api/extra/part_settings')],
+        ['venueSettings', request('/api/extra/venue_settings')],
+        ['orgSettings', request('/api/extra/org_settings')],
+        ['snsSettings', request('/api/extra/sns_settings')],
+        ['connectionSettings', request('/api/extra/connection_settings')]
+    ];
+    const settled = await Promise.allSettled(requestSpecs.map(([, promise]) => promise));
+    const resultMap = new Map();
+    const failed = [];
+    settled.forEach((item, index) => {
+        const key = requestSpecs[index][0];
+        if (item.status === 'fulfilled') {
+            resultMap.set(key, item.value);
+        } else {
+            failed.push(key);
+        }
+    });
+
+    if (failed.length) {
+        showAlert(`一部データの読込に失敗しました: ${failed.join(', ')}`, 'warning');
+    }
+
+    const absences = resultMap.get('absences') || appState.absences || [];
+    const eventResponses = resultMap.get('eventResponses') || appState.eventResponses || [];
+    const dateAdjustments = resultMap.get('dateAdjustments') || appState.dateAdjustments || [];
+    const dateAdjustmentResponses = resultMap.get('dateAdjustmentResponses') || appState.dateAdjustmentResponses || [];
+    const sheets = resultMap.get('sheets') || { files: appState.sheetLibrary || [] };
+    const payments = resultMap.get('payments') || appState.payments || [];
+    const castings = resultMap.get('castings') || appState.castings || [];
+    const pieceInfos = resultMap.get('pieceInfos') || appState.pieceInfos || [];
+    const practiceInstructions = resultMap.get('practiceInstructions') || appState.practiceInstructions || [];
+    const desiredPieces = resultMap.get('desiredPieces') || appState.desiredPieces || [];
+    const promotions = resultMap.get('promotions') || appState.promotions || [];
+    const albums = resultMap.get('albums') || appState.albums || [];
+    const partSettings = resultMap.get('partSettings') || appState.partSettings || [];
+    const venueSettings = resultMap.get('venueSettings') || appState.venueSettings || [];
+    const orgSettings = resultMap.get('orgSettings') || appState.orgSettings || [];
+    const snsSettings = resultMap.get('snsSettings') || appState.snsSettings || [];
+    const connectionSettings = resultMap.get('connectionSettings') || appState.connectionSettings || [];
+    Object.assign(appState, { absences, eventResponses, dateAdjustments, dateAdjustmentResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, practiceInstructions, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings });
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
@@ -1470,6 +1550,7 @@ async function loadExtraData() {
     renderVenueManagement();
     renderCastingAdmin();
     renderPieceInfoAdmin();
+    renderPracticeInstructionAdmin();
     renderOrgManagement();
     renderSnsManagement();
     renderConnectionSettingsManagement();
@@ -3557,9 +3638,11 @@ function renderMemberExtraViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
     renderAbsenceView();
     if (includeHeavyLists) renderSheetLibraryView();
+    renderPracticeInstructionView();
     renderPaymentView();
     renderCastingView();
     renderMemberEventView();
+    renderDateAdjustmentView();
     renderPieceInfoView();
     renderDesiredPieceView();
     renderManualView();
@@ -3822,6 +3905,96 @@ async function deletePieceInfoAdmin() {
     if (!confirmDelete()) return;
     await request(`/api/extra/piece_infos/${encodeURIComponent(id)}`, { method: 'DELETE' });
     clearPieceInfoForm(); await loadExtraData(); showAlert('楽曲情報を削除しました', 'success');
+}
+
+function renderPracticeInstructionAdmin() {
+    const perfSelect = $('practiceInstructionPerformance');
+    const list = $('practiceInstructionAdminList');
+    if (!perfSelect || !list) return;
+    const selected = perfSelect.value;
+    perfSelect.innerHTML = '<option value="">演奏会を選択</option>' + appState.performances.map((perf) => `<option value="${escapeHtml(String(perf.id))}">${escapeHtml(perf.title)}</option>`).join('');
+    if ([...perfSelect.options].some((option) => option.value === selected)) perfSelect.value = selected;
+    updatePracticeInstructionPieceOptions();
+    list.innerHTML = appState.practiceInstructions.length ? `<div class="list-group">${appState.practiceInstructions.map((item) => {
+        const perf = appState.performances.find((value) => String(value.id || '') === String(item.performance_id || ''));
+        const practiceText = item.practice_notes ? `<div class="small multiline-text mt-1">指摘内容: ${escapeHtml(item.practice_notes)}</div>` : '';
+        const performanceText = item.performance_instruction ? `<div class="small multiline-text mt-1">演奏指示: ${escapeHtml(item.performance_instruction)}</div>` : '';
+        return `<button class="list-group-item list-group-item-action text-start practice-instruction-admin-item" type="button" data-practice-instruction-id="${escapeHtml(String(item.id || ''))}"><strong>${escapeHtml(item.piece || '')}</strong><div class="small text-muted">${escapeHtml(perf?.title || '演奏会未設定')}</div>${practiceText}${performanceText}</button>`;
+    }).join('')}</div>` : '<p class="text-muted mb-0">練習指示はまだ登録されていません</p>';
+    list.querySelectorAll('.practice-instruction-admin-item').forEach((button) => button.addEventListener('click', () => selectPracticeInstructionAdmin(button.dataset.practiceInstructionId || '')));
+}
+
+function updatePracticeInstructionPieceOptions() {
+    const select = $('practiceInstructionPiece');
+    if (!select) return;
+    const current = select.value;
+    const performanceId = $('practiceInstructionPerformance')?.value || '';
+    const perf = appState.performances.find((item) => String(item.id || '') === String(performanceId));
+    const pieces = perf ? normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean) : [];
+    select.innerHTML = '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece)}">${escapeHtml(piece)}</option>`).join('');
+    if ([...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function selectPracticeInstructionAdmin(id) {
+    const item = appState.practiceInstructions.find((instruction) => String(instruction.id || '') === String(id));
+    if (!item) return;
+    $('practiceInstructionId').value = item.id || '';
+    $('practiceInstructionPerformance').value = String(item.performance_id || '');
+    updatePracticeInstructionPieceOptions();
+    $('practiceInstructionPiece').value = item.piece || '';
+    $('practiceInstructionNotes').value = item.practice_notes || '';
+    $('practiceInstructionPerformanceNotes').value = item.performance_instruction || '';
+}
+
+function clearPracticeInstructionForm() {
+    if ($('practiceInstructionId')) $('practiceInstructionId').value = '';
+    if ($('practiceInstructionPerformance')) $('practiceInstructionPerformance').value = '';
+    if ($('practiceInstructionPiece')) $('practiceInstructionPiece').value = '';
+    if ($('practiceInstructionNotes')) $('practiceInstructionNotes').value = '';
+    if ($('practiceInstructionPerformanceNotes')) $('practiceInstructionPerformanceNotes').value = '';
+    updatePracticeInstructionPieceOptions();
+}
+
+async function savePracticeInstructionAdmin() {
+    const payload = {
+        performance_id: $('practiceInstructionPerformance')?.value || '',
+        piece: $('practiceInstructionPiece')?.value.trim() || '',
+        practice_notes: $('practiceInstructionNotes')?.value.trim() || '',
+        performance_instruction: $('practiceInstructionPerformanceNotes')?.value.trim() || ''
+    };
+    if (!payload.performance_id || !payload.piece) {
+        showAlert('演奏会と曲名を入力してください', 'warning');
+        return;
+    }
+    if (!payload.practice_notes && !payload.performance_instruction) {
+        showAlert('指摘内容または演奏指示のどちらかを入力してください', 'warning');
+        return;
+    }
+
+    const id = $('practiceInstructionId')?.value || '';
+    const duplicate = appState.practiceInstructions.find((item) => String(item.performance_id || '') === String(payload.performance_id) && String(item.piece || '') === payload.piece);
+    const saveId = id || String(duplicate?.id || '');
+    if (saveId) {
+        await request(`/api/extra/practice_instructions/${encodeURIComponent(saveId)}`, jsonOptions('PUT', payload));
+    } else {
+        await saveExtra('practice_instructions', payload);
+    }
+    clearPracticeInstructionForm();
+    await loadExtraData();
+    showAlert('練習指示を保存しました', 'success');
+}
+
+async function deletePracticeInstructionAdmin() {
+    const id = $('practiceInstructionId')?.value || '';
+    if (!id) {
+        showAlert('削除する練習指示を選択してください', 'warning');
+        return;
+    }
+    if (!confirmDelete()) return;
+    await request(`/api/extra/practice_instructions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    clearPracticeInstructionForm();
+    await loadExtraData();
+    showAlert('練習指示を削除しました', 'success');
 }
 
 // 団員向け楽譜ビュー。
@@ -4886,6 +5059,532 @@ function renderCastingView() {
     }).join('');
 }
 
+function sortedDateAdjustments(items) {
+    return [...(items || [])].sort((a, b) =>
+        String(a.deadline || '').localeCompare(String(b.deadline || '')) ||
+        String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+        String(a.title || '').localeCompare(String(b.title || ''), 'ja')
+    );
+}
+
+function dateAdjustmentCandidates(adjustment) {
+    return Array.isArray(adjustment?.candidates) ? adjustment.candidates : [];
+}
+
+function dateAdjustmentOwnerKey(item) {
+    const memberId = String(item?.member_id || '').trim();
+    if (memberId) return `member:${memberId}`;
+    return `name:${String(item?.name || '').trim()}`;
+}
+
+function dateAdjustmentStatusLabel(status) {
+    if (status === 'ok') return '○';
+    if (status === 'maybe') return '△';
+    if (status === 'ng') return '×';
+    return '-';
+}
+
+function dateAdjustmentStatusText(status) {
+    if (status === 'ok') return '参加可';
+    if (status === 'maybe') return '調整可';
+    if (status === 'ng') return '不可';
+    return '未回答';
+}
+
+function dateAdjustmentKeywordTokens(text) {
+    const normalized = String(text || '')
+        .toLowerCase()
+        .replace(/https?:\/\/\S+/g, ' ')
+        .replace(/[\r\n\t]/g, ' ');
+    try {
+        const pattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}|[a-z0-9]{2,}/gu;
+        return normalized.match(pattern) || [];
+    } catch {
+        // Unicode property escapes 非対応ブラウザ向けフォールバック。
+        const fallbackPattern = /[\u3040-\u30FF\u3400-\u9FFF]{2,}|[a-z0-9]{2,}/g;
+        return normalized.match(fallbackPattern) || [];
+    }
+}
+
+function dateAdjustmentFrequentKeywordsFromNotes(notes, maxCount = 6) {
+    const stopWords = new Set([
+        'です', 'ます', 'した', 'ので', 'ため', 'について', 'こと', 'それ', 'これ', 'こちら', 'あちら',
+        '参加', '調整', '不可', '可能', '予定', '未定', '回答', 'コメント', '日程', '候補日'
+    ]);
+    const frequency = new Map();
+    (notes || []).forEach((note) => {
+        dateAdjustmentKeywordTokens(note).forEach((token) => {
+            if (stopWords.has(token)) return;
+            frequency.set(token, (frequency.get(token) || 0) + 1);
+        });
+    });
+    return Array.from(frequency.entries())
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja'))
+        .slice(0, maxCount);
+}
+
+function currentUserMatchesDateAdjustmentResponse(response) {
+    const currentMemberId = String(appState.currentUserMemberId || '');
+    const currentName = String(currentUserMemberName() || '');
+    return (currentMemberId && String(response?.member_id || '') === currentMemberId) || (currentName && String(response?.name || '') === currentName);
+}
+
+function dedupeDateAdjustmentResponses(responses) {
+    const map = new Map();
+    responses.forEach((response) => {
+        const key = `${String(response.candidate_id || '')}|${dateAdjustmentOwnerKey(response)}`;
+        if (!key.startsWith('|')) map.set(key, response);
+    });
+    return Array.from(map.values());
+}
+
+function dateAdjustmentCanDelete(adjustment) {
+    if (canAccessAdmin()) return true;
+    const currentMemberId = String(appState.currentUserMemberId || '');
+    const currentName = String(currentUserMemberName() || '');
+    return (currentMemberId && String(adjustment?.member_id || '') === currentMemberId)
+        || (currentName && String(adjustment?.created_by || '') === currentName);
+}
+
+function dateAdjustmentCandidateLabel(candidate) {
+    const date = candidate?.date ? formatDateWithWeekday(candidate.date, candidate.date) : '';
+    const start = String(candidate?.start_time || '').trim();
+    const end = String(candidate?.end_time || '').trim();
+    const time = start && end ? `${start}-${end}` : (start || end);
+    const note = String(candidate?.note || '').trim();
+    const blocks = [date, time, note].filter(Boolean);
+    return blocks.join(' / ') || '候補日未設定';
+}
+
+function dateAdjustmentCandidateRowHtml(candidate = {}, removable = true) {
+    return `
+        <div class="row g-2 align-items-end date-adjustment-candidate-row mb-2" data-candidate-id="${escapeHtml(String(candidate.id || ''))}">
+            <div class="col-md-3"><label class="form-label">日付</label><input type="date" class="form-control date-adjustment-candidate-date" value="${escapeHtml(String(candidate.date || ''))}"></div>
+            <div class="col-md-2"><label class="form-label">開始</label><input type="time" class="form-control date-adjustment-candidate-start" value="${escapeHtml(String(candidate.start_time || ''))}"></div>
+            <div class="col-md-2"><label class="form-label">終了</label><input type="time" class="form-control date-adjustment-candidate-end" value="${escapeHtml(String(candidate.end_time || ''))}"></div>
+            <div class="col-md-3"><label class="form-label">備考</label><input type="text" class="form-control date-adjustment-candidate-note" value="${escapeHtml(String(candidate.note || ''))}" placeholder="例: 合奏のみ"></div>
+            <div class="col-md-2">
+                <label class="form-label">並び</label>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-outline-secondary w-100 date-adjustment-candidate-up" type="button">↑</button>
+                    <button class="btn btn-outline-secondary w-100 date-adjustment-candidate-down" type="button">↓</button>
+                    <button class="btn btn-outline-danger w-100 date-adjustment-candidate-remove" type="button" ${removable ? '' : 'disabled'}>削除</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function refreshDateAdjustmentCandidateRowControls() {
+    const rows = Array.from(document.querySelectorAll('#dateAdjustmentCandidateRows .date-adjustment-candidate-row'));
+    rows.forEach((row, index) => {
+        const up = row.querySelector('.date-adjustment-candidate-up');
+        const down = row.querySelector('.date-adjustment-candidate-down');
+        const remove = row.querySelector('.date-adjustment-candidate-remove');
+        if (up) up.disabled = index === 0;
+        if (down) down.disabled = index === rows.length - 1;
+        if (remove) remove.disabled = rows.length <= 1;
+    });
+}
+
+function collectDateAdjustmentCandidates() {
+    const rows = Array.from(document.querySelectorAll('#dateAdjustmentCandidateRows .date-adjustment-candidate-row'));
+    return rows
+        .map((row, index) => ({
+            id: row.dataset.candidateId || `cand-${Date.now()}-${index}`,
+            date: row.querySelector('.date-adjustment-candidate-date')?.value || '',
+            start_time: row.querySelector('.date-adjustment-candidate-start')?.value || '',
+            end_time: row.querySelector('.date-adjustment-candidate-end')?.value || '',
+            note: row.querySelector('.date-adjustment-candidate-note')?.value?.trim() || ''
+        }))
+        .filter((item) => item.date);
+}
+
+function renderDateAdjustmentList() {
+    const list = $('memberDateAdjustmentList');
+    if (!list) return;
+    const adjustments = sortedDateAdjustments(appState.dateAdjustments);
+    if (!adjustments.length) {
+        list.innerHTML = '<p class="text-muted mb-0">日程調整はまだありません</p>';
+        return;
+    }
+
+    list.innerHTML = '';
+    adjustments.forEach((adjustment) => {
+        const related = dedupeDateAdjustmentResponses(appState.dateAdjustmentResponses.filter((item) => String(item.adjustment_id || '') === String(adjustment.id || '')));
+        const respondentCount = new Set(related.map((item) => dateAdjustmentOwnerKey(item))).size;
+        const candidateCount = dateAdjustmentCandidates(adjustment).length;
+        const element = document.createElement('button');
+        element.type = 'button';
+        element.className = 'list-group-item list-group-item-action text-start';
+        element.innerHTML = `
+            <strong>${escapeHtml(adjustment.title || '日程調整')}</strong>
+            <div class="small text-muted">回答期限: ${escapeHtml(formatDateWithWeekday(adjustment.deadline, '未設定'))} / 候補日: ${candidateCount}件 / 回答者: ${respondentCount}名</div>
+            ${adjustment.notes ? `<div class="small multiline-text mt-1">${escapeHtml(adjustment.notes)}</div>` : ''}
+        `;
+        element.addEventListener('click', () => renderDateAdjustmentDetail(adjustment.id));
+        list.appendChild(element);
+    });
+}
+
+function bindDateAdjustmentCandidateRows() {
+    const rows = $('dateAdjustmentCandidateRows');
+    if (!rows) return;
+    rows.querySelectorAll('.date-adjustment-candidate-up').forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = button.closest('.date-adjustment-candidate-row');
+            if (!row) return;
+            const previous = row.previousElementSibling;
+            if (!previous) return;
+            rows.insertBefore(row, previous);
+            refreshDateAdjustmentCandidateRowControls();
+        });
+    });
+    rows.querySelectorAll('.date-adjustment-candidate-down').forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = button.closest('.date-adjustment-candidate-row');
+            if (!row) return;
+            const next = row.nextElementSibling;
+            if (!next) return;
+            rows.insertBefore(next, row);
+            refreshDateAdjustmentCandidateRowControls();
+        });
+    });
+    rows.querySelectorAll('.date-adjustment-candidate-remove').forEach((button) => {
+        button.addEventListener('click', () => {
+            const allRows = rows.querySelectorAll('.date-adjustment-candidate-row');
+            if (allRows.length <= 1) {
+                showAlert('候補日は1件以上必要です', 'warning');
+                return;
+            }
+            button.closest('.date-adjustment-candidate-row')?.remove();
+            refreshDateAdjustmentCandidateRowControls();
+        });
+    });
+    refreshDateAdjustmentCandidateRowControls();
+}
+
+function renderDateAdjustmentView() {
+    const container = $('memberDateAdjustmentInfo');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div id="memberDateAdjustmentListView">
+            <h6>日程調整一覧</h6>
+            <div class="list-group mb-3" id="memberDateAdjustmentList"></div>
+            <h6>日程調整を作成</h6>
+            <div class="row g-2 mb-2">
+                <div class="col-md-5"><label class="form-label">タイトル</label><input id="dateAdjustmentTitle" class="form-control" placeholder="例: 夏合宿の日程調整"></div>
+                <div class="col-md-3"><label class="form-label">回答期限</label><input id="dateAdjustmentDeadline" type="date" class="form-control"></div>
+                <div class="col-md-4"><label class="form-label">削除時の合言葉（任意）</label><input id="dateAdjustmentDeletePhrase" class="form-control" placeholder="任意"></div>
+                <div class="col-12"><label class="form-label">説明</label><textarea id="dateAdjustmentNotes" class="form-control" rows="2" placeholder="用途や集合条件など"></textarea></div>
+            </div>
+            <div class="mb-2"><strong>候補日</strong></div>
+            <div id="dateAdjustmentCandidateRows"></div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button id="dateAdjustmentAddCandidateBtn" class="btn btn-outline-secondary" type="button">候補日を追加</button>
+                <button id="dateAdjustmentCreateBtn" class="btn btn-primary" type="button">日程調整を作成</button>
+            </div>
+        </div>
+        <div id="memberDateAdjustmentDetailView" hidden></div>
+    `;
+
+    const candidateRows = $('dateAdjustmentCandidateRows');
+    if (candidateRows) {
+        candidateRows.innerHTML = dateAdjustmentCandidateRowHtml({ date: today() }, false);
+    }
+    if ($('dateAdjustmentDeadline')) $('dateAdjustmentDeadline').value = today();
+
+    $('dateAdjustmentAddCandidateBtn')?.addEventListener('click', () => {
+        const rows = $('dateAdjustmentCandidateRows');
+        if (!rows) return;
+        rows.insertAdjacentHTML('beforeend', dateAdjustmentCandidateRowHtml({ date: today() }, true));
+        bindDateAdjustmentCandidateRows();
+    });
+    bindDateAdjustmentCandidateRows();
+
+    $('dateAdjustmentCreateBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '作成中...', async () => {
+        const title = $('dateAdjustmentTitle')?.value.trim() || '';
+        const candidates = collectDateAdjustmentCandidates();
+        if (!title) {
+            showAlert('タイトルを入力してください', 'warning');
+            return;
+        }
+        if (!candidates.length) {
+            showAlert('候補日を1件以上入力してください', 'warning');
+            return;
+        }
+
+        const payload = {
+            title,
+            deadline: $('dateAdjustmentDeadline')?.value || '',
+            notes: $('dateAdjustmentNotes')?.value.trim() || '',
+            delete_phrase: $('dateAdjustmentDeletePhrase')?.value.trim() || '',
+            created_by: currentUserMemberName(),
+            member_id: appState.currentUserMemberId,
+            candidates
+        };
+        await saveExtra('date_adjustments', payload);
+        await loadExtraData();
+        showAlert('日程調整を作成しました', 'success');
+    }));
+
+    renderDateAdjustmentList();
+}
+
+function renderDateAdjustmentDetail(adjustmentId) {
+    const listView = $('memberDateAdjustmentListView');
+    const detailView = $('memberDateAdjustmentDetailView');
+    const adjustment = appState.dateAdjustments.find((item) => String(item.id || '') === String(adjustmentId));
+    if (!listView || !detailView || !adjustment) return;
+
+    listView.hidden = true;
+    detailView.hidden = false;
+
+    const candidates = dateAdjustmentCandidates(adjustment);
+    const related = dedupeDateAdjustmentResponses(appState.dateAdjustmentResponses.filter((item) => String(item.adjustment_id || '') === String(adjustment.id || '')));
+    const myResponses = related.filter((item) => currentUserMatchesDateAdjustmentResponse(item));
+
+    const candidateStats = candidates.map((candidate, index) => {
+        const candidateResponses = related.filter((item) => String(item.candidate_id || '') === String(candidate.id || ''));
+        const ok = candidateResponses.filter((item) => item.status === 'ok').length;
+        const maybe = candidateResponses.filter((item) => item.status === 'maybe').length;
+        const ng = candidateResponses.filter((item) => item.status === 'ng').length;
+        const commentCount = candidateResponses.filter((item) => String(item.note || '').trim()).length;
+        const score = (ok * 2) + maybe;
+        return { candidate, candidateResponses, ok, maybe, ng, commentCount, score, index };
+    });
+    const rankedCandidates = [...candidateStats].sort((a, b) =>
+        b.score - a.score
+        || b.ok - a.ok
+        || a.ng - b.ng
+        || a.index - b.index
+    );
+    const rankByCandidateId = new Map(rankedCandidates.map((item, idx) => [String(item.candidate.id || ''), idx + 1]));
+    const bestCandidateId = String(rankedCandidates[0]?.candidate?.id || '');
+
+    const rows = candidateStats.map((item) => {
+        const rank = rankByCandidateId.get(String(item.candidate.id || '')) || '-';
+        return `<tr><td>${escapeHtml(dateAdjustmentCandidateLabel(item.candidate))}</td><td>${rank}</td><td>${item.score}</td><td>${item.ok}</td><td>${item.maybe}</td><td>${item.ng}</td><td>${item.commentCount}</td></tr>`;
+    }).join('');
+
+    const commentSections = candidateStats.map((item) => {
+        const candidate = item.candidate;
+        const candidateResponses = item.candidateResponses;
+        const commented = candidateResponses.filter((item) => String(item.note || '').trim());
+        const keywords = dateAdjustmentFrequentKeywordsFromNotes(commented.map((item) => String(item.note || '').trim()));
+        const keywordBadges = keywords.length
+            ? `<div class="small text-muted mb-2">頻出キーワード: ${keywords.map(([word, count]) => `<span class="badge text-bg-light me-1">${escapeHtml(word)} (${count})</span>`).join('')}</div>`
+            : '<div class="small text-muted mb-2">頻出キーワード: なし</div>';
+        const lines = commented.map((item) => `<li>${escapeHtml(item.name || '不明')}（${escapeHtml(dateAdjustmentStatusText(item.status || ''))}）: ${escapeHtml(String(item.note || '').trim())}</li>`).join('');
+        return `
+            <section class="info-block">
+                <h6 class="mb-2">${escapeHtml(dateAdjustmentCandidateLabel(candidate))}</h6>
+                ${keywordBadges}
+                ${lines ? `<ul class="mb-0">${lines}</ul>` : '<p class="text-muted mb-0">コメントはまだありません</p>'}
+            </section>
+        `;
+    }).join('');
+
+    const respondentMap = new Map();
+    related.forEach((item) => {
+        const key = dateAdjustmentOwnerKey(item);
+        if (!respondentMap.has(key)) respondentMap.set(key, { name: item.name || '不明', statuses: {}, hasComment: false });
+        respondentMap.get(key).statuses[String(item.candidate_id || '')] = item.status || '';
+        if (String(item.note || '').trim()) respondentMap.get(key).hasComment = true;
+    });
+    const respondentRowsData = Array.from(respondentMap.values());
+    const answeredOwners = new Set(Array.from(respondentMap.keys()));
+    const unansweredMembers = (appState.members || []).filter((member) => {
+        const key = String(member.id || '').trim() ? `member:${String(member.id || '').trim()}` : `name:${memberDisplayName(member).trim()}`;
+        return key && !answeredOwners.has(key);
+    });
+    const reminderMessage = `日程調整「${adjustment.title || '日程調整'}」が未回答です。回答期限: ${formatDateWithWeekday(adjustment.deadline, '未設定')}。ご都合の入力をお願いします。`;
+    const respondentRowsHtml = (commentOnly = false) => {
+        const rows = commentOnly ? respondentRowsData.filter((row) => row.hasComment) : respondentRowsData;
+        if (!rows.length) {
+            return `<tr><td colspan="${candidates.length + 1}" class="text-muted">${commentOnly ? 'コメント付き回答はまだありません' : '回答はまだありません'}</td></tr>`;
+        }
+        return rows.map((row) => `
+            <tr>
+                <td>${escapeHtml(row.name || '')}</td>
+                ${candidates.map((candidate) => `<td>${escapeHtml(dateAdjustmentStatusLabel(row.statuses[String(candidate.id || '')] || ''))}</td>`).join('')}
+            </tr>
+        `).join('');
+    };
+
+    detailView.innerHTML = `
+        <button class="btn btn-sm btn-outline-secondary mb-3" id="dateAdjustmentBackBtn" type="button">日程調整一覧に戻る</button>
+        <section class="info-block pt-0">
+            <h5>${escapeHtml(adjustment.title || '日程調整')}</h5>
+            <div>回答期限: ${escapeHtml(formatDateWithWeekday(adjustment.deadline, '未設定'))}</div>
+            <div>作成者: ${escapeHtml(adjustment.created_by || '未設定')}</div>
+            ${adjustment.notes ? `<div class="multiline-text mt-2">${escapeHtml(adjustment.notes)}</div>` : ''}
+        </section>
+        <h6>候補日ごとの集計</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered align-middle">
+                <thead><tr><th>候補日</th><th>順位</th><th>スコア</th><th>○</th><th>△</th><th>×</th><th>コメント数</th></tr></thead>
+                <tbody>${rows || '<tr><td colspan="7" class="text-muted">候補日がありません</td></tr>'}</tbody>
+            </table>
+        </div>
+        ${bestCandidateId ? `<div class="alert alert-info py-2">第1候補: ${escapeHtml(dateAdjustmentCandidateLabel(candidates.find((item) => String(item.id || '') === bestCandidateId) || {}))}</div>` : ''}
+        <h6>回答コメントの集計</h6>
+        <div class="mb-3">${commentSections || '<p class="text-muted mb-0">コメントはまだありません</p>'}</div>
+        <h6>自分の回答</h6>
+        <div class="row g-2 mb-3">
+            ${candidates.map((candidate) => {
+                const current = myResponses.find((item) => String(item.candidate_id || '') === String(candidate.id || ''));
+                return `
+                    <div class="col-12">
+                        <label class="form-label">${escapeHtml(dateAdjustmentCandidateLabel(candidate))}</label>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-3">
+                                <select class="form-select date-adjustment-my-status" data-candidate-id="${escapeHtml(String(candidate.id || ''))}">
+                                    <option value="">未回答</option>
+                                    <option value="ok" ${current?.status === 'ok' ? 'selected' : ''}>○ 参加可</option>
+                                    <option value="maybe" ${current?.status === 'maybe' ? 'selected' : ''}>△ 調整可</option>
+                                    <option value="ng" ${current?.status === 'ng' ? 'selected' : ''}>× 不可</option>
+                                </select>
+                            </div>
+                            <div class="col-md-9">
+                                <input class="form-control date-adjustment-my-note" data-candidate-id="${escapeHtml(String(candidate.id || ''))}" value="${escapeHtml(String(current?.note || ''))}" placeholder="メモ（任意）">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button class="btn btn-primary" id="dateAdjustmentSaveResponseBtn" type="button">回答を保存</button>
+                ${dateAdjustmentCanDelete(adjustment) ? '<button class="btn btn-outline-danger" id="dateAdjustmentDeleteBtn" type="button">この日程調整を削除</button>' : ''}
+            </div>
+        </div>
+        <h6>団員の回答一覧</h6>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="dateAdjustmentCommentOnlyToggle">
+            <label class="form-check-label" for="dateAdjustmentCommentOnlyToggle">コメントあり回答のみ抽出</label>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <thead><tr><th>名前</th>${candidates.map((candidate) => `<th>${escapeHtml(dateAdjustmentCandidateLabel(candidate))}</th>`).join('')}</tr></thead>
+                <tbody id="dateAdjustmentRespondentBody">${respondentRowsHtml(false)}</tbody>
+            </table>
+        </div>
+        <h6 class="mt-3">未回答者とリマインド</h6>
+        <div class="info-block">
+            <div class="small mb-2">未回答者: ${unansweredMembers.length}名</div>
+            ${unansweredMembers.length
+                ? `<ul class="mb-2">${unansweredMembers.map((member) => `<li>${escapeHtml(memberDisplayName(member) || '不明')}</li>`).join('')}</ul>`
+                : '<p class="text-muted mb-2">未回答者はいません</p>'}
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline-primary" id="dateAdjustmentCopyReminderBtn" type="button" ${unansweredMembers.length ? '' : 'disabled'}>リマインド文面をコピー</button>
+            </div>
+        </div>
+    `;
+
+    $('dateAdjustmentBackBtn')?.addEventListener('click', () => {
+        detailView.hidden = true;
+        listView.hidden = false;
+        renderDateAdjustmentList();
+    });
+
+    $('dateAdjustmentCommentOnlyToggle')?.addEventListener('change', (event) => {
+        const checked = Boolean(event.currentTarget?.checked);
+        const body = $('dateAdjustmentRespondentBody');
+        if (body) body.innerHTML = respondentRowsHtml(checked);
+    });
+
+    $('dateAdjustmentCopyReminderBtn')?.addEventListener('click', async () => {
+        if (!unansweredMembers.length) {
+            showAlert('未回答者はいません', 'info');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(reminderMessage);
+            showAlert('リマインド文面をコピーしました', 'success');
+        } catch {
+            showAlert(`コピーに失敗しました。文面: ${reminderMessage}`, 'warning');
+        }
+    });
+
+    $('dateAdjustmentSaveResponseBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', async () => {
+        const name = currentUserMemberName();
+        if (!name) {
+            showAlert('ログイン中の団員情報が見つかりません', 'warning');
+            return;
+        }
+
+        const allExisting = appState.dateAdjustmentResponses.filter((item) => String(item.adjustment_id || '') === String(adjustment.id || '') && currentUserMatchesDateAdjustmentResponse(item));
+        const existingByCandidate = new Map();
+        allExisting.forEach((item) => {
+            const key = String(item.candidate_id || '');
+            const list = existingByCandidate.get(key) || [];
+            list.push(item);
+            existingByCandidate.set(key, list);
+        });
+
+        for (const candidate of candidates) {
+            const candidateId = String(candidate.id || '');
+            const status = detailView.querySelector(`.date-adjustment-my-status[data-candidate-id="${CSS.escape(candidateId)}"]`)?.value || '';
+            const note = detailView.querySelector(`.date-adjustment-my-note[data-candidate-id="${CSS.escape(candidateId)}"]`)?.value?.trim() || '';
+            const existing = existingByCandidate.get(candidateId) || [];
+            const primary = existing[0];
+            const duplicates = existing.slice(1);
+
+            if (status) {
+                const payload = {
+                    adjustment_id: adjustment.id,
+                    candidate_id: candidate.id,
+                    name,
+                    member_id: appState.currentUserMemberId,
+                    status,
+                    note
+                };
+                if (primary?.id) {
+                    await request(`/api/extra/date_adjustment_responses/${encodeURIComponent(primary.id)}`, jsonOptions('PUT', payload));
+                } else {
+                    await saveExtra('date_adjustment_responses', payload);
+                }
+            } else if (primary?.id) {
+                await request(`/api/extra/date_adjustment_responses/${encodeURIComponent(primary.id)}`, { method: 'DELETE' });
+            }
+
+            for (const duplicate of duplicates) {
+                if (duplicate?.id) {
+                    await request(`/api/extra/date_adjustment_responses/${encodeURIComponent(duplicate.id)}`, { method: 'DELETE' });
+                }
+            }
+        }
+
+        await loadExtraData();
+        renderDateAdjustmentDetail(adjustment.id);
+        showAlert('回答を保存しました', 'success');
+    }));
+
+    $('dateAdjustmentDeleteBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', async () => {
+        if (!dateAdjustmentCanDelete(adjustment)) {
+            showAlert('削除権限がありません', 'warning');
+            return;
+        }
+        if (adjustment.delete_phrase) {
+            const phrase = prompt('削除時の合言葉を入力してください');
+            if (phrase === null) return;
+            if (phrase !== adjustment.delete_phrase) {
+                showAlert('削除時の合言葉が違います', 'danger');
+                return;
+            }
+        }
+        if (!confirmDelete()) return;
+
+        const relatedResponses = appState.dateAdjustmentResponses.filter((item) => String(item.adjustment_id || '') === String(adjustment.id || ''));
+        await Promise.all(relatedResponses.filter((item) => item.id).map((item) => request(`/api/extra/date_adjustment_responses/${encodeURIComponent(item.id)}`, { method: 'DELETE' })));
+        await request(`/api/extra/date_adjustments/${encodeURIComponent(adjustment.id)}`, { method: 'DELETE' });
+        await loadExtraData();
+        renderDateAdjustmentView();
+        showAlert('日程調整を削除しました', 'success');
+    }));
+}
+
 function renderMemberEventView() {
     const c = $('memberEventInfo'); if (!c) return;
     c.innerHTML = `
@@ -5090,6 +5789,28 @@ function renderPieceInfoView() {
             });
         });
     }
+}
+
+function renderPracticeInstructionView() {
+    const container = $('memberPracticeInstructionInfo');
+    if (!container) return;
+    if (!appState.performances.length) {
+        container.innerHTML = '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
+        return;
+    }
+
+    container.innerHTML = appState.performances.map((perf) => {
+        const performancePieces = normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean);
+        const rows = performancePieces.length
+            ? performancePieces.map((piece) => {
+                const instruction = appState.practiceInstructions.find((item) => String(item.performance_id || '') === String(perf.id) && String(item.piece || '') === piece);
+                const practiceText = instruction?.practice_notes || '未登録';
+                const performanceText = instruction?.performance_instruction || '未登録';
+                return `<article class="info-block"><h6 class="mb-2">${escapeHtml(piece)}</h6><div class="small text-muted mb-1">練習時の指摘内容</div><div class="multiline-text mb-2">${convertUrlsToLinks(practiceText)}</div><div class="small text-muted mb-1">演奏指示</div><div class="multiline-text">${convertUrlsToLinks(performanceText)}</div></article>`;
+            }).join('')
+            : '<p class="text-muted mb-0">この演奏会に登録された曲がありません</p>';
+        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${rows}</section>`;
+    }).join('');
 }
 
 
@@ -5378,6 +6099,11 @@ function renderAlbumView() {
 async function request(url, options = {}) {
     const method = options.method || 'GET';
     const cacheKey = url;
+    const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY) || '';
+    const baseHeaders = {
+        ...(options.headers || {}),
+        ...(deviceId ? { 'X-Device-Id': deviceId } : {})
+    };
     
     // GETリクエストはキャッシュを確認
     if (method === 'GET') {
@@ -5389,7 +6115,7 @@ async function request(url, options = {}) {
             const cached = await dbCache.get(cacheKey);
             const etag = dbCache.getETag(cacheKey);
 
-            const headers = { ...options.headers };
+            const headers = { ...baseHeaders };
             if (etag) {
                 headers['If-None-Match'] = etag;
             }
@@ -5427,7 +6153,7 @@ async function request(url, options = {}) {
     }
     
     // POSTやPUT、DELETEの場合は通常のリクエスト
-    const response = await fetch(url, options);
+    const response = await fetch(url, { ...options, headers: baseHeaders });
     const contentType = response.headers.get('content-type') || '';
     const data = contentType.includes('application/json') ? await response.json() : await response.text();
     if (!response.ok) {
@@ -5436,9 +6162,38 @@ async function request(url, options = {}) {
         throw new Error(message);
     }
     
-    // 更新系のリクエスト後はキャッシュをクリア
-    await dbCache.clear();
+    // 更新系のリクエスト後は関連キャッシュだけ無効化する。
+    await invalidateCacheForMutation(url);
     return data;
+}
+
+function mutationRelatedCacheKeys(url) {
+    const keys = new Set(['/api/bootstrap-lite', '/api/bootstrap-core', '/api/bootstrap']);
+    if (url.startsWith('/api/extra/')) {
+        keys.add(url.split('?')[0]);
+        if (url.includes('/sheet_library') || url.includes('/date_adjust') || url.includes('/practice_instruction')) {
+            keys.add('/api/sheets');
+        }
+        return [...keys];
+    }
+    if (url.startsWith('/api/sheets')) {
+        keys.add('/api/sheets');
+        keys.add('/api/extra/sheet_library');
+        return [...keys];
+    }
+    if (url.startsWith('/api/recordings') || url.startsWith('/api/convert') || url.startsWith('/api/drive/')) {
+        keys.add('/api/recordings');
+        keys.add('/api/drive/files');
+        return [...keys];
+    }
+    const firstPath = url.split('?')[0].replace(/\/[0-9]+$/, '');
+    keys.add(firstPath);
+    return [...keys];
+}
+
+async function invalidateCacheForMutation(url) {
+    const keys = mutationRelatedCacheKeys(url);
+    await Promise.all(keys.map((key) => dbCache.delete(key)));
 }
 
 function jsonOptions(method, payload) {
