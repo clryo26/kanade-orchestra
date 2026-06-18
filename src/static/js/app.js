@@ -13,7 +13,10 @@ class IndexedDBCache {
     }
 
     async init() {
-        return new Promise((resolve, reject) => {
+        const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('IndexedDB init timeout')), 3000)
+        );
+        const open = new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
@@ -27,6 +30,7 @@ class IndexedDBCache {
                 }
             };
         });
+        return Promise.race([open, timeout]);
     }
 
     async get(key) {
@@ -263,21 +267,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('IndexedDB initialization failed:', error);
     }
     
-    setDefaultDates();
-    setupPortalHome();
-    setupMemberManagerTabs();
-    bindNavigation();
-    bindUpload();
-    bindForms();
-    bindDownloadConfirmations();
-    updateSavePath();
+    try {
+        setDefaultDates();
+        setupPortalHome();
+        setupMemberManagerTabs();
+        bindNavigation();
+        bindUpload();
+        bindForms();
+        bindDownloadConfirmations();
+        updateSavePath();
+    } catch (initError) {
+        console.error('Portal initialization error:', initError);
+    }
 
-    if (await isPortalAuthenticated()) {
-        await enterPortal();
-    } else {
-        showPortalLogin();
-        // ログイン画面は先に表示し、パート一覧などの補助設定は後から反映する。
-        loadPartSettingsForLogin();
+    try {
+        if (await isPortalAuthenticated()) {
+            await enterPortal();
+        } else {
+            showPortalLogin();
+            // ログイン画面は先に表示し、パート一覧などの補助設定は後から反映する。
+            loadPartSettingsForLogin();
+        }
+    } catch (authError) {
+        console.error('Portal auth/login error:', authError);
+        // 認証・ログイン処理が失敗した場合でもログインフォームを必ず表示する。
+        try { showPortalLogin(); } catch { /* ignore */ }
     }
 });
 
