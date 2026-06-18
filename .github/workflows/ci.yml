@@ -64,6 +64,12 @@ jobs:
       - name: Install frontend test dependencies
         run: npm install
 
+      - name: Run frontend syntax check
+        run: |
+          for file in src/static/js/*.js; do
+            node --check "$file"
+          done
+
       - name: Run frontend integration tests
         run: npm run test:frontend:integration
 
