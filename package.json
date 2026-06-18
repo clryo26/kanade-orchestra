@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "check:frontend:syntax": "node --check src/static/js/app.js && node --check src/static/js/frontend_testable_logic.js",
     "test:frontend": "vitest run",
     "test:frontend:integration": "vitest run tests/integration/frontend",
     "test:frontend:coverage": "vitest run --coverage tests/frontend"

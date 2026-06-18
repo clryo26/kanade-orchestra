@@ -1,5 +1,7 @@
 # 奏オケポータル 全体設計書
 
+最終更新: 2026-06-19
+
 ## 1. システム目的
 
 奏オケポータルは、団員向け情報共有と運営管理業務を 1 つの Web システムに統合することを目的とする。
@@ -98,6 +100,7 @@
 - SNS 設定
 - 接続先設定
 - パート設定
+- データメンテナンス（孤立データ検出・削除）
 
 ## 5. データ設計
 
@@ -111,10 +114,13 @@
 - members
 - absences
 - event_responses
+- date_adjustments
+- date_adjustment_responses
 - sheet_library
 - payments
 - castings
 - piece_infos
+- practice_instructions
 - albums
 - part_settings
 - venue_settings
@@ -130,6 +136,8 @@
 
 - connection_settings を設定ソースの第一優先とし、環境変数はフォールバック
 - recording_metadata で再生時間などを保持
+- albums はイベント単位で写真配列（photos）を内包して管理
+- bootstrap レスポンスに `cloudRunRevision` フィールドを含め Cloud Run リビジョンを画面に表示
 
 ## 6. API 構成
 
@@ -189,6 +197,16 @@
 - POST /api/extra/{name}
 - PUT /api/extra/{name}/{item_id}
 - DELETE /api/extra/{name}/{item_id}
+
+### 6.7 アルバム写真
+
+- POST /api/extra/albums/{album_id}/photos  （全員可、GCS へ保存）
+- DELETE /api/extra/albums/{album_id}/photos/{photo_id}  （管理者専用）
+
+### 6.8 データメンテナンス
+
+- GET /api/maintenance/orphans  （管理者専用）
+- POST /api/maintenance/cleanup  （管理者専用）
 
 ## 7. 非機能設計
 

@@ -1,6 +1,6 @@
 {
   "name": "楽団ポータル",
-  "short_name": "楽団",
+  "short_name": "楽団ポータル",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

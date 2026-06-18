@@ -21,6 +21,40 @@ body {
     font-weight: 700;
 }
 
+/* ローディングバー: ナビバー直下に表示 */
+#portalLoadingBar {
+    align-items: center;
+    background: var(--surface);
+    border-bottom: 2px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    left: 0;
+    padding: 0.3rem 1rem;
+    position: sticky;
+    right: 0;
+    top: 57px; /* ナビバー高さに合わせる */
+    z-index: 1020;
+}
+#portalLoadingBar[hidden] { display: none !important; }
+#portalLoadingBarFill {
+    animation: loadingPulse 1.5s ease-in-out infinite;
+    background: linear-gradient(90deg, var(--brand) 0%, #5ba3e0 50%, var(--brand) 100%);
+    background-size: 200% 100%;
+    border-radius: 2px;
+    height: 3px;
+    width: 100%;
+}
+@keyframes loadingPulse {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+#portalLoadingLabel {
+    color: var(--brand);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
 /* ヘッダー/ドロワー関連 */
 .portal-title-area {
     align-items: center;
@@ -777,6 +811,21 @@ details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::
     .sheet-viewer-body {
         height: calc(100vh - 220px);
         min-height: 420px;
+    }
+
+    .portal-menu-actions-section .portal-drawer-actions {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    .portal-menu-actions-section .portal-drawer-actions .btn {
+        width: 100% !important;
+        flex: none;
+    }
+
+    .portal-menu-actions-section .portal-drawer-actions .revision-inline {
+        display: block !important;
+        margin-left: 0 !important;
     }
 }
 

@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import io
 import zipfile
@@ -143,9 +144,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# CORS_ORIGINS 環境変数で許可オリジンをカンマ区切りで設定できる。
+# 未設定の場合はローカル開発向けにワイルドカードを継続して使用する。
+# 例: CORS_ORIGINS=https://sites.google.com,https://kanade-portal-xxx.run.app
+_cors_env = os.getenv("CORS_ORIGINS", "").strip()
+_cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -402,6 +409,44 @@ def normalize_extra_for_collection(name: str, payload: dict[str, Any]) -> dict[s
     if name == "connection_settings":
         return validate_connection_settings_payload(payload)
     return payload
+
+
+# ===== パスワードハッシュユーティリティ =====
+# PBKDF2-SHA256 を使ったハッシュ化。追加ライブラリ不要。
+# ハッシュ形式: "pbkdf2$sha256$<iterations>$<salt>$<hex_hash>"
+# 旧形式（プレーンテキスト）はプレフィックスなし。
+
+_PBKDF2_ALGO = "sha256"
+_PBKDF2_ITERATIONS = 260000  # OWASP 2023推奨値
+
+
+def hash_password(password: str) -> str:
+    """PBKDF2-SHA256 でパスワードをハッシュ化して返す。"""
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode(), salt.encode(), _PBKDF2_ITERATIONS)
+    return f"pbkdf2${_PBKDF2_ALGO}${_PBKDF2_ITERATIONS}${salt}${dk.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """入力パスワードと保存値を検証する。
+    旧形式（プレーンテキスト）も軽欠的に受け入れる・タイミングアタック対策あり。
+    """
+    if not stored:
+        return False
+    if not stored.startswith("pbkdf2$"):
+        # 旧形式: プレーンテキストの定数時間比較（タイミングアタック対策）
+        return secrets.compare_digest(password.encode(), stored.encode())
+    try:
+        _, algo, iterations_str, salt, stored_hash = stored.split("$")
+        dk = hashlib.pbkdf2_hmac(algo, password.encode(), salt.encode(), int(iterations_str))
+        return secrets.compare_digest(dk.hex(), stored_hash)
+    except (ValueError, TypeError):
+        return False
+
+
+def is_hashed_password(stored: str) -> bool:
+    """ハッシュ済みパスワードか判定する。"""
+    return stored.startswith("pbkdf2$")
 
 
 def device_auth_record(device_id: str) -> dict[str, Any]:
@@ -778,8 +823,18 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
                 "needs_password_setup": True,
                 "member_id": member.get("id"),
             }
-        if login.password != member_password:
+        if not verify_password(login.password, member_password):
             raise HTTPException(status_code=401, detail="Invalid member password")
+        # 旧形式（プレーンテキスト）パスワードが検証できた場合は自動的にハッシュ化して保存する。
+        if not is_hashed_password(member_password):
+            members = load_json_data("members")
+            for m in members:
+                if m.get("id") == member.get("id"):
+                    m["password"] = hash_password(login.password)
+                    m["updated_at"] = datetime.now().isoformat()
+                    break
+            save_json_data("members", members)
+            logger.info("Auto-migrated password hash for member_id=%s", member.get("id"))
 
     device_id = login.device_id.strip()
     if not device_id:
@@ -835,7 +890,8 @@ async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, 
     index, member = find_member_by_login_name(members, payload.name, payload.part)
     if member.get("password"):
         raise HTTPException(status_code=409, detail="Member password is already set")
-    member["password"] = password
+    # 初回登録時は常に PBKDF2 ハッシュ化して保存する。
+    member["password"] = hash_password(password)
     member["updated_at"] = datetime.now().isoformat()
     members[index] = member
     save_json_data("members", members)
@@ -905,6 +961,7 @@ async def get_bootstrap_lite_data(request: Request) -> dict[str, Any] | Response
         "announcements": load_json_data("announcements"),
         "members": load_json_data("members"),
         "extras": extras,
+        "cloudRunRevision": os.getenv("CLOUD_RUN_REVISION", ""),
     }
     
     # レスポンスにETagを追加
@@ -938,6 +995,7 @@ async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response
         "members": load_json_data("members"),
         "extras": extras,
         "auth_devices": await get_auth_devices(),
+        "cloudRunRevision": os.getenv("CLOUD_RUN_REVISION", ""),
     }
     
     if cached_etag:
@@ -971,6 +1029,7 @@ async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
         "sheets": {"files": sheet_payload()},
         "extras": extras,
         "auth_devices": await get_auth_devices(),
+        "cloudRunRevision": os.getenv("CLOUD_RUN_REVISION", ""),
     }
     
     if cached_etag:
@@ -1281,6 +1340,120 @@ async def health_check() -> dict[str, str]:
         "service": "Orchestra Activity Tool",
         "storage_configured": str(storage_enabled()).lower(),
     }
+
+
+# ===== データメンテナンス API =====
+# 親レコードが削除されたために孤立したデータを検出して返す。
+
+def _collect_orphans() -> dict[str, list[dict[str, Any]]]:
+    """各コレクションを横断して孤立レコードを収集する。"""
+    performances = load_json_data("performances")
+    schedules = load_json_data("schedules")
+    members = load_json_data("members")
+    events = load_json_data("events")
+    date_adjustments = load_json_data("date_adjustments")
+
+    perf_ids = {item.get("id") for item in performances}
+    schedule_ids = {item.get("id") for item in schedules}
+    member_ids = {item.get("id") for item in members}
+    event_ids = {item.get("id") for item in events}
+    adj_ids = {item.get("id") for item in date_adjustments}
+
+    orphans: dict[str, list[dict[str, Any]]] = {}
+
+    def _check(collection: str, predicate) -> None:
+        items = load_json_data(collection)
+        bad = [item for item in items if predicate(item)]
+        if bad:
+            orphans[collection] = bad
+
+    # castings: 削除済み演奏会に紐づくもの
+    _check("castings",
+           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+
+    # absences: 削除済み団員 or 削除済みスケジュールに紐づくもの
+    _check("absences",
+           lambda x: (x.get("member_id") not in member_ids and x.get("member_id") is not None)
+                  or (x.get("schedule_id") not in schedule_ids and x.get("schedule_id") is not None))
+
+    # payments: 削除済み演奏会 or 削除済み団員に紐づくもの
+    _check("payments",
+           lambda x: (x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+                  or (x.get("member_id") not in member_ids and x.get("member_id") is not None))
+
+    # piece_infos: 削除済み演奏会に紐づくもの
+    _check("piece_infos",
+           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+
+    # practice_instructions: 削除済み演奏会に紐づくもの
+    _check("practice_instructions",
+           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+
+    # desired_pieces: 削除済み演奏会に紐づくもの
+    _check("desired_pieces",
+           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+
+    # event_responses: 削除済みイベントに紐づくもの
+    _check("event_responses",
+           lambda x: x.get("event_id") not in event_ids and x.get("event_id") is not None)
+
+    # date_adjustment_responses: 削除済み調整に紐づくもの
+    _check("date_adjustment_responses",
+           lambda x: x.get("adjustment_id") not in adj_ids and x.get("adjustment_id") is not None)
+
+    return orphans
+
+
+@app.get("/api/maintenance/orphans")
+async def get_orphans(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    """孤立データ一覧を返す（システム管理者専用）。"""
+    require_admin_device(x_device_id)
+    orphans = _collect_orphans()
+    summary = {collection: len(items) for collection, items in orphans.items()}
+    return {"orphans": orphans, "summary": summary, "total": sum(summary.values())}
+
+
+@app.post("/api/maintenance/cleanup")
+async def cleanup_orphans(
+    body: dict[str, Any],
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> dict[str, Any]:
+    """指定コレクションの孤立レコードを削除する（システム管理者専用）。"""
+    require_admin_device(x_device_id)
+
+    # 対象コレクション名リストを受け取る。空なら全孤立データを対象にする。
+    target_collections: list[str] = body.get("collections") or []
+    # 特定IDを指定する場合（コレクション名→ID一覧のマップ）
+    target_ids: dict[str, list] = body.get("ids") or {}
+
+    orphans = _collect_orphans()
+    deleted: dict[str, int] = {}
+
+    for collection, orphan_items in orphans.items():
+        if target_collections and collection not in target_collections:
+            continue
+        if not orphan_items:
+            continue
+
+        # IDで絞り込む場合
+        if collection in target_ids:
+            allowed_ids = set(target_ids[collection])
+            to_delete_ids = {item.get("id") for item in orphan_items if item.get("id") in allowed_ids}
+        else:
+            to_delete_ids = {item.get("id") for item in orphan_items}
+
+        if not to_delete_ids:
+            continue
+
+        all_items = load_json_data(collection)
+        remaining = [item for item in all_items if item.get("id") not in to_delete_ids]
+        deleted_count = len(all_items) - len(remaining)
+        if deleted_count > 0:
+            save_json_data(collection, remaining)
+            deleted[collection] = deleted_count
+            logger.info("Maintenance cleanup: deleted %d orphan(s) from %s", deleted_count, collection)
+
+    return {"deleted": deleted, "total_deleted": sum(deleted.values())}
 
 
 # ===== 基本マスタ CRUD =====
@@ -2209,6 +2382,142 @@ async def delete_extra_item(name: str, item_id: int, x_device_id: str = Header(d
     assert_extra_collection_permission(name, device, current=current)
     save_json_data(name, [item for item in items if item.get("id") != item_id])
     return {"message": "Deleted"}
+
+
+# ===== アルバム機能（写真アップロード・削除） =====
+# アルバムへの写真アップロード。Google Cloud Storage に保存し、メタデータはローカル JSON に記録。
+@app.post("/api/extra/albums/{album_id}/photos")
+async def upload_album_photo(
+    album_id: int,
+    file: UploadFile = File(...),
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> dict[str, Any]:
+    device = require_device(x_device_id)
+    
+    # アルバムデータを読み込み、該当するアルバムを検出
+    albums = load_json_data("albums")
+    index, album = find_item(albums, album_id)
+    
+    # 写真メタデータ用の情報を準備
+    member_id = device.get("member_id")
+    member_name = device.get("member_name") or str(device.get("member_id") or "")
+    now = datetime.now().isoformat()
+    
+    # 次の写真IDを決定（該当アルバムの photos 配列の最大値 + 1）
+    photos = album.get("photos") or []
+    next_photo_id = max([p.get("id", 0) for p in photos], default=0) + 1
+    
+    # ファイル名を安全化
+    filename = safe_upload_name(file.filename or "photo.jpg")
+    date_dir = datetime.now().strftime("%Y-%m-%d")
+    
+    # 一時的にファイルをメモリに読み込む
+    file_content = await file.read()
+    
+    # Google Cloud Storage へのアップロード
+    photo_metadata = None
+    if storage_enabled():
+        try:
+            bucket = get_storage_bucket()
+            object_name = f"albums/{album_id}/{date_dir}/{next_photo_id}_{filename}"
+            blob = bucket.blob(object_name)
+            blob.upload_from_string(
+                file_content,
+                content_type=file.content_type or "application/octet-stream"
+            )
+            
+            photo_metadata = {
+                "id": next_photo_id,
+                "filename": filename,
+                "url": blob.public_url,
+                "uploaded_by_member_id": member_id,
+                "uploaded_by_member_name": member_name,
+                "uploaded_at": now,
+                "object_name": object_name,
+            }
+        except Exception as exc:
+            logger.exception("Album photo upload to GCS failed")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Photo upload failed: {exc}",
+            ) from exc
+    else:
+        # ローカルストレージへのフォールバック
+        photo_dir = UPLOAD_DIR / "albums" / str(album_id) / date_dir
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        photo_path = photo_dir / f"{next_photo_id}_{filename}"
+        photo_path.write_bytes(file_content)
+        
+        photo_metadata = {
+            "id": next_photo_id,
+            "filename": filename,
+            "url": f"/api/albums/{album_id}/photos/{next_photo_id}",
+            "uploaded_by_member_id": member_id,
+            "uploaded_by_member_name": member_name,
+            "uploaded_at": now,
+            "path": str(photo_path.relative_to(UPLOAD_DIR).as_posix()),
+        }
+    
+    # アルバムの photos 配列に追加
+    if "photos" not in album:
+        album["photos"] = []
+    album["photos"].append(photo_metadata)
+    album["updated_at"] = now
+    
+    # 保存
+    albums[index] = album
+    save_json_data("albums", albums)
+    
+    return photo_metadata
+
+
+# アルバムからの写真削除（管理者のみ）
+@app.delete("/api/extra/albums/{album_id}/photos/{photo_id}")
+async def delete_album_photo(
+    album_id: int,
+    photo_id: int,
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> dict[str, str]:
+    require_admin_device(x_device_id)
+    
+    # アルバムデータを読み込み、該当するアルバムを検出
+    albums = load_json_data("albums")
+    index, album = find_item(albums, album_id)
+    
+    # 該当する写真を検出
+    photos = album.get("photos") or []
+    photo_to_delete = next((p for p in photos if p.get("id") == photo_id), None)
+    
+    if not photo_to_delete:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Cloud Storage から削除
+    if storage_enabled() and photo_to_delete.get("object_name"):
+        try:
+            bucket = get_storage_bucket()
+            blob = bucket.blob(photo_to_delete["object_name"])
+            blob.delete()
+        except Exception as exc:
+            logger.exception("Album photo deletion from GCS failed")
+            # ログには記録するが、エラーは出さない（JSONは更新する）
+    
+    # ローカルストレージから削除
+    if photo_to_delete.get("path"):
+        try:
+            photo_path = UPLOAD_DIR / photo_to_delete["path"]
+            photo_path.unlink()
+        except Exception as exc:
+            logger.exception("Album photo deletion from local storage failed")
+    
+    # photos 配列から削除
+    album["photos"] = [p for p in photos if p.get("id") != photo_id]
+    album["updated_at"] = datetime.now().isoformat()
+    
+    # 保存
+    albums[index] = album
+    save_json_data("albums", albums)
+    
+    return {"message": "Photo deleted"}
 
 
 if __name__ == "__main__":

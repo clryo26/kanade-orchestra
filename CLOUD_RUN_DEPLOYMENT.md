@@ -35,6 +35,40 @@ Cloud Run に割り当てるサービスアカウントに以下の権限が必�
 
 ## デプロイ手順
 
+### 0. デプロイ前チェック（必須）
+
+本番反映前に、最低でも次を満たしてください。
+
+- GitHub Actions の CI が最新コミットで成功していること（frontend syntax check を含む）
+- ローカルで可能な範囲の構文・テスト確認を実施済みであること
+- デプロイ対象コミットは、CI 成功が確認できるコミット SHA のみを許可すること
+
+禁止事項:
+
+- CI 未実行コミットのデプロイ
+- CI 失敗コミットのデプロイ
+- CI 結果未確認のままのデプロイ
+
+推奨コマンド（ローカル）:
+
+```bash
+# Python 構文チェック
+python -m compileall -q src tests
+
+# Python テスト
+uv run pytest -q tests/backend tests/integration/backend tests/operations
+
+# Node がある環境ではフロント構文チェックも実施
+npm run check:frontend:syntax
+```
+
+※ Node/npm が無い環境では、PR 作成後に CI の frontend syntax check 成功を必須ゲートとして扱ってください。
+
+運用ルール（固定）:
+
+- Cloud Run への本番デプロイは「CI 成功コミットのみデプロイ可」とする
+- 例外運用は行わない（緊急時も先に最小修正で CI を通してからデプロイする）
+
 ### 1. Docker イメージをビルド・プッシュ
 
 ```bash

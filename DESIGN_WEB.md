@@ -1,5 +1,7 @@
 # 奏オケポータル Web設計書
 
+最終更新: 2026-06-19
+
 ## 1. 概要
 
 奏オケポータルは、福岡奏オーケストラ向けの Web アプリケーションである。
@@ -132,6 +134,7 @@
 - SNS情報
 - 接続先情報
 - パート管理
+- データメンテナンス（孤立データ検出・削除）
 
 ## 6. 主要機能詳細
 
@@ -182,6 +185,9 @@
 - 演奏会単位の乗り番レコード
 - 団員リストとエキストラリストを別管理
 - エキストラ情報: 名前、ふりがな、パート
+- ポータル表示: 演奏会ごと・曲ごとにセクション分割し、出演者をパートごとグルーピングして表形式表示
+  - パート順は part_settings の登録順に準拠
+  - エキストラは `extras[].part` フィールドでグルーピング（未設定時は「エキストラ」表示）
 
 ### 6.8 イベント調整
 
@@ -237,6 +243,31 @@
   - data prefix
   - public flag
   - service account file/json
+
+### 6.15 アルバム
+
+- 団員が自由にアルバムイベント（イベント名）を作成できる
+- 各イベントに対して複数の写真をアップロード
+- 写真は Google Cloud Storage に保存し、公開 URL を取得して albums JSON に記録
+- 写真はイベントページで gallery 表示（lazy loading）
+- イベント削除・写真削除は管理者のみ可能
+- イベント一覧は作成日降順（新しいものが上）
+- データ構造: `{ id, event_name, created_by_member_id, created_by_member_name, created_at, updated_at, photos: [{ id, filename, url, uploaded_by_member_id, uploaded_by_member_name, uploaded_at }] }`
+
+### 6.16 Cloud Run リビジョン表示
+
+- バックエンドが `CLOUD_RUN_REVISION` 環境変数を読み込み、bootstrap レスポンスに `cloudRunRevision` フィールドを含める
+- フロントは `updateCloudRunRevision()` でドロワーの Rev. 表示を動的更新
+- 新しいリビジョンでデプロイするたびに自動的に展示内容が切り替わる
+
+### 6.17 データメンテナンス
+
+- システム管理メニュー「データメンテナンス」から実行
+- 「孤立データをスキャン」ボタンで `/api/maintenance/orphans` を呼び出し、孤立データをチェックボックス付き一覧で表示
+- 各アイテムを個別選択して「選択した項目を削除」ボタンで削除
+- 削除後に自動再スキャンを実行し結果を更新
+- 検出対象: castings / absences / payments / piece_infos / practice_instructions / desired_pieces / event_responses / date_adjustment_responses
+- 管理者専用機能
 
 ## 7. データ設計
 
@@ -345,6 +376,22 @@ main.py で管理する現行 JSON_DATA_NAMES:
 - 所有者更新可: date_adjustments / date_adjustment_responses / absences / event_responses
 
 PUT では `expected_updated_at` を受け付け、サーバの `updated_at` と不一致時は 409 を返す。
+
+### 8.8 アルバム写真
+
+- POST /api/extra/albums/{album_id}/photos  （全員可、GCS へ保存）
+- DELETE /api/extra/albums/{album_id}/photos/{photo_id}  （管理者専用）
+
+### 8.9 データメンテナンス
+
+- GET /api/maintenance/orphans  （管理者専用）
+- POST /api/maintenance/cleanup  （管理者専用）
+
+### 8.10 bootstrap 拡張
+
+全 bootstrap API（bootstrap-lite / bootstrap-core / bootstrap）のレスポンスに以下を含む:
+
+- `cloudRunRevision`: `CLOUD_RUN_REVISION` 環境変数の値（Google Cloud 自動設定）
 
 ## 9. パフォーマンス設計
 

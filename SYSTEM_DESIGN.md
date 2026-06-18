@@ -1,7 +1,7 @@
 # 奏オケポータル システム設計書
 
-版: 2.0
-最終更新: 2026-06-17
+版: 2.1
+最終更新: 2026-06-19
 
 ## 1. システム概要
 
@@ -88,6 +88,7 @@
 
 - 認証端末、団体情報、SNS
 - 接続先情報、パート管理
+- データメンテナンス（孤立データ検出・削除）
 
 ## 5. データモデル
 
@@ -168,13 +169,21 @@
 
 ### 6.6 汎用拡張
 
-- /api/extra/{name}
+- /api/extra/{name}  （CRUD: GET / POST / PUT / DELETE）
+- POST /api/extra/albums/{album_id}/photos  （アルバム写真アップロード、全員可）
+- DELETE /api/extra/albums/{album_id}/photos/{photo_id}  （写真削除、管理者専用）
+
+### 6.7 データメンテナンス
+
+- GET /api/maintenance/orphans  （孤立データ検出、管理者専用）
+- POST /api/maintenance/cleanup  （孤立データ削除、管理者専用）
 
 ## 7. パフォーマンス設計
 
 - バックエンド: MemoryCache + インデックス + ETag
 - フロント: IndexedDB キャッシュ + in-flight dedupe
 - 初期描画: 軽量 bootstrap 先行、重い一覧は遅延
+- bootstrap レスポンスに `cloudRunRevision` を含め、Cloud Run リビジョンを画面に動的表示
 
 ## 8. 運用設計
 
@@ -192,6 +201,45 @@
 INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATION_TEST_SPEC_CI.md を参照する。
 
 運用テスト仕様は OPERATION_TEST_SPEC.md を参照する。
+
+## 10. 機能詳細（新機能・更新機能）
+
+### 10.1 アルバム機能
+
+- 団員が自由にアルバムイベント（イベント名）を作成できる
+- 各イベントに対して複数の写真をアップロード可能（Google Cloud Storage に保存）
+- 写真はイベントページで gallery 表示（lazy loading）
+- イベント削除・写真削除は管理者のみ可能
+- イベント一覧は作成日降順（新しいものが上）
+- データ構造: `{ id, event_name, created_by_member_id, created_by_member_name, created_at, updated_at, photos: [{ id, filename, url, uploaded_by_member_id, uploaded_by_member_name, uploaded_at }] }`
+
+### 10.2 Cloud Run リビジョン表示
+
+- バックエンドが `CLOUD_RUN_REVISION` 環境変数を読み込み bootstrap レスポンスに含める
+- フロントは `updateCloudRunRevision()` でサイドドロワーの Rev. 表示を動的更新
+- Google Cloud が自動的に設定する環境変数のため、デプロイするたびに自動的に最新リビジョン番号に切り替わる
+
+### 10.3 乗り番表（ポータル表示）
+
+- 演奏会ごと・曲ごとにセクション分割して表示
+- 各曲の出演者をパートごとにグルーピングして表形式で表示
+- パート順は part_settings の登録順に準拠
+- エキストラは `extras[].part` フィールドでグルーピング（未設定時は「エキストラ」表示）
+
+### 10.4 データメンテナンス
+
+- システム管理メニュー「データメンテナンス」タブから実行
+- `GET /api/maintenance/orphans` で孤立データを検出（管理者専用）
+- `POST /api/maintenance/cleanup` で選択した孤立データを削除（管理者専用）
+- 検出対象: castings・absences・payments・piece_infos・practice_instructions・desired_pieces・event_responses・date_adjustment_responses
+- 各レコードをチェックボックスで個別選択して削除可能
+- 削除後に自動再スキャンを実行して結果を更新
+
+## 11. 今後の保守方針
+
+- 新機能追加時は appState、API、JSON コレクション定義、設計書を同時更新
+- 権限分岐が増える機能は必ず認可ルールを設計書へ明記
+- 画面追加時は団員/管理者/システム管理のどの導線に属するかを明記
 
 │  │  - システム設定                                    │    │
 │  └────────────────────────────────────────────────────┘    │
@@ -1050,8 +1098,14 @@ API レスポンス:
 
 ### 1. 認証セキュリティ
 - **デバイスID**: UUID ベースの一意識別
-- **パスワードハッシング**: プレーンテキスト保存（⚠️ 改善推奨）
-- **CORS**: ワイルドカード許可（⚠️ 本番では制限推奨）
+- **パスワードハッシング**: PBKDF2-SHA256 + ソルト（標準ライブラリ `hashlib` + `secrets` 使用、追加パッケージ不要）
+  - 新規設定時: 常にハッシュ化して保存
+  - 既存平文パスワード: ログイン成功後に自動的にハッシュ化して上書き保存（移行不要）
+  - 形式: `pbkdf2$sha256$<iterations>$<salt>$<hex_hash>`
+  - イテレーション数: 260,000 回（OWASP 2023 推奨値）
+- **CORS**: 環境変数 `CORS_ORIGINS` でカンマ区切りで許可オリジンを指定可能
+  - 未設定時は `*`（ローカル開発向け）
+  - 本番環境では `CORS_ORIGINS=https://sites.google.com,https://xxxxx.run.app` のように設定する
 
 ### 2. データ保護
 - **HTTPS**: 本番環境での必須

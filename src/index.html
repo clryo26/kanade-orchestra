@@ -9,6 +9,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#235789">
+    <meta name="application-name" content="楽団ポータル">
+    <meta name="apple-mobile-web-app-title" content="楽団ポータル">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css?v=20260617-15">
 </head>
@@ -29,8 +31,11 @@
             </div>
         </div>
     </nav>
-
-    <!-- サイドドロワー: ポータル内ナビゲーション（主要導線） -->
+    <!-- ローディングバー: 初回読み込み・更新時の処理状態を表示する -->
+    <div id="portalLoadingBar" hidden>
+        <div id="portalLoadingBarFill"></div>
+        <span id="portalLoadingLabel"></span>
+    </div>
     <div class="portal-drawer-backdrop" id="portalDrawerBackdrop" hidden></div>
     <aside class="portal-drawer" id="portalDrawer" hidden aria-label="メニュー">
         <div class="portal-drawer-header">
@@ -61,7 +66,8 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="piece-info-admin" type="button">楽曲情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="practice-instruction-admin" type="button">練習指示</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払設定</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="payment-setting" type="button">支払設定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="casting-admin" type="button">乗り番管理</button>
             </div>
@@ -576,7 +582,7 @@
             </div>
 
             <!-- 支払設定管理 -->
-            <div id="paymentAdminTab" class="tab-content" hidden>
+            <div id="paymentSettingTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">団費・演奏会費設定</div>
                     <div class="card-body">
@@ -602,6 +608,47 @@
                     </div>
                 </div>
             </div>
+            <!-- 会場管理 -->
+            <div id="venueAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">会場管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="venueSettingId">
+                        <select class="form-select d-none" id="venueUsageType">
+                            <option value="performance">演奏会</option>
+                            <option value="practice">練習</option>
+                        </select>
+
+                        <section class="mb-4">
+                            <h5>演奏会会場</h5>
+                            <div class="row g-3 align-items-end mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label" for="venuePerformanceName">会場名</label>
+                                    <input type="text" class="form-control" id="venuePerformanceName" placeholder="例: 〇〇ホール">
+                                </div>
+                                <div class="col-md-4 d-flex gap-2">
+                                    <button class="btn btn-success flex-fill venue-save-by-type-btn" data-venue-type="performance" type="button">保存</button>
+                                    <button class="btn btn-outline-secondary flex-fill venue-clear-by-type-btn" data-venue-type="performance" type="button">クリア</button>
+                                </div>
+                            </div>
+                            <div id="venuePerformanceList"></div>
+                        </section>
+
+                        <section>
+                            <h5>練習会場</h5>
+                            <div class="row g-3 align-items-end mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label" for="venuePracticeName">会場名</label>
+                                    <input type="text" class="form-control" id="venuePracticeName" placeholder="例: 〇〇公民館">
+                                </div>
+                                <div class="col-md-4 d-flex gap-2">
+                                    <button class="btn btn-success flex-fill venue-save-by-type-btn" data-venue-type="practice" type="button">保存</button>
+                                    <button class="btn btn-outline-secondary flex-fill venue-clear-by-type-btn" data-venue-type="practice" type="button">クリア</button>
+                                </div>
+                            </div>
+                            <div id="venuePracticeList"></div>
+                        </section>
+                    </div>
                 </div>
             </div>
 
@@ -663,6 +710,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-maintenance" type="button">データメンテナンス</button>
             </div>
 
             <div id="systemAuthTab" class="tab-content">
@@ -796,6 +844,21 @@
                     </div>
                 </div>
             </div>
+
+            <div id="systemMaintenanceTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">データメンテナンス</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">演奏会・団員・イベントなどの削除によって参照先が存在しなくなった孤立データを検出して削除します。</p>
+                        <div class="d-flex gap-2 mb-3">
+                            <button class="btn btn-outline-primary" id="maintenanceScanBtn" type="button">孤立データをスキャン</button>
+                            <button class="btn btn-danger" id="maintenanceCleanupAllBtn" type="button" disabled>選択した項目を削除</button>
+                        </div>
+                        <div id="maintenanceScanStatus" class="text-muted small mb-2" hidden></div>
+                        <div id="maintenanceOrphanList"></div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- 団員向けパネル: 日常利用機能の参照・登録 -->
@@ -910,7 +973,10 @@
                 <div class="card"><div class="card-header">マニュアル</div><div class="card-body" id="memberManualInfo"></div></div>
             </div>
             <div id="memberAlbumTab" class="tab-content" hidden>
-                <div class="card"><div class="card-header">アルバム</div><div class="card-body" id="memberAlbumInfo"></div></div>
+                <div class="card">
+                    <div class="card-header">アルバム</div>
+                    <div class="card-body" id="memberAlbumInfo"></div>
+                </div>
             </div>
 
             <div id="memberConcertRecordTab" class="tab-content" hidden>

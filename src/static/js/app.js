@@ -462,7 +462,7 @@ function portalMenuGroups() {
             ]
         },
         {
-            title: 'オケ情報',
+            title: `${orgShortName()}情報`,
             items: [
                 { tab: 'member-sns', label: 'SNS' },
                 { tab: 'member-date-adjustment', label: '日程調整' },
@@ -517,7 +517,7 @@ function renderMenuGroups(container) {
     container.querySelectorAll('[data-home-tab]').forEach((button) => {
         button.addEventListener('click', () => {
             closePortalDrawer();
-            showMemberTab(button.dataset.homeTab);
+            openPortalMenuTab(button.dataset.homeTab || 'member-home');
         });
     });
     const adminButton = container.querySelector('[data-home-admin]');
@@ -530,6 +530,13 @@ function renderMenuGroups(container) {
         closePortalDrawer();
         showSystemPanel();
     });
+}
+
+function openPortalMenuTab(tabName) {
+    if (tabName === 'member-piece-info') {
+        appState.selectedPieceInfoId = null;
+    }
+    showMemberTab(tabName);
 }
 
 function renderPortalDrawerMenu() {
@@ -813,7 +820,10 @@ async function enterPortal() {
     if (!appState.essentialDataLoaded) {
         loadEssentialData()
             .then(() => { appState.essentialDataLoaded = true; })
-            .catch((error) => showAlert(error.message || 'データの読み込みに失敗しました', 'danger'))
+            .catch((error) => {
+                clearLoadingBar();
+                showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
+            })
             .finally(() => loadFullDataInBackground());
     } else {
         renderEssentialViews();
@@ -847,7 +857,10 @@ function bindNavigation() {
         showMemberTab('member-manual');
     });
     if ($('portalLogoutBtn')) $('portalLogoutBtn').addEventListener('click', logoutPortal);
-    if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => window.location.reload());
+    if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => {
+        setLoadingBar('更新中...');
+        window.location.reload();
+    });
 
     document.querySelectorAll('#adminPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('adminPanel', button.dataset.tab));
@@ -1010,6 +1023,9 @@ async function showMemberTab(tabName, shouldRender = true) {
         showPortalLogin();
         return;
     }
+    if (tabName === 'member-piece-info') {
+        appState.selectedPieceInfoId = null;
+    }
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('memberPanel').hidden = false;
     $('adminPanel').hidden = true;
@@ -1048,6 +1064,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-date-adjustment') renderDateAdjustmentView();
     if (renderOnShow && tabName === 'announcement-detail') renderAnnouncementDetail();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
+    if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
@@ -1055,6 +1072,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
+    if (renderOnShow && tabName === 'system-maintenance') renderMaintenanceView();
     
     // 画面上部にスクロール
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1070,6 +1088,7 @@ function toPascalTab(value) {
         event: 'event',
         member: 'member',
         'payment-admin': 'paymentAdmin',
+        'payment-setting': 'paymentSetting',
         'venue-admin': 'venueAdmin',
         'casting-admin': 'castingAdmin',
         'piece-info-admin': 'pieceInfoAdmin',
@@ -1101,7 +1120,8 @@ function toPascalTab(value) {
         'system-org': 'systemOrg',
         'system-sns': 'systemSns',
         'system-connection': 'systemConnection',
-        'system-part': 'systemPart'
+        'system-part': 'systemPart',
+        'system-maintenance': 'systemMaintenance'
     };
     return map[value] || value;
 }
@@ -1191,6 +1211,7 @@ function clearUploadForm() {
 // 初回表示に必要な最小データだけを先に取得する。
 // 演奏会・練習予定・お知らせなど、ホーム表示に直結する内容を優先する。
 async function loadEssentialData() {
+    setLoadingBar('データを読み込んでいます...');
     let data;
     try {
         data = await requestJson('/api/bootstrap-lite');
@@ -1198,6 +1219,7 @@ async function loadEssentialData() {
         data = await requestJson('/api/bootstrap');
     }
     applyBootstrapData(data);
+    clearLoadingBar();
     renderEssentialViews();
 }
 
@@ -1238,6 +1260,7 @@ function loadFullDataInBackground() {
     if (appState.dataLoaded || appState.fullDataLoading) return;
     appState.fullDataLoading = true;
     const start = async () => {
+        setLoadingBar('全データを取得中...');
         try {
             await loadAll({ includeHeavyLists: false });
             appState.dataLoaded = true;
@@ -1245,6 +1268,7 @@ function loadFullDataInBackground() {
             console.warn('Background data load failed', error);
         } finally {
             appState.fullDataLoading = false;
+            clearLoadingBar();
         }
     };
     // 初回メニュー描画・操作を優先するため、重めの追加取得は少し後ろへ回す。
@@ -1386,11 +1410,13 @@ function applyBootstrapData(data) {
         orgSettings: extras.org_settings || [],
         snsSettings: extras.sns_settings || [],
         connectionSettings: extras.connection_settings || [],
-        authDevices: data.auth_devices || []
+        authDevices: data.auth_devices || [],
+        cloudRunRevision: data.cloudRunRevision || ''
     });
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
+    updateCloudRunRevision();
     if (data.recordings) appState.recordingsLoaded = true;
     if (data.sheets) appState.sheetsLoaded = true;
     updateManagerNavigationVisibility();
@@ -2526,6 +2552,147 @@ async function deletePartSetting(partId) {
     showAlert('パートを削除しました', 'success');
 }
 
+// ===== データメンテナンス =====
+
+// コレクション名の日本語ラベル
+const COLLECTION_LABELS = {
+    castings: '乗り番',
+    absences: '欠席連絡',
+    payments: '支払状況',
+    piece_infos: '楽曲情報',
+    practice_instructions: '練習指示',
+    desired_pieces: '演奏希望曲',
+    event_responses: 'イベント回答',
+    date_adjustment_responses: '日程調整回答',
+};
+
+async function renderMaintenanceView() {
+    const scanBtn = $('maintenanceScanBtn');
+    const cleanupBtn = $('maintenanceCleanupAllBtn');
+    if (scanBtn) {
+        scanBtn.onclick = () => withButtonStatus(scanBtn, 'スキャン中...', () => runMaintenanceScan());
+    }
+    if (cleanupBtn) {
+        cleanupBtn.onclick = () => withButtonStatus(cleanupBtn, '削除中...', () => runMaintenanceCleanup());
+    }
+    // 初期状態にリセット
+    const orphanList = $('maintenanceOrphanList');
+    if (orphanList) orphanList.innerHTML = '<p class="text-muted">「孤立データをスキャン」ボタンを押してください。</p>';
+    if (cleanupBtn) cleanupBtn.disabled = true;
+}
+
+async function runMaintenanceScan() {
+    const statusEl = $('maintenanceScanStatus');
+    const orphanList = $('maintenanceOrphanList');
+    const cleanupBtn = $('maintenanceCleanupAllBtn');
+
+    if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'スキャン中...'; }
+    if (orphanList) orphanList.innerHTML = '';
+    if (cleanupBtn) cleanupBtn.disabled = true;
+
+    let result;
+    try {
+        result = await request('/api/maintenance/orphans');
+    } catch (e) {
+        if (statusEl) statusEl.textContent = 'スキャンに失敗しました。';
+        showAlert('孤立データのスキャンに失敗しました', 'danger');
+        return;
+    }
+
+    const orphans = result.orphans || {};
+    const total = result.total || 0;
+
+    if (total === 0) {
+        if (statusEl) statusEl.textContent = '孤立データは見つかりませんでした。';
+        if (orphanList) orphanList.innerHTML = '<p class="text-success fw-bold">すべてのデータは正常です。孤立したデータはありません。</p>';
+        if (cleanupBtn) cleanupBtn.disabled = true;
+        return;
+    }
+
+    if (statusEl) statusEl.textContent = `${total}件の孤立データが見つかりました。削除する項目を選択してください。`;
+
+    // 孤立データをテーブルで表示（チェックボックスで選択可能）
+    const html = Object.entries(orphans).map(([collection, items]) => {
+        const label = COLLECTION_LABELS[collection] || collection;
+        const rows = items.map((item) => {
+            const id = item.id ?? '';
+            // 表示用サマリーを生成
+            const summary = [
+                item.performance_id !== undefined ? `演奏会ID: ${item.performance_id}` : null,
+                item.member_id !== undefined ? `団員ID: ${item.member_id}` : null,
+                item.event_id !== undefined ? `イベントID: ${item.event_id}` : null,
+                item.adjustment_id !== undefined ? `調整ID: ${item.adjustment_id}` : null,
+                item.schedule_id !== undefined ? `練習ID: ${item.schedule_id}` : null,
+                item.title ? `件名: ${item.title}` : null,
+                item.piece ? `曲名: ${item.piece}` : null,
+                item.name ? `名前: ${item.name}` : null,
+            ].filter(Boolean).join(' / ');
+            return `<tr>
+                <td class="ps-2"><input class="form-check-input maintenance-item-check" type="checkbox" data-collection="${escapeHtml(collection)}" data-id="${escapeHtml(String(id))}" checked></td>
+                <td class="text-muted small">${escapeHtml(String(id))}</td>
+                <td class="small">${escapeHtml(summary || JSON.stringify(item).slice(0, 60))}</td>
+            </tr>`;
+        }).join('');
+        return `<div class="mb-3">
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <h6 class="mb-0">${escapeHtml(label)}</h6>
+                <span class="badge bg-warning text-dark">${items.length}件</span>
+                <button class="btn btn-link btn-sm p-0 text-secondary maintenance-select-all-btn" data-collection="${escapeHtml(collection)}" type="button">全選択/解除</button>
+            </div>
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light"><tr><th style="width:2rem"></th><th style="width:4rem">ID</th><th>内容</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+    }).join('');
+
+    if (orphanList) orphanList.innerHTML = html;
+    if (cleanupBtn) cleanupBtn.disabled = false;
+
+    // 全選択/解除ボタン
+    document.querySelectorAll('.maintenance-select-all-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const col = btn.dataset.collection;
+            const checkboxes = document.querySelectorAll(`.maintenance-item-check[data-collection="${col}"]`);
+            const allChecked = [...checkboxes].every((cb) => cb.checked);
+            checkboxes.forEach((cb) => { cb.checked = !allChecked; });
+        });
+    });
+}
+
+async function runMaintenanceCleanup() {
+    // チェックされたIDをコレクションごとに収集
+    const idMap = {};
+    document.querySelectorAll('.maintenance-item-check:checked').forEach((cb) => {
+        const col = cb.dataset.collection;
+        if (!idMap[col]) idMap[col] = [];
+        const rawId = cb.dataset.id;
+        // IDが数値なら数値として渡す（バックエンドの型に合わせる）
+        idMap[col].push(isNaN(Number(rawId)) ? rawId : Number(rawId));
+    });
+
+    if (Object.keys(idMap).length === 0) {
+        showAlert('削除する項目が選択されていません', 'warning');
+        return;
+    }
+
+    const totalSelected = Object.values(idMap).reduce((sum, ids) => sum + ids.length, 0);
+    if (!confirm(`選択した ${totalSelected} 件のデータを削除します。\nこの操作は元に戻せません。よろしいですか？`)) return;
+
+    let result;
+    try {
+        result = await request('/api/maintenance/cleanup', jsonOptions('POST', { ids: idMap }));
+    } catch (e) {
+        showAlert('削除に失敗しました', 'danger');
+        return;
+    }
+
+    const totalDeleted = result.total_deleted || 0;
+    showAlert(`${totalDeleted}件の孤立データを削除しました`, 'success');
+    // 再スキャン
+    await runMaintenanceScan();
+}
+
 function sortedVenueSettings() {
     return [...(appState.venueSettings || [])].sort((a, b) =>
         String(a.name || '').localeCompare(String(b.name || ''), 'ja')
@@ -2683,6 +2850,9 @@ function applyOrgSettings() {
     document.title = title;
     const titleElement = document.querySelector('title');
     if (titleElement) titleElement.textContent = title;
+    document.querySelectorAll('meta[name="application-name"], meta[name="apple-mobile-web-app-title"]').forEach((meta) => {
+        meta.setAttribute('content', title);
+    });
     if ($('portalBrandTitle')) $('portalBrandTitle').textContent = title;
     if ($('portalLoginTitle')) $('portalLoginTitle').textContent = title;
     const iconUrl = org.icon_url || org.iconUrl || '';
@@ -2695,7 +2865,7 @@ function applyOrgSettings() {
     }
     const logo = $('portalLogo');
     if (logo) logo.alt = orgShortName();
-    applyDynamicManifest(title, orgShortName(), org.icon_url || org.iconUrl || '');
+    applyDynamicManifest(title, title, org.icon_url || org.iconUrl || '');
 }
 
 function applyDynamicManifest(name, shortName, iconUrl = '') {
@@ -2719,6 +2889,14 @@ function applyDynamicManifest(name, shortName, iconUrl = '') {
     }
     appState.manifestObjectUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
     manifestLink.href = appState.manifestObjectUrl;
+}
+
+function updateCloudRunRevision() {
+    // Google Cloud Run のリビジョン情報をUI に反映
+    const revisionElement = $('revisionNumber');
+    if (revisionElement && appState.cloudRunRevision) {
+        revisionElement.textContent = appState.cloudRunRevision;
+    }
 }
 
 function renderOrgManagement() {
@@ -3145,7 +3323,16 @@ function renderAnnouncementDetail() {
     }
     
     header.textContent = `${escapeHtml(formatDateWithWeekday(ann.date))} ${escapeHtml(ann.title || '')}`;
-    content.innerHTML = `<div>${escapeHtml(ann.content || 'コンテンツなし')}</div>`;
+    content.innerHTML = `
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-sm btn-outline-secondary" id="annDetailBackBtn" type="button">ポータルメニューに戻る</button>
+        </div>
+        <div>${escapeHtml(ann.content || 'コンテンツなし')}</div>
+    `;
+    $('annDetailBackBtn')?.addEventListener('click', () => {
+        appState.portalSelectedAnnouncementId = null;
+        showMemberTab('member-home');
+    });
 }
 
 function renderRecordings() {
@@ -3433,6 +3620,7 @@ function renderMemberViews() {
     renderRecordings();
     renderMemberIntros();
     renderPortalHome();
+    renderMemberExtraViews({ includeHeavyLists: false });
 }
 
 function renderPortalHome() {
@@ -3444,29 +3632,15 @@ function renderPortalHome() {
     const announcements = [...(appState.announcements || [])]
         .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
         .slice(0, 5);
-    const selectedAnnId = String(appState.portalSelectedAnnouncementId || announcements[0]?.id || '');
-    const selectedAnn = announcements.find((ann) => String(ann.id || '') === selectedAnnId) || null;
-    appState.portalSelectedAnnouncementId = selectedAnn?.id || null;
     announceContainer.innerHTML = announcements.length
-        ? `<div class="list-group">${announcements.map((ann) => `
-            <article class="list-group-item portal-announcement-one-line">
-                <button class="btn btn-link p-0 small text-muted portal-announcement-link" type="button" data-portal-announcement-id="${escapeHtml(String(ann.id || ''))}">${escapeHtml(formatDateWithWeekday(ann.date, ''))}</button>
-                <button class="btn btn-link p-0 portal-announcement-link portal-announcement-title" type="button" data-portal-announcement-id="${escapeHtml(String(ann.id || ''))}">${escapeHtml(ann.title || ann.content || '')}</button>
-            </article>
-        `).join('')}</div>
-        <section class="portal-announcement-detail mt-2">
-            <div class="small text-muted">${escapeHtml(formatDateWithWeekday(selectedAnn?.date || '', ''))}</div>
-            <h6 class="mb-1">${escapeHtml(selectedAnn?.title || '')}</h6>
-            <div class="mb-0 multiline-text">${escapeHtml(selectedAnn?.content || '')}</div>
-        </section>`
+        ? '<div class="list-group" id="portalHomeAnnouncementList"></div>'
         : '<p class="text-muted mb-0">お知らせはまだありません</p>';
-
-    announceContainer.querySelectorAll('[data-portal-announcement-id]').forEach((button) => {
-        button.addEventListener('click', () => {
-            appState.portalSelectedAnnouncementId = button.dataset.portalAnnouncementId || null;
-            renderPortalHome();
+    const announcementList = $('portalHomeAnnouncementList');
+    if (announcementList) {
+        announcements.forEach((ann) => {
+            announcementList.appendChild(announcementItem(ann, false));
         });
-    });
+    }
 
     const nextPerf = nextPerformance();
     const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
@@ -5082,7 +5256,43 @@ function renderCastingView() {
     const c = $('memberCastingInfo'); if (!c) return;
     c.innerHTML = appState.performances.map((perf) => {
         const rows = appState.castings.filter((x) => String(x.performance_id || '') === String(perf.id));
-        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${rows.length ? rows.map((r) => `<div class="info-block"><strong>${escapeHtml(r.piece || '全曲')}</strong><div>${escapeHtml(r.members || r.names || '')}</div></div>`).join('') : '<p class="text-muted">乗り番表は未登録です</p>'}</section>`;
+        const castingContent = rows.length ? rows.map((r) => {
+            // members配列をパートごとにグルーピング（part設定順でソート）
+            const partMap = new Map();
+            (r.members || []).forEach((m) => {
+                const member = appState.members.find((item) => item.id === m.member_id);
+                const name = member ? memberDisplayName(member) : `団員ID:${m.member_id}`;
+                const part = m.part || member?.part || '（パート未設定）';
+                if (!partMap.has(part)) partMap.set(part, []);
+                partMap.get(part).push(name);
+            });
+            // エキストラはパートごとにグルーピング
+            (r.extras || []).forEach((e) => {
+                const name = e.name || '';
+                if (!name) return;
+                const part = e.part || '（エキストラ）';
+                if (!partMap.has(part)) partMap.set(part, []);
+                partMap.get(part).push(name);
+            });
+
+            // パート設定の順序でソート
+            const sortedParts = [...partMap.entries()].sort(
+                ([a], [b]) => partSortIndex(a) - partSortIndex(b) ||
+                    String(a).localeCompare(String(b), 'ja')
+            );
+
+            if (!sortedParts.length) {
+                return `<div class="info-block"><strong>${escapeHtml(r.piece || '全曲')}</strong><p class="text-muted mb-0">（未登録）</p></div>`;
+            }
+
+            const tableRows = sortedParts.map(([part, names]) =>
+                `<tr><td class="text-nowrap pe-3 text-muted small fw-bold">${escapeHtml(part)}</td><td>${escapeHtml(names.join('、'))}</td></tr>`
+            ).join('');
+
+            return `<div class="info-block mb-3"><strong class="d-block mb-2">${escapeHtml(r.piece || '全曲')}</strong><table class="table table-sm table-borderless mb-0"><tbody>${tableRows}</tbody></table></div>`;
+        }).join('') : '<p class="text-muted">乗り番表は未登録です</p>';
+
+        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${castingContent}</section>`;
     }).join('');
 }
 
@@ -6181,8 +6391,199 @@ async function deletePromotion(id) {
 }
 
 function renderAlbumView() {
-    const c = $('memberAlbumInfo'); if (!c) return;
-    c.innerHTML = appState.albums.length ? `<div class="row g-3">${appState.albums.map((a) => `<div class="col-6 col-md-4 col-xl-3"><a href="${escapeHtml(a.url || '#')}" target="_blank"><img src="${escapeHtml(a.thumbnail_url || a.url || '')}" class="album-photo" alt="${escapeHtml(a.title || '写真')}" loading="lazy"></a><div class="small mt-1">${escapeHtml(a.title || '')}</div></div>`).join('')}</div>` : '<p class="text-muted">写真はまだ登録されていません</p>';
+    const c = $('memberAlbumInfo');
+    if (!c) return;
+
+    // アルバム一覧を作成日の新しい順にソート
+    const albums = [...(appState.albums || [])].sort((a, b) =>
+        String(b.created_at || '').localeCompare(String(a.created_at || ''))
+    );
+
+    const isAdmin = isAdmin_Portal();
+    const currentUserId = appState.currentUserMemberId;
+    const currentUserName = currentUserMemberName();
+
+    // アルバムイベント一覧HTML を構築
+    let albumsHTML = '';
+    if (albums.length) {
+        albumsHTML = albums.map((album) => {
+            const photos = album.photos || [];
+            const canDeleteEvent = isAdmin || String(album.created_by_member_id || '') === String(currentUserId);
+            
+            // 写真ギャラリーHTML を構築
+            let photosHTML = '';
+            if (photos.length) {
+                photosHTML = `<div class="row g-3">${photos.map((photo) => {
+                    const deleteBtn = isAdmin ? `<button class="btn btn-sm btn-outline-danger album-delete-photo-btn mt-1" type="button" data-album-id="${escapeHtml(String(album.id || ''))}" data-photo-id="${escapeHtml(String(photo.id || ''))}">削除</button>` : '';
+                    return `<div class="col-6 col-md-4 col-lg-3 position-relative">
+                        <a href="${escapeHtml(photo.url || '#')}" target="_blank">
+                            <img src="${escapeHtml(photo.url || '')}" class="album-photo" alt="${escapeHtml(photo.filename || '写真')}" loading="lazy">
+                        </a>
+                        <div class="small mt-1 text-muted">${escapeHtml(photo.filename || '写真')}</div>
+                        <div class="small text-muted">
+                            <div>${escapeHtml(photo.uploaded_by_member_name || '不明')}</div>
+                            <div>${escapeHtml(formatDateTimeLabel(photo.uploaded_at || ''))}</div>
+                        </div>
+                        ${deleteBtn}
+                    </div>`;
+                }).join('')}</div>`;
+            } else {
+                photosHTML = '<p class="text-muted">写真はまだアップロードされていません</p>';
+            }
+
+            const deleteEventBtn = canDeleteEvent ? `<button class="btn btn-sm btn-outline-danger album-delete-event-btn" type="button" data-album-id="${escapeHtml(String(album.id || ''))}">イベント削除</button>` : '';
+            
+            return `<section class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">${escapeHtml(album.event_name || 'イベント')}</h6>
+                    ${deleteEventBtn}
+                </div>
+                <div class="small text-muted mb-3">
+                    <div>作成者: ${escapeHtml(album.created_by_member_name || '不明')}</div>
+                    <div>作成日: ${escapeHtml(formatDateTimeLabel(album.created_at || ''))}</div>
+                </div>
+
+                <!-- 写真アップロード -->
+                <div class="mb-3 p-2 border rounded bg-light">
+                    <label class="form-label small mb-2">写真をアップロード</label>
+                    <div class="d-flex gap-2">
+                        <input type="file" class="form-control album-photo-file" data-album-id="${escapeHtml(String(album.id || ''))}" accept="image/*" multiple>
+                        <button class="btn btn-outline-primary album-upload-photo-btn" type="button" data-album-id="${escapeHtml(String(album.id || ''))}">アップロード</button>
+                    </div>
+                </div>
+
+                <!-- 写真ギャラリー -->
+                <div class="mb-3">
+                    ${photosHTML}
+                </div>
+            </section>`;
+        }).join('');
+    } else {
+        albumsHTML = '<p class="text-muted">アルバムイベントが登録されていません</p>';
+    }
+
+    c.innerHTML = `
+        <!-- アルバムイベント作成フォーム -->
+        <div class="info-block mb-4">
+            <h6>アルバムイベントを作成</h6>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label" for="albumEventName">イベント名</label>
+                    <input type="text" id="albumEventName" class="form-control" placeholder="例: 2026年夏合宿">
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-primary w-100" id="albumCreateEventBtn" type="button">イベントを作成</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- アルバムイベント一覧 -->
+        <div id="memberAlbumEventList">
+            ${albumsHTML}
+        </div>
+    `;
+
+    // イベント作成ボタン
+    const createBtn = $('albumCreateEventBtn');
+    if (createBtn) {
+        createBtn.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '作成中...', () => createAlbumEvent()));
+    }
+
+    // イベント削除ボタン
+    c.querySelectorAll('.album-delete-event-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteAlbumEvent(button.dataset.albumId || '')));
+    });
+
+    // 写真アップロードボタン
+    c.querySelectorAll('.album-upload-photo-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, 'アップロード中...', () => uploadAlbumPhotos(button.dataset.albumId || '')));
+    });
+
+    // 写真削除ボタン
+    c.querySelectorAll('.album-delete-photo-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteAlbumPhoto(button.dataset.albumId || '', button.dataset.photoId || '')));
+    });
+}
+
+async function createAlbumEvent() {
+    const eventName = $('albumEventName')?.value.trim() || '';
+    if (!eventName) {
+        showAlert('イベント名を入力してください', 'warning');
+        return;
+    }
+
+    const payload = {
+        event_name: eventName,
+        created_by_member_id: appState.currentUserMemberId || '',
+        created_by_member_name: currentUserMemberName(),
+        photos: []
+    };
+
+    await saveExtra('albums', payload);
+    $('albumEventName').value = '';
+    await loadExtraData();
+    showAlert('アルバムイベントを作成しました', 'success');
+}
+
+async function deleteAlbumEvent(albumId) {
+    if (!albumId) return;
+    if (!confirmDelete()) return;
+
+    await request(`/api/extra/albums/${encodeURIComponent(albumId)}`, { method: 'DELETE' });
+    await loadExtraData();
+    showAlert('アルバムイベントを削除しました', 'success');
+}
+
+async function uploadAlbumPhotos(albumId) {
+    if (!albumId) return;
+
+    const fileInput = document.querySelector(`.album-photo-file[data-album-id="${CSS.escape(albumId)}"]`);
+    if (!fileInput || !fileInput.files.length) {
+        showAlert('アップロードするファイルを選択してください', 'warning');
+        return;
+    }
+
+    const files = Array.from(fileInput.files);
+    const albumIdNum = Number(albumId) || 0;
+
+    let uploadedCount = 0;
+    for (const file of files) {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            await request(`/api/extra/albums/${encodeURIComponent(albumIdNum)}/photos`, {
+                method: 'POST',
+                body: formData
+            });
+            uploadedCount += 1;
+        } catch (error) {
+            console.error(`Upload failed for ${file.name}:`, error);
+        }
+    }
+
+    fileInput.value = '';
+    await loadExtraData();
+    showAlert(`${uploadedCount}件の写真をアップロードしました`, 'success');
+}
+
+async function deleteAlbumPhoto(albumId, photoId) {
+    if (!albumId || !photoId) return;
+    if (!confirmDelete()) return;
+
+    const albumIdNum = Number(albumId) || 0;
+    const photoIdNum = Number(photoId) || 0;
+
+    await request(`/api/extra/albums/${encodeURIComponent(albumIdNum)}/photos/${encodeURIComponent(photoIdNum)}`, {
+        method: 'DELETE'
+    });
+    await loadExtraData();
+    showAlert('写真を削除しました', 'success');
+}
+
+function isAdmin_Portal() {
+    const permission = String(appState.currentUserPermission || '');
+    return permission === '管理者' || permission === 'システム管理者';
 }
 
 
@@ -6349,4 +6750,17 @@ function showAlert(message, type = 'info') {
     toast.textContent = message;
     $('toastArea').appendChild(toast);
     setTimeout(() => toast.remove(), 4200);
+}
+
+// ローディングバー表示・非表示
+function setLoadingBar(label = '') {
+    const bar = $('portalLoadingBar');
+    const lbl = $('portalLoadingLabel');
+    if (!bar) return;
+    if (lbl) lbl.textContent = label;
+    bar.hidden = false;
+}
+function clearLoadingBar() {
+    const bar = $('portalLoadingBar');
+    if (bar) bar.hidden = true;
 }
