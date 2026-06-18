@@ -526,18 +526,20 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
 
 def has_connection_setting(items: list[dict[str, Any]]) -> bool:
     # 接続設定として意味のある値が1件でもあれば設定済みとみなす。
-    keys = (
+    primary_keys = (
         "google_project_id",
         "google_cloud_storage_bucket",
-        "google_cloud_storage_data_prefix",
         "google_service_account_file",
         "google_service_account_json",
-        "google_cloud_storage_public",
     )
     for item in items:
         if not isinstance(item, dict):
             continue
-        if any(str(item.get(key) or "").strip() for key in keys):
+        values = [str(item.get(key) or "").strip() for key in primary_keys]
+        if any(
+            value and value not in {"your_bucket_name_here", "あなたのGCSバケット名"}
+            for value in values
+        ):
             return True
     return False
 

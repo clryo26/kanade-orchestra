@@ -40,12 +40,33 @@ def _connection_setting_record() -> dict[str, Any]:
     return {}
 
 
+def _is_placeholder_like(value: str) -> bool:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return True
+    return normalized in {"your_bucket_name_here", "あなたのGCSバケット名"}
+
+
+_ENV_FALLBACK_ON_EMPTY_KEYS = {
+    "google_project_id",
+    "google_cloud_storage_bucket",
+    "google_cloud_storage_data_prefix",
+    "google_cloud_storage_public",
+}
+
+
 def _setting_value(json_key: str, env_key: str, default: str = "") -> str:
     # 文字列設定値を JSON 優先で取得する。
     record = _connection_setting_record()
-    # JSON 側にキーがある場合は空文字も明示値として扱う。
+    # JSON 側にキーがある場合はその値を優先し、
+    # テンプレ値だけ環境変数へフォールバックする。
     if json_key in record:
-        return str(record.get(json_key) or "").strip()
+        json_value = str(record.get(json_key) or "").strip()
+        if not json_value and json_key in _ENV_FALLBACK_ON_EMPTY_KEYS:
+            return os.getenv(env_key, default).strip()
+        if _is_placeholder_like(json_value) and json_value:
+            return os.getenv(env_key, default).strip()
+        return json_value
     return os.getenv(env_key, default).strip()
 
 
@@ -118,11 +139,24 @@ def data_object_name(name: str) -> str:
     return f"{prefix}/{filename}" if prefix else filename
 
 
+def _legacy_data_object_name(name: str) -> str:
+    return f"{name}.json"
+
+
 def load_json_from_storage(name: str) -> list[dict[str, Any]] | None:
     # Cloud Storage 上の JSON コレクションを読み込む。
     # 未存在の場合は None を返し、呼び出し側でフォールバック判断させる。
-    blob = get_storage_bucket().blob(data_object_name(name))
+    bucket = get_storage_bucket()
+    object_name = data_object_name(name)
+    blob = bucket.blob(object_name)
     if not blob.exists():
+        # 旧配置（prefix なし）互換: members.json などをルート配置していた環境を読む。
+        legacy_name = _legacy_data_object_name(name)
+        if legacy_name != object_name:
+            legacy_blob = bucket.blob(legacy_name)
+            if legacy_blob.exists():
+                loaded = json.loads(legacy_blob.download_as_text(encoding="utf-8"))
+                return loaded if isinstance(loaded, list) else []
         return None
 
     loaded = json.loads(blob.download_as_text(encoding="utf-8"))
