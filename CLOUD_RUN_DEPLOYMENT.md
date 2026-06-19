@@ -25,6 +25,7 @@ gcloud run deploy kanade-portal \
 | GOOGLE_CLOUD_STORAGE_DATA_PREFIX | app-data | GCS 内のデータ接頭辞 |
 | GOOGLE_CLOUD_STORAGE_PUBLIC | false | データを公開アクセス可にするか |
 | GOOGLE_SERVICE_ACCOUNT_JSON | (自動) | Cloud Run のサービスアカウントで取得（設定不要） |
+| CLOUD_RUN_REVISION | (自動) | Cloud Run が自動設定するリビジョン番号（UI に表示） |
 
 ### サービスアカウント権限
 
@@ -128,3 +129,83 @@ gcloud projects get-iam-policy kanade-orchestra \
 
 管理画面から「システム管理 > 接続先情報」で動的に変更可能です。
 変更後、自動的に `connection_settings.json` が GCS に保存されます。
+
+## PostgreSQL 移行版（Cloud Run + Cloud SQL）
+
+JSON を正としていた現行構成に加えて、Cloud SQL for PostgreSQL を併用する移行手順です。
+
+初回構築時の確認項目は `CLOUD_RUN_INITIAL_CHECKLIST.md` を参照してください。
+
+### 採用する実環境値
+
+| 項目 | 値 |
+|---|---|
+| Google Cloud プロジェクトID | kanade-orchestra |
+| Cloud Run サービス名 | kanade-portal |
+| Cloud Storage バケット名 | kanade-storage |
+| リージョン | asia-northeast1 |
+| Cloud SQL 接続名 | kanade-orchestra:asia-northeast1:kanade-portal-pg |
+| DB名 | kanade_portal |
+| DBユーザー | kanade_app |
+| Secret Manager (DBパスワード) | kanade-portal-db-password |
+
+### 1. Cloud SQL インスタンス作成（初回のみ）
+
+```bash
+gcloud sql instances create kanade-portal-pg \
+  --database-version=POSTGRES_16 \
+  --cpu=2 \
+  --memory=8GB \
+  --region=asia-northeast1
+
+gcloud sql databases create kanade_portal \
+  --instance=kanade-portal-pg
+
+gcloud sql users create kanade_app \
+  --instance=kanade-portal-pg \
+  --password='REPLACE_WITH_STRONG_PASSWORD'
+```
+
+### 2. Secret Manager 登録（初回のみ）
+
+```bash
+echo -n 'REPLACE_WITH_STRONG_PASSWORD' | gcloud secrets create kanade-portal-db-password --data-file=-
+```
+
+既存 Secret を更新する場合:
+
+```bash
+echo -n 'REPLACE_WITH_STRONG_PASSWORD' | gcloud secrets versions add kanade-portal-db-password --data-file=-
+```
+
+### 3. Cloud Run サービスアカウント権限（初回のみ）
+
+- roles/cloudsql.client
+- roles/secretmanager.secretAccessor
+- roles/storage.objectAdmin
+
+### 4. Docker イメージをビルド
+
+```bash
+gcloud builds submit --tag gcr.io/kanade-orchestra/kanade-portal
+```
+
+### 5. Cloud Run へデプロイ（PostgreSQL接続あり）
+
+```bash
+gcloud run deploy kanade-portal \
+  --image gcr.io/kanade-orchestra/kanade-portal \
+  --platform managed \
+  --region asia-northeast1 \
+  --allow-unauthenticated \
+  --add-cloudsql-instances kanade-orchestra:asia-northeast1:kanade-portal-pg \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
+  --set-secrets DB_PASSWORD=kanade-portal-db-password:latest
+```
+
+### 6. デプロイ後確認
+
+1. Cloud Run URL のヘルスチェックが成功すること
+2. 管理画面の「接続先情報」が従来どおり表示されること
+3. DB接続を使う機能（移行対象API）で 500 が発生しないこと
+4. サイドメニューの Rev. 表示が最新リビジョンに更新されること

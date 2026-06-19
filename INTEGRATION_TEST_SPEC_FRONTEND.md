@@ -51,6 +51,10 @@
 - tests/integration/frontend/test_date_adjustment_integration.test.js
 - tests/integration/frontend/test_portal_load_flow.test.js
 
+実行前提:
+
+- Vitest のグローバルAPI（describe/test/expect）を利用するため、vitest.config.js で `test.globals = true` を有効化する
+
 ## 5. 完了判定
 
 - P0/P1ケースが自動化済み

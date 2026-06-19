@@ -1353,11 +1353,29 @@ def _collect_orphans() -> dict[str, list[dict[str, Any]]]:
     events = load_json_data("events")
     date_adjustments = load_json_data("date_adjustments")
 
-    perf_ids = {item.get("id") for item in performances}
-    schedule_ids = {item.get("id") for item in schedules}
-    member_ids = {item.get("id") for item in members}
-    event_ids = {item.get("id") for item in events}
-    adj_ids = {item.get("id") for item in date_adjustments}
+    def _norm_ref_id(value: Any) -> str:
+        # 参照IDは数値/文字列揺れを吸収して比較する。
+        text = str(value or "").strip()
+        return text
+
+    def _collect_parent_ids(items: list[dict[str, Any]]) -> set[str]:
+        ids: set[str] = set()
+        for item in items:
+            normalized = _norm_ref_id(item.get("id"))
+            if normalized:
+                ids.add(normalized)
+        return ids
+
+    def _is_missing_ref(value: Any, parent_ids: set[str]) -> bool:
+        # 未設定（空文字/None）は孤立扱いしない。参照値があり、親が無い場合のみ孤立。
+        normalized = _norm_ref_id(value)
+        return bool(normalized) and normalized not in parent_ids
+
+    perf_ids = _collect_parent_ids(performances)
+    schedule_ids = _collect_parent_ids(schedules)
+    member_ids = _collect_parent_ids(members)
+    event_ids = _collect_parent_ids(events)
+    adj_ids = _collect_parent_ids(date_adjustments)
 
     orphans: dict[str, list[dict[str, Any]]] = {}
 
@@ -1369,37 +1387,37 @@ def _collect_orphans() -> dict[str, list[dict[str, Any]]]:
 
     # castings: 削除済み演奏会に紐づくもの
     _check("castings",
-           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
 
     # absences: 削除済み団員 or 削除済みスケジュールに紐づくもの
     _check("absences",
-           lambda x: (x.get("member_id") not in member_ids and x.get("member_id") is not None)
-                  or (x.get("schedule_id") not in schedule_ids and x.get("schedule_id") is not None))
+            lambda x: _is_missing_ref(x.get("member_id"), member_ids)
+                or _is_missing_ref(x.get("schedule_id"), schedule_ids))
 
     # payments: 削除済み演奏会 or 削除済み団員に紐づくもの
     _check("payments",
-           lambda x: (x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
-                  or (x.get("member_id") not in member_ids and x.get("member_id") is not None))
+            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids)
+                or _is_missing_ref(x.get("member_id"), member_ids))
 
     # piece_infos: 削除済み演奏会に紐づくもの
     _check("piece_infos",
-           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
 
     # practice_instructions: 削除済み演奏会に紐づくもの
     _check("practice_instructions",
-           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
 
     # desired_pieces: 削除済み演奏会に紐づくもの
     _check("desired_pieces",
-           lambda x: x.get("performance_id") not in perf_ids and x.get("performance_id") is not None)
+            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
 
     # event_responses: 削除済みイベントに紐づくもの
     _check("event_responses",
-           lambda x: x.get("event_id") not in event_ids and x.get("event_id") is not None)
+            lambda x: _is_missing_ref(x.get("event_id"), event_ids))
 
     # date_adjustment_responses: 削除済み調整に紐づくもの
     _check("date_adjustment_responses",
-           lambda x: x.get("adjustment_id") not in adj_ids and x.get("adjustment_id") is not None)
+            lambda x: _is_missing_ref(x.get("adjustment_id"), adj_ids))
 
     return orphans
 
@@ -2429,7 +2447,8 @@ async def upload_album_photo(
             photo_metadata = {
                 "id": next_photo_id,
                 "filename": filename,
-                "url": blob.public_url,
+                # 表示URLは常にAPI経由に統一し、公開設定の有無に依存させない。
+                "url": f"/api/albums/{album_id}/photos/{next_photo_id}",
                 "uploaded_by_member_id": member_id,
                 "uploaded_by_member_name": member_name,
                 "uploaded_at": now,
@@ -2469,6 +2488,49 @@ async def upload_album_photo(
     save_json_data("albums", albums)
     
     return photo_metadata
+
+
+# アルバム写真表示。保存先が Cloud / ローカル どちらでも同じ API で配信する。
+@app.get("/api/albums/{album_id}/photos/{photo_id}")
+async def get_album_photo(album_id: int, photo_id: int) -> Response:
+    albums = load_json_data("albums")
+    _, album = find_item(albums, album_id)
+
+    photos = album.get("photos") or []
+    photo = next((item for item in photos if item.get("id") == photo_id), None)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    filename = str(photo.get("filename") or "photo")
+    content_type, _ = mimetypes.guess_type(filename)
+    media_type = content_type or "application/octet-stream"
+
+    object_name = str(photo.get("object_name") or "").strip()
+    if object_name:
+        try:
+            bucket = get_storage_bucket()
+            blob = bucket.blob(object_name)
+            if not blob.exists():
+                raise HTTPException(status_code=404, detail="Photo object not found")
+            data = blob.download_as_bytes()
+            return Response(content=data, media_type=media_type)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Album photo fetch from GCS failed")
+            raise HTTPException(status_code=502, detail=f"Photo fetch failed: {exc}") from exc
+
+    rel_path = str(photo.get("path") or "").strip()
+    if rel_path:
+        local_path = (UPLOAD_DIR / rel_path).resolve()
+        upload_root = UPLOAD_DIR.resolve()
+        if upload_root not in local_path.parents and local_path != upload_root:
+            raise HTTPException(status_code=400, detail="Invalid photo path")
+        if not local_path.exists() or not local_path.is_file():
+            raise HTTPException(status_code=404, detail="Photo file not found")
+        return FileResponse(local_path, media_type=media_type)
+
+    raise HTTPException(status_code=404, detail="Photo source not found")
 
 
 # アルバムからの写真削除（管理者のみ）

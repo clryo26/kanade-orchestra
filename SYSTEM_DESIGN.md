@@ -209,6 +209,7 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 - 団員が自由にアルバムイベント（イベント名）を作成できる
 - 各イベントに対して複数の写真をアップロード可能（Google Cloud Storage に保存）
 - 写真はイベントページで gallery 表示（lazy loading）
+- 画像表示は `/api/albums/{album_id}/photos/{photo_id}` API 経由で配信し、Cloud/ローカル保存の差異を吸収
 - イベント削除・写真削除は管理者のみ可能
 - イベント一覧は作成日降順（新しいものが上）
 - データ構造: `{ id, event_name, created_by_member_id, created_by_member_name, created_at, updated_at, photos: [{ id, filename, url, uploaded_by_member_id, uploaded_by_member_name, uploaded_at }] }`
@@ -223,11 +224,14 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 
 - 演奏会ごと・曲ごとにセクション分割して表示
 - 各曲の出演者をパートごとにグルーピングして表形式で表示
+- 団員名は各パート内で縦並び表示
 - パート順は part_settings の登録順に準拠
 - エキストラは `extras[].part` フィールドでグルーピング（未設定時は「エキストラ」表示）
 
 ### 10.4 データメンテナンス
 
+- 判定は参照IDを文字列正規化して実施し、数値/文字列の型差による誤検出を防止
+- 参照IDが未設定（空文字/None）の場合は孤立扱いにしない
 - システム管理メニュー「データメンテナンス」タブから実行
 - `GET /api/maintenance/orphans` で孤立データを検出（管理者専用）
 - `POST /api/maintenance/cleanup` で選択した孤立データを削除（管理者専用）
@@ -240,6 +244,42 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 - 新機能追加時は appState、API、JSON コレクション定義、設計書を同時更新
 - 権限分岐が増える機能は必ず認可ルールを設計書へ明記
 - 画面追加時は団員/管理者/システム管理のどの導線に属するかを明記
+
+## 12. PostgreSQL テーブル設計（ドラフト）
+
+- 現行 JSON コレクションを Cloud SQL for PostgreSQL へ移行するための初期 DDL は `db/postgresql_schema.sql` を参照
+- テーブル仕様書は `db/postgresql_table_spec.md` を参照
+- テーブルレイアウト（ER）は `db/postgresql_table_layout.md` を参照
+- 対象は音声/画像などのバイナリ本体を除く業務データとメタデータ
+- バイナリ本体は従来どおり Google Cloud Storage を継続利用する想定
+
+## 13. Cloud Run 構築値（PostgreSQL移行方針）
+
+### 13.1 本番採用値
+
+- Google Cloud プロジェクトID: kanade-orchestra
+- Cloud Run サービス名: kanade-portal
+- Cloud Storage バケット名: kanade-storage
+- リージョン: asia-northeast1
+- Cloud SQL 接続名: kanade-orchestra:asia-northeast1:kanade-portal-pg
+- DB名: kanade_portal
+- DBユーザー: kanade_app
+- Secret 名（DBパスワード）: kanade-portal-db-password
+
+### 13.2 接続方式
+
+- Cloud Run から Cloud SQL for PostgreSQL へ Cloud SQL Connector（Unix socket）で接続する
+- `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg` を使用する
+- `DB_PASSWORD` は Secret Manager から注入する
+- 既存の GCS 連携設定（GOOGLE_CLOUD_STORAGE_*）は継続利用する
+
+### 13.3 必要権限
+
+- Cloud Run サービスアカウントに以下ロールを付与する
+  - roles/cloudsql.client
+  - roles/secretmanager.secretAccessor
+  - roles/storage.objectAdmin
+- 初回構築時の運用チェックは `CLOUD_RUN_INITIAL_CHECKLIST.md` を参照する
 
 │  │  - システム設定                                    │    │
 │  └────────────────────────────────────────────────────┘    │
