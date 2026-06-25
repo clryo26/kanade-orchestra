@@ -4,9 +4,9 @@
 実施記録テンプレート: CLOUD_RUN_INITIAL_CHECKLIST_LOG.md
 対象環境:
 - Google Cloud プロジェクトID: kanade-orchestra
-- Cloud Run サービス名: kanade-portal
-- リージョン: asia-northeast1
-- Cloud SQL 接続名: kanade-orchestra:asia-northeast1:kanade-portal-pg
+- Cloud Run サービス名: kanade-orchestra
+- リージョン: asia-northeast2
+- Cloud SQL 接続名: kanade-orchestra:asia-northeast2:kanade-portal-pg
 - DB名: kanade_portal
 - DBユーザー: kanade_app
 - Secret名（DBパスワード）: kanade-portal-db-password
@@ -28,12 +28,12 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com sqladmin.goo
 
 ### 1.1 Cloud Run 実行サービスアカウントを確認
 
-- [ ] Cloud Run サービス `kanade-portal` の実行サービスアカウントを把握している
+- [ ] Cloud Run サービス `kanade-orchestra` の実行サービスアカウントを把握している
 
 確認コマンド:
 
 ```bash
-gcloud run services describe kanade-portal --region asia-northeast1 --format="value(spec.template.spec.serviceAccountName)"
+gcloud run services describe kanade-orchestra --region asia-northeast2 --format="value(spec.template.spec.serviceAccountName)"
 ```
 
 ### 1.2 必須ロールが付与されている
@@ -88,7 +88,7 @@ gcloud secrets versions list kanade-portal-db-password
 確認コマンド:
 
 ```bash
-gcloud run services describe kanade-portal --region asia-northeast1 --format="yaml(spec.template.spec.containers[0].env)"
+gcloud run services describe kanade-orchestra --region asia-northeast2 --format="yaml(spec.template.spec.containers[0].env)"
 ```
 
 ## 3. Cloud SQL疎通確認
@@ -96,7 +96,7 @@ gcloud run services describe kanade-portal --region asia-northeast1 --format="ya
 ### 3.1 Cloud SQL インスタンス状態確認
 
 - [ ] インスタンス `kanade-portal-pg` が RUNNABLE
-- [ ] 接続名が `kanade-orchestra:asia-northeast1:kanade-portal-pg`
+- [ ] 接続名が `kanade-orchestra:asia-northeast2:kanade-portal-pg`
 
 確認コマンド:
 
@@ -118,14 +118,14 @@ gcloud sql users list --instance=kanade-portal-pg
 
 ### 3.3 Cloud Run 側の接続設定確認
 
-- [ ] `--add-cloudsql-instances kanade-orchestra:asia-northeast1:kanade-portal-pg` が設定済み
-- [ ] 環境変数 `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg` が設定済み
+- [ ] `--add-cloudsql-instances kanade-orchestra:asia-northeast2:kanade-portal-pg` が設定済み
+- [ ] 環境変数 `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg` が設定済み
 - [ ] 環境変数 `DB_PORT=5432`, `DB_NAME=kanade_portal`, `DB_USER=kanade_app` が設定済み
 
 確認コマンド:
 
 ```bash
-gcloud run services describe kanade-portal --region asia-northeast1 --format="yaml(spec.template.metadata.annotations,spec.template.spec.containers[0].env)"
+gcloud run services describe kanade-orchestra --region asia-northeast2 --format="yaml(spec.template.metadata.annotations,spec.template.spec.containers[0].env)"
 ```
 
 ## 4. 動作確認
@@ -138,19 +138,19 @@ gcloud run services describe kanade-portal --region asia-northeast1 --format="ya
 確認コマンド:
 
 ```bash
-gcloud run services describe kanade-portal --region asia-northeast1 --format="yaml(status.latestReadyRevisionName,status.url)"
+gcloud run services describe kanade-orchestra --region asia-northeast2 --format="yaml(status.latestReadyRevisionName,status.url)"
 ```
 
 ## 5. デプロイ実行コマンド（再掲）
 
 ```bash
-gcloud run deploy kanade-portal \
+gcloud run deploy kanade-orchestra \
   --image gcr.io/kanade-orchestra/kanade-portal \
   --platform managed \
-  --region asia-northeast1 \
+  --region asia-northeast2 \
   --allow-unauthenticated \
-  --add-cloudsql-instances kanade-orchestra:asia-northeast1:kanade-portal-pg \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
+  --add-cloudsql-instances kanade-orchestra:asia-northeast2:kanade-portal-pg \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
   --set-secrets DB_PASSWORD=kanade-portal-db-password:latest
 ```
 

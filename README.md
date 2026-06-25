@@ -243,7 +243,7 @@ gcloud builds submit --tag gcr.io/PROJECT_ID/orchestra-tool
 gcloud run deploy orchestra-tool \
   --image gcr.io/PROJECT_ID/orchestra-tool \
   --platform managed \
-  --region asia-northeast1
+  --region asia-northeast2
 ```
 
 ## 📚 開発ドキュメント

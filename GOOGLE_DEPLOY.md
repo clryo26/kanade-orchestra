@@ -34,7 +34,7 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com storage.googleapis.com
 gcloud run deploy orchestra-tool `
   --source . `
-  --region asia-northeast1 `
+  --region asia-northeast2 `
   --allow-unauthenticated `
   --set-env-vars GOOGLE_CLOUD_STORAGE_BUCKET=YOUR_BUCKET_NAME,GOOGLE_CLOUD_STORAGE_PUBLIC=false
 ```

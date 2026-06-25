@@ -9,8 +9,8 @@
 - 実施者:
 - 対象環境: production
 - 対象プロジェクトID: kanade-orchestra
-- Cloud Run サービス名: kanade-portal
-- 対象リージョン: asia-northeast1
+- Cloud Run サービス名: kanade-orchestra
+- 対象リージョン: asia-northeast2
 - 対象リビジョン名:
 - 変更チケット/PR:
 
@@ -23,7 +23,7 @@
 
 | No | 確認項目 | 期待値 | 判定 (OK/NG/N/A) | 証跡（コマンド結果/画面） | 備考 |
 |---|---|---|---|---|---|
-| 1-1 | Cloud Run 実行サービスアカウント確認 | kanade-portal の実行SAが特定できる |  |  |  |
+| 1-1 | Cloud Run 実行サービスアカウント確認 | kanade-orchestra の実行SAが特定できる |  |  |  |
 | 1-2 | Cloud SQL Client 付与 | roles/cloudsql.client が付与済み |  |  |  |
 | 1-3 | Secret Accessor 付与 | roles/secretmanager.secretAccessor が付与済み |  |  |  |
 | 1-4 | Storage Object Admin 付与 | roles/storage.objectAdmin が付与済み |  |  |  |
@@ -41,7 +41,7 @@
 | No | 確認項目 | 期待値 | 判定 (OK/NG/N/A) | 証跡（コマンド結果/画面） | 備考 |
 |---|---|---|---|---|---|
 | 3-1 | インスタンス状態確認 | kanade-portal-pg が RUNNABLE |  |  |  |
-| 3-2 | 接続名確認 | kanade-orchestra:asia-northeast1:kanade-portal-pg |  |  |  |
+| 3-2 | 接続名確認 | kanade-orchestra:asia-northeast2:kanade-portal-pg |  |  |  |
 | 3-3 | DB存在確認 | kanade_portal が存在 |  |  |  |
 | 3-4 | DBユーザー確認 | kanade_app が存在 |  |  |  |
 | 3-5 | Cloud Run 側接続設定確認 | add-cloudsql-instances と DB_HOST/DB_PORT/DB_NAME/DB_USER が一致 |  |  |  |

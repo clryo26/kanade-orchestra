@@ -62,10 +62,10 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com sqladmin.goo
 
 ```bash
 gcloud sql instances create kanade-portal-pg \
-  --database-version=POSTGRES_16 \
+  --database-version=POSTGRES_18 \
   --cpu=2 \
   --memory=8GB \
-  --region=asia-northeast1
+  --region=asia-northeast2
 ```
 
 ### 4.4 DBを作成
@@ -118,13 +118,13 @@ psqlプロンプトで、次を実行します。
 ### 4.8 Cloud RunにDB接続設定を入れてデプロイ
 
 ```bash
-gcloud run deploy kanade-portal \
+gcloud run deploy kanade-orchestra \
   --image gcr.io/kanade-orchestra/kanade-portal \
   --platform managed \
-  --region asia-northeast1 \
+  --region asia-northeast2 \
   --allow-unauthenticated \
-  --add-cloudsql-instances kanade-orchestra:asia-northeast1:kanade-portal-pg \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
+  --add-cloudsql-instances kanade-orchestra:asia-northeast2:kanade-portal-pg \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
   --set-secrets DB_PASSWORD=kanade-portal-db-password:latest
 ```
 
@@ -153,8 +153,8 @@ gcloud run deploy kanade-portal \
 2. 「インスタンスを作成」→「PostgreSQL」を選択
 3. 以下を設定して作成
   - インスタンスID: `kanade-portal-pg`
-  - PostgreSQLバージョン: `PostgreSQL 16`
-  - リージョン: `asia-northeast1`
+  - PostgreSQLバージョン: `PostgreSQL 18`
+  - リージョン: `asia-northeast2`
   - マシン構成: 2 vCPU / 8GB 相当（CLI定義と同等）
 
 ### 5.4 データベースを作成
@@ -182,7 +182,7 @@ gcloud run deploy kanade-portal \
 
 ### 5.7 Cloud Runサービスアカウントに権限を付与
 
-1. 「Cloud Run」→ サービス `kanade-portal` を開く
+1. 「Cloud Run」→ サービス `kanade-orchestra` を開く
 2. 「リビジョン」または「編集とデプロイ」画面で実行サービスアカウントを確認
 3. 「IAMと管理」→「IAM」で対象サービスアカウントに次のロールを付与
   - Cloud SQL Client (`roles/cloudsql.client`)
@@ -191,11 +191,11 @@ gcloud run deploy kanade-portal \
 
 ### 5.8 Cloud RunにDB接続設定を入れる
 
-1. 「Cloud Run」→ `kanade-portal` →「編集して新しいリビジョンをデプロイ」を開く
+1. 「Cloud Run」→ `kanade-orchestra` →「編集して新しいリビジョンをデプロイ」を開く
 2. 「接続」または「Cloud SQL接続」で次を設定
-  - 接続先インスタンス: `kanade-orchestra:asia-northeast1:kanade-portal-pg`
+  - 接続先インスタンス: `kanade-orchestra:asia-northeast2:kanade-portal-pg`
 3. 「変数とシークレット」で環境変数を設定
-  - `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg`
+  - `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg`
   - `DB_PORT=5432`
   - `DB_NAME=kanade_portal`
   - `DB_USER=kanade_app`
@@ -232,7 +232,7 @@ gcloud sql instances describe kanade-portal-pg --format="yaml(name,state,connect
 
 確認ポイント:
 - state が RUNNABLE
-- connectionName が kanade-orchestra:asia-northeast1:kanade-portal-pg
+- connectionName が kanade-orchestra:asia-northeast2:kanade-portal-pg
 
 ### 6.2 DB / ユーザー存在
 
@@ -244,7 +244,7 @@ gcloud sql users list --instance=kanade-portal-pg
 ### 6.3 Cloud RunのDB接続設定
 
 ```bash
-gcloud run services describe kanade-portal --region asia-northeast1 --format="yaml(spec.template.metadata.annotations,spec.template.spec.containers[0].env)"
+gcloud run services describe kanade-orchestra --region asia-northeast2 --format="yaml(spec.template.metadata.annotations,spec.template.spec.containers[0].env)"
 ```
 
 確認ポイント:
@@ -272,10 +272,10 @@ gcloud run services describe kanade-portal --region asia-northeast1 --format="ya
 
 - [ ] SQL > インスタンス一覧（`kanade-portal-pg` の行）
 - [ ] `kanade-portal-pg` の概要画面
-  - バージョン: PostgreSQL 16
-  - リージョン: asia-northeast1
+  - バージョン: PostgreSQL 18
+  - リージョン: asia-northeast2
   - 状態: RUNNABLE
-  - 接続名: kanade-orchestra:asia-northeast1:kanade-portal-pg
+  - 接続名: kanade-orchestra:asia-northeast2:kanade-portal-pg
 - [ ] `kanade-portal-pg` > データベースタブ（`kanade_portal` の存在）
 - [ ] `kanade-portal-pg` > ユーザータブ（`kanade_app` の存在）
 
@@ -291,7 +291,7 @@ gcloud run services describe kanade-portal --region asia-northeast1 --format="ya
 
 ### 7.4 IAM 権限証跡
 
-- [ ] Cloud Run `kanade-portal` のサービス詳細（実行サービスアカウントが分かる画面）
+- [ ] Cloud Run `kanade-orchestra` のサービス詳細（実行サービスアカウントが分かる画面）
 - [ ] IAM一覧で対象サービスアカウントのロールが確認できる画面
   - roles/cloudsql.client
   - roles/secretmanager.secretAccessor
@@ -299,8 +299,8 @@ gcloud run services describe kanade-portal --region asia-northeast1 --format="ya
 
 ### 7.5 Cloud Run DB接続設定証跡
 
-- [ ] Cloud Run > `kanade-portal` > 最新リビジョンの設定画面
-  - Cloud SQL接続に `kanade-orchestra:asia-northeast1:kanade-portal-pg`
+- [ ] Cloud Run > `kanade-orchestra` > 最新リビジョンの設定画面
+  - Cloud SQL接続に `kanade-orchestra:asia-northeast2:kanade-portal-pg`
 - [ ] 環境変数の設定画面
   - DB_HOST, DB_PORT, DB_NAME, DB_USER が見える
 - [ ] シークレット設定画面

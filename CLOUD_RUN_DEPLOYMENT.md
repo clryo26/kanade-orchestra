@@ -7,13 +7,13 @@ Cloud Run にデプロイする際、以下の環境変数を設定してくだ�
 ### Google Cloud プロジェクト設定
 
 ```bash
-gcloud run deploy kanade-portal \
+gcloud run deploy kanade-orchestra \
   --image gcr.io/kanade-orchestra/kanade-portal \
   --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra \
   --set-env-vars GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage \
   --set-env-vars GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data \
   --set-env-vars GOOGLE_CLOUD_STORAGE_PUBLIC=false \
-  --region asia-northeast1
+  --region asia-northeast2
 ```
 
 ### 環境変数一覧
@@ -79,10 +79,10 @@ gcloud builds submit --tag gcr.io/kanade-orchestra/kanade-portal
 ### 2. Cloud Run にデプロイ
 
 ```bash
-gcloud run deploy kanade-portal \
+gcloud run deploy kanade-orchestra \
   --image gcr.io/kanade-orchestra/kanade-portal \
   --platform managed \
-  --region asia-northeast1 \
+  --region asia-northeast2 \
   --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra \
   --set-env-vars GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage \
   --set-env-vars GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data \
@@ -141,10 +141,10 @@ JSON を正としていた現行構成に加えて、Cloud SQL for PostgreSQL �
 | 項目 | 値 |
 |---|---|
 | Google Cloud プロジェクトID | kanade-orchestra |
-| Cloud Run サービス名 | kanade-portal |
+| Cloud Run サービス名 | kanade-orchestra |
 | Cloud Storage バケット名 | kanade-storage |
-| リージョン | asia-northeast1 |
-| Cloud SQL 接続名 | kanade-orchestra:asia-northeast1:kanade-portal-pg |
+| リージョン | asia-northeast2 |
+| Cloud SQL 接続名 | kanade-orchestra:asia-northeast2:kanade-portal-pg |
 | DB名 | kanade_portal |
 | DBユーザー | kanade_app |
 | Secret Manager (DBパスワード) | kanade-portal-db-password |
@@ -153,10 +153,10 @@ JSON を正としていた現行構成に加えて、Cloud SQL for PostgreSQL �
 
 ```bash
 gcloud sql instances create kanade-portal-pg \
-  --database-version=POSTGRES_16 \
+  --database-version=POSTGRES_18 \
   --cpu=2 \
   --memory=8GB \
-  --region=asia-northeast1
+  --region=asia-northeast2
 
 gcloud sql databases create kanade_portal \
   --instance=kanade-portal-pg
@@ -193,13 +193,13 @@ gcloud builds submit --tag gcr.io/kanade-orchestra/kanade-portal
 ### 5. Cloud Run へデプロイ（PostgreSQL接続あり）
 
 ```bash
-gcloud run deploy kanade-portal \
+gcloud run deploy kanade-orchestra \
   --image gcr.io/kanade-orchestra/kanade-portal \
   --platform managed \
-  --region asia-northeast1 \
+  --region asia-northeast2 \
   --allow-unauthenticated \
-  --add-cloudsql-instances kanade-orchestra:asia-northeast1:kanade-portal-pg \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
+  --add-cloudsql-instances kanade-orchestra:asia-northeast2:kanade-portal-pg \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
   --set-secrets DB_PASSWORD=kanade-portal-db-password:latest
 ```
 

@@ -258,10 +258,10 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 ### 13.1 本番採用値
 
 - Google Cloud プロジェクトID: kanade-orchestra
-- Cloud Run サービス名: kanade-portal
+- Cloud Run サービス名: kanade-orchestra
 - Cloud Storage バケット名: kanade-storage
-- リージョン: asia-northeast1
-- Cloud SQL 接続名: kanade-orchestra:asia-northeast1:kanade-portal-pg
+- リージョン: asia-northeast2
+- Cloud SQL 接続名: kanade-orchestra:asia-northeast2:kanade-portal-pg
 - DB名: kanade_portal
 - DBユーザー: kanade_app
 - Secret 名（DBパスワード）: kanade-portal-db-password
@@ -269,7 +269,7 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 ### 13.2 接続方式
 
 - Cloud Run から Cloud SQL for PostgreSQL へ Cloud SQL Connector（Unix socket）で接続する
-- `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast1:kanade-portal-pg` を使用する
+- `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg` を使用する
 - `DB_PASSWORD` は Secret Manager から注入する
 - 既存の GCS 連携設定（GOOGLE_CLOUD_STORAGE_*）は継続利用する
 
@@ -1184,7 +1184,7 @@ CMD ["uvicorn", "src.backend.main:app", "--host", "0.0.0.0"]
 gcloud run deploy orchestra-tool \
   --source . \
   --platform managed \
-  --region asia-northeast1
+  --region asia-northeast2
 ```
 
 ### 4. 環境変数
