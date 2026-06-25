@@ -1,6 +1,6 @@
 # 奏オケポータル 設計書ナビゲーション
 
-最終更新: 2026-06-25
+最終更新: 2026-06-26
 
 ## 1. 正本ドキュメント
 
@@ -12,6 +12,7 @@
 ## 2. 補助ドキュメント
 
 - SYSTEM_DESIGN.md: システム観点の整理
+- ACCESS_AND_SOURCE_SYNC_GUIDE.md: 2台PC開発向けのGitHub/Googleアクセス情報とソース同期手順
 - DB_SETUP_GUIDE.md: DB構築の一本化手順（どのDBをどこからどう作るか）
 - FRONTEND_DESIGN.md: フロント実装観点
 - API_DATABASE_SPEC.md: API と JSON データ仕様
@@ -30,7 +31,8 @@
 1. README.md
 2. DESIGN.md
 3. DESIGN_WEB.md
-4. 担当別に補助ドキュメント
+4. ACCESS_AND_SOURCE_SYNC_GUIDE.md
+5. 担当別に補助ドキュメント
 
 変更実装時:
 
