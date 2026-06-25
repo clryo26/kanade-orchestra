@@ -1,6 +1,6 @@
 # 奏オケポータル 設計書ナビゲーション
 
-最終更新: 2026-06-17
+最終更新: 2026-06-25
 
 ## 1. 正本ドキュメント
 
@@ -12,6 +12,7 @@
 ## 2. 補助ドキュメント
 
 - SYSTEM_DESIGN.md: システム観点の整理
+- DB_SETUP_GUIDE.md: DB構築の一本化手順（どのDBをどこからどう作るか）
 - FRONTEND_DESIGN.md: フロント実装観点
 - API_DATABASE_SPEC.md: API と JSON データ仕様
 - PERFORMANCE_IMPROVEMENTS.md: 性能改善履歴
