@@ -9,6 +9,8 @@ import re
 import secrets
 import shutil
 import io
+import subprocess
+import sys
 import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -23,6 +25,13 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+try:
+    import psycopg
+    from psycopg import sql as psql
+except ImportError:  # pragma: no cover
+    psycopg = None
+    psql = None
 
 try:
     from .drive_storage import (
@@ -475,6 +484,92 @@ def require_admin_device(device_id: str) -> dict[str, Any]:
     if permission not in {"管理者", "システム管理者"}:
         raise HTTPException(status_code=403, detail="Admin permission is required")
     return device
+
+
+def require_system_admin_device(device_id: str) -> dict[str, Any]:
+    device = device_auth_record(device_id)
+    permission = str(device.get("permission") or "")
+    if permission != "システム管理者":
+        raise HTTPException(status_code=403, detail="System admin permission is required")
+    return device
+
+
+def db_connection_string() -> str:
+    db_url = os.getenv("DB_URL", "").strip()
+    if db_url:
+        return db_url
+
+    db_host = os.getenv("DB_HOST", "").strip()
+    db_port = os.getenv("DB_PORT", "5432").strip()
+    db_name = os.getenv("DB_NAME", "").strip()
+    db_user = os.getenv("DB_USER", "").strip()
+    db_password = os.getenv("DB_PASSWORD", "").strip()
+    if not all([db_host, db_name, db_user, db_password]):
+        raise HTTPException(
+            status_code=500,
+            detail="DB connection env vars are incomplete (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD or DB_URL)",
+        )
+    return (
+        f"host={db_host} "
+        f"port={db_port} "
+        f"dbname={db_name} "
+        f"user={db_user} "
+        f"password={db_password} "
+        "sslmode=disable"
+    )
+
+
+def mask_db_value(column_name: str, value: Any) -> Any:
+    lowered = column_name.lower()
+    if value is None:
+        return None
+    if lowered in {"password", "google_service_account_json", "google_service_account_file"}:
+        text_value = str(value)
+        if len(text_value) <= 8:
+            return "********"
+        return f"{text_value[:4]}...{text_value[-4:]}"
+    return value
+
+
+def assert_db_ready() -> None:
+    if psycopg is None or psql is None:
+        raise HTTPException(status_code=500, detail="psycopg is not installed")
+
+
+PORTAL_DB_TABLES = {
+    "performances",
+    "performance_pieces",
+    "schedules",
+    "announcements",
+    "events",
+    "members",
+    "auth_devices",
+    "absences",
+    "event_responses",
+    "date_adjustments",
+    "date_adjustment_candidates",
+    "date_adjustment_responses",
+    "piece_infos",
+    "practice_instructions",
+    "castings",
+    "casting_members",
+    "casting_extras",
+    "payments",
+    "payment_performance_fees",
+    "desired_pieces",
+    "desired_piece_votes",
+    "promotions",
+    "albums",
+    "album_photos",
+    "part_settings",
+    "venue_settings",
+    "org_settings",
+    "sns_settings",
+    "connection_settings",
+    "drive_files",
+    "recording_metadata",
+    "sheet_library",
+}
 
 
 def require_recording_manager_device(device_id: str) -> dict[str, Any]:
@@ -1474,6 +1569,187 @@ async def cleanup_orphans(
     return {"deleted": deleted, "total_deleted": sum(deleted.values())}
 
 
+@app.post("/api/system/data-migration")
+async def run_data_migration(
+    body: dict[str, Any],
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> dict[str, Any]:
+    """JSON -> PostgreSQL の移行スクリプトを実行する（システム管理者専用）。"""
+    require_system_admin_device(x_device_id)
+
+    dry_run = bool(body.get("dry_run", False))
+    truncate = bool(body.get("truncate", False))
+
+    script_path = BASE_DIR.parent / "scripts" / "migrate_json_to_postgres.py"
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail="Migration script not found")
+
+    db_url = os.getenv("DB_URL", "").strip()
+    db_host = os.getenv("DB_HOST", "").strip()
+    db_port = os.getenv("DB_PORT", "5432").strip()
+    db_name = os.getenv("DB_NAME", "").strip()
+    db_user = os.getenv("DB_USER", "").strip()
+    db_password = os.getenv("DB_PASSWORD", "").strip()
+
+    command = [
+        sys.executable,
+        str(script_path),
+        "--data-dir",
+        str(DATA_DIR),
+    ]
+    if db_url:
+        command.extend(["--db-url", db_url])
+    else:
+        if not all([db_host, db_name, db_user, db_password]):
+            raise HTTPException(
+                status_code=500,
+                detail="DB connection env vars are incomplete (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD or DB_URL)",
+            )
+        command.extend(
+            [
+                "--db-host",
+                db_host,
+                "--db-port",
+                db_port,
+                "--db-name",
+                db_name,
+                "--db-user",
+                db_user,
+                "--db-password",
+                db_password,
+            ]
+        )
+
+    if dry_run:
+        command.append("--dry-run")
+    elif truncate:
+        command.append("--truncate")
+
+    try:
+        result = subprocess.run(
+            command,
+            cwd=str(BASE_DIR.parent),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        logger.error("Data migration failed: %s", exc.stderr or exc.stdout)
+        raise HTTPException(
+            status_code=500,
+            detail=(exc.stderr or exc.stdout or "Migration failed").strip(),
+        ) from exc
+
+    output_text = (result.stdout or "").strip()
+    if result.stderr:
+        output_text = f"{output_text}\n\n[stderr]\n{result.stderr.strip()}".strip()
+
+    reconciliation_match: bool | None = None
+    if "RECONCILIATION_RESULT: MATCHED" in output_text:
+        reconciliation_match = True
+    elif "RECONCILIATION_RESULT: MISMATCH" in output_text:
+        reconciliation_match = False
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "truncate": truncate,
+        "reconciliation_match": reconciliation_match,
+        "output": output_text,
+    }
+
+
+@app.get("/api/system/database/tables")
+async def list_database_tables(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    """DBテーブル一覧を返す（システム管理者専用）。"""
+    require_system_admin_device(x_device_id)
+    assert_db_ready()
+
+    conn_str = db_connection_string()
+    with psycopg.connect(conn_str, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """
+            )
+            tables = [str(row[0]) for row in cur.fetchall() if str(row[0]) in PORTAL_DB_TABLES]
+
+    return {"tables": tables, "total": len(tables)}
+
+
+@app.get("/api/system/database/records")
+async def list_database_records(
+    table: str,
+    limit: int = 50,
+    offset: int = 0,
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> dict[str, Any]:
+    """指定テーブルのレコードを返す（システム管理者専用）。"""
+    require_system_admin_device(x_device_id)
+    assert_db_ready()
+
+    normalized_table = str(table or "").strip()
+    if not normalized_table:
+        raise HTTPException(status_code=400, detail="table is required")
+    if normalized_table not in PORTAL_DB_TABLES:
+        raise HTTPException(status_code=404, detail="table not found")
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
+    conn_str = db_connection_string()
+    with psycopg.connect(conn_str, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (normalized_table,),
+            )
+            columns = [str(row[0]) for row in cur.fetchall()]
+            if not columns:
+                raise HTTPException(status_code=404, detail="table not found")
+
+            cur.execute(
+                psql.SQL("SELECT COUNT(*) FROM {};").format(psql.Identifier(normalized_table))
+            )
+            total = int(cur.fetchone()[0])
+
+            order_clause = psql.SQL(" ORDER BY {} DESC").format(psql.Identifier("id")) if "id" in columns else psql.SQL("")
+            query = psql.SQL("SELECT * FROM {}{} LIMIT %s OFFSET %s;").format(
+                psql.Identifier(normalized_table),
+                order_clause,
+            )
+            cur.execute(query, (limit, offset))
+            fetched = cur.fetchall()
+            description = cur.description or []
+            column_names = [str(desc.name) for desc in description]
+
+    rows: list[dict[str, Any]] = []
+    for values in fetched:
+        item: dict[str, Any] = {}
+        for idx, col_name in enumerate(column_names):
+            item[col_name] = mask_db_value(col_name, values[idx])
+        rows.append(item)
+
+    return {
+        "table": normalized_table,
+        "columns": column_names,
+        "rows": rows,
+        "limit": limit,
+        "offset": offset,
+        "total": total,
+    }
+
+
 # ===== 基本マスタ CRUD =====
 # 演奏会一覧を取得する。
 @app.get("/api/performances", response_model=list[Performance])
@@ -2258,7 +2534,6 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "payments",
     "castings",
     "piece_infos",
-    "practice_instructions",
     "albums",
     "part_settings",
     "venue_settings",

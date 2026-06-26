@@ -197,8 +197,8 @@ const appState = {
     portalSelectedAnnouncementId: null,
     // 団員向け楽曲情報で選択中の楽曲 ID。
     selectedPieceInfoId: null,
-    // 団員向け練習指示で選択中の練習指示 ID。
-    selectedPracticeInstructionId: null,
+    // 団員向け練習指示で選択中の曲コンテキスト（演奏会ID + 曲名）。
+    selectedPracticeInstructionContext: null,
     // 楽譜管理で一括操作対象として選択された楽譜 ID 群。
     selectedSheetIds: [],
     // 乗り番フォームで編集中のレコード ID。
@@ -211,6 +211,16 @@ const appState = {
     castingEditingMembers: [],
     // 乗り番フォームで編集中のエキストラ配列。
     castingEditingExtras: [],
+    // システム管理のDB閲覧: 取得済みテーブル一覧。
+    databaseTables: [],
+    // システム管理のDB閲覧: 選択中テーブル。
+    databaseSelectedTable: '',
+    // システム管理のDB閲覧: 取得開始オフセット。
+    databaseOffset: 0,
+    // システム管理のDB閲覧: 1ページあたり件数。
+    databaseLimit: 50,
+    // システム管理のDB閲覧: 現在テーブルの総件数。
+    databaseTotal: 0,
     // 団員向け楽譜一覧の絞り込み条件。
     sheetFilters: {
         // 絞り込み対象の演奏会 ID。
@@ -1111,10 +1121,11 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
-    if (renderOnShow && tabName === 'practice-instruction-admin') renderPracticeInstructionAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
+    if (renderOnShow && tabName === 'system-database') renderDatabaseView();
+    if (renderOnShow && tabName === 'system-migration') renderMigrationView();
     if (renderOnShow && tabName === 'system-maintenance') renderMaintenanceView();
     
     // 画面上部にスクロール
@@ -1135,7 +1146,6 @@ function toPascalTab(value) {
         'venue-admin': 'venueAdmin',
         'casting-admin': 'castingAdmin',
         'piece-info-admin': 'pieceInfoAdmin',
-        'practice-instruction-admin': 'practiceInstructionAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
@@ -1164,6 +1174,8 @@ function toPascalTab(value) {
         'system-sns': 'systemSns',
         'system-connection': 'systemConnection',
         'system-part': 'systemPart',
+        'system-database': 'systemDatabase',
+        'system-migration': 'systemMigration',
         'system-maintenance': 'systemMaintenance'
     };
     return map[value] || value;
@@ -2734,6 +2746,243 @@ async function runMaintenanceCleanup() {
     showAlert(`${totalDeleted}件の孤立データを削除しました`, 'success');
     // 再スキャン
     await runMaintenanceScan();
+}
+
+// ===== DB 閲覧 =====
+
+async function renderDatabaseView() {
+    const tableSelect = $('databaseTableSelect');
+    const pageSizeSelect = $('databasePageSizeSelect');
+    const reloadBtn = $('databaseReloadBtn');
+    const prevBtn = $('databasePrevBtn');
+    const nextBtn = $('databaseNextBtn');
+
+    if (!tableSelect) return;
+
+    if (pageSizeSelect) {
+        pageSizeSelect.value = String(appState.databaseLimit || 50);
+        pageSizeSelect.onchange = async () => {
+            appState.databaseLimit = Number(pageSizeSelect.value || 50) || 50;
+            appState.databaseOffset = 0;
+            await loadDatabaseRecords();
+        };
+    }
+
+    tableSelect.onchange = async () => {
+        appState.databaseSelectedTable = tableSelect.value || '';
+        appState.databaseOffset = 0;
+        await loadDatabaseRecords();
+    };
+
+    if (reloadBtn) {
+        reloadBtn.onclick = () => withButtonStatus(reloadBtn, '更新中...', () => loadDatabaseTablesAndRecords(true));
+    }
+    if (prevBtn) {
+        prevBtn.onclick = async () => {
+            appState.databaseOffset = Math.max(0, appState.databaseOffset - appState.databaseLimit);
+            await loadDatabaseRecords();
+        };
+    }
+    if (nextBtn) {
+        nextBtn.onclick = async () => {
+            appState.databaseOffset += appState.databaseLimit;
+            await loadDatabaseRecords();
+        };
+    }
+
+    try {
+        await loadDatabaseTablesAndRecords(false);
+    } catch (error) {
+        const statusEl = $('databaseStatus');
+        if (statusEl) {
+            statusEl.hidden = false;
+            statusEl.textContent = String(error?.message || 'DB情報の取得に失敗しました');
+        }
+    }
+}
+
+async function loadDatabaseTablesAndRecords(forceReload) {
+    const statusEl = $('databaseStatus');
+    const tableSelect = $('databaseTableSelect');
+    if (!tableSelect) return;
+
+    if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = 'テーブル一覧を読み込み中...';
+    }
+
+    const tableUrl = forceReload ? `/api/system/database/tables?_t=${Date.now()}` : '/api/system/database/tables';
+    const result = await request(tableUrl);
+    appState.databaseTables = Array.isArray(result.tables) ? result.tables : [];
+
+    const previous = appState.databaseSelectedTable;
+    const selected = appState.databaseTables.includes(previous)
+        ? previous
+        : (appState.databaseTables[0] || '');
+    appState.databaseSelectedTable = selected;
+
+    tableSelect.innerHTML = appState.databaseTables.length
+        ? appState.databaseTables.map((name) => `<option value="${escapeHtml(name)}" ${name === selected ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')
+        : '<option value="">テーブルがありません</option>';
+
+    if (!selected) {
+        if (statusEl) {
+            statusEl.textContent = '表示可能なテーブルがありません。';
+        }
+        clearDatabaseRows();
+        return;
+    }
+
+    appState.databaseOffset = 0;
+    await loadDatabaseRecords(forceReload);
+}
+
+function clearDatabaseRows() {
+    const head = document.querySelector('#databaseRecordsTable thead');
+    const body = document.querySelector('#databaseRecordsTable tbody');
+    if (head) head.innerHTML = '';
+    if (body) body.innerHTML = '<tr><td class="text-muted">データがありません</td></tr>';
+    const prevBtn = $('databasePrevBtn');
+    const nextBtn = $('databaseNextBtn');
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+}
+
+async function loadDatabaseRecords(forceReload = false) {
+    const statusEl = $('databaseStatus');
+    const tableName = appState.databaseSelectedTable;
+    if (!tableName) {
+        clearDatabaseRows();
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = `テーブル ${tableName} を読み込み中...`;
+    }
+
+    const query = new URLSearchParams({
+        table: tableName,
+        limit: String(appState.databaseLimit),
+        offset: String(appState.databaseOffset),
+    }).toString();
+    const recordUrl = forceReload
+        ? `/api/system/database/records?${query}&_t=${Date.now()}`
+        : `/api/system/database/records?${query}`;
+    const result = await request(recordUrl);
+
+    appState.databaseTotal = Number(result.total || 0);
+    renderDatabaseRows(result.columns || [], result.rows || []);
+
+    const from = appState.databaseTotal === 0 ? 0 : appState.databaseOffset + 1;
+    const to = Math.min(appState.databaseOffset + appState.databaseLimit, appState.databaseTotal);
+    if (statusEl) {
+        statusEl.textContent = `${tableName}: ${from}-${to} / ${appState.databaseTotal} 件`;
+    }
+
+    const prevBtn = $('databasePrevBtn');
+    const nextBtn = $('databaseNextBtn');
+    if (prevBtn) prevBtn.disabled = appState.databaseOffset <= 0;
+    if (nextBtn) nextBtn.disabled = (appState.databaseOffset + appState.databaseLimit) >= appState.databaseTotal;
+}
+
+function formatDatabaseCell(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+}
+
+function renderDatabaseRows(columns, rows) {
+    const head = document.querySelector('#databaseRecordsTable thead');
+    const body = document.querySelector('#databaseRecordsTable tbody');
+    if (!head || !body) return;
+
+    if (!columns.length) {
+        head.innerHTML = '';
+        body.innerHTML = '<tr><td class="text-muted">列情報が取得できませんでした</td></tr>';
+        return;
+    }
+
+    head.innerHTML = `<tr>${columns.map((column) => `<th class="text-nowrap">${escapeHtml(column)}</th>`).join('')}</tr>`;
+    if (!rows.length) {
+        body.innerHTML = `<tr><td class="text-muted" colspan="${columns.length}">レコードがありません</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = rows.map((row) => {
+        const cells = columns.map((column) => {
+            const value = formatDatabaseCell(row[column]);
+            return `<td class="small">${escapeHtml(value)}</td>`;
+        }).join('');
+        return `<tr>${cells}</tr>`;
+    }).join('');
+}
+
+// ===== JSON -> DB データ移行 =====
+
+async function renderMigrationView() {
+    const dryRunBtn = $('migrationDryRunBtn');
+    const executeBtn = $('migrationExecuteBtn');
+    const outputEl = $('migrationOutput');
+    if (dryRunBtn) {
+        dryRunBtn.onclick = () => withButtonStatus(dryRunBtn, '実行中...', () => runDataMigration(true));
+    }
+    if (executeBtn) {
+        executeBtn.onclick = () => withButtonStatus(executeBtn, '実行中...', async () => {
+            const ok = confirm('DBデータを全削除してJSONから再投入します。\nこの操作は元に戻せません。実行しますか？');
+            if (!ok) return;
+            await runDataMigration(false);
+        });
+    }
+    if (outputEl && !outputEl.textContent.trim()) {
+        outputEl.textContent = '「件数確認（dry-run）」を押してください。';
+    }
+}
+
+async function runDataMigration(dryRun) {
+    const statusEl = $('migrationStatus');
+    const outputEl = $('migrationOutput');
+    if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = dryRun ? '件数確認を実行中...' : 'データ移行を実行中...';
+    }
+
+    try {
+        const result = await request('/api/system/data-migration', jsonOptions('POST', {
+            dry_run: dryRun,
+            truncate: !dryRun,
+        }));
+        if (outputEl) {
+            outputEl.textContent = String(result.output || '出力なし');
+        }
+        const reconciled = result.reconciliation_match;
+        if (statusEl) {
+            if (!dryRun && reconciled === true) {
+                statusEl.textContent = 'データ移行が完了しました（件数照合: 一致）。';
+            } else if (!dryRun && reconciled === false) {
+                statusEl.textContent = 'データ移行は完了しましたが、件数照合で不一致が見つかりました。';
+            } else {
+                statusEl.textContent = dryRun ? '件数確認が完了しました。' : 'データ移行が完了しました。';
+            }
+        }
+        if (!dryRun && reconciled === false) {
+            showAlert('データ移行は完了しましたが、件数照合で不一致が見つかりました', 'warning');
+        } else {
+            showAlert(dryRun ? '件数確認が完了しました' : 'データ移行が完了しました', 'success');
+        }
+        if (!dryRun) {
+            await loadEssentialData();
+            await loadExtraData();
+            renderMemberViews();
+        }
+    } catch (error) {
+        if (statusEl) {
+            statusEl.textContent = dryRun ? '件数確認に失敗しました。' : 'データ移行に失敗しました。';
+        }
+        if (outputEl) {
+            outputEl.textContent = String(error?.message || '通信に失敗しました');
+        }
+    }
 }
 
 function sortedVenueSettings() {
@@ -6080,99 +6329,137 @@ function renderPracticeInstructionView() {
     const container = $('memberPracticeInstructionInfo');
     if (!container) return;
 
-    const performanceMetaById = new Map(appState.performances.map((perf) => {
-        const performanceId = String(perf.id || '');
-        const orderedPieces = normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean);
-        const pieceOrder = new Map(orderedPieces.map((piece, index) => [piece, index]));
-        return [performanceId, {
-            title: String(perf.title || ''),
-            date: String(perf.date || ''),
-            pieceOrder,
-        }];
+    const upcomingPerformances = [...(appState.performances || [])]
+        .filter((perf) => perf.date && perf.date >= today())
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'ja'));
+
+    const rows = upcomingPerformances.map((perf) => ({
+        performanceId: String(perf.id || ''),
+        title: String(perf.title || ''),
+        date: String(perf.date || ''),
+        pieces: normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean)
     }));
 
-    const comparePerformanceOrder = (leftPerformanceId, rightPerformanceId) => {
-        const leftMeta = performanceMetaById.get(String(leftPerformanceId)) || { title: '演奏会未設定', date: '' };
-        const rightMeta = performanceMetaById.get(String(rightPerformanceId)) || { title: '演奏会未設定', date: '' };
-        // 演奏会日付の新しい順を優先し、同日の場合はタイトル昇順で安定化する。
-        const dateCompare = String(rightMeta.date || '').localeCompare(String(leftMeta.date || ''));
-        if (dateCompare !== 0) return dateCompare;
-        return String(leftMeta.title || '').localeCompare(String(rightMeta.title || ''), 'ja');
-    };
-
-    const instructionRows = appState.practiceInstructions
-        .filter((item) => String(item.practice_notes || '').trim())
-        .map((item) => {
-            const performanceId = String(item.performance_id || '');
-            const meta = performanceMetaById.get(performanceId) || { title: '演奏会未設定', date: '', pieceOrder: new Map() };
-            return {
-                id: String(item.id || ''),
-                performanceId,
-                performanceTitle: meta.title || '演奏会未設定',
-                performanceDate: meta.date || '',
-                piece: String(item.piece || ''),
-                pieceOrderIndex: meta.pieceOrder?.has(String(item.piece || '')) ? Number(meta.pieceOrder.get(String(item.piece || ''))) : Number.MAX_SAFE_INTEGER,
-                practiceNotes: String(item.practice_notes || ''),
-            };
-        })
-        .filter((item) => item.performanceId && item.piece)
-        .sort((a, b) => {
-            const performanceOrder = comparePerformanceOrder(a.performanceId, b.performanceId);
-            if (performanceOrder !== 0) return performanceOrder;
-            if (a.pieceOrderIndex !== b.pieceOrderIndex) return a.pieceOrderIndex - b.pieceOrderIndex;
-            return a.piece.localeCompare(b.piece, 'ja');
-        });
-
-    if (!instructionRows.length) {
-        appState.selectedPracticeInstructionId = null;
-        container.innerHTML = '<p class="text-muted mb-0">練習時の指摘内容が登録された曲はまだありません</p>';
+    if (!rows.length) {
+        appState.selectedPracticeInstructionContext = null;
+        container.innerHTML = '<p class="text-muted mb-0">未開催の演奏会はありません</p>';
         return;
     }
 
-    const selectedId = instructionRows.some((item) => item.id === String(appState.selectedPracticeInstructionId || ''))
-        ? String(appState.selectedPracticeInstructionId || '')
-        : instructionRows[0].id;
-    appState.selectedPracticeInstructionId = selectedId;
+    const hasPiece = (performanceId, piece) => rows.some((row) => row.performanceId === String(performanceId || '') && row.pieces.includes(piece));
+    const selectedContext = appState.selectedPracticeInstructionContext;
+    if (!selectedContext || !hasPiece(selectedContext.performanceId, selectedContext.piece)) {
+        appState.selectedPracticeInstructionContext = null;
+    }
 
-    const selected = instructionRows.find((item) => item.id === selectedId) || instructionRows[0];
-    const grouped = groupBy(instructionRows, 'performanceId');
-    const orderedPerformanceIds = [...new Set(instructionRows.map((item) => item.performanceId))]
-        .sort((leftId, rightId) => comparePerformanceOrder(leftId, rightId));
+    if (!appState.selectedPracticeInstructionContext) {
+        container.innerHTML = `
+            <section class="info-block mb-3">
+                <h5 class="mb-2">未開催演奏会の曲一覧</h5>
+                <p class="text-muted small mb-0">曲を選択すると、曲ごとの練習指示登録・編集画面に遷移します。<span class="badge text-bg-success ms-1">指示あり</span> が登録済みの目印です。</p>
+            </section>
+            ${rows.map((row) => {
+                const heading = `${formatDateWithWeekday(row.date, row.date)} ${row.title}`.trim();
+                if (!row.pieces.length) {
+                    return `
+                        <section class="mb-3">
+                            <h6 class="mb-2">${escapeHtml(heading)}</h6>
+                            <p class="text-muted small mb-0">曲がまだ登録されていません</p>
+                        </section>
+                    `;
+                }
+                return `
+                    <section class="mb-3">
+                        <h6 class="mb-2">${escapeHtml(heading)}</h6>
+                        <div class="list-group">
+                            ${row.pieces.map((piece) => {
+                                const existing = appState.practiceInstructions.find((item) => String(item.performance_id || '') === row.performanceId && String(item.piece || '') === piece);
+                                return `
+                                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-practice-performance-id="${escapeHtml(row.performanceId)}" data-practice-piece="${escapeHtml(encodeURIComponent(piece))}">
+                                        <span>${escapeHtml(piece)}</span>
+                                        ${existing && String(existing.practice_notes || '').trim() ? '<span class="badge text-bg-success">指示あり</span>' : ''}
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </section>
+                `;
+            }).join('')}
+        `;
+
+        container.querySelectorAll('[data-practice-performance-id][data-practice-piece]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const performanceId = button.dataset.practicePerformanceId || '';
+                const piece = decodeURIComponent(button.dataset.practicePiece || '');
+                appState.selectedPracticeInstructionContext = { performanceId, piece };
+                renderPracticeInstructionView();
+            });
+        });
+        return;
+    }
+
+    const performanceId = String(appState.selectedPracticeInstructionContext.performanceId || '');
+    const piece = String(appState.selectedPracticeInstructionContext.piece || '');
+    const performance = appState.performances.find((perf) => String(perf.id || '') === performanceId);
+    const existing = appState.practiceInstructions.find((item) => String(item.performance_id || '') === performanceId && String(item.piece || '') === piece);
+    const initialNotes = String(existing?.practice_notes || '');
 
     container.innerHTML = `
         <section class="info-block mb-3">
-            <h5 class="mb-2">練習指示一覧</h5>
-            <p class="text-muted small mb-0">演奏会日付の新しい順で、練習時の指摘内容が登録されている曲のみ表示しています。曲名は演奏会の曲目順で並び、選択すると内容を表示します。</p>
+            <button class="btn btn-sm btn-outline-secondary mb-3" id="practiceInstructionBackBtn" type="button">曲一覧に戻る</button>
+            <h5 class="mb-1">${escapeHtml(performance?.title || '演奏会未設定')}</h5>
+            <div class="small text-muted mb-2">${escapeHtml(formatDateWithWeekday(performance?.date || '', '開催日未設定'))}</div>
+            <h6 class="mb-0">${escapeHtml(piece)}</h6>
         </section>
-        ${orderedPerformanceIds.map((performanceId) => {
-            const items = grouped[performanceId] || [];
-            const title = items[0]?.performanceTitle || '演奏会未設定';
-            return `
-                <section class="mb-3">
-                    <h6 class="mb-2">${escapeHtml(title)}</h6>
-                    <div class="list-group">
-                        ${items.map((item) => `
-                            <button class="list-group-item list-group-item-action text-start ${item.id === selectedId ? 'active' : ''}" type="button" data-practice-instruction-view-id="${escapeHtml(item.id)}">
-                                ${escapeHtml(item.piece)}
-                            </button>
-                        `).join('')}
-                    </div>
-                </section>
-            `;
-        }).join('')}
         <section class="info-block">
-            <h6 class="mb-2">${escapeHtml(selected.performanceTitle)} / ${escapeHtml(selected.piece)}</h6>
-            <div class="small text-muted mb-1">練習時の指摘内容</div>
-            <div class="multiline-text">${convertUrlsToLinks(selected.practiceNotes)}</div>
+            <div class="mb-3">
+                <label class="form-label" for="memberPracticeInstructionNotes">練習指示内容</label>
+                <textarea class="form-control" id="memberPracticeInstructionNotes" rows="8">${escapeHtml(initialNotes)}</textarea>
+                <div class="form-text">URLを記載するとリンクとして表示されます。</div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-success" id="memberPracticeInstructionSaveBtn" type="button">保存</button>
+                <button class="btn btn-danger" id="memberPracticeInstructionDeleteBtn" type="button" ${existing ? '' : 'disabled'}>削除</button>
+            </div>
         </section>
     `;
 
-    container.querySelectorAll('[data-practice-instruction-view-id]').forEach((button) => {
-        button.addEventListener('click', () => {
-            appState.selectedPracticeInstructionId = button.dataset.practiceInstructionViewId || null;
-            renderPracticeInstructionView();
-        });
+    $('practiceInstructionBackBtn')?.addEventListener('click', () => {
+        appState.selectedPracticeInstructionContext = null;
+        renderPracticeInstructionView();
     });
+
+    $('memberPracticeInstructionSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', async () => {
+        const notes = String($('memberPracticeInstructionNotes')?.value || '').trim();
+        if (!notes) {
+            showAlert('練習指示内容を入力してください', 'warning');
+            return;
+        }
+        const payload = {
+            performance_id: performanceId,
+            piece,
+            practice_notes: notes,
+            performance_instruction: ''
+        };
+        if (existing?.id) {
+            await request(`/api/extra/practice_instructions/${encodeURIComponent(existing.id)}`, jsonOptions('PUT', payload));
+        } else {
+            await saveExtra('practice_instructions', payload);
+        }
+        await loadExtraData();
+        showAlert('練習指示を保存しました', 'success');
+    }));
+
+    $('memberPracticeInstructionDeleteBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', async () => {
+        if (!existing?.id) {
+            showAlert('削除対象の練習指示がありません', 'warning');
+            return;
+        }
+        if (!confirmDelete()) return;
+        await request(`/api/extra/practice_instructions/${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
+        await loadExtraData();
+        showAlert('練習指示を削除しました', 'success');
+    }));
 }
 
 

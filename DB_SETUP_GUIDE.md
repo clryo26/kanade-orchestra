@@ -9,7 +9,7 @@
 このシステムで構築するDBは、次の構成です。
 
 - DBサービス: Google Cloud SQL for PostgreSQL
-- PostgreSQLバージョン: 16
+- PostgreSQLバージョン: 18
 - Cloud SQLインスタンス名: kanade-portal-pg
 - データベース名: kanade_portal
 - アプリ接続ユーザー: kanade_app
@@ -42,6 +42,7 @@
 7. スキーマ適用（db/postgresql_schema.sql）
 8. Cloud RunにDB接続設定を入れてデプロイ
 9. 接続確認
+10. JSONデータをDBへ移行
 
 ## 4. 手順（そのまま実行）
 
@@ -127,6 +128,62 @@ gcloud run deploy kanade-orchestra \
   --set-env-vars GOOGLE_CLOUD_PROJECT=kanade-orchestra,GOOGLE_CLOUD_STORAGE_BUCKET=kanade-storage,GOOGLE_CLOUD_STORAGE_DATA_PREFIX=app-data,GOOGLE_CLOUD_STORAGE_PUBLIC=false,DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg,DB_PORT=5432,DB_NAME=kanade_portal,DB_USER=kanade_app \
   --set-secrets DB_PASSWORD=kanade-portal-db-password:latest
 ```
+
+### 4.9 JSONデータをDBへ移行
+
+前提:
+- すでに `db/postgresql_schema.sql` 適用済み
+- このリポジトリのルートでコマンド実行
+
+```bash
+uv sync
+```
+
+ローカルから Cloud SQL に接続できる構成（Public IP許可済み、またはCloud SQL Auth Proxy利用）で次を実行します。
+
+```bash
+uv run python scripts/migrate_json_to_postgres.py \
+  --db-host REPLACE_DB_HOST \
+  --db-port 5432 \
+  --db-name kanade_portal \
+  --db-user kanade_app \
+  --db-password 'REPLACE_WITH_STRONG_PASSWORD' \
+  --truncate
+```
+
+Cloud Run の Unix Domain Socket 経由（`/cloudsql/...`）で接続できる環境の場合は `--db-host` に `/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg` を指定します。
+
+安全確認だけ先に行う場合:
+
+```bash
+uv run python scripts/migrate_json_to_postgres.py \
+  --db-host REPLACE_DB_HOST \
+  --db-port 5432 \
+  --db-name kanade_portal \
+  --db-user kanade_app \
+  --db-password 'REPLACE_WITH_STRONG_PASSWORD' \
+  --dry-run
+```
+
+注意:
+- `--truncate` は既存DBデータを全削除して再投入します（初回移行時に推奨）。
+- まず `--dry-run` で件数確認し、その後 `--truncate` 付き本実行を推奨します。
+- 移行スクリプトは本実行後に「JSON件数 vs DB件数」の自動照合を実施し、`RECONCILIATION_RESULT: MATCHED/MISMATCH` を出力します。
+
+手動での再確認（任意）:
+
+```bash
+gcloud sql connect kanade-portal-pg --user=kanade_app --database=kanade_portal
+```
+
+psql で次を実行:
+
+```sql
+\i db/post_migration_count_check.sql
+```
+
+確認ポイント:
+- 各テーブル件数が、移行スクリプトの `Migration row counts` / `Reconciliation` 出力と一致すること。
 
 ## 5. 手順（画面操作だけで作る版 / Cloud Console中心）
 

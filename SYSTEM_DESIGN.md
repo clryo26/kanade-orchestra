@@ -1,7 +1,7 @@
 # 奏オケポータル システム設計書
 
 版: 2.1
-最終更新: 2026-06-19
+最終更新: 2026-06-26
 
 ## 1. システム概要
 
@@ -61,6 +61,7 @@
 - 基本マスタ（performances/schedules/members/events/announcements）は管理者以上のみ更新可
 - extra のうち運用設定系（connection_settings 等）は管理者以上のみ更新可
 - date_adjustments / date_adjustment_responses / absences / event_responses は本人または管理者のみ更新可
+- practice_instructions は認証済み団員なら登録・編集・削除可
 - extra PUT は `expected_updated_at` 指定時に競合検知を行い、不一致は 409
 
 ## 4. 画面構造
@@ -76,6 +77,7 @@
 - お知らせ、演奏会、練習予定、録音部屋
 - 欠席連絡、楽譜ライブラリ、支払状況、乗り番表
 - イベント、日程調整、楽曲情報、練習指示、演奏希望曲、宣伝、アルバム
+- 練習指示は「未開催演奏会 -> 曲選択 -> 曲別編集」導線で、登録済み曲には目印を表示
 - 団員紹介、演奏会記録、SNS、マニュアル
 
 ### 4.3 管理パネル
@@ -177,6 +179,26 @@
 
 - GET /api/maintenance/orphans  （孤立データ検出、管理者専用）
 - POST /api/maintenance/cleanup  （孤立データ削除、管理者専用）
+- POST /api/system/data-migration  （JSON->PostgreSQL移行実行、システム管理者専用）
+
+### 6.8 一時運用メニュー（システム管理）
+
+- システム管理パネルに「データ移行」タブを一時追加
+- ボタン操作で `scripts/migrate_json_to_postgres.py` をサーバー側から起動
+- 実行モード:
+  - 件数確認（dry-run）
+  - 本実行（truncate + 移行）
+- 誤操作防止として本実行前に確認ダイアログを必須とする
+- 本実行後は移行スクリプトが自動で件数照合（JSON件数 vs DB件数）を行い、結果を画面に表示する
+
+### 6.9 恒久運用メニュー（システム管理）
+
+- システム管理パネルに「データベース」メニューを配置
+- 当ポータル利用テーブルのみを一覧表示し、ページング付きでレコード閲覧可能
+- 機微情報カラム（password / service account情報）はマスク表示
+- API:
+  - GET /api/system/database/tables
+  - GET /api/system/database/records?table=...&limit=...&offset=...
 
 ## 7. パフォーマンス設計
 
@@ -190,6 +212,8 @@
 - Cloud Run 配備を想定
 - 静的アセットはバージョンクエリで更新制御
 - index.html は no-store で常に最新を取得
+- JSON から PostgreSQL への初期移行は `scripts/migrate_json_to_postgres.py` を利用し、`src/data/*.json` を正規化テーブルへ投入する
+- 移行時は `--dry-run` で件数確認後、`--truncate` 付きで本投入する運用を標準とする
 
 ## 9. 正本ドキュメント
 

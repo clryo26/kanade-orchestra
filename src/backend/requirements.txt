@@ -9,3 +9,4 @@ librosa==0.10.0
 google-cloud-storage==2.14.0
 google-auth==2.25.2
 python-dotenv==1.0.0
+psycopg[binary]==3.2.9

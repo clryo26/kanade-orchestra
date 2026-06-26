@@ -64,7 +64,6 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="piece-info-admin" type="button">楽曲情報</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="practice-instruction-admin" type="button">練習指示</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-setting" type="button">支払設定</button>
@@ -353,36 +352,6 @@
                             <button class="btn btn-danger" id="deletePieceInfoBtn" type="button">削除</button>
                         </div>
                         <div id="pieceInfoAdminList"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 練習指示管理 -->
-            <div id="practiceInstructionAdminTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">練習指示</div>
-                    <div class="card-body">
-                        <input type="hidden" id="practiceInstructionId">
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label" for="practiceInstructionPerformance">演奏会</label>
-                                <select class="form-select" id="practiceInstructionPerformance"></select>
-                            </div>
-                            <div class="col-md-8">
-                                <label class="form-label" for="practiceInstructionPiece">曲名</label>
-                                <select class="form-select" id="practiceInstructionPiece"></select>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label" for="practiceInstructionNotes">練習時の指摘内容</label>
-                                <textarea class="form-control" id="practiceInstructionNotes" rows="4"></textarea>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 mb-3">
-                            <button class="btn btn-success" id="savePracticeInstructionBtn" type="button">保存</button>
-                            <button class="btn btn-outline-secondary" id="clearPracticeInstructionBtn" type="button">選択解除</button>
-                            <button class="btn btn-danger" id="deletePracticeInstructionBtn" type="button">削除</button>
-                        </div>
-                        <div id="practiceInstructionAdminList"></div>
                     </div>
                 </div>
             </div>
@@ -706,6 +675,8 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-database" type="button">データベース</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-migration" type="button">データ移行</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-maintenance" type="button">データメンテナンス</button>
             </div>
 
@@ -837,6 +808,59 @@
                             </div>
                         </div>
                         <div id="partSettingList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemDatabaseTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">データベース（テーブル/レコード確認）</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">当ポータルが使用するテーブルのレコードを確認できます（システム管理者専用）。</p>
+                        <div class="row g-2 align-items-end mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label" for="databaseTableSelect">テーブル</label>
+                                <select id="databaseTableSelect" class="form-select"></select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="databasePageSizeSelect">表示件数</label>
+                                <select id="databasePageSizeSelect" class="form-select">
+                                    <option value="20">20</option>
+                                    <option value="50" selected>50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                            <div class="col-md-5 d-flex gap-2">
+                                <button class="btn btn-outline-primary" id="databaseReloadBtn" type="button">再読込</button>
+                                <button class="btn btn-outline-secondary" id="databasePrevBtn" type="button">前へ</button>
+                                <button class="btn btn-outline-secondary" id="databaseNextBtn" type="button">次へ</button>
+                            </div>
+                        </div>
+                        <div id="databaseStatus" class="text-muted small mb-2" hidden></div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0" id="databaseRecordsTable">
+                                <thead class="table-light"></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemMigrationTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">JSON → PostgreSQL データ移行（簡易実行）</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">一時的な移行補助メニューです。実行にはシステム管理者権限が必要です。</p>
+                        <div class="alert alert-warning small" role="alert">
+                            本実行は既存DBデータを一度クリアしてから再投入します。先に「件数確認」を実行してください。
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-outline-primary" id="migrationDryRunBtn" type="button">件数確認（dry-run）</button>
+                            <button class="btn btn-danger" id="migrationExecuteBtn" type="button">本実行（truncate + 移行）</button>
+                        </div>
+                        <div id="migrationStatus" class="text-muted small mb-2" hidden></div>
+                        <pre id="migrationOutput" class="border rounded p-3 bg-light small mb-0" style="white-space: pre-wrap; min-height: 120px;">「件数確認（dry-run）」を押してください。</pre>
                     </div>
                 </div>
             </div>
