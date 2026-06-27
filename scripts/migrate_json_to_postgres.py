@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -95,6 +96,9 @@ class InsertPlan:
     columns: list[str]
     rows: list[tuple[Any, ...]]
     has_identity_id: bool = True
+
+
+AUDIT_COLUMNS = {"created_at", "updated_at"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -1200,6 +1204,7 @@ def truncate_tables(conn: psycopg.Connection[Any]) -> None:
 def insert_plan(conn: psycopg.Connection[Any], plan: InsertPlan) -> None:
     if not plan.rows:
         return
+    rows = rows_with_audit_defaults(plan)
     placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in plan.columns)
     query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
         sql.Identifier(plan.table),
@@ -1207,7 +1212,26 @@ def insert_plan(conn: psycopg.Connection[Any], plan: InsertPlan) -> None:
         placeholders,
     )
     with conn.cursor() as cur:
-        cur.executemany(query, plan.rows)
+        cur.executemany(query, rows)
+
+
+def rows_with_audit_defaults(plan: InsertPlan, default_timestamp: str | None = None) -> list[tuple[Any, ...]]:
+    audit_indexes = [idx for idx, column in enumerate(plan.columns) if column in AUDIT_COLUMNS]
+    if not audit_indexes:
+        return plan.rows
+
+    fallback = default_timestamp or datetime.now(timezone.utc).isoformat()
+    created_index = plan.columns.index("created_at") if "created_at" in plan.columns else None
+    updated_index = plan.columns.index("updated_at") if "updated_at" in plan.columns else None
+    normalized_rows: list[tuple[Any, ...]] = []
+    for row in plan.rows:
+        values = list(row)
+        if created_index is not None and values[created_index] is None:
+            values[created_index] = fallback
+        if updated_index is not None and values[updated_index] is None:
+            values[updated_index] = values[created_index] if created_index is not None else fallback
+        normalized_rows.append(tuple(values))
+    return normalized_rows
 
 
 def sync_identity_sequence(conn: psycopg.Connection[Any], table_name: str) -> None:

@@ -288,6 +288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         bindForms();
         bindDownloadConfirmations();
         updateSavePath();
+        loadCloudRunRevision();
     } catch (initError) {
         console.error('Portal initialization error:', initError);
     }
@@ -543,12 +544,13 @@ function renderMenuGroups(container) {
                 <button class="btn btn-outline-primary" data-drawer-action="manual" type="button">マニュアル</button>
                 <button class="btn btn-outline-danger" data-drawer-action="logout" type="button">ログアウト</button>
                 <button class="btn btn-outline-success" data-drawer-action="reload" type="button">更新</button>
-                <span class="revision-inline">Rev. <span data-revision-number>20260617-1</span></span>
+                <span class="revision-inline">Rev. <span data-revision-number>${escapeHtml(currentRevisionText())}</span></span>
             </div>
         </section>
     `;
     
     container.innerHTML = menuHTML + actionsHTML;
+    updateCloudRunRevision();
     
     container.querySelectorAll('[data-home-tab]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -1504,7 +1506,7 @@ function applyBootstrapData(data) {
         snsSettings: extras.sns_settings || [],
         connectionSettings: extras.connection_settings || [],
         authDevices: data.auth_devices || [],
-        cloudRunRevision: data.cloudRunRevision || ''
+        cloudRunRevision: appState.cloudRunRevision || data.cloudRunRevision || ''
     });
     refreshPartSelectOptions();
     refreshVenueOptions();
@@ -3000,6 +3002,27 @@ function renderDatabaseRows(columns, rows) {
 
 // ===== JSON -> DB データ移行 =====
 
+function migrationCleanupSummary(cleanup) {
+    if (!cleanup) return '';
+
+    const localFiles = Array.isArray(cleanup.local_files) ? cleanup.local_files : [];
+    const cloudObjects = cleanup.cloud_objects || {};
+    const cloudCount = Object.values(cloudObjects).reduce(
+        (total, objects) => total + (Array.isArray(objects) ? objects.length : 0),
+        0
+    );
+    if (!localFiles.length && !cloudCount) return 'JSON削除: 削除対象はありませんでした。';
+
+    const lines = ['JSON削除: 移行済みデータを削除しました。'];
+    if (localFiles.length) {
+        lines.push(`ローカルJSON: ${localFiles.join(', ')}`);
+    }
+    if (cloudCount) {
+        lines.push(`Cloud Storage JSON: ${cloudCount}件`);
+    }
+    return lines.join('\n');
+}
+
 async function renderMigrationView() {
     const dryRunBtn = $('migrationDryRunBtn');
     const executeBtn = $('migrationExecuteBtn');
@@ -3033,7 +3056,8 @@ async function runDataMigration(dryRun) {
             truncate: !dryRun,
         }));
         if (outputEl) {
-            outputEl.textContent = String(result.output || '出力なし');
+            const cleanupSummary = migrationCleanupSummary(result.migration_cleanup);
+            outputEl.textContent = [String(result.output || '出力なし'), cleanupSummary].filter(Boolean).join('\n\n');
         }
         const reconciled = result.reconciliation_match;
         if (statusEl) {
@@ -3265,8 +3289,7 @@ function applyDynamicManifest(name, shortName, iconUrl = '') {
 
 function updateCloudRunRevision() {
     // Google Cloud Run のリビジョン情報をUI に反映
-    if (!appState.cloudRunRevision) return;
-    const revisionLabel = cloudRunRevisionLabel(appState.cloudRunRevision);
+    const revisionLabel = currentRevisionText();
     const revisionElements = [
         $('revisionNumber'),
         ...document.querySelectorAll('[data-revision-number]')
@@ -3274,6 +3297,21 @@ function updateCloudRunRevision() {
     revisionElements.forEach((element) => {
         element.textContent = revisionLabel;
     });
+}
+
+function currentRevisionText() {
+    return cloudRunRevisionLabel(appState.cloudRunRevision) || '取得中';
+}
+
+async function loadCloudRunRevision() {
+    try {
+        const data = await requestJson('/api/revision', { cache: 'no-store' });
+        appState.cloudRunRevision = data.cloudRunRevision || '';
+        updateCloudRunRevision();
+    } catch (error) {
+        console.warn('Cloud Run revision fetch failed', error);
+        updateCloudRunRevision();
+    }
 }
 
 function cloudRunRevisionLabel(revision) {

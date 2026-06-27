@@ -187,6 +187,9 @@
 - ボタン操作で `scripts/migrate_json_to_postgres.py` をサーバー側から起動
 - サーバー側実行時は現在参照している JSON データを一時スナップショットに書き出し、そのディレクトリを `--data-dir` として渡す
 - Cloud Run 用 Docker イメージには `scripts/` と `db/` を含め、移行スクリプトと件数確認 SQL を実行時に参照可能にする
+- JSON に `created_at` / `updated_at` がない行は、DB の NOT NULL 制約に合わせて移行時刻を補完して INSERT する
+- 本実行が成功し、件数照合が `MATCHED` になった場合のみ、移行済み JSON コレクションを削除する。中身が空になった JSON はファイルごと削除する
+- 削除したローカル JSON ファイルと Cloud Storage JSON の件数は、データ移行画面の実行ログに表示する
 - 実行モード:
   - 件数確認（dry-run）
   - 本実行（truncate + 移行）
@@ -207,7 +210,7 @@
 - バックエンド: MemoryCache + インデックス + ETag
 - フロント: IndexedDB キャッシュ + in-flight dedupe
 - 初期描画: 軽量 bootstrap 先行、重い一覧は遅延
-- bootstrap レスポンスに `cloudRunRevision` を含め、Cloud Run リビジョンを画面に動的表示
+- `/api/revision` を `Cache-Control: no-store` で取得し、Cloud Run リビジョンを画面に動的表示。bootstrap 側の値は後方互換として扱う
 
 ## 8. 運用設計
 
@@ -242,8 +245,9 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 
 ### 10.2 Cloud Run リビジョン表示
 
-- バックエンドが Cloud Run 標準の `K_REVISION` を優先して読み込み、後方互換として `CLOUD_RUN_REVISION` も参照して bootstrap レスポンスに含める
-- フロントは `updateCloudRunRevision()` でサイドドロワーの Rev. 表示を動的更新し、`kanade-orchestra-00060-hsf` のような値は `00060-hsf` と表示する
+- バックエンドが Cloud Run 標準の `K_REVISION` を優先して読み込み、後方互換として `CLOUD_RUN_REVISION` も参照する
+- リビジョンはデータ更新とは独立して変わるため、`/api/revision` を `Cache-Control: no-store` で提供し、bootstrap/IndexedDB/ETag キャッシュに古い値が残っても最新値を取得できるようにする
+- フロントは `loadCloudRunRevision()` と `updateCloudRunRevision()` でサイドドロワーの Rev. 表示を動的更新し、`kanade-orchestra-00060-hsf` のような値は `00060-hsf` と表示する
 - Google Cloud が自動的に設定する環境変数のため、デプロイするたびに自動的に最新リビジョン番号に切り替わる
 
 ### 10.3 乗り番表（ポータル表示）

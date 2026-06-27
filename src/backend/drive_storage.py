@@ -195,6 +195,18 @@ def save_json_to_storage(name: str, data: list[dict[str, Any]]) -> None:
     )
 
 
+def delete_json_from_storage(name: str) -> list[str]:
+    # 移行完了後に Cloud Storage 上の JSON コレクションを削除する。
+    bucket = get_storage_bucket()
+    deleted: list[str] = []
+    for object_name in candidate_data_object_names(name):
+        blob = bucket.blob(object_name)
+        if blob.exists():
+            blob.delete()
+            deleted.append(object_name)
+    return deleted
+
+
 def upload_file_to_drive(local_path: str | Path, practice_date: str, song_name: str) -> dict[str, Any]:
     # 録音アップロード時は保存完了後すぐに一覧表示できるよう、
     # フロントがそのまま使えるメタデータ形式で返す。

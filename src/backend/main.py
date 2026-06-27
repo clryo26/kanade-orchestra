@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover
 
 try:
     from .drive_storage import (
+        delete_json_from_storage,
         get_storage_bucket,
         load_json_from_storage,
         save_json_to_storage,
@@ -45,6 +46,7 @@ try:
     )
 except ImportError:  # pragma: no cover - allows running main.py directly.
     from drive_storage import (
+        delete_json_from_storage,
         get_storage_bucket,
         load_json_from_storage,
         save_json_to_storage,
@@ -498,6 +500,16 @@ def require_system_admin_device(device_id: str) -> dict[str, Any]:
 def cloud_run_revision() -> str:
     # Cloud Run 標準の K_REVISION を優先し、既存の独自環境変数も後方互換で読む。
     return os.getenv("K_REVISION", "").strip() or os.getenv("CLOUD_RUN_REVISION", "").strip()
+
+
+@app.get("/api/revision", response_model=None)
+async def get_revision() -> Response:
+    # リビジョンはデータ更新とは独立して変わるため、bootstrap の ETag キャッシュとは分離する。
+    return Response(
+        content=json.dumps({"cloudRunRevision": cloud_run_revision()}, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def db_connection_string() -> str:
@@ -1598,6 +1610,31 @@ def write_migration_snapshot(snapshot_dir: Path) -> None:
             json.dump(load_json_data(name), file, ensure_ascii=False, indent=2)
 
 
+def migration_cleanup_names() -> list[str]:
+    # connection_settings は Cloud Storage 接続設定を含むため最後に削除する。
+    return [name for name in JSON_DATA_NAMES if name != "connection_settings"] + ["connection_settings"]
+
+
+def delete_migrated_json_data() -> dict[str, Any]:
+    # DB 移行が正常に照合できた後、JSON 側のデータファイルを削除する。
+    deleted_local: list[str] = []
+    deleted_cloud: dict[str, list[str]] = {}
+    cloud_enabled = storage_enabled()
+    for name in migration_cleanup_names():
+        if cloud_enabled:
+            deleted_objects = delete_json_from_storage(name)
+            if deleted_objects:
+                deleted_cloud[name] = deleted_objects
+
+        path = data_file(name)
+        if path.exists():
+            path.unlink()
+            deleted_local.append(path.name)
+        _memory_cache.clear(name)
+
+    return {"local_files": deleted_local, "cloud_objects": deleted_cloud}
+
+
 @app.post("/api/system/data-migration")
 async def run_data_migration(
     body: dict[str, Any],
@@ -1680,11 +1717,16 @@ async def run_data_migration(
     elif "RECONCILIATION_RESULT: MISMATCH" in output_text:
         reconciliation_match = False
 
+    migration_cleanup = None
+    if not dry_run and reconciliation_match is True:
+        migration_cleanup = delete_migrated_json_data()
+
     return {
         "ok": True,
         "dry_run": dry_run,
         "truncate": truncate,
         "reconciliation_match": reconciliation_match,
+        "migration_cleanup": migration_cleanup,
         "output": output_text,
     }
 
@@ -2446,7 +2488,6 @@ async def upload_sheet(
 
     performance_dir = safe_segment(f"{performance_id}_{performance_title}", "performance")
     piece_dir = safe_segment(piece, "piece")
-    file_name = safe_upload_name(file.filename or "score.pdf")
     now = datetime.now().isoformat()
 
     if storage_enabled():
@@ -2864,7 +2905,7 @@ async def delete_album_photo(
             bucket = get_storage_bucket()
             blob = bucket.blob(photo_to_delete["object_name"])
             blob.delete()
-        except Exception as exc:
+        except Exception:
             logger.exception("Album photo deletion from GCS failed")
             # ログには記録するが、エラーは出さない（JSONは更新する）
     
@@ -2873,7 +2914,7 @@ async def delete_album_photo(
         try:
             photo_path = UPLOAD_DIR / photo_to_delete["path"]
             photo_path.unlink()
-        except Exception as exc:
+        except Exception:
             logger.exception("Album photo deletion from local storage failed")
     
     # photos 配列から削除
