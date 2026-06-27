@@ -165,3 +165,8 @@
 
 - DESIGN_WEB.md
 - API_DATABASE_SPEC.md
+
+## 10. 録音管理追記
+
+- 録音アップロード UI は uploadPerformance と uploadPiece を連動させ、選択演奏会の登録曲目だけを uploadPiece に表示する
+- 曲目表示名と録音保存フォルダ名は、曲目の alias/short_name があれば略称を優先する

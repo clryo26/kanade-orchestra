@@ -950,7 +950,8 @@ function bindUpload() {
     fileInput.addEventListener('change', (event) => handleFiles(event.target.files));
     if ($('memberIntroTopBtn')) $('memberIntroTopBtn').addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     $('uploadDate').addEventListener('input', updateSavePath);
-    $('uploadPiece').addEventListener('input', updateSavePath);
+    if ($('uploadPerformance')) $('uploadPerformance').addEventListener('change', () => renderUploadPieceOptions());
+    $('uploadPiece').addEventListener('change', updateSavePath);
     $('uploadBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => uploadToLocalStore()));
     $('clearBtn').addEventListener('click', clearUploadForm);
 }
@@ -1215,6 +1216,10 @@ async function uploadToLocalStore() {
         showAlert('先にファイルを選択してください', 'warning');
         return;
     }
+    if (!$('uploadPerformance')?.value || !$('uploadPiece')?.value) {
+        showAlert('演奏会と曲名を選択してください', 'warning');
+        return;
+    }
 
     setOperationStatus('uploadProgress', `録音ファイルを保存しています。0 / ${appState.selectedFiles.length} 件`);
     let completed = 0;
@@ -1239,7 +1244,7 @@ function audioFormData(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('date', document.getElementById('uploadDate').value);
-    formData.append('piece', document.getElementById('uploadPiece').value);
+    formData.append('piece', document.getElementById('uploadPiece').value.trim());
     return formData;
 }
 
@@ -1257,7 +1262,9 @@ function clearUploadForm() {
     $('fileInput').value = '';
     $('selectedFileName').textContent = '未選択';
     $('uploadDate').value = today();
+    if ($('uploadPerformance')) $('uploadPerformance').value = '';
     $('uploadPiece').value = '';
+    renderUploadPieceOptions();
     const progress = $('uploadProgress');
     if (progress) progress.hidden = true;
     updateSavePath();
@@ -1291,6 +1298,7 @@ function renderEssentialViews() {
     // 団員向け派生ビューを最後に再描画することで無駄な再計算を抑える。
     appState.suppressDerivedRender = true;
     renderPerformances();
+    renderUploadPerformanceOptions();
     renderSchedules();
     renderAnnouncements();
     renderEvents();
@@ -1479,6 +1487,7 @@ function applyBootstrapData(data) {
 
 async function loadPerformances() {
     appState.performances = await request('/api/performances');
+    renderUploadPerformanceOptions();
     renderPerformances();
     renderSheetAdmin();
     renderPaymentAdmin();
@@ -1509,6 +1518,7 @@ function renderInitialViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
     appState.suppressDerivedRender = true;
     renderPerformances();
+    renderUploadPerformanceOptions();
     renderSchedules();
     renderAnnouncements();
     renderEvents();
@@ -1811,8 +1821,48 @@ function normalizePerformancePieces(pieces) {
 
 function performancePieceLabel(piece) {
     if (typeof piece === 'string') return piece;
-    const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+    // 曲名表示や保存フォルダ名は、登録済みの略称を優先して短く揃える。
+    const label = piece.alias || piece.short_name || (piece.composer ? `${piece.composer}: ${piece.title}` : piece.title);
     return (piece.is_encore || piece.encore) ? `(${label})` : label;
+}
+
+function selectedUploadPerformance() {
+    const value = $('uploadPerformance')?.value || '';
+    if (!value) return null;
+    return appState.performances.find((perf) => String(perf.id) === value) || null;
+}
+
+function uploadPieceOptions(performance) {
+    return normalizePerformancePieces(performance?.pieces || [])
+        .map(performancePieceLabel)
+        .filter((piece, index, values) => piece && values.indexOf(piece) === index);
+}
+
+function renderUploadPerformanceOptions() {
+    const select = $('uploadPerformance');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">演奏会を選択</option>' + appState.performances.map((perf) =>
+        `<option value="${escapeHtml(String(perf.id))}">${escapeHtml(perf.title || '')}</option>`
+    ).join('');
+    if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+    }
+    renderUploadPieceOptions();
+}
+
+function renderUploadPieceOptions() {
+    const select = $('uploadPiece');
+    if (!select) return;
+    const current = select.value;
+    const pieces = uploadPieceOptions(selectedUploadPerformance());
+    select.innerHTML = pieces.length
+        ? '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece)}">${escapeHtml(piece)}</option>`).join('')
+        : '<option value="">演奏会に登録済みの曲がありません</option>';
+    if (pieces.includes(current)) {
+        select.value = current;
+    }
+    updateSavePath();
 }
 
 function renderPerformancePieceList() {
