@@ -170,3 +170,8 @@
 
 - 録音アップロード UI は uploadPerformance と uploadPiece を連動させ、選択演奏会の登録曲目だけを uploadPiece に表示する
 - 曲目表示名と録音保存フォルダ名は、曲目の alias/short_name があれば略称を優先する
+
+## 11. エキストラ権限メニュー
+
+- currentUserPermission が「エキストラ」の場合、member-payment/member-event/member-date-adjustment/member-desired-piece はホームメニュー、ドロワー、固定タブから非表示にする
+- 非表示対象タブへ直接切り替えようとした場合は member-home に戻す

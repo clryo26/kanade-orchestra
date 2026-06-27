@@ -434,6 +434,29 @@ function updateManagerNavigationVisibility() {
     if (uploadButton) uploadButton.hidden = !canManageRecordings();
     const sheetButton = $('memberSheetAdminBtn');
     if (sheetButton) sheetButton.hidden = !canManageSheets();
+    document.querySelectorAll('#memberPanel [data-tab]').forEach((button) => {
+        const tabName = button.dataset.tab || '';
+        if (EXTRA_RESTRICTED_MEMBER_TABS.has(tabName)) button.hidden = isExtraRestrictedMemberTab(tabName);
+    });
+}
+
+const EXTRA_RESTRICTED_MEMBER_TABS = new Set([
+    'member-payment',
+    'member-event',
+    'member-date-adjustment',
+    'member-desired-piece'
+]);
+
+function isExtraUser() {
+    return appState.currentUserPermission === 'エキストラ';
+}
+
+function isExtraRestrictedMemberTab(tabName) {
+    return isExtraUser() && EXTRA_RESTRICTED_MEMBER_TABS.has(tabName);
+}
+
+function visibleMemberMenuItems(items) {
+    return items.filter((item) => item && !isExtraRestrictedMemberTab(item.tab || ''));
 }
 
 // ホーム/ドロワーに表示するメニュー群の定義を返す。
@@ -493,7 +516,8 @@ function portalMenuGroups() {
             title: '設定',
             items: settingItems
         }
-    ].filter((group) => group.items.length);
+    ].map((group) => ({ ...group, items: visibleMemberMenuItems(group.items) }))
+        .filter((group) => group.items.length);
 }
 
 // メニュー定義から実際のボタン HTML とイベントを生成する。
@@ -1077,6 +1101,9 @@ async function showMemberTab(tabName, shouldRender = true) {
         showPortalLogin();
         return;
     }
+    if (isExtraRestrictedMemberTab(tabName)) {
+        tabName = 'member-home';
+    }
     if (tabName === 'member-piece-info') {
         appState.selectedPieceInfoId = null;
     }
@@ -1093,6 +1120,9 @@ async function showMemberTab(tabName, shouldRender = true) {
 // パネル内タブを切り替える共通処理。
 // タブ表示と同時に必要な再描画/遅延ロードを行う。
 function switchTab(panelId, tabName, renderOnShow = true) {
+    if (panelId === 'memberPanel' && isExtraRestrictedMemberTab(tabName)) {
+        tabName = 'member-home';
+    }
     const panel = $(panelId);
     if (!panel) return;
     const toolbar = panel.querySelector('.toolbar');
@@ -3236,13 +3266,21 @@ function applyDynamicManifest(name, shortName, iconUrl = '') {
 function updateCloudRunRevision() {
     // Google Cloud Run のリビジョン情報をUI に反映
     if (!appState.cloudRunRevision) return;
+    const revisionLabel = cloudRunRevisionLabel(appState.cloudRunRevision);
     const revisionElements = [
         $('revisionNumber'),
         ...document.querySelectorAll('[data-revision-number]')
     ].filter(Boolean);
     revisionElements.forEach((element) => {
-        element.textContent = appState.cloudRunRevision;
+        element.textContent = revisionLabel;
     });
+}
+
+function cloudRunRevisionLabel(revision) {
+    const value = String(revision || '').trim();
+    if (!value) return '';
+    const match = value.match(/(?:^|-)(\d{5}-[a-z0-9]+)$/i);
+    return match ? match[1] : value;
 }
 
 function renderOrgManagement() {

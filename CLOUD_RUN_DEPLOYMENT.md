@@ -25,7 +25,8 @@ gcloud run deploy kanade-orchestra \
 | GOOGLE_CLOUD_STORAGE_DATA_PREFIX | app-data | GCS 内のデータ接頭辞 |
 | GOOGLE_CLOUD_STORAGE_PUBLIC | false | データを公開アクセス可にするか |
 | GOOGLE_SERVICE_ACCOUNT_JSON | (自動) | Cloud Run のサービスアカウントで取得（設定不要） |
-| CLOUD_RUN_REVISION | (自動) | Cloud Run が自動設定するリビジョン番号（UI に表示） |
+| K_REVISION | (自動) | Cloud Run が自動設定するリビジョン名（UI では `00060-hsf` 形式に短縮表示） |
+| CLOUD_RUN_REVISION | 任意 | 旧設定互換用。`K_REVISION` がない場合のみ参照 |
 
 ### サービスアカウント権限
 

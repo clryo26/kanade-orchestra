@@ -151,6 +151,13 @@
         return `${resolveOrgShortName(org)}ポータル`;
     }
 
+    function cloudRunRevisionLabel(revision) {
+        const value = String(revision || '').trim();
+        if (!value) return '';
+        const match = value.match(/(?:^|-)(\d{5}-[a-z0-9]+)$/i);
+        return match ? match[1] : value;
+    }
+
     function buildRequestHeadersForApi(headers, deviceId) {
         return {
             ...(headers || {}),
@@ -292,6 +299,7 @@
         renderInitialViewTargets,
         resolveOrgShortName,
         portalTitleTextFromOrg,
+        cloudRunRevisionLabel,
         buildRequestHeadersForApi,
         buildConditionalGetHeadersForApi,
         moveDateAdjustmentCandidateRow,

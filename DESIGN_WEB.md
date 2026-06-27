@@ -80,6 +80,7 @@
 - 団員名 + パート + パスワードでログイン
 - 端末 ID を auth_devices に保存し再認証を簡略化
 - エキストラ権限は system_access_until で期限管理
+- エキストラ権限では団員メニューの「支払状況」「イベント調整」「日程調整」「演奏希望曲」を非表示にする
 - 非公開緊急ログイン（Administrator）を実装
 
 関連 API:
@@ -268,8 +269,8 @@
 
 ### 6.16 Cloud Run リビジョン表示
 
-- バックエンドが `CLOUD_RUN_REVISION` 環境変数を読み込み、bootstrap レスポンスに `cloudRunRevision` フィールドを含める
-- フロントは `updateCloudRunRevision()` でドロワーの Rev. 表示を動的更新
+- バックエンドが Cloud Run 標準の `K_REVISION` を優先して読み込み、後方互換として `CLOUD_RUN_REVISION` も参照して bootstrap レスポンスに `cloudRunRevision` フィールドを含める
+- フロントは `updateCloudRunRevision()` でドロワーの Rev. 表示を動的更新し、`kanade-orchestra-00060-hsf` のような値は `00060-hsf` と表示する
 - 新しいリビジョンでデプロイするたびに自動的に展示内容が切り替わる
 
 ### 6.17 データメンテナンス

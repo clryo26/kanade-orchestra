@@ -11,6 +11,7 @@ import shutil
 import io
 import subprocess
 import sys
+import tempfile
 import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -492,6 +493,11 @@ def require_system_admin_device(device_id: str) -> dict[str, Any]:
     if permission != "システム管理者":
         raise HTTPException(status_code=403, detail="System admin permission is required")
     return device
+
+
+def cloud_run_revision() -> str:
+    # Cloud Run 標準の K_REVISION を優先し、既存の独自環境変数も後方互換で読む。
+    return os.getenv("K_REVISION", "").strip() or os.getenv("CLOUD_RUN_REVISION", "").strip()
 
 
 def db_connection_string() -> str:
@@ -1056,7 +1062,7 @@ async def get_bootstrap_lite_data(request: Request) -> dict[str, Any] | Response
         "announcements": load_json_data("announcements"),
         "members": load_json_data("members"),
         "extras": extras,
-        "cloudRunRevision": os.getenv("CLOUD_RUN_REVISION", ""),
+        "cloudRunRevision": cloud_run_revision(),
     }
     
     # レスポンスにETagを追加
@@ -1090,7 +1096,7 @@ async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response
         "members": load_json_data("members"),
         "extras": extras,
         "auth_devices": await get_auth_devices(),
-        "cloudRunRevision": os.getenv("CLOUD_RUN_REVISION", ""),
+        "cloudRunRevision": cloud_run_revision(),
     }
     
     if cached_etag:
@@ -1124,7 +1130,7 @@ async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
         "sheets": {"files": sheet_payload()},
         "extras": extras,
         "auth_devices": await get_auth_devices(),
-        "cloudRunRevision": os.getenv("CLOUD_RUN_REVISION", ""),
+        "cloudRunRevision": cloud_run_revision(),
     }
     
     if cached_etag:
@@ -1569,6 +1575,29 @@ async def cleanup_orphans(
     return {"deleted": deleted, "total_deleted": sum(deleted.values())}
 
 
+def migration_script_path() -> Path:
+    # Cloud Run の Docker イメージとローカル実行の両方で移行スクリプトを見つける。
+    candidates = [
+        BASE_DIR.parent / "scripts" / "migrate_json_to_postgres.py",
+        BASE_DIR / "scripts" / "migrate_json_to_postgres.py",
+        Path.cwd() / "scripts" / "migrate_json_to_postgres.py",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise HTTPException(status_code=500, detail="Migration script not found")
+
+
+def write_migration_snapshot(snapshot_dir: Path) -> None:
+    # 移行は現在アプリが参照している JSON データを使う。
+    # Cloud Storage 利用時も load_json_data 経由で読み、一時ファイルとしてスクリプトに渡す。
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    for name in JSON_DATA_NAMES:
+        target = snapshot_dir / f"{name}.json"
+        with target.open("w", encoding="utf-8") as file:
+            json.dump(load_json_data(name), file, ensure_ascii=False, indent=2)
+
+
 @app.post("/api/system/data-migration")
 async def run_data_migration(
     body: dict[str, Any],
@@ -1580,9 +1609,7 @@ async def run_data_migration(
     dry_run = bool(body.get("dry_run", False))
     truncate = bool(body.get("truncate", False))
 
-    script_path = BASE_DIR.parent / "scripts" / "migrate_json_to_postgres.py"
-    if not script_path.exists():
-        raise HTTPException(status_code=500, detail="Migration script not found")
+    script_path = migration_script_path()
 
     db_url = os.getenv("DB_URL", "").strip()
     db_host = os.getenv("DB_HOST", "").strip()
@@ -1591,54 +1618,57 @@ async def run_data_migration(
     db_user = os.getenv("DB_USER", "").strip()
     db_password = os.getenv("DB_PASSWORD", "").strip()
 
-    command = [
-        sys.executable,
-        str(script_path),
-        "--data-dir",
-        str(DATA_DIR),
-    ]
-    if db_url:
-        command.extend(["--db-url", db_url])
-    else:
-        if not all([db_host, db_name, db_user, db_password]):
+    with tempfile.TemporaryDirectory(prefix="kanade-migration-") as snapshot:
+        snapshot_dir = Path(snapshot)
+        write_migration_snapshot(snapshot_dir)
+        command = [
+            sys.executable,
+            str(script_path),
+            "--data-dir",
+            str(snapshot_dir),
+        ]
+        if dry_run:
+            command.append("--dry-run")
+        elif db_url:
+            command.extend(["--db-url", db_url])
+        else:
+            if not all([db_host, db_name, db_user, db_password]):
+                raise HTTPException(
+                    status_code=500,
+                    detail="DB connection env vars are incomplete (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD or DB_URL)",
+                )
+            command.extend(
+                [
+                    "--db-host",
+                    db_host,
+                    "--db-port",
+                    db_port,
+                    "--db-name",
+                    db_name,
+                    "--db-user",
+                    db_user,
+                    "--db-password",
+                    db_password,
+                ]
+            )
+
+        if truncate:
+            command.append("--truncate")
+
+        try:
+            result = subprocess.run(
+                command,
+                cwd=str(BASE_DIR.parent),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error("Data migration failed: %s", exc.stderr or exc.stdout)
             raise HTTPException(
                 status_code=500,
-                detail="DB connection env vars are incomplete (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD or DB_URL)",
-            )
-        command.extend(
-            [
-                "--db-host",
-                db_host,
-                "--db-port",
-                db_port,
-                "--db-name",
-                db_name,
-                "--db-user",
-                db_user,
-                "--db-password",
-                db_password,
-            ]
-        )
-
-    if dry_run:
-        command.append("--dry-run")
-    elif truncate:
-        command.append("--truncate")
-
-    try:
-        result = subprocess.run(
-            command,
-            cwd=str(BASE_DIR.parent),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        logger.error("Data migration failed: %s", exc.stderr or exc.stdout)
-        raise HTTPException(
-            status_code=500,
-            detail=(exc.stderr or exc.stdout or "Migration failed").strip(),
-        ) from exc
+                detail=(exc.stderr or exc.stdout or "Migration failed").strip(),
+            ) from exc
 
     output_text = (result.stdout or "").strip()
     if result.stderr:

@@ -185,6 +185,8 @@
 
 - システム管理パネルに「データ移行」タブを一時追加
 - ボタン操作で `scripts/migrate_json_to_postgres.py` をサーバー側から起動
+- サーバー側実行時は現在参照している JSON データを一時スナップショットに書き出し、そのディレクトリを `--data-dir` として渡す
+- Cloud Run 用 Docker イメージには `scripts/` と `db/` を含め、移行スクリプトと件数確認 SQL を実行時に参照可能にする
 - 実行モード:
   - 件数確認（dry-run）
   - 本実行（truncate + 移行）
@@ -240,8 +242,8 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 
 ### 10.2 Cloud Run リビジョン表示
 
-- バックエンドが `CLOUD_RUN_REVISION` 環境変数を読み込み bootstrap レスポンスに含める
-- フロントは `updateCloudRunRevision()` でサイドドロワーの Rev. 表示を動的更新
+- バックエンドが Cloud Run 標準の `K_REVISION` を優先して読み込み、後方互換として `CLOUD_RUN_REVISION` も参照して bootstrap レスポンスに含める
+- フロントは `updateCloudRunRevision()` でサイドドロワーの Rev. 表示を動的更新し、`kanade-orchestra-00060-hsf` のような値は `00060-hsf` と表示する
 - Google Cloud が自動的に設定する環境変数のため、デプロイするたびに自動的に最新リビジョン番号に切り替わる
 
 ### 10.3 乗り番表（ポータル表示）
