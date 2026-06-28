@@ -1245,6 +1245,9 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 - 移行後にDB接続設定が有効な環境では、既存のJSON互換API（団員・端末認証・bootstrap等）はJSONファイルではなくPostgreSQLを優先して参照する。
 - DB接続設定が有効な環境では、`JSON_COLLECTION_TABLES` に対応する全JSON互換コレクションの保存先もPostgreSQLにする。
 - `part_settings.sort_order` / `venue_settings.sort_order` は表示順として扱い、画面互換の `display_order` も読み込み時に補完する。
+- `org_settings` は画面互換の `name` / `short_name` をDB列 `organization_name` / `organization_abbreviation` / `short_name` に対応させ、未入力の `membership_fee_amount` は0として保存する。
+- `date_adjustment_responses.candidate_key` は画面互換の `candidate_id` としても返す。
+- 楽曲紹介と演奏指示は、移行前後で曲名が「略称」「正式名」「作曲者: 曲名」のいずれで保存されても同じ曲として照合する。
 - performances / payments / castings / date_adjustments / desired_pieces / albums のネスト配列は、保存時に対応する子テーブルへ再構築する。
 - 汎用extraの楽観ロックは `updated_at` を比較する。高速な連続更新でも検知できるよう、更新時刻は前回値より必ず進める。
 - JSON->PostgreSQL移行完了後の現行アプリでは、移行実行メニューとデータメンテナンスメニュー、および関連APIは提供しない。

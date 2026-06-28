@@ -57,3 +57,36 @@ def test_payment_child_rows_are_built_for_db_foreign_keys(backend_env):
     )
 
     assert db_row[:4] == (1, 10, True, backend_env.Decimal("1500"))
+
+
+def test_org_settings_accept_frontend_payload_without_membership_fee(backend_env):
+    row = backend_env.db_row_tuple(
+        "org_settings",
+        backend_env.DB_COLLECTION_COLUMNS["org_settings"],
+        {"id": "1", "name": "Kanade Orchestra", "short_name": "Kanade", "icon_url": "data:image/png;base64,x"},
+    )
+
+    assert row[1] == "Kanade Orchestra"
+    assert row[2] == "Kanade"
+    assert row[3] == "Kanade"
+    assert row[4] == "data:image/png;base64,x"
+    assert row[5] == backend_env.Decimal("0")
+
+
+def test_db_rows_fill_json_compatibility_keys(backend_env):
+    row = backend_env.db_row_to_json(
+        {
+            "id": 1,
+            "organization_name": "Kanade Orchestra",
+            "organization_abbreviation": "Kanade",
+            "membership_fee_amount": backend_env.Decimal("1000"),
+        }
+    )
+
+    assert row["name"] == "Kanade Orchestra"
+    assert row["short_name"] == "Kanade"
+    assert row["membership_fee_amount"] == "1000"
+
+    response_row = backend_env.db_row_to_json({"id": 2, "candidate_key": "cand-1"})
+
+    assert response_row["candidate_id"] == "cand-1"

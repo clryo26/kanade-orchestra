@@ -24,12 +24,13 @@
             .toLowerCase()
             .replace(/https?:\/\/\S+/g, ' ')
             .replace(/[\r\n\t]/g, ' ');
+        const normalizeToken = (token) => String(token || '').split(/(?:だと|では|には|とは|は|で|に|の|が|を|へ|と|も)/u)[0] || token;
         try {
             const pattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}|[a-z0-9]{2,}/gu;
-            return normalized.match(pattern) || [];
+            return (normalized.match(pattern) || []).map(normalizeToken).filter(Boolean);
         } catch {
             const fallbackPattern = /[\u3040-\u30FF\u3400-\u9FFF]{2,}|[a-z0-9]{2,}/g;
-            return normalized.match(fallbackPattern) || [];
+            return (normalized.match(fallbackPattern) || []).map(normalizeToken).filter(Boolean);
         }
     }
 
@@ -149,6 +150,38 @@
 
     function portalTitleTextFromOrg(org) {
         return `${resolveOrgShortName(org)}ポータル`;
+    }
+
+    function performancePieceLabel(piece) {
+        if (typeof piece === 'string') return piece;
+        const label = piece?.alias || piece?.short_name || (piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title);
+        return (piece?.is_encore || piece?.encore) ? `(${label})` : label;
+    }
+
+    function performancePieceFormalLabel(piece) {
+        if (typeof piece === 'string') return piece;
+        const label = piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title;
+        return (piece?.is_encore || piece?.encore) ? `(${label})` : label;
+    }
+
+    function performancePieceLookupLabels(piece) {
+        if (typeof piece === 'string') return [piece].filter(Boolean);
+        return [
+            performancePieceLabel(piece),
+            performancePieceFormalLabel(piece),
+            piece?.title,
+            piece?.alias,
+            piece?.short_name,
+            piece?.composer && piece?.title ? `${piece.composer}: ${piece.title}` : ''
+        ].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
+    }
+
+    function findPieceScopedItem(items, performanceId, piece) {
+        const labels = performancePieceLookupLabels(piece);
+        return (items || []).find((item) =>
+            String(item.performance_id || '') === String(performanceId || '')
+            && labels.includes(String(item.piece || item.title || '').trim())
+        );
     }
 
     function cloudRunRevisionLabel(revision) {
@@ -299,6 +332,8 @@
         renderInitialViewTargets,
         resolveOrgShortName,
         portalTitleTextFromOrg,
+        performancePieceLookupLabels,
+        findPieceScopedItem,
         cloudRunRevisionLabel,
         buildRequestHeadersForApi,
         buildConditionalGetHeadersForApi,

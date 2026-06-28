@@ -448,5 +448,8 @@ PUT では `expected_updated_at` を受け付け、サーバの `updated_at` と
 - システム管理者向けにはPostgreSQLの閲覧用メニューのみを残す。
 - DB接続設定が有効な環境では、JSON互換APIの読み込みと保存はPostgreSQLを優先する。
 - パート管理/会場管理の表示順はDBの `sort_order` を正とし、画面側の既存互換キー `display_order` にも反映する。
+- 団体情報管理は画面の `name` / `short_name` とDBの `organization_name` / `organization_abbreviation` を互換扱いし、団費額未入力時は0で保存する。
+- 日程調整回答はDBの `candidate_key` を画面互換の `candidate_id` としても扱う。
+- 楽曲紹介/演奏指示は、曲の略称・正式名・作曲者付き表記を同一曲として照合し、移行前に登録した内容も表示・編集対象にする。
 - 演奏会曲目、支払い演奏会費、配役、日程調整候補、リクエスト曲投票、アルバム写真は、画面では従来どおりネスト配列として扱い、保存時にDB子テーブルへ同期する。
 - 汎用extraのPUTは `expected_updated_at` による楽観ロックを行い、サーバ更新時刻は連続更新でも単調増加させる。

@@ -1857,6 +1857,47 @@ function performancePieceFormalLabel(piece) {
     return (piece.is_encore || piece.encore) ? `(${label})` : label;
 }
 
+function performancePieceLookupLabels(piece) {
+    // DB移行前の紹介/指示データは、曲名・略称・「作曲者: 曲名」のいずれかで保存されていることがある。
+    if (typeof piece === 'string') return [piece].filter(Boolean);
+    return [
+        performancePieceLabel(piece),
+        performancePieceFormalLabel(piece),
+        piece.title,
+        piece.alias,
+        piece.short_name,
+        piece.composer && piece.title ? `${piece.composer}: ${piece.title}` : ''
+    ].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
+}
+
+function findPieceScopedItem(items, performanceId, piece) {
+    const labels = performancePieceLookupLabels(piece);
+    return (items || []).find((item) =>
+        String(item.performance_id || '') === String(performanceId || '')
+        && labels.includes(String(item.piece || item.title || '').trim())
+    );
+}
+
+function pieceScopedRows(performances, scopedItems) {
+    return (performances || []).map((perf) => {
+        const normalizedPieces = normalizePerformancePieces(perf.pieces || []);
+        const labels = new Set(normalizedPieces.flatMap(performancePieceLookupLabels));
+        (scopedItems || []).forEach((item) => {
+            if (String(item.performance_id || '') !== String(perf.id || '')) return;
+            const itemPiece = String(item.piece || item.title || '').trim();
+            if (!itemPiece || labels.has(itemPiece)) return;
+            normalizedPieces.push({ composer: '', title: itemPiece, alias: '' });
+            labels.add(itemPiece);
+        });
+        return {
+            performanceId: String(perf.id || ''),
+            title: String(perf.title || ''),
+            date: String(perf.date || ''),
+            pieces: normalizedPieces
+        };
+    });
+}
+
 function selectedUploadPerformance() {
     const value = $('uploadPerformance')?.value || '';
     if (!value) return null;
@@ -3109,8 +3150,8 @@ function cloudRunRevisionLabel(revision) {
 function renderOrgManagement() {
     const org = currentOrgSetting();
     if ($('orgSettingId')) $('orgSettingId').value = org.id || '';
-    if ($('orgName')) $('orgName').value = org.name || '';
-    if ($('orgShortName')) $('orgShortName').value = org.short_name || org.shortName || '';
+    if ($('orgName')) $('orgName').value = org.name || org.organization_name || org.organization_name_full || '';
+    if ($('orgShortName')) $('orgShortName').value = org.short_name || org.shortName || org.organization_abbreviation || '';
     if ($('orgIconFile')) $('orgIconFile').value = '';
     if ($('orgIconPreview')) $('orgIconPreview').src = org.icon_url || org.iconUrl || '/static/icons/icon-192.png';
 }
@@ -3141,8 +3182,11 @@ async function saveOrgSetting() {
     const iconUrl = iconFile ? await fileToDataUrl(iconFile) : (current.icon_url || current.iconUrl || '');
     const payload = {
         name,
+        organization_name: name,
+        organization_abbreviation: shortName,
         short_name: shortName,
-        icon_url: iconUrl
+        icon_url: iconUrl,
+        membership_fee_amount: Number(current.membership_fee_amount || 0)
     };
     if (current.id) {
         await request(`/api/extra/org_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));
@@ -5514,13 +5558,14 @@ function dateAdjustmentKeywordTokens(text) {
         .toLowerCase()
         .replace(/https?:\/\/\S+/g, ' ')
         .replace(/[\r\n\t]/g, ' ');
+    const normalizeToken = (token) => String(token || '').split(/(?:だと|では|には|とは|は|で|に|の|が|を|へ|と|も)/u)[0] || token;
     try {
         const pattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}|[a-z0-9]{2,}/gu;
-        return normalized.match(pattern) || [];
+        return (normalized.match(pattern) || []).map(normalizeToken).filter(Boolean);
     } catch {
         // Unicode property escapes 非対応ブラウザ向けフォールバック。
         const fallbackPattern = /[\u3040-\u30FF\u3400-\u9FFF]{2,}|[a-z0-9]{2,}/g;
-        return normalized.match(fallbackPattern) || [];
+        return (normalized.match(fallbackPattern) || []).map(normalizeToken).filter(Boolean);
     }
 }
 
@@ -6161,12 +6206,7 @@ function renderPieceInfoView() {
         .filter((perf) => perf.date && perf.date >= today())
         .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'ja'));
 
-    const rows = upcomingPerformances.map((perf) => ({
-        performanceId: String(perf.id || ''),
-        title: String(perf.title || ''),
-        date: String(perf.date || ''),
-        pieces: normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean)
-    }));
+    const rows = pieceScopedRows(upcomingPerformances, appState.pieceInfos);
 
     if (!rows.length) {
         appState.selectedPieceInfoContext = null;
@@ -6174,7 +6214,10 @@ function renderPieceInfoView() {
         return;
     }
 
-    const hasPiece = (performanceId, piece) => rows.some((row) => row.performanceId === String(performanceId || '') && row.pieces.includes(piece));
+    const hasPiece = (performanceId, piece) => rows.some((row) =>
+        row.performanceId === String(performanceId || '')
+        && row.pieces.some((candidate) => performancePieceLookupLabels(candidate).includes(String(piece || '').trim()))
+    );
     const selectedContext = appState.selectedPieceInfoContext;
     if (!selectedContext || !hasPiece(selectedContext.performanceId, selectedContext.piece)) {
         appState.selectedPieceInfoContext = null;
@@ -6201,11 +6244,12 @@ function renderPieceInfoView() {
                         <h6 class="mb-2">${escapeHtml(heading)}</h6>
                         <div class="list-group">
                             ${row.pieces.map((piece) => {
-                                const existing = appState.pieceInfos.find((item) => String(item.performance_id || '') === row.performanceId && String(item.piece || item.title || '') === piece);
+                                const pieceLabel = performancePieceLabel(piece);
+                                const existing = findPieceScopedItem(appState.pieceInfos, row.performanceId, piece);
                                 const hasInfo = existing && String(existing.description || existing.notes || '').trim();
                                 return `
-                                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-piece-info-performance-id="${escapeHtml(row.performanceId)}" data-piece-info-piece="${escapeHtml(encodeURIComponent(piece))}">
-                                        <span>${escapeHtml(piece)}</span>
+                                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-piece-info-performance-id="${escapeHtml(row.performanceId)}" data-piece-info-piece="${escapeHtml(encodeURIComponent(pieceLabel))}">
+                                        <span>${escapeHtml(pieceLabel)}</span>
                                         ${hasInfo ? '<span class="badge text-bg-success">情報あり</span>' : ''}
                                     </button>
                                 `;
@@ -6230,7 +6274,8 @@ function renderPieceInfoView() {
     const performanceId = String(appState.selectedPieceInfoContext.performanceId || '');
     const piece = String(appState.selectedPieceInfoContext.piece || '');
     const performance = appState.performances.find((perf) => String(perf.id || '') === performanceId);
-    const existing = appState.pieceInfos.find((item) => String(item.performance_id || '') === performanceId && String(item.piece || item.title || '') === piece);
+    const performancePiece = normalizePerformancePieces(performance?.pieces || []).find((candidate) => performancePieceLookupLabels(candidate).includes(piece)) || piece;
+    const existing = findPieceScopedItem(appState.pieceInfos, performanceId, performancePiece);
     const initialDescription = String(existing?.description || existing?.notes || '');
 
     container.innerHTML = `
@@ -6267,7 +6312,7 @@ function renderPieceInfoView() {
         }
         const payload = {
             performance_id: performanceId,
-            piece,
+            piece: existing?.piece || piece,
             description
         };
         if (existing?.id) {
@@ -6301,12 +6346,7 @@ function renderPracticeInstructionView() {
         .filter((perf) => perf.date && perf.date >= today())
         .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'ja'));
 
-    const rows = upcomingPerformances.map((perf) => ({
-        performanceId: String(perf.id || ''),
-        title: String(perf.title || ''),
-        date: String(perf.date || ''),
-        pieces: normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean)
-    }));
+    const rows = pieceScopedRows(upcomingPerformances, appState.practiceInstructions);
 
     if (!rows.length) {
         appState.selectedPracticeInstructionContext = null;
@@ -6314,7 +6354,10 @@ function renderPracticeInstructionView() {
         return;
     }
 
-    const hasPiece = (performanceId, piece) => rows.some((row) => row.performanceId === String(performanceId || '') && row.pieces.includes(piece));
+    const hasPiece = (performanceId, piece) => rows.some((row) =>
+        row.performanceId === String(performanceId || '')
+        && row.pieces.some((candidate) => performancePieceLookupLabels(candidate).includes(String(piece || '').trim()))
+    );
     const selectedContext = appState.selectedPracticeInstructionContext;
     if (!selectedContext || !hasPiece(selectedContext.performanceId, selectedContext.piece)) {
         appState.selectedPracticeInstructionContext = null;
@@ -6341,10 +6384,11 @@ function renderPracticeInstructionView() {
                         <h6 class="mb-2">${escapeHtml(heading)}</h6>
                         <div class="list-group">
                             ${row.pieces.map((piece) => {
-                                const existing = appState.practiceInstructions.find((item) => String(item.performance_id || '') === row.performanceId && String(item.piece || '') === piece);
+                                const pieceLabel = performancePieceLabel(piece);
+                                const existing = findPieceScopedItem(appState.practiceInstructions, row.performanceId, piece);
                                 return `
-                                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-practice-performance-id="${escapeHtml(row.performanceId)}" data-practice-piece="${escapeHtml(encodeURIComponent(piece))}">
-                                        <span>${escapeHtml(piece)}</span>
+                                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-practice-performance-id="${escapeHtml(row.performanceId)}" data-practice-piece="${escapeHtml(encodeURIComponent(pieceLabel))}">
+                                        <span>${escapeHtml(pieceLabel)}</span>
                                         ${existing && String(existing.practice_notes || '').trim() ? '<span class="badge text-bg-success">指示あり</span>' : ''}
                                     </button>
                                 `;
@@ -6369,7 +6413,8 @@ function renderPracticeInstructionView() {
     const performanceId = String(appState.selectedPracticeInstructionContext.performanceId || '');
     const piece = String(appState.selectedPracticeInstructionContext.piece || '');
     const performance = appState.performances.find((perf) => String(perf.id || '') === performanceId);
-    const existing = appState.practiceInstructions.find((item) => String(item.performance_id || '') === performanceId && String(item.piece || '') === piece);
+    const performancePiece = normalizePerformancePieces(performance?.pieces || []).find((candidate) => performancePieceLookupLabels(candidate).includes(piece)) || piece;
+    const existing = findPieceScopedItem(appState.practiceInstructions, performanceId, performancePiece);
     const initialNotes = String(existing?.practice_notes || '');
 
     container.innerHTML = `
@@ -6405,7 +6450,7 @@ function renderPracticeInstructionView() {
         }
         const payload = {
             performance_id: performanceId,
-            piece,
+            piece: existing?.piece || piece,
             practice_notes: notes,
             performance_instruction: ''
         };
@@ -6587,9 +6632,13 @@ function renderPaymentFeeSettings() {
 async function saveOrgMembershipFee() {
     const amount = Number($('orgMembershipFee')?.value || 0);
     const current = currentOrgSetting();
+    const name = current.name || current.organization_name || current.organization_name_full || '';
+    const shortName = current.short_name || current.shortName || current.organization_abbreviation || '';
     const payload = {
-        name: current.name || '',
-        short_name: current.short_name || current.shortName || '',
+        name,
+        organization_name: name,
+        organization_abbreviation: shortName,
+        short_name: shortName,
         icon_url: current.icon_url || current.iconUrl || '',
         membership_fee_amount: amount
     };

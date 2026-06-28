@@ -966,6 +966,12 @@ def db_row_to_json(row: dict[str, Any]) -> dict[str, Any]:
     data = {key: db_json_value(value) for key, value in row.items()}
     if "sort_order" in data and "display_order" not in data:
         data["display_order"] = data["sort_order"]
+    if "organization_name" in data and not data.get("name"):
+        data["name"] = data["organization_name"]
+    if "organization_abbreviation" in data and not data.get("short_name"):
+        data["short_name"] = data["organization_abbreviation"]
+    if "candidate_key" in data and not data.get("candidate_id"):
+        data["candidate_id"] = data["candidate_key"]
     return data
 
 
@@ -1095,7 +1101,11 @@ def db_item_value(table_name: str, item: dict[str, Any], column: str) -> Any:
     if column == "icon_url":
         return item.get("icon_url", item.get("logo_url"))
     if column == "organization_name":
-        return item.get("organization_name", item.get("organization_name_full"))
+        return item.get("organization_name", item.get("organization_name_full", item.get("name")))
+    if column == "organization_abbreviation":
+        return item.get("organization_abbreviation", item.get("short_name", item.get("shortName")))
+    if table_name == "org_settings" and column == "membership_fee_amount":
+        return item.get("membership_fee_amount", 0)
     if column == "paid_until_month":
         return item.get("paid_until_month", item.get("membership_fee", item.get("dues")))
     return item.get(column)
