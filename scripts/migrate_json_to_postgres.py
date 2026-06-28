@@ -712,11 +712,12 @@ def build_plans(collections: dict[str, list[dict[str, Any]]]) -> list[InsertPlan
                     "updated_at": nullable_text(payment.get("updated_at")),
                 }
             )
-    plans.append(
-        InsertPlan(
-            table="payment_performance_fees",
-            columns=["payment_id", "performance_id", "is_paid", "fee_amount", "created_at", "updated_at"],
-            rows=[
+    # paymentsを先にINSERTしてから、外部キーを持つ演奏会費を投入する。
+    simple_mappings.append(
+        (
+            "payment_performance_fees",
+            ["payment_id", "performance_id", "is_paid", "fee_amount", "created_at", "updated_at"],
+            [
                 (
                     as_int(item.get("payment_id")),
                     as_int(item.get("performance_id")),
@@ -727,7 +728,6 @@ def build_plans(collections: dict[str, list[dict[str, Any]]]) -> list[InsertPlan
                 )
                 for item in performance_fee_rows
             ],
-            has_identity_id=False,
         )
     )
 
@@ -1159,7 +1159,14 @@ def build_plans(collections: dict[str, list[dict[str, Any]]]) -> list[InsertPlan
         simple_mappings.append((collection_name, columns, rows))
 
     for table_name, columns, rows in simple_mappings:
-        plans.append(InsertPlan(table=table_name, columns=columns, rows=rows))
+        plans.append(
+            InsertPlan(
+                table=table_name,
+                columns=columns,
+                rows=rows,
+                has_identity_id=table_name != "payment_performance_fees",
+            )
+        )
 
     return plans
 

@@ -1252,6 +1252,13 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 
 ---
 
+## 14. JSON->PostgreSQL移行時の外部キー順序
+
+- 移行スクリプトは、外部キー制約に合わせて親テーブルを先にINSERTする。
+- `payments.performance_fees` / `payments.performance_fee_amounts` から生成する `payment_performance_fees` は、必ず `payments` の後にINSERTする。
+
+---
+
 ## バージョン履歴
 
 | 版 | 日付 | 変更内容 |
