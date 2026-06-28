@@ -106,6 +106,32 @@ def test_recording_list_deduplicates_cloud_mirrored_local_file(client, backend_e
     assert files[0]["source"] == "google_cloud_storage"
 
 
+def test_piece_info_crud_allowed_for_authenticated_member(client, seed_device_fn):
+    seed_device_fn(device_id="dev-member", permission="一般")
+
+    created = client.post(
+        "/api/extra/piece_infos",
+        headers={"X-Device-Id": "dev-member"},
+        json={"performance_id": "1", "piece": "Symphony", "description": "初稿"},
+    )
+    assert created.status_code == 200
+    item_id = created.json()["id"]
+
+    updated = client.put(
+        f"/api/extra/piece_infos/{item_id}",
+        headers={"X-Device-Id": "dev-member"},
+        json={"performance_id": "1", "piece": "Symphony", "description": "更新後"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["description"] == "更新後"
+
+    deleted = client.delete(
+        f"/api/extra/piece_infos/{item_id}",
+        headers={"X-Device-Id": "dev-member"},
+    )
+    assert deleted.status_code == 200
+
+
 def test_sheet_bulk_update_permission(client, seed_device_fn):
     seed_device_fn(device_id="dev-general", permission="一般")
     seed_device_fn(

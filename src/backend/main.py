@@ -2612,7 +2612,6 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "sheet_library",
     "payments",
     "castings",
-    "piece_infos",
     "albums",
     "part_settings",
     "venue_settings",

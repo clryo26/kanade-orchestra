@@ -199,8 +199,8 @@ const appState = {
     manifestObjectUrl: '',
     // 団員ホームで選択中のお知らせ ID。
     portalSelectedAnnouncementId: null,
-    // 団員向け楽曲情報で選択中の楽曲 ID。
-    selectedPieceInfoId: null,
+    // 団員向け楽曲情報で選択中の曲コンテキスト（演奏会ID + 曲名）。
+    selectedPieceInfoContext: null,
     // 団員向け練習指示で選択中の曲コンテキスト（演奏会ID + 曲名）。
     selectedPracticeInstructionContext: null,
     // 楽譜管理で一括操作対象として選択された楽譜 ID 群。
@@ -593,7 +593,7 @@ function renderMenuGroups(container) {
 
 function openPortalMenuTab(tabName) {
     if (tabName === 'member-piece-info') {
-        appState.selectedPieceInfoId = null;
+        appState.selectedPieceInfoContext = null;
     }
     showMemberTab(tabName);
 }
@@ -993,10 +993,6 @@ function bindForms() {
     $('deletePerfBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePerformance()));
     $('addPieceBtn').addEventListener('click', addPerformancePiece);
     if ($('perfFlyerFile')) $('perfFlyerFile').addEventListener('change', previewPerformanceFlyer);
-    if ($('savePieceInfoBtn')) $('savePieceInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePieceInfoAdmin()));
-    if ($('clearPieceInfoBtn')) $('clearPieceInfoBtn').addEventListener('click', clearPieceInfoForm);
-    if ($('deletePieceInfoBtn')) $('deletePieceInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePieceInfoAdmin()));
-    if ($('pieceInfoPerformance')) $('pieceInfoPerformance').addEventListener('change', updatePieceInfoPieceOptions);
     if ($('savePracticeInstructionBtn')) $('savePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePracticeInstructionAdmin()));
     if ($('clearPracticeInstructionBtn')) $('clearPracticeInstructionBtn').addEventListener('click', clearPracticeInstructionForm);
     if ($('deletePracticeInstructionBtn')) $('deletePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePracticeInstructionAdmin()));
@@ -1111,7 +1107,7 @@ async function showMemberTab(tabName, shouldRender = true) {
         tabName = 'member-home';
     }
     if (tabName === 'member-piece-info') {
-        appState.selectedPieceInfoId = null;
+        appState.selectedPieceInfoContext = null;
     }
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('memberPanel').hidden = false;
@@ -1152,12 +1148,12 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
     if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
     if (renderOnShow && tabName === 'member-date-adjustment') renderDateAdjustmentView();
+    if (renderOnShow && tabName === 'member-piece-info') renderPieceInfoView();
     if (renderOnShow && tabName === 'announcement-detail') renderAnnouncementDetail();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
-    if (renderOnShow && tabName === 'piece-info-admin') renderPieceInfoAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
@@ -1182,7 +1178,6 @@ function toPascalTab(value) {
         'payment-setting': 'paymentSetting',
         'venue-admin': 'venueAdmin',
         'casting-admin': 'castingAdmin',
-        'piece-info-admin': 'pieceInfoAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
@@ -1341,7 +1336,6 @@ function renderEssentialViews() {
     renderMembers();
     renderPaymentAdmin();
     renderVenueManagement();
-    renderPieceInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
     appState.suppressDerivedRender = false;
@@ -1564,7 +1558,6 @@ function renderInitialViews(options = {}) {
     renderPaymentAdmin();
     renderVenueManagement();
     renderCastingAdmin();
-    renderPieceInfoAdmin();
     renderPracticeInstructionAdmin();
     renderOrgManagement();
     renderSnsManagement();
@@ -1690,7 +1683,6 @@ async function loadExtraData() {
     renderPartManagement();
     renderVenueManagement();
     renderCastingAdmin();
-    renderPieceInfoAdmin();
     renderPracticeInstructionAdmin();
     renderOrgManagement();
     renderSnsManagement();
@@ -4528,72 +4520,6 @@ function paymentPaymentRangeLabel(payment) {
     return until ? `${until}まで支払い済み` : '未登録';
 }
 
-function renderPieceInfoAdmin() {
-    const perfSelect = $('pieceInfoPerformance');
-    const list = $('pieceInfoAdminList');
-    if (!perfSelect || !list) return;
-    const selected = perfSelect.value;
-    perfSelect.innerHTML = '<option value="">演奏会を選択</option>' + appState.performances.map((perf) => `<option value="${escapeHtml(String(perf.id))}">${escapeHtml(perf.title)}</option>`).join('');
-    if ([...perfSelect.options].some((option) => option.value === selected)) perfSelect.value = selected;
-    updatePieceInfoPieceOptions();
-    list.innerHTML = appState.pieceInfos.length ? `<div class="list-group">${appState.pieceInfos.map((info) => {
-        const perf = appState.performances.find((item) => String(item.id || '') === String(info.performance_id || ''));
-        return `<button class="list-group-item list-group-item-action text-start piece-info-admin-item" type="button" data-piece-info-id="${escapeHtml(String(info.id || ''))}"><strong>${escapeHtml(info.piece || info.title || '')}</strong><div class="small text-muted">${escapeHtml(perf?.title || '演奏会未設定')}</div>${info.description ? `<div class="small multiline-text mt-1">${escapeHtml(info.description)}</div>` : ''}</button>`;
-    }).join('')}</div>` : '<p class="text-muted mb-0">楽曲情報はまだ登録されていません</p>';
-    list.querySelectorAll('.piece-info-admin-item').forEach((button) => button.addEventListener('click', () => selectPieceInfoAdmin(button.dataset.pieceInfoId || '')));
-}
-
-function updatePieceInfoPieceOptions() {
-    const select = $('pieceInfoPiece');
-    if (!select) return;
-    const current = select.value;
-    const performanceId = $('pieceInfoPerformance')?.value || '';
-    const perf = appState.performances.find((item) => String(item.id || '') === String(performanceId));
-    const pieces = perf ? normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean) : [];
-    select.innerHTML = '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece)}">${escapeHtml(piece)}</option>`).join('');
-    if ([...select.options].some((option) => option.value === current)) select.value = current;
-}
-
-function selectPieceInfoAdmin(id) {
-    const info = appState.pieceInfos.find((item) => String(item.id || '') === String(id));
-    if (!info) return;
-    $('pieceInfoId').value = info.id || '';
-    $('pieceInfoPerformance').value = String(info.performance_id || '');
-    updatePieceInfoPieceOptions();
-    $('pieceInfoPiece').value = info.piece || info.title || '';
-    if ($('pieceInfoComposer')) $('pieceInfoComposer').value = info.composer || '';
-    $('pieceInfoDescription').value = info.description || info.notes || '';
-}
-
-function clearPieceInfoForm() {
-    if ($('pieceInfoId')) $('pieceInfoId').value = '';
-    if ($('pieceInfoPerformance')) $('pieceInfoPerformance').value = '';
-    if ($('pieceInfoPiece')) $('pieceInfoPiece').value = '';
-    if ($('pieceInfoComposer')) $('pieceInfoComposer').value = '';
-    if ($('pieceInfoDescription')) $('pieceInfoDescription').value = '';
-    updatePieceInfoPieceOptions();
-}
-
-async function savePieceInfoAdmin() {
-    const payload = {
-        performance_id: $('pieceInfoPerformance')?.value || '',
-        piece: $('pieceInfoPiece')?.value.trim() || '',
-        description: $('pieceInfoDescription')?.value.trim() || ''
-    };
-    if (!payload.performance_id || !payload.piece) { showAlert('演奏会と曲名を入力してください', 'warning'); return; }
-    const id = $('pieceInfoId')?.value || '';
-    if (id) await request(`/api/extra/piece_infos/${encodeURIComponent(id)}`, jsonOptions('PUT', payload)); else await saveExtra('piece_infos', payload);
-    clearPieceInfoForm(); await loadExtraData(); showAlert('楽曲情報を保存しました', 'success');
-}
-
-async function deletePieceInfoAdmin() {
-    const id = $('pieceInfoId')?.value || '';
-    if (!id) { showAlert('削除する楽曲情報を選択してください', 'warning'); return; }
-    if (!confirmDelete()) return;
-    await request(`/api/extra/piece_infos/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    clearPieceInfoForm(); await loadExtraData(); showAlert('楽曲情報を削除しました', 'success');
-}
-
 function renderPracticeInstructionAdmin() {
     const perfSelect = $('practiceInstructionPerformance');
     const list = $('practiceInstructionAdminList');
@@ -6460,61 +6386,145 @@ function renderGroupedEventResponses(responses) {
     }).join('');
 }
 
-// 楽曲情報は一覧表示と詳細表示を同じ領域で切り替える。
-// 選択中の ID を appState に持たせ、戻る操作でも余計な再取得をしない。
+// 楽曲情報は練習指示と同じく、未開催演奏会の曲一覧から曲別編集へ遷移する。
 function renderPieceInfoView() {
-    const c = $('memberPieceInfo'); if (!c) return;
-    const selectedPieceInfo = appState.pieceInfos.find((info) => String(info.id || '') === String(appState.selectedPieceInfoId || ''));
-    
-    if (selectedPieceInfo) {
-        // Detail view: show selected piece info with all details and URL button
-        const performance = appState.performances.find((perf) => String(perf.id || '') === String(selectedPieceInfo.performance_id || ''));
-        c.innerHTML = `
-            <button class="btn btn-sm btn-outline-secondary mb-3" id="pieceInfoBackBtn" type="button">曲リストに戻る</button>
-            <section class="info-block">
-                <div class="small text-muted">${escapeHtml(performance?.title || '演奏会未設定')}</div>
-                <h5 class="mb-2">${escapeHtml(selectedPieceInfo.piece || selectedPieceInfo.title || '')}</h5>
-                ${selectedPieceInfo.description || selectedPieceInfo.notes ? `<div class="multiline-text mb-3">${convertUrlsToLinks(selectedPieceInfo.description || selectedPieceInfo.notes)}</div>` : ''}
-                ${selectedPieceInfo.url ? `<button class="btn btn-primary btn-sm" id="pieceInfoUrlBtn" type="button">楽曲情報を表示</button>` : ''}
+    const container = $('memberPieceInfo');
+    if (!container) return;
+
+    const upcomingPerformances = [...(appState.performances || [])]
+        .filter((perf) => perf.date && perf.date >= today())
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'ja'));
+
+    const rows = upcomingPerformances.map((perf) => ({
+        performanceId: String(perf.id || ''),
+        title: String(perf.title || ''),
+        date: String(perf.date || ''),
+        pieces: normalizePerformancePieces(perf.pieces || []).map(performancePieceLabel).filter(Boolean)
+    }));
+
+    if (!rows.length) {
+        appState.selectedPieceInfoContext = null;
+        container.innerHTML = '<p class="text-muted mb-0">未開催の演奏会はありません</p>';
+        return;
+    }
+
+    const hasPiece = (performanceId, piece) => rows.some((row) => row.performanceId === String(performanceId || '') && row.pieces.includes(piece));
+    const selectedContext = appState.selectedPieceInfoContext;
+    if (!selectedContext || !hasPiece(selectedContext.performanceId, selectedContext.piece)) {
+        appState.selectedPieceInfoContext = null;
+    }
+
+    if (!appState.selectedPieceInfoContext) {
+        container.innerHTML = `
+            <section class="info-block mb-3">
+                <h5 class="mb-2">未開催演奏会の曲一覧</h5>
+                <p class="text-muted small mb-0">曲を選択すると、曲ごとの楽曲情報登録・編集画面に遷移します。<span class="badge text-bg-success ms-1">情報あり</span> が登録済みの目印です。</p>
             </section>
+            ${rows.map((row) => {
+                const heading = `${formatDateWithWeekday(row.date, row.date)} ${row.title}`.trim();
+                if (!row.pieces.length) {
+                    return `
+                        <section class="mb-3">
+                            <h6 class="mb-2">${escapeHtml(heading)}</h6>
+                            <p class="text-muted small mb-0">曲がまだ登録されていません</p>
+                        </section>
+                    `;
+                }
+                return `
+                    <section class="mb-3">
+                        <h6 class="mb-2">${escapeHtml(heading)}</h6>
+                        <div class="list-group">
+                            ${row.pieces.map((piece) => {
+                                const existing = appState.pieceInfos.find((item) => String(item.performance_id || '') === row.performanceId && String(item.piece || item.title || '') === piece);
+                                const hasInfo = existing && String(existing.description || existing.notes || '').trim();
+                                return `
+                                    <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-piece-info-performance-id="${escapeHtml(row.performanceId)}" data-piece-info-piece="${escapeHtml(encodeURIComponent(piece))}">
+                                        <span>${escapeHtml(piece)}</span>
+                                        ${hasInfo ? '<span class="badge text-bg-success">情報あり</span>' : ''}
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </section>
+                `;
+            }).join('')}
         `;
-        $('pieceInfoBackBtn')?.addEventListener('click', () => {
-            appState.selectedPieceInfoId = null;
-            renderPieceInfoView();
-        });
-        $('pieceInfoUrlBtn')?.addEventListener('click', () => {
-            if (selectedPieceInfo.url) window.open(selectedPieceInfo.url, '_blank', 'noopener');
-        });
-    } else {
-        // List view: show all performances and their pieces (without descriptions)
-        c.innerHTML = appState.performances.map((perf) => {
-            const rows = appState.pieceInfos.filter((x) => String(x.performance_id || '') === String(perf.id));
-            const fallback = (perf.pieces || []).map((p) => ({ title: performancePieceLabel(p), description: '', id: null }));
-            let list = rows.length ? rows : fallback;
-            
-            // Sort by performance piece order
-            const performancePieceOrder = (perf.pieces || []).map(p => performancePieceLabel(p));
-            list = list.sort((a, b) => {
-                const aLabel = a.piece || a.title || '';
-                const bLabel = b.piece || b.title || '';
-                const aIndex = performancePieceOrder.indexOf(aLabel);
-                const bIndex = performancePieceOrder.indexOf(bLabel);
-                return (aIndex >= 0 ? aIndex : 999) - (bIndex >= 0 ? bIndex : 999);
-            });
-            
-            return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5><div class="list-group">${list.map((r) => `
-                <button class="list-group-item list-group-item-action text-start" type="button" ${r.id ? `data-piece-info-id="${escapeHtml(String(r.id))}"` : ''}>
-                    ${escapeHtml(r.piece || r.title || '')}
-                </button>
-            `).join('')}</div></section>`;
-        }).join('');
-        c.querySelectorAll('[data-piece-info-id]').forEach((button) => {
+
+        container.querySelectorAll('[data-piece-info-performance-id][data-piece-info-piece]').forEach((button) => {
             button.addEventListener('click', () => {
-                appState.selectedPieceInfoId = button.dataset.pieceInfoId || null;
+                const performanceId = button.dataset.pieceInfoPerformanceId || '';
+                const piece = decodeURIComponent(button.dataset.pieceInfoPiece || '');
+                appState.selectedPieceInfoContext = { performanceId, piece };
                 renderPieceInfoView();
             });
         });
+        return;
     }
+
+    const performanceId = String(appState.selectedPieceInfoContext.performanceId || '');
+    const piece = String(appState.selectedPieceInfoContext.piece || '');
+    const performance = appState.performances.find((perf) => String(perf.id || '') === performanceId);
+    const existing = appState.pieceInfos.find((item) => String(item.performance_id || '') === performanceId && String(item.piece || item.title || '') === piece);
+    const initialDescription = String(existing?.description || existing?.notes || '');
+
+    container.innerHTML = `
+        <section class="info-block mb-3">
+            <button class="btn btn-sm btn-outline-secondary mb-3" id="pieceInfoBackBtn" type="button">曲一覧に戻る</button>
+            <h5 class="mb-1">${escapeHtml(performance?.title || '演奏会未設定')}</h5>
+            <div class="small text-muted mb-2">${escapeHtml(formatDateWithWeekday(performance?.date || '', '開催日未設定'))}</div>
+            <h6 class="mb-0">${escapeHtml(piece)}</h6>
+        </section>
+        <section class="info-block">
+            <div class="mb-3">
+                <label class="form-label" for="memberPieceInfoDescription">楽曲情報</label>
+                <textarea class="form-control" id="memberPieceInfoDescription" rows="8">${escapeHtml(initialDescription)}</textarea>
+                <div class="form-text">URLを記載するとリンクとして表示されます。</div>
+            </div>
+            ${initialDescription ? `<div class="multiline-text mb-3">${convertUrlsToLinks(initialDescription)}</div>` : ''}
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-success" id="memberPieceInfoSaveBtn" type="button">保存</button>
+                <button class="btn btn-danger" id="memberPieceInfoDeleteBtn" type="button" ${existing ? '' : 'disabled'}>削除</button>
+            </div>
+        </section>
+    `;
+
+    $('pieceInfoBackBtn')?.addEventListener('click', () => {
+        appState.selectedPieceInfoContext = null;
+        renderPieceInfoView();
+    });
+
+    $('memberPieceInfoSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', async () => {
+        const description = String($('memberPieceInfoDescription')?.value || '').trim();
+        if (!description) {
+            showAlert('楽曲情報を入力してください', 'warning');
+            return;
+        }
+        const payload = {
+            performance_id: performanceId,
+            piece,
+            description
+        };
+        if (existing?.id) {
+            await request(`/api/extra/piece_infos/${encodeURIComponent(existing.id)}`, jsonOptions('PUT', payload));
+        } else {
+            await saveExtra('piece_infos', payload);
+        }
+        await loadExtraData();
+        showAlert('楽曲情報を保存しました', 'success');
+        renderPieceInfoView();
+    }));
+
+    $('memberPieceInfoDeleteBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', async () => {
+        if (!existing?.id) {
+            showAlert('削除対象の楽曲情報がありません', 'warning');
+            return;
+        }
+        if (!confirmDelete()) return;
+        await request(`/api/extra/piece_infos/${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
+        await loadExtraData();
+        showAlert('楽曲情報を削除しました', 'success');
+        renderPieceInfoView();
+    }));
 }
 
 function renderPracticeInstructionView() {

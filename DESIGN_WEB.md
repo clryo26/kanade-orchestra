@@ -125,7 +125,6 @@
 - 練習予定
 - お知らせ
 - イベント調整（管理者側は主に確認/削除）
-- 楽曲情報管理
 - 練習指示管理
 - 団員登録
 - 支払状況登録
@@ -226,9 +225,9 @@
 
 ### 6.10 楽曲情報
 
-- 演奏会と曲の紐付け情報
-- 説明文管理
-- 団員側は一覧/詳細表示
+- 未開催演奏会に登録されている曲を選択して、曲ごとの説明文を登録・編集・削除する
+- 練習指示と同じく団員メニューで操作し、登録済み曲には「情報あり」目印を表示する
+- 認証済み団員は自由に閲覧、登録、編集できる
 
 ### 6.11 練習指示
 
@@ -391,7 +390,8 @@ main.py で管理する現行 JSON_DATA_NAMES:
 
 更新系は `X-Device-Id` を必須とし、コレクション単位で認可を適用。
 
-- 管理者限定: connection_settings / practice_instructions / piece_infos / castings / payments / sheet_library ほか
+- 管理者限定: connection_settings / castings / payments / sheet_library ほか
+- 認証済み団員が更新可: practice_instructions / piece_infos
 - 所有者更新可: date_adjustments / date_adjustment_responses / absences / event_responses
 
 PUT では `expected_updated_at` を受け付け、サーバの `updated_at` と不一致時は 409 を返す。

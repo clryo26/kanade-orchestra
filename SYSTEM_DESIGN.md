@@ -61,7 +61,7 @@
 - 基本マスタ（performances/schedules/members/events/announcements）は管理者以上のみ更新可
 - extra のうち運用設定系（connection_settings 等）は管理者以上のみ更新可
 - date_adjustments / date_adjustment_responses / absences / event_responses は本人または管理者のみ更新可
-- practice_instructions は認証済み団員なら登録・編集・削除可
+- practice_instructions / piece_infos は認証済み団員なら登録・編集・削除可
 - extra PUT は `expected_updated_at` 指定時に競合検知を行い、不一致は 409
 
 ## 4. 画面構造
@@ -77,13 +77,14 @@
 - お知らせ、演奏会、練習予定、録音部屋
 - 欠席連絡、楽譜ライブラリ、支払状況、乗り番表
 - イベント、日程調整、楽曲情報、練習指示、演奏希望曲、宣伝、アルバム
+- 楽曲情報は「未開催演奏会 -> 曲選択 -> 曲別編集」導線で、登録済み曲には目印を表示
 - 練習指示は「未開催演奏会 -> 曲選択 -> 曲別編集」導線で、登録済み曲には目印を表示
 - 団員紹介、演奏会記録、SNS、マニュアル
 
 ### 4.3 管理パネル
 
 - 録音管理、演奏会情報、練習予定、お知らせ
-- イベント、楽曲情報、団員登録
+- イベント、団員登録
 - 支払状況、会場管理、乗り番管理、楽譜管理
 
 ### 4.4 システム管理パネル
@@ -887,8 +888,7 @@ root (/)
   │  ├─ eventTab (イベント管理)
   │  ├─ paymentAdminTab (支払い管理)
   │  ├─ sheetAdminTab (楽譜管理)
-  │  ├─ venueAdminTab (会場設定)
-  │  └─ pieceInfoAdminTab (楽曲設定)
+  │  └─ venueAdminTab (会場設定)
   │
   └─ systemPanel (システム管理)
      ├─ systemOrgTab (団体設定)

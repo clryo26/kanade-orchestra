@@ -274,12 +274,26 @@ date_adjustment_responses:
 - status は ok / maybe / ng のみ
 - candidate_id/name 必須
 
+piece_infos:
+
+- performance_id
+- piece
+- description
+
+認可:
+
+- 認証済み団員なら登録・編集・削除可
+
 practice_instructions:
 
 - performance_id
 - piece
 - practice_notes
 - performance_instruction
+
+認可:
+
+- 認証済み団員なら登録・編集・削除可
 
 connection_settings:
 
