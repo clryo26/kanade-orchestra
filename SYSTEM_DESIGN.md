@@ -1259,6 +1259,8 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 - DATE列に `YYYY-MM` 形式のJSON値がある場合は、月初日 `YYYY-MM-01` に正規化してINSERTする。
 - `payments.paid_from_month` / `payments.paid_until_month` は `YYYY-MM` 形式へ正規化し、変換できない値は空文字としてINSERTする。
 - DATE/TIME/TIMESTAMPTZ列にDB型へ変換できない値がある場合は、移行処理を止めずにNULLまたは移行時刻の補完値へ正規化する。
+- 移行後にDB接続設定が有効な環境では、既存のJSON互換API（団員・端末認証・bootstrap等）はJSONファイルではなくPostgreSQLを優先して参照する。
+- `members` / `auth_devices` はログイン・端末認証で更新されるため、DB接続設定が有効な環境ではPostgreSQLへ保存する。
 
 ---
 

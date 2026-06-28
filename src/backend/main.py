@@ -14,7 +14,8 @@ import sys
 import tempfile
 import zipfile
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime, time
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -589,6 +590,89 @@ PORTAL_DB_TABLES = {
     "sheet_library",
 }
 
+JSON_COLLECTION_TABLES = {
+    "performances": "performances",
+    "schedules": "schedules",
+    "announcements": "announcements",
+    "events": "events",
+    "members": "members",
+    "auth_devices": "auth_devices",
+    "absences": "absences",
+    "event_responses": "event_responses",
+    "date_adjustments": "date_adjustments",
+    "date_adjustment_responses": "date_adjustment_responses",
+    "piece_infos": "piece_infos",
+    "practice_instructions": "practice_instructions",
+    "payments": "payments",
+    "castings": "castings",
+    "desired_pieces": "desired_pieces",
+    "promotions": "promotions",
+    "albums": "albums",
+    "part_settings": "part_settings",
+    "venue_settings": "venue_settings",
+    "org_settings": "org_settings",
+    "sns_settings": "sns_settings",
+    "connection_settings": "connection_settings",
+    "drive_files": "drive_files",
+    "recording_metadata": "recording_metadata",
+    "sheet_library": "sheet_library",
+}
+DB_WRITABLE_COLLECTIONS = {"members", "auth_devices"}
+DB_WRITABLE_COLUMNS = {
+    "members": (
+        "id",
+        "name",
+        "last_name",
+        "first_name",
+        "maiden_name",
+        "last_name_kana",
+        "first_name_kana",
+        "maiden_name_kana",
+        "part",
+        "photo_url",
+        "is_founder",
+        "is_recording_manager",
+        "is_sheet_manager",
+        "password",
+        "permission",
+        "joined_at",
+        "system_access_until",
+        "introducer",
+        "role",
+        "instrument_history",
+        "past_orchestras",
+        "comment",
+        "created_at",
+        "updated_at",
+    ),
+    "auth_devices": (
+        "id",
+        "device_id",
+        "device_name",
+        "member_id",
+        "member_name",
+        "member_part",
+        "permission",
+        "system_access_until",
+        "is_recording_manager",
+        "is_sheet_manager",
+        "hidden_user",
+        "user_agent",
+        "authenticated_at",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    ),
+}
+DB_DATE_COLUMNS = {
+    "members": {"joined_at", "system_access_until"},
+    "auth_devices": {"system_access_until"},
+}
+DB_TIMESTAMP_COLUMNS = {
+    "members": {"created_at", "updated_at"},
+    "auth_devices": {"authenticated_at", "last_seen_at", "created_at", "updated_at"},
+}
+
 
 def require_recording_manager_device(device_id: str) -> dict[str, Any]:
     device = device_auth_record(device_id)
@@ -616,6 +700,156 @@ def ensure_expected_updated_at(current: dict[str, Any], expected_updated_at: str
 
 
 # ===== JSON データ入出力 =====
+def db_data_enabled() -> bool:
+    if psycopg is None or psql is None:
+        return False
+    if os.getenv("DB_URL", "").strip():
+        return True
+    return all(os.getenv(name, "").strip() for name in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+
+
+def db_json_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, time):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
+def db_row_to_json(row: dict[str, Any]) -> dict[str, Any]:
+    return {key: db_json_value(value) for key, value in row.items()}
+
+
+def db_write_value(table_name: str, column: str, value: Any) -> Any:
+    if column in DB_DATE_COLUMNS.get(table_name, set()) and value == "":
+        return None
+    if column in DB_TIMESTAMP_COLUMNS.get(table_name, set()) and value == "":
+        return None
+    return value
+
+
+def db_fetch_all(conn: Any, table_name: str, *, order_by: str = "id") -> list[dict[str, Any]]:
+    if table_name not in PORTAL_DB_TABLES:
+        raise HTTPException(status_code=400, detail=f"Unsupported DB table: {table_name}")
+    order_sql = psql.SQL(" ORDER BY {}").format(psql.Identifier(order_by)) if order_by else psql.SQL("")
+    query = psql.SQL("SELECT * FROM {}{}").format(psql.Identifier(table_name), order_sql)
+    with conn.cursor() as cur:
+        cur.execute(query)
+        rows = cur.fetchall()
+        columns = [desc[0] for desc in cur.description]
+    return [db_row_to_json(dict(zip(columns, row))) for row in rows]
+
+
+def db_load_json_data(name: str) -> list[dict[str, Any]]:
+    table_name = JSON_COLLECTION_TABLES.get(name)
+    if not table_name:
+        return []
+
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        items = db_fetch_all(conn, table_name)
+        if name == "performances":
+            pieces = db_fetch_all(conn, "performance_pieces", order_by="sort_order")
+            by_performance: dict[Any, list[dict[str, Any]]] = {}
+            for piece in pieces:
+                by_performance.setdefault(piece.get("performance_id"), []).append(piece)
+            for item in items:
+                item["pieces"] = by_performance.get(item.get("id"), [])
+        elif name == "date_adjustments":
+            candidates = db_fetch_all(conn, "date_adjustment_candidates", order_by="sort_order")
+            by_adjustment: dict[Any, list[dict[str, Any]]] = {}
+            for candidate in candidates:
+                candidate["id"] = candidate.get("candidate_key") or candidate.get("id")
+                by_adjustment.setdefault(candidate.get("adjustment_id"), []).append(candidate)
+            for item in items:
+                item["candidates"] = by_adjustment.get(item.get("id"), [])
+        elif name == "payments":
+            fees = db_fetch_all(conn, "payment_performance_fees", order_by="")
+            by_payment: dict[Any, list[dict[str, Any]]] = {}
+            for fee in fees:
+                by_payment.setdefault(fee.get("payment_id"), []).append(fee)
+            for item in items:
+                performance_fees: dict[str, bool] = {}
+                performance_fee_amounts: dict[str, Any] = {}
+                for fee in by_payment.get(item.get("id"), []):
+                    performance_id = str(fee.get("performance_id"))
+                    performance_fees[performance_id] = bool(fee.get("is_paid"))
+                    performance_fee_amounts[performance_id] = fee.get("fee_amount")
+                item["performance_fees"] = performance_fees
+                item["performance_fee_amounts"] = performance_fee_amounts
+        elif name == "castings":
+            casting_members = db_fetch_all(conn, "casting_members", order_by="sort_order")
+            casting_extras = db_fetch_all(conn, "casting_extras", order_by="sort_order")
+            members_by_casting: dict[Any, list[dict[str, Any]]] = {}
+            extras_by_casting: dict[Any, list[dict[str, Any]]] = {}
+            for member in casting_members:
+                members_by_casting.setdefault(member.get("casting_id"), []).append(member)
+            for extra in casting_extras:
+                extras_by_casting.setdefault(extra.get("casting_id"), []).append(extra)
+            for item in items:
+                item["members"] = members_by_casting.get(item.get("id"), [])
+                item["extras"] = extras_by_casting.get(item.get("id"), [])
+        elif name == "desired_pieces":
+            votes = db_fetch_all(conn, "desired_piece_votes", order_by="id")
+            by_piece: dict[Any, list[dict[str, Any]]] = {}
+            for vote in votes:
+                by_piece.setdefault(vote.get("desired_piece_id"), []).append(vote)
+            for item in items:
+                item["votes"] = by_piece.get(item.get("id"), [])
+        elif name == "albums":
+            photos = db_fetch_all(conn, "album_photos", order_by="id")
+            by_album: dict[Any, list[dict[str, Any]]] = {}
+            for photo in photos:
+                by_album.setdefault(photo.get("album_id"), []).append(photo)
+            for item in items:
+                item["photos"] = by_album.get(item.get("id"), [])
+        return items
+
+
+def db_replace_collection(name: str, data: list[dict[str, Any]]) -> None:
+    table_name = JSON_COLLECTION_TABLES.get(name)
+    if table_name not in DB_WRITABLE_COLLECTIONS:
+        raise HTTPException(status_code=500, detail=f"DB write is not implemented for {name}")
+
+    with psycopg.connect(db_connection_string(), autocommit=False) as conn:
+        with conn.cursor() as cur:
+            if not data:
+                cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
+                conn.commit()
+                return
+
+            allowed_columns = DB_WRITABLE_COLUMNS[table_name]
+            columns = [column for column in allowed_columns if any(column in row for row in data)]
+            if "id" not in columns:
+                columns.insert(0, "id")
+
+            kept_ids = [item.get("id") for item in data if item.get("id") is not None]
+            if kept_ids:
+                cur.execute(psql.SQL("DELETE FROM {} WHERE NOT (id = ANY(%s))").format(psql.Identifier(table_name)), (kept_ids,))
+            else:
+                cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
+
+            assignments = psql.SQL(", ").join(
+                psql.SQL("{} = EXCLUDED.{}").format(psql.Identifier(column), psql.Identifier(column))
+                for column in columns
+                if column != "id"
+            )
+            insert_query = psql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT (id) DO UPDATE SET {}").format(
+                psql.Identifier(table_name),
+                psql.SQL(", ").join(psql.Identifier(column) for column in columns),
+                psql.SQL(", ").join(psql.Placeholder() for _ in columns),
+                assignments,
+            )
+            cur.executemany(
+                insert_query,
+                [tuple(db_write_value(table_name, column, item.get(column)) for column in columns) for item in data],
+            )
+        conn.commit()
+
+
 def data_file(name: str) -> Path:
     # コレクション名からローカル JSON ファイルパスを解決する。
     return DATA_DIR / f"{name}.json"
@@ -641,6 +875,11 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
     cached = _memory_cache.get(name)
     if cached is not None:
         return cached
+
+    if db_data_enabled() and name in JSON_COLLECTION_TABLES:
+        db_data = db_load_json_data(name)
+        _memory_cache.set(name, db_data)
+        return db_data
     
     if storage_enabled():
         try:
@@ -664,6 +903,11 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
 
 
 def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
+    if db_data_enabled() and name in DB_WRITABLE_COLLECTIONS:
+        db_replace_collection(name, data)
+        _memory_cache.set(name, data)
+        return
+
     path = data_file(name)
     tmp_path = path.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as file:
