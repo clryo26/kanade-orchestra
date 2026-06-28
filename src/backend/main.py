@@ -9,12 +9,9 @@ import re
 import secrets
 import shutil
 import io
-import subprocess
-import sys
-import tempfile
 import zipfile
 from contextlib import asynccontextmanager
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -31,13 +28,14 @@ from pydantic import BaseModel, Field
 try:
     import psycopg
     from psycopg import sql as psql
+    from psycopg.types.json import Jsonb
 except ImportError:  # pragma: no cover
     psycopg = None
     psql = None
+    Jsonb = None
 
 try:
     from .drive_storage import (
-        delete_json_from_storage,
         get_storage_bucket,
         load_json_from_storage,
         save_json_to_storage,
@@ -47,7 +45,6 @@ try:
     )
 except ImportError:  # pragma: no cover - allows running main.py directly.
     from drive_storage import (
-        delete_json_from_storage,
         get_storage_bucket,
         load_json_from_storage,
         save_json_to_storage,
@@ -617,8 +614,30 @@ JSON_COLLECTION_TABLES = {
     "recording_metadata": "recording_metadata",
     "sheet_library": "sheet_library",
 }
-DB_WRITABLE_COLLECTIONS = {"members", "auth_devices"}
-DB_WRITABLE_COLUMNS = {
+DB_WRITABLE_COLLECTIONS = set(JSON_COLLECTION_TABLES)
+DB_COLLECTION_COLUMNS = {
+    "performances": ("id", "title", "date", "open_time", "start_time", "venue", "conductor", "flyer_image", "created_at", "updated_at"),
+    "schedules": (
+        "id",
+        "date",
+        "time",
+        "start_time",
+        "end_time",
+        "venue",
+        "available_hours",
+        "available_start_time",
+        "available_end_time",
+        "performance_id",
+        "performance_title",
+        "pieces",
+        "is_conductor_training",
+        "is_main_performance",
+        "notes",
+        "created_at",
+        "updated_at",
+    ),
+    "announcements": ("id", "date", "title", "content", "created_at", "updated_at"),
+    "events": ("id", "title", "date", "start_time", "deadline", "url", "notes", "delete_phrase", "fee", "created_at", "updated_at"),
     "members": (
         "id",
         "name",
@@ -663,14 +682,221 @@ DB_WRITABLE_COLUMNS = {
         "created_at",
         "updated_at",
     ),
+    "absences": ("id", "schedule_id", "member_id", "name", "status", "note", "created_at", "updated_at"),
+    "event_responses": ("id", "event_id", "member_id", "name", "status", "note", "created_at", "updated_at"),
+    "date_adjustments": ("id", "title", "deadline", "notes", "delete_phrase", "created_by", "member_id", "created_at", "updated_at"),
+    "date_adjustment_responses": ("id", "adjustment_id", "candidate_key", "member_id", "name", "status", "note", "created_at", "updated_at"),
+    "piece_infos": ("id", "performance_id", "piece", "description", "created_at", "updated_at"),
+    "practice_instructions": ("id", "performance_id", "piece", "practice_notes", "performance_instruction", "created_at", "updated_at"),
+    "payments": (
+        "id",
+        "member_id",
+        "name",
+        "paid_from_month",
+        "paid_until_month",
+        "latest_payment_date",
+        "membership_fee_amount",
+        "created_at",
+        "updated_at",
+    ),
+    "castings": ("id", "performance_id", "piece", "created_at", "updated_at"),
+    "desired_pieces": (
+        "id",
+        "title",
+        "piece",
+        "composer",
+        "duration",
+        "genre",
+        "formation",
+        "notes",
+        "member_id",
+        "registered_by",
+        "created_at",
+        "updated_at",
+    ),
+    "promotions": ("id", "title", "summary", "image_url", "member_id", "registered_by", "created_at", "updated_at"),
+    "albums": ("id", "event_name", "created_by_member_id", "created_by_member_name", "created_at", "updated_at"),
+    "part_settings": ("id", "name", "sort_order", "is_active", "created_at", "updated_at"),
+    "venue_settings": ("id", "name", "address", "for_practice", "for_performance", "notes", "sort_order", "created_at", "updated_at"),
+    "org_settings": (
+        "id",
+        "organization_name",
+        "organization_abbreviation",
+        "short_name",
+        "icon_url",
+        "membership_fee_amount",
+        "created_at",
+        "updated_at",
+    ),
+    "sns_settings": ("id", "line_url", "x_url", "instagram_url", "youtube_url", "facebook_url", "website_url", "extra_links", "created_at", "updated_at"),
+    "connection_settings": (
+        "id",
+        "google_project_id",
+        "google_cloud_storage_bucket",
+        "google_cloud_storage_data_prefix",
+        "google_cloud_storage_public",
+        "google_service_account_file",
+        "google_service_account_json",
+        "created_at",
+        "updated_at",
+    ),
+    "drive_files": ("id", "source", "object_name", "path", "name", "url", "size_bytes", "mime_type", "created_at", "updated_at"),
+    "recording_metadata": (
+        "id",
+        "source",
+        "object_name",
+        "path",
+        "name",
+        "date",
+        "piece",
+        "duration_seconds",
+        "duration",
+        "mime_type",
+        "size_bytes",
+        "created_at",
+        "updated_at",
+    ),
+    "sheet_library": (
+        "id",
+        "performance_id",
+        "performance_title",
+        "piece",
+        "part",
+        "source",
+        "name",
+        "path",
+        "object_name",
+        "url",
+        "view_url",
+        "download_url",
+        "size_bytes",
+        "mime_type",
+        "created_at",
+        "updated_at",
+    ),
 }
 DB_DATE_COLUMNS = {
+    "performances": {"date"},
+    "schedules": {"date"},
+    "announcements": {"date"},
+    "events": {"date"},
     "members": {"joined_at", "system_access_until"},
     "auth_devices": {"system_access_until"},
+    "date_adjustments": {"deadline"},
+    "date_adjustment_candidates": {"date"},
+    "payments": {"latest_payment_date"},
+    "recording_metadata": {"date"},
+}
+DB_TIME_COLUMNS = {
+    "performances": {"open_time", "start_time"},
+    "schedules": {"start_time", "end_time", "available_start_time", "available_end_time"},
+    "events": {"start_time"},
+    "date_adjustment_candidates": {"start_time", "end_time"},
 }
 DB_TIMESTAMP_COLUMNS = {
+    "events": {"deadline"},
     "members": {"created_at", "updated_at"},
     "auth_devices": {"authenticated_at", "last_seen_at", "created_at", "updated_at"},
+    "desired_piece_votes": {"voted_at", "created_at", "updated_at"},
+    "album_photos": {"uploaded_at", "created_at", "updated_at"},
+}
+DB_NUMERIC_COLUMNS = {
+    "payments": {"membership_fee_amount"},
+    "payment_performance_fees": {"fee_amount"},
+    "org_settings": {"membership_fee_amount"},
+    "recording_metadata": {"duration_seconds"},
+}
+DB_INT_COLUMNS = {
+    "performances": {"id"},
+    "schedules": {"id", "performance_id"},
+    "announcements": {"id"},
+    "events": {"id"},
+    "members": {"id"},
+    "auth_devices": {"id", "member_id"},
+    "absences": {"id", "schedule_id", "member_id"},
+    "event_responses": {"id", "event_id", "member_id"},
+    "date_adjustments": {"id", "member_id"},
+    "date_adjustment_responses": {"id", "adjustment_id", "member_id"},
+    "piece_infos": {"id", "performance_id"},
+    "practice_instructions": {"id", "performance_id"},
+    "payments": {"id", "member_id"},
+    "castings": {"id", "performance_id"},
+    "desired_pieces": {"id", "member_id"},
+    "promotions": {"id", "member_id"},
+    "albums": {"id", "created_by_member_id"},
+    "part_settings": {"id", "sort_order"},
+    "venue_settings": {"id", "sort_order"},
+    "org_settings": {"id"},
+    "sns_settings": {"id"},
+    "connection_settings": {"id"},
+    "drive_files": {"id", "size_bytes"},
+    "recording_metadata": {"id", "size_bytes"},
+    "sheet_library": {"id", "performance_id", "size_bytes"},
+    "performance_pieces": {"id", "performance_id", "sort_order"},
+    "date_adjustment_candidates": {"id", "adjustment_id", "sort_order"},
+    "casting_members": {"id", "casting_id", "member_id", "sort_order"},
+    "casting_extras": {"id", "casting_id", "sort_order"},
+    "payment_performance_fees": {"payment_id", "performance_id"},
+    "desired_piece_votes": {"id", "desired_piece_id", "member_id"},
+    "album_photos": {"id", "album_id", "uploaded_by_member_id"},
+}
+DB_BOOL_COLUMNS = {
+    "performance_pieces": {"is_encore"},
+    "schedules": {"is_conductor_training", "is_main_performance"},
+    "members": {"is_founder", "is_recording_manager", "is_sheet_manager"},
+    "auth_devices": {"is_recording_manager", "is_sheet_manager", "hidden_user"},
+    "payment_performance_fees": {"is_paid"},
+    "part_settings": {"is_active"},
+    "venue_settings": {"for_practice", "for_performance"},
+    "connection_settings": {"google_cloud_storage_public"},
+}
+DB_MONTH_COLUMNS = {
+    "payments": {"paid_from_month", "paid_until_month"},
+}
+DB_JSON_COLUMNS = {
+    "sns_settings": {"extra_links"},
+}
+DB_CHILD_TABLES = {
+    "performances": ("performance_pieces",),
+    "date_adjustments": ("date_adjustment_candidates",),
+    "payments": ("payment_performance_fees",),
+    "castings": ("casting_members", "casting_extras"),
+    "desired_pieces": ("desired_piece_votes",),
+    "albums": ("album_photos",),
+}
+DB_CHILD_PARENT_KEYS = {
+    "performance_pieces": "performance_id",
+    "date_adjustment_candidates": "adjustment_id",
+    "payment_performance_fees": "payment_id",
+    "casting_members": "casting_id",
+    "casting_extras": "casting_id",
+    "desired_piece_votes": "desired_piece_id",
+    "album_photos": "album_id",
+}
+DB_CHILD_COLUMNS = {
+    "performance_pieces": ("id", "performance_id", "sort_order", "title", "alias", "composer", "is_encore", "created_at", "updated_at"),
+    "date_adjustment_candidates": ("id", "adjustment_id", "candidate_key", "date", "start_time", "end_time", "note", "sort_order", "created_at", "updated_at"),
+    "payment_performance_fees": ("payment_id", "performance_id", "is_paid", "fee_amount", "created_at", "updated_at"),
+    "casting_members": ("id", "casting_id", "member_id", "part", "sort_order", "created_at", "updated_at"),
+    "casting_extras": ("id", "casting_id", "name", "furigana", "part", "sort_order", "created_at", "updated_at"),
+    "desired_piece_votes": ("id", "desired_piece_id", "member_id", "name", "voted_at", "created_at", "updated_at"),
+    "album_photos": (
+        "id",
+        "album_id",
+        "filename",
+        "url",
+        "object_name",
+        "path",
+        "uploaded_by_member_id",
+        "uploaded_by_member_name",
+        "uploaded_at",
+        "created_at",
+        "updated_at",
+    ),
+}
+DB_COLLECTION_ORDER_BY = {
+    "part_settings": "sort_order",
+    "venue_settings": "sort_order",
 }
 
 
@@ -699,6 +925,22 @@ def ensure_expected_updated_at(current: dict[str, Any], expected_updated_at: str
         raise HTTPException(status_code=409, detail="Data has been updated by another user")
 
 
+def next_updated_at(previous: Any = None) -> str:
+    # 高速な連続更新でも楽観ロック用の updated_at が必ず前回値より進むようにする。
+    current = datetime.now()
+    previous_text = str(previous or "").strip()
+    if previous_text:
+        try:
+            previous_datetime = datetime.fromisoformat(previous_text.replace("Z", "+00:00"))
+            if previous_datetime.tzinfo is not None:
+                previous_datetime = previous_datetime.astimezone().replace(tzinfo=None)
+            if current <= previous_datetime:
+                current = previous_datetime + timedelta(microseconds=1)
+        except ValueError:
+            pass
+    return current.isoformat()
+
+
 # ===== JSON データ入出力 =====
 def db_data_enabled() -> bool:
     if psycopg is None or psql is None:
@@ -721,14 +963,113 @@ def db_json_value(value: Any) -> Any:
 
 
 def db_row_to_json(row: dict[str, Any]) -> dict[str, Any]:
-    return {key: db_json_value(value) for key, value in row.items()}
+    data = {key: db_json_value(value) for key, value in row.items()}
+    if "sort_order" in data and "display_order" not in data:
+        data["display_order"] = data["sort_order"]
+    return data
+
+
+def parse_db_date(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    value_text = str(value).strip().replace("/", "-").replace(".", "-")
+    if "T" in value_text:
+        value_text = value_text.split("T", 1)[0]
+    elif " " in value_text:
+        value_text = value_text.split(" ", 1)[0]
+    if re.fullmatch(r"\d{4}-\d{2}", value_text):
+        value_text = f"{value_text}-01"
+    try:
+        return date.fromisoformat(value_text).isoformat()
+    except ValueError:
+        return None
+
+
+def parse_db_time(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.time().replace(microsecond=0).isoformat()
+    if isinstance(value, time):
+        return value.replace(microsecond=0).isoformat()
+    value_text = str(value).strip()
+    if "T" in value_text:
+        value_text = value_text.split("T", 1)[1]
+    value_text = value_text.split("+", 1)[0].split("Z", 1)[0]
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", value_text)
+    if not match:
+        return None
+    hour, minute, second = match.groups()
+    try:
+        return time(int(hour), int(minute), int(second or "0")).isoformat()
+    except ValueError:
+        return None
+
+
+def parse_db_timestamp(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return datetime.combine(value, time.min).isoformat()
+    value_text = str(value).strip().replace("/", "-").replace("Z", "+00:00")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value_text):
+        value_text = f"{value_text}T00:00:00+00:00"
+    try:
+        return datetime.fromisoformat(value_text).isoformat()
+    except ValueError:
+        return None
+
+
+def parse_db_month(value: Any) -> str:
+    value_text = str(value or "").strip().replace("/", "-").replace(".", "-")
+    if re.fullmatch(r"\d{4}-\d{2}", value_text):
+        return value_text
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value_text):
+        return value_text[:7]
+    return ""
 
 
 def db_write_value(table_name: str, column: str, value: Any) -> Any:
-    if column in DB_DATE_COLUMNS.get(table_name, set()) and value == "":
+    if column in DB_INT_COLUMNS.get(table_name, set()):
+        if value in (None, ""):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    if column in DB_BOOL_COLUMNS.get(table_name, set()):
+        if isinstance(value, bool):
+            return value
+        value_text = str(value or "").strip().lower()
+        if value_text in {"1", "true", "yes", "on"}:
+            return True
+        if value_text in {"0", "false", "no", "off"}:
+            return False
         return None
-    if column in DB_TIMESTAMP_COLUMNS.get(table_name, set()) and value == "":
-        return None
+    if column in DB_NUMERIC_COLUMNS.get(table_name, set()):
+        if value in (None, ""):
+            return None
+        try:
+            return Decimal(str(value))
+        except Exception:
+            return None
+    if column in DB_DATE_COLUMNS.get(table_name, set()):
+        return parse_db_date(value)
+    if column in DB_TIME_COLUMNS.get(table_name, set()):
+        return parse_db_time(value)
+    if column in DB_TIMESTAMP_COLUMNS.get(table_name, set()):
+        return parse_db_timestamp(value)
+    if column in DB_MONTH_COLUMNS.get(table_name, set()):
+        return parse_db_month(value)
+    if column in DB_JSON_COLUMNS.get(table_name, set()):
+        json_value = value if isinstance(value, (list, dict)) else []
+        return Jsonb(json_value) if Jsonb is not None else json.dumps(json_value, ensure_ascii=False)
     return value
 
 
@@ -744,13 +1085,235 @@ def db_fetch_all(conn: Any, table_name: str, *, order_by: str = "id") -> list[di
     return [db_row_to_json(dict(zip(columns, row))) for row in rows]
 
 
+def db_item_value(table_name: str, item: dict[str, Any], column: str) -> Any:
+    if column == "sort_order":
+        return item.get("sort_order", item.get("display_order"))
+    if column == "candidate_key":
+        return item.get("candidate_key", item.get("candidate_id", item.get("id")))
+    if column == "summary":
+        return item.get("summary", item.get("description"))
+    if column == "icon_url":
+        return item.get("icon_url", item.get("logo_url"))
+    if column == "organization_name":
+        return item.get("organization_name", item.get("organization_name_full"))
+    if column == "paid_until_month":
+        return item.get("paid_until_month", item.get("membership_fee", item.get("dues")))
+    return item.get(column)
+
+
+def db_row_tuple(table_name: str, columns: tuple[str, ...], item: dict[str, Any]) -> tuple[Any, ...]:
+    return tuple(db_write_value(table_name, column, db_item_value(table_name, item, column)) for column in columns)
+
+
+def db_upsert_rows(cur: Any, table_name: str, columns: tuple[str, ...], rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    assignments = psql.SQL(", ").join(
+        psql.SQL("{} = EXCLUDED.{}").format(psql.Identifier(column), psql.Identifier(column))
+        for column in columns
+        if column != "id"
+    )
+    insert_query = psql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT (id) DO UPDATE SET {}").format(
+        psql.Identifier(table_name),
+        psql.SQL(", ").join(psql.Identifier(column) for column in columns),
+        psql.SQL(", ").join(psql.Placeholder() for _ in columns),
+        assignments,
+    )
+    cur.executemany(insert_query, [db_row_tuple(table_name, columns, row) for row in rows])
+
+
+def db_insert_rows(cur: Any, table_name: str, columns: tuple[str, ...], rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    insert_query = psql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
+        psql.Identifier(table_name),
+        psql.SQL(", ").join(psql.Identifier(column) for column in columns),
+        psql.SQL(", ").join(psql.Placeholder() for _ in columns),
+    )
+    cur.executemany(insert_query, [db_row_tuple(table_name, columns, row) for row in rows])
+
+
+def db_next_id(cur: Any, table_name: str) -> int:
+    cur.execute(psql.SQL("SELECT COALESCE(MAX(id), 0) FROM {}").format(psql.Identifier(table_name)))
+    return int(cur.fetchone()[0]) + 1
+
+
+def db_fill_missing_ids(cur: Any, table_name: str, rows: list[dict[str, Any]]) -> None:
+    columns = DB_COLLECTION_COLUMNS.get(table_name) or DB_CHILD_COLUMNS.get(table_name, ())
+    if "id" not in columns:
+        return
+    next_value = db_next_id(cur, table_name)
+    for row in rows:
+        if row.get("id") in (None, ""):
+            row["id"] = next_value
+            next_value += 1
+
+
+def db_delete_collection_children(cur: Any, name: str) -> None:
+    # save_json_data は常にコレクション全体を保存するため、子テーブルも全体を作り直す。
+    for child_table in DB_CHILD_TABLES.get(name, ()):
+        cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(child_table)))
+
+
+def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    now = datetime.now().isoformat()
+    children: dict[str, list[dict[str, Any]]] = {table: [] for table in DB_CHILD_TABLES.get(name, ())}
+    if name == "performances":
+        for parent in data:
+            parent_id = parent.get("id")
+            for index, piece in enumerate(parent.get("pieces") if isinstance(parent.get("pieces"), list) else []):
+                if isinstance(piece, dict):
+                    title = str(piece.get("title") or "").strip()
+                    if not title:
+                        continue
+                    children["performance_pieces"].append(
+                        {
+                            "id": piece.get("id"),
+                            "performance_id": parent_id,
+                            "sort_order": piece.get("sort_order", index + 1),
+                            "title": title,
+                            "alias": piece.get("alias") or piece.get("short_name") or "",
+                            "composer": piece.get("composer") or "",
+                            "is_encore": piece.get("is_encore", piece.get("encore", False)),
+                            "created_at": piece.get("created_at") or parent.get("created_at") or now,
+                            "updated_at": piece.get("updated_at") or parent.get("updated_at") or now,
+                        }
+                    )
+                else:
+                    title = str(piece or "").strip()
+                    if title:
+                        children["performance_pieces"].append(
+                            {
+                                "performance_id": parent_id,
+                                "sort_order": index + 1,
+                                "title": title,
+                                "alias": "",
+                                "composer": "",
+                                "is_encore": False,
+                                "created_at": parent.get("created_at") or now,
+                                "updated_at": parent.get("updated_at") or now,
+                            }
+                        )
+    elif name == "date_adjustments":
+        for parent in data:
+            parent_id = parent.get("id")
+            for index, candidate in enumerate(parent.get("candidates") if isinstance(parent.get("candidates"), list) else []):
+                if not isinstance(candidate, dict):
+                    continue
+                children["date_adjustment_candidates"].append(
+                    {
+                        "id": candidate.get("db_id") if candidate.get("db_id") else None,
+                        "adjustment_id": parent_id,
+                        "candidate_key": candidate.get("candidate_key") or candidate.get("id") or f"cand-{index + 1}",
+                        "date": candidate.get("date"),
+                        "start_time": candidate.get("start_time"),
+                        "end_time": candidate.get("end_time"),
+                        "note": candidate.get("note") or "",
+                        "sort_order": index,
+                        "created_at": candidate.get("created_at") or parent.get("created_at") or now,
+                        "updated_at": candidate.get("updated_at") or parent.get("updated_at") or now,
+                    }
+                )
+    elif name == "payments":
+        for parent in data:
+            parent_id = parent.get("id")
+            fee_map = parent.get("performance_fees") if isinstance(parent.get("performance_fees"), dict) else {}
+            amount_map = parent.get("performance_fee_amounts") if isinstance(parent.get("performance_fee_amounts"), dict) else {}
+            for performance_id in set(fee_map) | set(amount_map):
+                children["payment_performance_fees"].append(
+                    {
+                        "payment_id": parent_id,
+                        "performance_id": performance_id,
+                        "is_paid": fee_map.get(performance_id, False),
+                        "fee_amount": amount_map.get(performance_id, 0),
+                        "created_at": parent.get("created_at") or now,
+                        "updated_at": parent.get("updated_at") or now,
+                    }
+                )
+    elif name == "castings":
+        for parent in data:
+            parent_id = parent.get("id")
+            for index, member in enumerate(parent.get("members") if isinstance(parent.get("members"), list) else []):
+                if isinstance(member, dict):
+                    children["casting_members"].append(
+                        {
+                            "id": member.get("id"),
+                            "casting_id": parent_id,
+                            "member_id": member.get("member_id"),
+                            "part": member.get("part") or "",
+                            "sort_order": index,
+                            "created_at": member.get("created_at") or parent.get("created_at") or now,
+                            "updated_at": member.get("updated_at") or parent.get("updated_at") or now,
+                        }
+                    )
+            for index, extra in enumerate(parent.get("extras") if isinstance(parent.get("extras"), list) else []):
+                if isinstance(extra, dict):
+                    children["casting_extras"].append(
+                        {
+                            "id": extra.get("id"),
+                            "casting_id": parent_id,
+                            "name": extra.get("name") or "",
+                            "furigana": extra.get("furigana") or "",
+                            "part": extra.get("part") or "",
+                            "sort_order": index,
+                            "created_at": extra.get("created_at") or parent.get("created_at") or now,
+                            "updated_at": extra.get("updated_at") or parent.get("updated_at") or now,
+                        }
+                    )
+    elif name == "desired_pieces":
+        for parent in data:
+            parent_id = parent.get("id")
+            for vote in parent.get("votes") if isinstance(parent.get("votes"), list) else []:
+                if isinstance(vote, dict):
+                    row = {
+                        "id": vote.get("id"),
+                        "desired_piece_id": parent_id,
+                        "member_id": vote.get("member_id"),
+                        "name": vote.get("name") or "",
+                        "voted_at": vote.get("voted_at") or now,
+                        "created_at": vote.get("created_at") or parent.get("created_at") or now,
+                        "updated_at": vote.get("updated_at") or parent.get("updated_at") or now,
+                    }
+                else:
+                    row = {
+                        "desired_piece_id": parent_id,
+                        "member_id": None,
+                        "name": str(vote or ""),
+                        "voted_at": now,
+                        "created_at": parent.get("created_at") or now,
+                        "updated_at": parent.get("updated_at") or now,
+                    }
+                children["desired_piece_votes"].append(row)
+    elif name == "albums":
+        for parent in data:
+            parent_id = parent.get("id")
+            for photo in parent.get("photos") if isinstance(parent.get("photos"), list) else []:
+                if isinstance(photo, dict):
+                    children["album_photos"].append(
+                        {
+                            "id": photo.get("id"),
+                            "album_id": parent_id,
+                            "filename": photo.get("filename") or "",
+                            "url": photo.get("url") or "",
+                            "object_name": photo.get("object_name") or "",
+                            "path": photo.get("path") or "",
+                            "uploaded_by_member_id": photo.get("uploaded_by_member_id"),
+                            "uploaded_by_member_name": photo.get("uploaded_by_member_name") or "",
+                            "uploaded_at": photo.get("uploaded_at"),
+                            "created_at": photo.get("created_at") or parent.get("created_at") or now,
+                            "updated_at": photo.get("updated_at") or parent.get("updated_at") or now,
+                        }
+                    )
+    return children
+
+
 def db_load_json_data(name: str) -> list[dict[str, Any]]:
     table_name = JSON_COLLECTION_TABLES.get(name)
     if not table_name:
         return []
 
     with psycopg.connect(db_connection_string(), autocommit=True) as conn:
-        items = db_fetch_all(conn, table_name)
+        items = db_fetch_all(conn, table_name, order_by=DB_COLLECTION_ORDER_BY.get(name, "id"))
         if name == "performances":
             pieces = db_fetch_all(conn, "performance_pieces", order_by="sort_order")
             by_performance: dict[Any, list[dict[str, Any]]] = {}
@@ -816,37 +1379,25 @@ def db_replace_collection(name: str, data: list[dict[str, Any]]) -> None:
 
     with psycopg.connect(db_connection_string(), autocommit=False) as conn:
         with conn.cursor() as cur:
+            db_delete_collection_children(cur, name)
             if not data:
                 cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
                 conn.commit()
                 return
 
-            allowed_columns = DB_WRITABLE_COLUMNS[table_name]
-            columns = [column for column in allowed_columns if any(column in row for row in data)]
-            if "id" not in columns:
-                columns.insert(0, "id")
+            columns = DB_COLLECTION_COLUMNS[table_name]
+            db_fill_missing_ids(cur, table_name, data)
 
-            kept_ids = [item.get("id") for item in data if item.get("id") is not None]
+            kept_ids = [db_write_value(table_name, "id", item.get("id")) for item in data if item.get("id") is not None]
             if kept_ids:
                 cur.execute(psql.SQL("DELETE FROM {} WHERE NOT (id = ANY(%s))").format(psql.Identifier(table_name)), (kept_ids,))
             else:
                 cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
 
-            assignments = psql.SQL(", ").join(
-                psql.SQL("{} = EXCLUDED.{}").format(psql.Identifier(column), psql.Identifier(column))
-                for column in columns
-                if column != "id"
-            )
-            insert_query = psql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT (id) DO UPDATE SET {}").format(
-                psql.Identifier(table_name),
-                psql.SQL(", ").join(psql.Identifier(column) for column in columns),
-                psql.SQL(", ").join(psql.Placeholder() for _ in columns),
-                assignments,
-            )
-            cur.executemany(
-                insert_query,
-                [tuple(db_write_value(table_name, column, item.get(column)) for column in columns) for item in data],
-            )
+            db_upsert_rows(cur, table_name, columns, data)
+            for child_table, child_rows in db_child_rows_for_collection(name, data).items():
+                db_fill_missing_ids(cur, child_table, child_rows)
+                db_insert_rows(cur, child_table, DB_CHILD_COLUMNS[child_table], child_rows)
         conn.commit()
 
 
@@ -1699,281 +2250,7 @@ async def health_check() -> dict[str, str]:
     }
 
 
-# ===== データメンテナンス API =====
 # 親レコードが削除されたために孤立したデータを検出して返す。
-
-def _collect_orphans() -> dict[str, list[dict[str, Any]]]:
-    """各コレクションを横断して孤立レコードを収集する。"""
-    performances = load_json_data("performances")
-    schedules = load_json_data("schedules")
-    members = load_json_data("members")
-    events = load_json_data("events")
-    date_adjustments = load_json_data("date_adjustments")
-
-    def _norm_ref_id(value: Any) -> str:
-        # 参照IDは数値/文字列揺れを吸収して比較する。
-        text = str(value or "").strip()
-        return text
-
-    def _collect_parent_ids(items: list[dict[str, Any]]) -> set[str]:
-        ids: set[str] = set()
-        for item in items:
-            normalized = _norm_ref_id(item.get("id"))
-            if normalized:
-                ids.add(normalized)
-        return ids
-
-    def _is_missing_ref(value: Any, parent_ids: set[str]) -> bool:
-        # 未設定（空文字/None）は孤立扱いしない。参照値があり、親が無い場合のみ孤立。
-        normalized = _norm_ref_id(value)
-        return bool(normalized) and normalized not in parent_ids
-
-    perf_ids = _collect_parent_ids(performances)
-    schedule_ids = _collect_parent_ids(schedules)
-    member_ids = _collect_parent_ids(members)
-    event_ids = _collect_parent_ids(events)
-    adj_ids = _collect_parent_ids(date_adjustments)
-
-    orphans: dict[str, list[dict[str, Any]]] = {}
-
-    def _check(collection: str, predicate) -> None:
-        items = load_json_data(collection)
-        bad = [item for item in items if predicate(item)]
-        if bad:
-            orphans[collection] = bad
-
-    # castings: 削除済み演奏会に紐づくもの
-    _check("castings",
-            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
-
-    # absences: 削除済み団員 or 削除済みスケジュールに紐づくもの
-    _check("absences",
-            lambda x: _is_missing_ref(x.get("member_id"), member_ids)
-                or _is_missing_ref(x.get("schedule_id"), schedule_ids))
-
-    # payments: 削除済み演奏会 or 削除済み団員に紐づくもの
-    _check("payments",
-            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids)
-                or _is_missing_ref(x.get("member_id"), member_ids))
-
-    # piece_infos: 削除済み演奏会に紐づくもの
-    _check("piece_infos",
-            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
-
-    # practice_instructions: 削除済み演奏会に紐づくもの
-    _check("practice_instructions",
-            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
-
-    # desired_pieces: 削除済み演奏会に紐づくもの
-    _check("desired_pieces",
-            lambda x: _is_missing_ref(x.get("performance_id"), perf_ids))
-
-    # event_responses: 削除済みイベントに紐づくもの
-    _check("event_responses",
-            lambda x: _is_missing_ref(x.get("event_id"), event_ids))
-
-    # date_adjustment_responses: 削除済み調整に紐づくもの
-    _check("date_adjustment_responses",
-            lambda x: _is_missing_ref(x.get("adjustment_id"), adj_ids))
-
-    return orphans
-
-
-@app.get("/api/maintenance/orphans")
-async def get_orphans(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    """孤立データ一覧を返す（システム管理者専用）。"""
-    require_admin_device(x_device_id)
-    orphans = _collect_orphans()
-    summary = {collection: len(items) for collection, items in orphans.items()}
-    return {"orphans": orphans, "summary": summary, "total": sum(summary.values())}
-
-
-@app.post("/api/maintenance/cleanup")
-async def cleanup_orphans(
-    body: dict[str, Any],
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, Any]:
-    """指定コレクションの孤立レコードを削除する（システム管理者専用）。"""
-    require_admin_device(x_device_id)
-
-    # 対象コレクション名リストを受け取る。空なら全孤立データを対象にする。
-    target_collections: list[str] = body.get("collections") or []
-    # 特定IDを指定する場合（コレクション名→ID一覧のマップ）
-    target_ids: dict[str, list] = body.get("ids") or {}
-
-    orphans = _collect_orphans()
-    deleted: dict[str, int] = {}
-
-    for collection, orphan_items in orphans.items():
-        if target_collections and collection not in target_collections:
-            continue
-        if not orphan_items:
-            continue
-
-        # IDで絞り込む場合
-        if collection in target_ids:
-            allowed_ids = set(target_ids[collection])
-            to_delete_ids = {item.get("id") for item in orphan_items if item.get("id") in allowed_ids}
-        else:
-            to_delete_ids = {item.get("id") for item in orphan_items}
-
-        if not to_delete_ids:
-            continue
-
-        all_items = load_json_data(collection)
-        remaining = [item for item in all_items if item.get("id") not in to_delete_ids]
-        deleted_count = len(all_items) - len(remaining)
-        if deleted_count > 0:
-            save_json_data(collection, remaining)
-            deleted[collection] = deleted_count
-            logger.info("Maintenance cleanup: deleted %d orphan(s) from %s", deleted_count, collection)
-
-    return {"deleted": deleted, "total_deleted": sum(deleted.values())}
-
-
-def migration_script_path() -> Path:
-    # Cloud Run の Docker イメージとローカル実行の両方で移行スクリプトを見つける。
-    candidates = [
-        BASE_DIR.parent / "scripts" / "migrate_json_to_postgres.py",
-        BASE_DIR / "scripts" / "migrate_json_to_postgres.py",
-        Path.cwd() / "scripts" / "migrate_json_to_postgres.py",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise HTTPException(status_code=500, detail="Migration script not found")
-
-
-def write_migration_snapshot(snapshot_dir: Path) -> None:
-    # 移行は現在アプリが参照している JSON データを使う。
-    # Cloud Storage 利用時も load_json_data 経由で読み、一時ファイルとしてスクリプトに渡す。
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-    for name in JSON_DATA_NAMES:
-        target = snapshot_dir / f"{name}.json"
-        with target.open("w", encoding="utf-8") as file:
-            json.dump(load_json_data(name), file, ensure_ascii=False, indent=2)
-
-
-def migration_cleanup_names() -> list[str]:
-    # connection_settings は Cloud Storage 接続設定を含むため最後に削除する。
-    return [name for name in JSON_DATA_NAMES if name != "connection_settings"] + ["connection_settings"]
-
-
-def delete_migrated_json_data() -> dict[str, Any]:
-    # DB 移行が正常に照合できた後、JSON 側のデータファイルを削除する。
-    deleted_local: list[str] = []
-    deleted_cloud: dict[str, list[str]] = {}
-    cloud_enabled = storage_enabled()
-    for name in migration_cleanup_names():
-        if cloud_enabled:
-            deleted_objects = delete_json_from_storage(name)
-            if deleted_objects:
-                deleted_cloud[name] = deleted_objects
-
-        path = data_file(name)
-        if path.exists():
-            path.unlink()
-            deleted_local.append(path.name)
-        _memory_cache.clear(name)
-
-    return {"local_files": deleted_local, "cloud_objects": deleted_cloud}
-
-
-@app.post("/api/system/data-migration")
-async def run_data_migration(
-    body: dict[str, Any],
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, Any]:
-    """JSON -> PostgreSQL の移行スクリプトを実行する（システム管理者専用）。"""
-    require_system_admin_device(x_device_id)
-
-    dry_run = bool(body.get("dry_run", False))
-    truncate = bool(body.get("truncate", False))
-
-    script_path = migration_script_path()
-
-    db_url = os.getenv("DB_URL", "").strip()
-    db_host = os.getenv("DB_HOST", "").strip()
-    db_port = os.getenv("DB_PORT", "5432").strip()
-    db_name = os.getenv("DB_NAME", "").strip()
-    db_user = os.getenv("DB_USER", "").strip()
-    db_password = os.getenv("DB_PASSWORD", "").strip()
-
-    with tempfile.TemporaryDirectory(prefix="kanade-migration-") as snapshot:
-        snapshot_dir = Path(snapshot)
-        write_migration_snapshot(snapshot_dir)
-        command = [
-            sys.executable,
-            str(script_path),
-            "--data-dir",
-            str(snapshot_dir),
-        ]
-        if dry_run:
-            command.append("--dry-run")
-        elif db_url:
-            command.extend(["--db-url", db_url])
-        else:
-            if not all([db_host, db_name, db_user, db_password]):
-                raise HTTPException(
-                    status_code=500,
-                    detail="DB connection env vars are incomplete (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD or DB_URL)",
-                )
-            command.extend(
-                [
-                    "--db-host",
-                    db_host,
-                    "--db-port",
-                    db_port,
-                    "--db-name",
-                    db_name,
-                    "--db-user",
-                    db_user,
-                    "--db-password",
-                    db_password,
-                ]
-            )
-
-        if truncate:
-            command.append("--truncate")
-
-        try:
-            result = subprocess.run(
-                command,
-                cwd=str(BASE_DIR.parent),
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            logger.error("Data migration failed: %s", exc.stderr or exc.stdout)
-            raise HTTPException(
-                status_code=500,
-                detail=(exc.stderr or exc.stdout or "Migration failed").strip(),
-            ) from exc
-
-    output_text = (result.stdout or "").strip()
-    if result.stderr:
-        output_text = f"{output_text}\n\n[stderr]\n{result.stderr.strip()}".strip()
-
-    reconciliation_match: bool | None = None
-    if "RECONCILIATION_RESULT: MATCHED" in output_text:
-        reconciliation_match = True
-    elif "RECONCILIATION_RESULT: MISMATCH" in output_text:
-        reconciliation_match = False
-
-    migration_cleanup = None
-    if not dry_run and reconciliation_match is True:
-        migration_cleanup = delete_migrated_json_data()
-
-    return {
-        "ok": True,
-        "dry_run": dry_run,
-        "truncate": truncate,
-        "reconciliation_match": reconciliation_match,
-        "migration_cleanup": migration_cleanup,
-        "output": output_text,
-    }
-
 
 @app.get("/api/system/database/tables")
 async def list_database_tables(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
@@ -2934,7 +3211,7 @@ def assert_extra_collection_permission(name: str, device: dict[str, Any], payloa
 # 機能追加のたびに専用 API を増やさずに済むよう、
 # JSON 配列ベースの補助データはこの共通エンドポイントで扱う。
 def normalize_extra_payload(payload: dict[str, Any], item_id: int | None = None, current: dict[str, Any] | None = None) -> dict[str, Any]:
-    now = datetime.now().isoformat()
+    now = next_updated_at((current or {}).get("updated_at"))
     data = dict(payload or {})
     data.update({
         "id": item_id if item_id is not None else data.get("id"),

@@ -1158,8 +1158,6 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
     if (renderOnShow && tabName === 'system-database') renderDatabaseView();
-    if (renderOnShow && tabName === 'system-migration') renderMigrationView();
-    if (renderOnShow && tabName === 'system-maintenance') renderMaintenanceView();
     
     // 画面上部にスクロール
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1207,8 +1205,6 @@ function toPascalTab(value) {
         'system-connection': 'systemConnection',
         'system-part': 'systemPart',
         'system-database': 'systemDatabase',
-        'system-migration': 'systemMigration',
-        'system-maintenance': 'systemMaintenance'
     };
     return map[value] || value;
 }
@@ -2708,147 +2704,6 @@ async function deletePartSetting(partId) {
     showAlert('パートを削除しました', 'success');
 }
 
-// ===== データメンテナンス =====
-
-// コレクション名の日本語ラベル
-const COLLECTION_LABELS = {
-    castings: '乗り番',
-    absences: '欠席連絡',
-    payments: '支払状況',
-    piece_infos: '楽曲情報',
-    practice_instructions: '練習指示',
-    desired_pieces: '演奏希望曲',
-    event_responses: 'イベント回答',
-    date_adjustment_responses: '日程調整回答',
-};
-
-async function renderMaintenanceView() {
-    const scanBtn = $('maintenanceScanBtn');
-    const cleanupBtn = $('maintenanceCleanupAllBtn');
-    if (scanBtn) {
-        scanBtn.onclick = () => withButtonStatus(scanBtn, 'スキャン中...', () => runMaintenanceScan());
-    }
-    if (cleanupBtn) {
-        cleanupBtn.onclick = () => withButtonStatus(cleanupBtn, '削除中...', () => runMaintenanceCleanup());
-    }
-    // 初期状態にリセット
-    const orphanList = $('maintenanceOrphanList');
-    if (orphanList) orphanList.innerHTML = '<p class="text-muted">「孤立データをスキャン」ボタンを押してください。</p>';
-    if (cleanupBtn) cleanupBtn.disabled = true;
-}
-
-async function runMaintenanceScan() {
-    const statusEl = $('maintenanceScanStatus');
-    const orphanList = $('maintenanceOrphanList');
-    const cleanupBtn = $('maintenanceCleanupAllBtn');
-
-    if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'スキャン中...'; }
-    if (orphanList) orphanList.innerHTML = '';
-    if (cleanupBtn) cleanupBtn.disabled = true;
-
-    let result;
-    try {
-        result = await request('/api/maintenance/orphans');
-    } catch (e) {
-        if (statusEl) statusEl.textContent = 'スキャンに失敗しました。';
-        showAlert('孤立データのスキャンに失敗しました', 'danger');
-        return;
-    }
-
-    const orphans = result.orphans || {};
-    const total = result.total || 0;
-
-    if (total === 0) {
-        if (statusEl) statusEl.textContent = '孤立データは見つかりませんでした。';
-        if (orphanList) orphanList.innerHTML = '<p class="text-success fw-bold">すべてのデータは正常です。孤立したデータはありません。</p>';
-        if (cleanupBtn) cleanupBtn.disabled = true;
-        return;
-    }
-
-    if (statusEl) statusEl.textContent = `${total}件の孤立データが見つかりました。削除する項目を選択してください。`;
-
-    // 孤立データをテーブルで表示（チェックボックスで選択可能）
-    const html = Object.entries(orphans).map(([collection, items]) => {
-        const label = COLLECTION_LABELS[collection] || collection;
-        const rows = items.map((item) => {
-            const id = item.id ?? '';
-            // 表示用サマリーを生成
-            const summary = [
-                item.performance_id !== undefined ? `演奏会ID: ${item.performance_id}` : null,
-                item.member_id !== undefined ? `団員ID: ${item.member_id}` : null,
-                item.event_id !== undefined ? `イベントID: ${item.event_id}` : null,
-                item.adjustment_id !== undefined ? `調整ID: ${item.adjustment_id}` : null,
-                item.schedule_id !== undefined ? `練習ID: ${item.schedule_id}` : null,
-                item.title ? `件名: ${item.title}` : null,
-                item.piece ? `曲名: ${item.piece}` : null,
-                item.name ? `名前: ${item.name}` : null,
-            ].filter(Boolean).join(' / ');
-            return `<tr>
-                <td class="ps-2"><input class="form-check-input maintenance-item-check" type="checkbox" data-collection="${escapeHtml(collection)}" data-id="${escapeHtml(String(id))}" checked></td>
-                <td class="text-muted small">${escapeHtml(String(id))}</td>
-                <td class="small">${escapeHtml(summary || JSON.stringify(item).slice(0, 60))}</td>
-            </tr>`;
-        }).join('');
-        return `<div class="mb-3">
-            <div class="d-flex align-items-center gap-2 mb-1">
-                <h6 class="mb-0">${escapeHtml(label)}</h6>
-                <span class="badge bg-warning text-dark">${items.length}件</span>
-                <button class="btn btn-link btn-sm p-0 text-secondary maintenance-select-all-btn" data-collection="${escapeHtml(collection)}" type="button">全選択/解除</button>
-            </div>
-            <table class="table table-sm table-bordered mb-0">
-                <thead class="table-light"><tr><th style="width:2rem"></th><th style="width:4rem">ID</th><th>内容</th></tr></thead>
-                <tbody>${rows}</tbody>
-            </table>
-        </div>`;
-    }).join('');
-
-    if (orphanList) orphanList.innerHTML = html;
-    if (cleanupBtn) cleanupBtn.disabled = false;
-
-    // 全選択/解除ボタン
-    document.querySelectorAll('.maintenance-select-all-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const col = btn.dataset.collection;
-            const checkboxes = document.querySelectorAll(`.maintenance-item-check[data-collection="${col}"]`);
-            const allChecked = [...checkboxes].every((cb) => cb.checked);
-            checkboxes.forEach((cb) => { cb.checked = !allChecked; });
-        });
-    });
-}
-
-async function runMaintenanceCleanup() {
-    // チェックされたIDをコレクションごとに収集
-    const idMap = {};
-    document.querySelectorAll('.maintenance-item-check:checked').forEach((cb) => {
-        const col = cb.dataset.collection;
-        if (!idMap[col]) idMap[col] = [];
-        const rawId = cb.dataset.id;
-        // IDが数値なら数値として渡す（バックエンドの型に合わせる）
-        idMap[col].push(isNaN(Number(rawId)) ? rawId : Number(rawId));
-    });
-
-    if (Object.keys(idMap).length === 0) {
-        showAlert('削除する項目が選択されていません', 'warning');
-        return;
-    }
-
-    const totalSelected = Object.values(idMap).reduce((sum, ids) => sum + ids.length, 0);
-    if (!confirm(`選択した ${totalSelected} 件のデータを削除します。\nこの操作は元に戻せません。よろしいですか？`)) return;
-
-    let result;
-    try {
-        result = await request('/api/maintenance/cleanup', jsonOptions('POST', { ids: idMap }));
-    } catch (e) {
-        showAlert('削除に失敗しました', 'danger');
-        return;
-    }
-
-    const totalDeleted = result.total_deleted || 0;
-    showAlert(`${totalDeleted}件の孤立データを削除しました`, 'success');
-    // 再スキャン
-    await runMaintenanceScan();
-}
-
 // ===== DB 閲覧 =====
 
 async function renderDatabaseView() {
@@ -3017,95 +2872,6 @@ function renderDatabaseRows(columns, rows) {
         }).join('');
         return `<tr>${cells}</tr>`;
     }).join('');
-}
-
-// ===== JSON -> DB データ移行 =====
-
-function migrationCleanupSummary(cleanup) {
-    if (!cleanup) return '';
-
-    const localFiles = Array.isArray(cleanup.local_files) ? cleanup.local_files : [];
-    const cloudObjects = cleanup.cloud_objects || {};
-    const cloudCount = Object.values(cloudObjects).reduce(
-        (total, objects) => total + (Array.isArray(objects) ? objects.length : 0),
-        0
-    );
-    if (!localFiles.length && !cloudCount) return 'JSON削除: 削除対象はありませんでした。';
-
-    const lines = ['JSON削除: 移行済みデータを削除しました。'];
-    if (localFiles.length) {
-        lines.push(`ローカルJSON: ${localFiles.join(', ')}`);
-    }
-    if (cloudCount) {
-        lines.push(`Cloud Storage JSON: ${cloudCount}件`);
-    }
-    return lines.join('\n');
-}
-
-async function renderMigrationView() {
-    const dryRunBtn = $('migrationDryRunBtn');
-    const executeBtn = $('migrationExecuteBtn');
-    const outputEl = $('migrationOutput');
-    if (dryRunBtn) {
-        dryRunBtn.onclick = () => withButtonStatus(dryRunBtn, '実行中...', () => runDataMigration(true));
-    }
-    if (executeBtn) {
-        executeBtn.onclick = () => withButtonStatus(executeBtn, '実行中...', async () => {
-            const ok = confirm('DBデータを全削除してJSONから再投入します。\nこの操作は元に戻せません。実行しますか？');
-            if (!ok) return;
-            await runDataMigration(false);
-        });
-    }
-    if (outputEl && !outputEl.textContent.trim()) {
-        outputEl.textContent = '「件数確認（dry-run）」を押してください。';
-    }
-}
-
-async function runDataMigration(dryRun) {
-    const statusEl = $('migrationStatus');
-    const outputEl = $('migrationOutput');
-    if (statusEl) {
-        statusEl.hidden = false;
-        statusEl.textContent = dryRun ? '件数確認を実行中...' : 'データ移行を実行中...';
-    }
-
-    try {
-        const result = await request('/api/system/data-migration', jsonOptions('POST', {
-            dry_run: dryRun,
-            truncate: !dryRun,
-        }));
-        if (outputEl) {
-            const cleanupSummary = migrationCleanupSummary(result.migration_cleanup);
-            outputEl.textContent = [String(result.output || '出力なし'), cleanupSummary].filter(Boolean).join('\n\n');
-        }
-        const reconciled = result.reconciliation_match;
-        if (statusEl) {
-            if (!dryRun && reconciled === true) {
-                statusEl.textContent = 'データ移行が完了しました（件数照合: 一致）。';
-            } else if (!dryRun && reconciled === false) {
-                statusEl.textContent = 'データ移行は完了しましたが、件数照合で不一致が見つかりました。';
-            } else {
-                statusEl.textContent = dryRun ? '件数確認が完了しました。' : 'データ移行が完了しました。';
-            }
-        }
-        if (!dryRun && reconciled === false) {
-            showAlert('データ移行は完了しましたが、件数照合で不一致が見つかりました', 'warning');
-        } else {
-            showAlert(dryRun ? '件数確認が完了しました' : 'データ移行が完了しました', 'success');
-        }
-        if (!dryRun) {
-            await loadEssentialData();
-            await loadExtraData();
-            renderMemberViews();
-        }
-    } catch (error) {
-        if (statusEl) {
-            statusEl.textContent = dryRun ? '件数確認に失敗しました。' : 'データ移行に失敗しました。';
-        }
-        if (outputEl) {
-            outputEl.textContent = String(error?.message || '通信に失敗しました');
-        }
-    }
 }
 
 function sortedVenueSettings() {

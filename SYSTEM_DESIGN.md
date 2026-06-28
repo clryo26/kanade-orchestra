@@ -1,4 +1,4 @@
-# 奏オケポータル システム設計書
+﻿# 奏オケポータル システム設計書
 
 版: 2.1
 最終更新: 2026-06-26
@@ -91,7 +91,6 @@
 
 - 認証端末、団体情報、SNS
 - 接続先情報、パート管理
-- データメンテナンス（孤立データ検出・削除）
 
 ## 5. データモデル
 
@@ -176,26 +175,15 @@
 - POST /api/extra/albums/{album_id}/photos  （アルバム写真アップロード、全員可）
 - DELETE /api/extra/albums/{album_id}/photos/{photo_id}  （写真削除、管理者専用）
 
-### 6.7 データメンテナンス
 
-- GET /api/maintenance/orphans  （孤立データ検出、管理者専用）
-- POST /api/maintenance/cleanup  （孤立データ削除、管理者専用）
-- POST /api/system/data-migration  （JSON->PostgreSQL移行実行、システム管理者専用）
 
 ### 6.8 一時運用メニュー（システム管理）
 
-- システム管理パネルに「データ移行」タブを一時追加
 - ボタン操作で `scripts/migrate_json_to_postgres.py` をサーバー側から起動
 - サーバー側実行時は現在参照している JSON データを一時スナップショットに書き出し、そのディレクトリを `--data-dir` として渡す
 - Cloud Run 用 Docker イメージには `scripts/` と `db/` を含め、移行スクリプトと件数確認 SQL を実行時に参照可能にする
 - JSON に `created_at` / `updated_at` がない行は、DB の NOT NULL 制約に合わせて移行時刻を補完して INSERT する
-- 本実行が成功し、件数照合が `MATCHED` になった場合のみ、移行済み JSON コレクションを削除する。中身が空になった JSON はファイルごと削除する
-- 削除したローカル JSON ファイルと Cloud Storage JSON の件数は、データ移行画面の実行ログに表示する
 - 実行モード:
-  - 件数確認（dry-run）
-  - 本実行（truncate + 移行）
-- 誤操作防止として本実行前に確認ダイアログを必須とする
-- 本実行後は移行スクリプトが自動で件数照合（JSON件数 vs DB件数）を行い、結果を画面に表示する
 
 ### 6.9 恒久運用メニュー（システム管理）
 
@@ -219,7 +207,6 @@
 - 静的アセットはバージョンクエリで更新制御
 - index.html は no-store で常に最新を取得
 - JSON から PostgreSQL への初期移行は `scripts/migrate_json_to_postgres.py` を利用し、`src/data/*.json` を正規化テーブルへ投入する
-- 移行時は `--dry-run` で件数確認後、`--truncate` 付きで本投入する運用を標準とする
 
 ## 9. 正本ドキュメント
 
@@ -259,13 +246,9 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 - パート順は part_settings の登録順に準拠
 - エキストラは `extras[].part` フィールドでグルーピング（未設定時は「エキストラ」表示）
 
-### 10.4 データメンテナンス
 
 - 判定は参照IDを文字列正規化して実施し、数値/文字列の型差による誤検出を防止
 - 参照IDが未設定（空文字/None）の場合は孤立扱いにしない
-- システム管理メニュー「データメンテナンス」タブから実行
-- `GET /api/maintenance/orphans` で孤立データを検出（管理者専用）
-- `POST /api/maintenance/cleanup` で選択した孤立データを削除（管理者専用）
 - 検出対象: castings・absences・payments・piece_infos・practice_instructions・desired_pieces・event_responses・date_adjustment_responses
 - 各レコードをチェックボックスで個別選択して削除可能
 - 削除後に自動再スキャンを実行して結果を更新
@@ -1260,7 +1243,12 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 - `payments.paid_from_month` / `payments.paid_until_month` は `YYYY-MM` 形式へ正規化し、変換できない値は空文字としてINSERTする。
 - DATE/TIME/TIMESTAMPTZ列にDB型へ変換できない値がある場合は、移行処理を止めずにNULLまたは移行時刻の補完値へ正規化する。
 - 移行後にDB接続設定が有効な環境では、既存のJSON互換API（団員・端末認証・bootstrap等）はJSONファイルではなくPostgreSQLを優先して参照する。
-- `members` / `auth_devices` はログイン・端末認証で更新されるため、DB接続設定が有効な環境ではPostgreSQLへ保存する。
+- DB接続設定が有効な環境では、`JSON_COLLECTION_TABLES` に対応する全JSON互換コレクションの保存先もPostgreSQLにする。
+- `part_settings.sort_order` / `venue_settings.sort_order` は表示順として扱い、画面互換の `display_order` も読み込み時に補完する。
+- performances / payments / castings / date_adjustments / desired_pieces / albums のネスト配列は、保存時に対応する子テーブルへ再構築する。
+- 汎用extraの楽観ロックは `updated_at` を比較する。高速な連続更新でも検知できるよう、更新時刻は前回値より必ず進める。
+- JSON->PostgreSQL移行完了後の現行アプリでは、移行実行メニューとデータメンテナンスメニュー、および関連APIは提供しない。
+- システム管理者向けにはPostgreSQLの閲覧用メニューのみを残す。
 
 ---
 
