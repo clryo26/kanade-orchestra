@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -99,6 +100,39 @@ class InsertPlan:
 
 
 AUDIT_COLUMNS = {"created_at", "updated_at"}
+DATE_COLUMNS_BY_TABLE = {
+    "performances": {"date"},
+    "schedules": {"date"},
+    "announcements": {"date"},
+    "events": {"date"},
+    "members": {"joined_at", "system_access_until"},
+    "auth_devices": {"system_access_until"},
+    "date_adjustments": {"deadline"},
+    "date_adjustment_candidates": {"date"},
+    "payments": {"latest_payment_date"},
+    "recording_metadata": {"date"},
+}
+TIME_COLUMNS_BY_TABLE = {
+    "performances": {"open_time", "start_time"},
+    "schedules": {"start_time", "end_time", "available_start_time", "available_end_time"},
+    "events": {"start_time"},
+    "date_adjustment_candidates": {"start_time", "end_time"},
+}
+MONTH_COLUMNS_BY_TABLE = {
+    "payments": {"paid_from_month", "paid_until_month"},
+}
+TIMESTAMP_COLUMNS_BY_TABLE = {
+    "events": {"deadline"},
+    "auth_devices": {"authenticated_at", "last_seen_at"},
+    "desired_piece_votes": {"voted_at"},
+    "album_photos": {"uploaded_at"},
+}
+NON_NULL_DATE_COLUMNS_BY_TABLE = {
+    "date_adjustment_candidates": {"date"},
+}
+NON_NULL_TIMESTAMP_COLUMNS_BY_TABLE = {
+    "desired_piece_votes": {"voted_at"},
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -136,6 +170,92 @@ def text(value: Any, default: str = "") -> str:
 def nullable_text(value: Any) -> str | None:
     value_text = text(value).strip()
     return value_text if value_text else None
+
+
+def normalize_date_value(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+
+    value_text = text(value).strip()
+    if not value_text:
+        return None
+    normalized = value_text.replace("/", "-").replace(".", "-")
+    if "T" in normalized:
+        normalized = normalized.split("T", 1)[0]
+    elif " " in normalized:
+        normalized = normalized.split(" ", 1)[0]
+    if re.fullmatch(r"\d{4}-\d{2}", normalized):
+        normalized = f"{normalized}-01"
+    if re.fullmatch(r"\d{8}", normalized):
+        normalized = f"{normalized[:4]}-{normalized[4:6]}-{normalized[6:8]}"
+    try:
+        return date.fromisoformat(normalized).isoformat()
+    except ValueError:
+        return None
+
+
+def normalize_time_value(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.time().replace(microsecond=0).isoformat()
+    if isinstance(value, time):
+        return value.replace(microsecond=0).isoformat()
+
+    value_text = text(value).strip()
+    if not value_text:
+        return None
+    if "T" in value_text:
+        value_text = value_text.split("T", 1)[1]
+    value_text = value_text.split("+", 1)[0].split("Z", 1)[0]
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", value_text)
+    if not match:
+        return None
+    hour, minute, second = match.groups()
+    try:
+        return time(int(hour), int(minute), int(second or "0")).isoformat()
+    except ValueError:
+        return None
+
+
+def normalize_month_value(value: Any) -> str:
+    value_text = text(value).strip()
+    if not value_text:
+        return ""
+    normalized = value_text.replace("/", "-").replace(".", "-")
+    if re.fullmatch(r"\d{4}-\d{2}", normalized):
+        return normalized
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+        return normalized[:7]
+    if re.fullmatch(r"\d{6}", normalized):
+        return f"{normalized[:4]}-{normalized[4:6]}"
+    return ""
+
+
+def normalize_timestamp_value(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return datetime.combine(value, time.min).isoformat()
+
+    value_text = text(value).strip()
+    if not value_text:
+        return None
+    normalized = value_text.replace("/", "-").replace("Z", "+00:00")
+    if re.fullmatch(r"\d{4}-\d{2}", normalized):
+        normalized = f"{normalized}-01T00:00:00+00:00"
+    elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+        normalized = f"{normalized}T00:00:00+00:00"
+    try:
+        return datetime.fromisoformat(normalized).isoformat()
+    except ValueError:
+        return None
 
 
 def as_int(value: Any) -> int | None:
@@ -1211,7 +1331,9 @@ def truncate_tables(conn: psycopg.Connection[Any]) -> None:
 def insert_plan(conn: psycopg.Connection[Any], plan: InsertPlan) -> None:
     if not plan.rows:
         return
-    rows = rows_with_audit_defaults(plan)
+    fallback_timestamp = datetime.now(timezone.utc).isoformat()
+    rows = rows_with_audit_defaults(plan, fallback_timestamp)
+    rows = rows_with_temporal_normalization(plan, rows, fallback_timestamp)
     placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in plan.columns)
     query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
         sql.Identifier(plan.table),
@@ -1237,6 +1359,44 @@ def rows_with_audit_defaults(plan: InsertPlan, default_timestamp: str | None = N
             values[created_index] = fallback
         if updated_index is not None and values[updated_index] is None:
             values[updated_index] = values[created_index] if created_index is not None else fallback
+        normalized_rows.append(tuple(values))
+    return normalized_rows
+
+
+def rows_with_temporal_normalization(
+    plan: InsertPlan,
+    rows: list[tuple[Any, ...]],
+    default_timestamp: str | None = None,
+) -> list[tuple[Any, ...]]:
+    date_columns = DATE_COLUMNS_BY_TABLE.get(plan.table, set())
+    time_columns = TIME_COLUMNS_BY_TABLE.get(plan.table, set())
+    month_columns = MONTH_COLUMNS_BY_TABLE.get(plan.table, set())
+    timestamp_columns = TIMESTAMP_COLUMNS_BY_TABLE.get(plan.table, set()) | AUDIT_COLUMNS
+    non_null_date_columns = NON_NULL_DATE_COLUMNS_BY_TABLE.get(plan.table, set())
+    non_null_timestamp_columns = NON_NULL_TIMESTAMP_COLUMNS_BY_TABLE.get(plan.table, set()) | AUDIT_COLUMNS
+    if not (date_columns or time_columns or month_columns or timestamp_columns):
+        return rows
+
+    fallback = default_timestamp or datetime.now(timezone.utc).isoformat()
+    fallback_date = normalize_date_value(fallback)
+    normalized_rows: list[tuple[Any, ...]] = []
+    for row in rows:
+        values = list(row)
+        for idx, column in enumerate(plan.columns):
+            if column in date_columns:
+                normalized_value = normalize_date_value(values[idx])
+                if normalized_value is None and column in non_null_date_columns:
+                    normalized_value = fallback_date
+                values[idx] = normalized_value
+            elif column in time_columns:
+                values[idx] = normalize_time_value(values[idx])
+            elif column in month_columns:
+                values[idx] = normalize_month_value(values[idx])
+            elif column in timestamp_columns:
+                normalized_value = normalize_timestamp_value(values[idx])
+                if normalized_value is None and column in non_null_timestamp_columns:
+                    normalized_value = fallback
+                values[idx] = normalized_value
         normalized_rows.append(tuple(values))
     return normalized_rows
 

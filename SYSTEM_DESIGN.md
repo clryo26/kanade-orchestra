@@ -1256,6 +1256,9 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 
 - 移行スクリプトは、外部キー制約に合わせて親テーブルを先にINSERTする。
 - `payments.performance_fees` / `payments.performance_fee_amounts` から生成する `payment_performance_fees` は、必ず `payments` の後にINSERTする。
+- DATE列に `YYYY-MM` 形式のJSON値がある場合は、月初日 `YYYY-MM-01` に正規化してINSERTする。
+- `payments.paid_from_month` / `payments.paid_until_month` は `YYYY-MM` 形式へ正規化し、変換できない値は空文字としてINSERTする。
+- DATE/TIME/TIMESTAMPTZ列にDB型へ変換できない値がある場合は、移行処理を止めずにNULLまたは移行時刻の補完値へ正規化する。
 
 ---
 
