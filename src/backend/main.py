@@ -2139,8 +2139,15 @@ async def convert_audio(
 
 def recording_payload() -> dict[str, list[dict[str, Any]]]:
     # Cloud 上の録音を先頭に、ローカル録音を更新日時降順で続けて返す。
-    # フロントではこの並びをそのまま一覧表示に利用する。
+    # 同じ録音が Cloud とローカルの両方にある場合は Cloud 側を優先し、
+    # アップロード直後の一覧で同一ファイルが二重表示されないようにする。
     drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
+    mirrored_local_paths = {
+        f"converted/{object_name}"
+        for item in drive_files
+        for object_name in [str(item.get("object_name") or item.get("id") or "").strip("/")]
+        if object_name
+    }
     local_paths = sorted(
         [*CONVERTED_DIR.rglob("*.mp3"), *CONVERTED_DIR.rglob("*.m4a")],
         key=lambda item: item.stat().st_mtime,
@@ -2149,6 +2156,7 @@ def recording_payload() -> dict[str, list[dict[str, Any]]]:
     local_files = [
         local_recording_metadata(path)
         for path in local_paths
+        if path.relative_to(UPLOAD_DIR).as_posix() not in mirrored_local_paths
     ]
     return {"files": drive_files + local_files}
 

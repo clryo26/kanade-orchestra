@@ -95,6 +95,8 @@ class IndexedDBCache {
 const dbCache = new IndexedDBCache();
 // 同一 GET リクエストの多重発行を防ぐための進行中リクエスト管理。
 const inFlightGetRequests = new Map();
+// 録音管理のアップロード時だけ選べる、曲単位に分けない録音用の分類名。
+const WHOLE_PRACTICE_RECORDING_PIECE = '練習全体の通し';
 
 // 画面全体で共有する単一の状態ストア。
 // 各 render 系関数は基本的にこの状態を読み取り、保存系関数は API 更新後にこの状態を再同期する。
@@ -155,6 +157,8 @@ const appState = {
     currentAudio: null,
     // 現在再生中アイテムのボタン要素。
     currentPlayButton: null,
+    // 現在再生中の録音リスト要素。
+    currentRecordingItem: null,
     // 連続再生の有効/無効。
     continuousPlayback: false,
     // フルデータロード完了フラグ。
@@ -1858,6 +1862,13 @@ function performancePieceLabel(piece) {
     return (piece.is_encore || piece.encore) ? `(${label})` : label;
 }
 
+function performancePieceFormalLabel(piece) {
+    if (typeof piece === 'string') return piece;
+    // 録音アップロードの選択肢では、略称ではなく登録された正式な曲名を見せる。
+    const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+    return (piece.is_encore || piece.encore) ? `(${label})` : label;
+}
+
 function selectedUploadPerformance() {
     const value = $('uploadPerformance')?.value || '';
     if (!value) return null;
@@ -1865,9 +1876,25 @@ function selectedUploadPerformance() {
 }
 
 function uploadPieceOptions(performance) {
-    return normalizePerformancePieces(performance?.pieces || [])
-        .map(performancePieceLabel)
-        .filter((piece, index, values) => piece && values.indexOf(piece) === index);
+    if (!performance) return [];
+
+    const options = normalizePerformancePieces(performance?.pieces || [])
+        .map((piece) => ({
+            value: performancePieceLabel(piece),
+            label: performancePieceFormalLabel(piece)
+        }))
+        .filter((option) => option.value);
+    options.push({
+        value: WHOLE_PRACTICE_RECORDING_PIECE,
+        label: WHOLE_PRACTICE_RECORDING_PIECE
+    });
+
+    const seen = new Set();
+    return options.filter((option) => {
+        if (seen.has(option.value)) return false;
+        seen.add(option.value);
+        return true;
+    });
 }
 
 function renderUploadPerformanceOptions() {
@@ -1889,9 +1916,9 @@ function renderUploadPieceOptions() {
     const current = select.value;
     const pieces = uploadPieceOptions(selectedUploadPerformance());
     select.innerHTML = pieces.length
-        ? '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece)}">${escapeHtml(piece)}</option>`).join('')
+        ? '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece.value)}">${escapeHtml(piece.label)}</option>`).join('')
         : '<option value="">演奏会に登録済みの曲がありません</option>';
-    if (pieces.includes(current)) {
+    if (pieces.some((piece) => piece.value === current)) {
         select.value = current;
     }
     updateSavePath();
@@ -3882,6 +3909,8 @@ function recordingFileItem(file, canDelete) {
     item.className = 'list-group-item recording-list-item';
     const playUrl = file.play_url || file.download_url;
     const downloadUrl = file.download_url || playUrl;
+    item.recordingPlayUrl = playUrl;
+    item.recordingCanDelete = canDelete;
     const actionButton = canDelete
         ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
         : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
@@ -3907,71 +3936,108 @@ function recordingFileItem(file, canDelete) {
 
 function bindRecordingFileItem(item, file, playUrl, canDelete) {
     const playButton = item.querySelector('.play-recording-btn');
-    const playerArea = item.querySelector('.recording-player-area');
     playButton.disabled = !playUrl;
     if (!playUrl) return;
-    let audio = null;
-    playButton.addEventListener('click', async () => {
-        try {
-            if (!audio) {
-                audio = document.createElement('audio');
-                audio.controls = true;
-                audio.preload = 'auto';
-                audio.className = 'w-100';
-                audio.hidden = true;
-                audio.src = withCacheBuster(playUrl);
-                playerArea.appendChild(audio);
-                audio.addEventListener('pause', () => {
-                    if (!audio.ended) {
-                        playButton.textContent = '再生';
-                        playerArea.innerHTML = '';
-                        audio = null;
-                        appState.currentAudio = null;
-                        appState.currentPlayButton = null;
-                    }
-                });
-                audio.addEventListener('ended', () => {
-                    playButton.textContent = '再生';
-                    playerArea.innerHTML = '';
-                    audio = null;
-                    appState.currentAudio = null;
-                    appState.currentPlayButton = null;
-                    if (!canDelete && appState.continuousPlayback) {
-                        playNextRecording(item);
-                    }
-                });
-                audio.addEventListener('error', () => {
-                    showAlert('音声ファイルを読み込めませんでした。再デプロイ後の場合は更新して再試行してください。', 'danger');
-                    playButton.textContent = '再生';
-                });
-            }
-            if (audio.paused) {
-                stopCurrentRecording(audio);
-                await audio.play();
-                audio.hidden = false;
-                appState.currentAudio = audio;
-                appState.currentPlayButton = playButton;
-                playButton.textContent = '停止';
-            } else {
-                audio.pause();
-                playerArea.innerHTML = '';
-                audio = null;
-                playButton.textContent = '再生';
-                if (appState.currentAudio === audio) {
-                    appState.currentAudio = null;
-                    appState.currentPlayButton = null;
-                }
-            }
-        } catch (error) {
-            showAlert(`再生できませんでした: ${error.message}`, 'danger');
-            playButton.textContent = '再生';
+    playButton.addEventListener('click', () => toggleRecordingPlayback(item));
+}
+
+async function toggleRecordingPlayback(item) {
+    const audio = appState.currentAudio;
+    if (audio && appState.currentRecordingItem === item && !audio.paused) {
+        stopCurrentRecording();
+        return;
+    }
+    await startRecordingPlayback(item);
+}
+
+async function startRecordingPlayback(item) {
+    const playUrl = item?.recordingPlayUrl;
+    const playButton = item?.querySelector('.play-recording-btn');
+    const playerArea = item?.querySelector('.recording-player-area');
+    if (!playUrl || !playButton || !playerArea) return false;
+
+    const audio = ensureRecordingAudio();
+    const previousItem = appState.currentRecordingItem;
+    if (previousItem && previousItem !== item) {
+        resetRecordingItemPlaybackUi(previousItem);
+    }
+
+    try {
+        // 連続再生では同じ audio 要素を移動して使い回し、スマホのバックグラウンド再生を継続しやすくする。
+        if (audio.parentElement !== playerArea) {
+            playerArea.innerHTML = '';
+            playerArea.appendChild(audio);
         }
+        audio.hidden = true;
+        audio.dataset.switchingTrack = '1';
+        audio.src = withCacheBuster(playUrl);
+        audio.load();
+        appState.currentAudio = audio;
+        appState.currentPlayButton = playButton;
+        appState.currentRecordingItem = item;
+        await audio.play();
+        audio.dataset.switchingTrack = '';
+        audio.hidden = false;
+        playButton.textContent = '停止';
+        return true;
+    } catch (error) {
+        audio.dataset.switchingTrack = '';
+        clearCurrentRecordingAudio(audio);
+        showAlert(`再生できませんでした: ${error.message}`, 'danger');
+        return false;
+    }
+}
+
+function ensureRecordingAudio() {
+    if (appState.currentAudio) return appState.currentAudio;
+
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    audio.className = 'w-100';
+    audio.hidden = true;
+    audio.addEventListener('pause', () => {
+        if (audio.ended || audio.dataset.switchingTrack === '1') return;
+        clearCurrentRecordingAudio(audio);
     });
+    audio.addEventListener('ended', async () => {
+        const finishedItem = appState.currentRecordingItem;
+        resetRecordingItemPlaybackUi(finishedItem);
+        if (finishedItem && !finishedItem.recordingCanDelete && appState.continuousPlayback) {
+            const started = await playNextRecording(finishedItem);
+            if (started) return;
+        }
+        clearCurrentRecordingAudio(audio);
+    });
+    audio.addEventListener('error', () => {
+        showAlert('音声ファイルを読み込めませんでした。再デプロイ後の場合は更新して再試行してください。', 'danger');
+        clearCurrentRecordingAudio(audio);
+    });
+    appState.currentAudio = audio;
+    return audio;
+}
+
+function resetRecordingItemPlaybackUi(item) {
+    if (!item) return;
+    const button = item.querySelector('.play-recording-btn');
+    const area = item.querySelector('.recording-player-area');
+    if (button) button.textContent = '再生';
+    if (area) area.innerHTML = '';
+}
+
+function clearCurrentRecordingAudio(audio = appState.currentAudio) {
+    resetRecordingItemPlaybackUi(appState.currentRecordingItem);
+    if (audio?.parentElement) {
+        audio.parentElement.innerHTML = '';
+    }
+    appState.currentAudio = null;
+    appState.currentPlayButton = null;
+    appState.currentRecordingItem = null;
 }
 
 function stopCurrentRecording(exceptAudio = null) {
     const audio = appState.currentAudio;
-    const button = appState.currentPlayButton;
     if (audio && audio !== exceptAudio) {
         audio.pause();
         try {
@@ -3979,26 +4045,26 @@ function stopCurrentRecording(exceptAudio = null) {
         } catch {
             // Some streaming sources cannot seek until enough data has loaded.
         }
-        const area = audio.parentElement;
-        if (area) area.innerHTML = '';
-        if (button) {
-            button.textContent = '再生';
-        }
+        resetRecordingItemPlaybackUi(appState.currentRecordingItem);
     }
     if (audio !== exceptAudio) {
         appState.currentAudio = null;
         appState.currentPlayButton = null;
+        appState.currentRecordingItem = null;
     }
 }
 
-function playNextRecording(currentItem) {
+async function playNextRecording(currentItem) {
     const items = Array.from(document.querySelectorAll('#songTreeMember .recording-list-item'));
     const currentIndex = items.indexOf(currentItem);
-    const nextItem = items[currentIndex + 1];
-    const nextButton = nextItem?.querySelector('.play-recording-btn:not(:disabled)');
-    if (nextButton) {
-        nextButton.click();
+    for (let index = currentIndex + 1; index < items.length; index += 1) {
+        const nextItem = items[index];
+        const nextButton = nextItem?.querySelector('.play-recording-btn:not(:disabled)');
+        if (nextButton) {
+            return startRecordingPlayback(nextItem);
+        }
     }
+    return false;
 }
 
 function withCacheBuster(url) {

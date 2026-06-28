@@ -175,6 +175,8 @@ PUT は以下を許容:
 - duration_seconds
 - duration
 
+録音一覧では、Cloud Storage のメタデータとローカル保存ファイルが同じ録音を指す場合、Cloud Storage 側を優先して 1 ファイル 1 件として返す。
+
 ### 5.2 楽譜メタデータ
 
 代表キー:

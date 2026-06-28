@@ -80,6 +80,32 @@ def test_recording_delete_allowed_for_recording_manager(client, seed_device_fn):
     assert response.status_code == 404
 
 
+def test_recording_list_deduplicates_cloud_mirrored_local_file(client, backend_env):
+    recording_dir = backend_env.CONVERTED_DIR / "2026-06-18" / "Symphony"
+    recording_dir.mkdir(parents=True, exist_ok=True)
+    (recording_dir / "take1.mp3").write_bytes(b"dummy audio")
+    backend_env.save_json_data(
+        "drive_files",
+        [
+            {
+                "id": "2026-06-18/Symphony/take1.mp3",
+                "name": "take1.mp3",
+                "date": "2026-06-18",
+                "piece": "Symphony",
+                "object_name": "2026-06-18/Symphony/take1.mp3",
+                "source": "google_cloud_storage",
+            }
+        ],
+    )
+
+    response = client.get("/api/recordings")
+
+    assert response.status_code == 200
+    files = response.json()["files"]
+    assert len(files) == 1
+    assert files[0]["source"] == "google_cloud_storage"
+
+
 def test_sheet_bulk_update_permission(client, seed_device_fn):
     seed_device_fn(device_id="dev-general", permission="一般")
     seed_device_fn(

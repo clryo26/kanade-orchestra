@@ -838,6 +838,7 @@ const appState = {
   // 再生制御
   currentAudio: null,
   currentPlayButton: null,
+  currentRecordingItem: null,
   continuousPlayback: false,
   
   // 楽譜表示
@@ -936,7 +937,9 @@ renderSheets()               // 楽譜リスト
 
 #### 3.4 ファイル操作
 ```javascript
-playAudio(url, button)       // 音声再生
+toggleRecordingPlayback(item) // 録音再生/停止
+startRecordingPlayback(item)  // 単一 audio 要素を使った録音再生
+playNextRecording(item)       // 連続再生時に次の録音へ遷移
 downloadFile(url, filename)  // ダウンロード
 displaySheet(sheetUrl)       // 楽譜表示（PDFビューア）
 uploadFile(file)             // ファイルアップロード
