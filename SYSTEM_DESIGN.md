@@ -90,7 +90,7 @@
 ### 4.4 システム管理パネル
 
 - 認証端末、団体情報、SNS
-- 接続先情報、パート管理
+- 接続先情報、パート管理、アクセスログ
 
 ## 5. データモデル
 
@@ -121,6 +121,7 @@
 - sns_settings
 - connection_settings
 - auth_devices
+- access_logs
 
 ## 6. API サブシステム
 
@@ -129,6 +130,7 @@
 - /api/auth/portal-login
 - /api/auth/member-password
 - /api/auth/devices
+- /api/system/access-logs
 
 ### 6.2 初期ロード
 

@@ -21,4 +21,16 @@ describe('performance form layout', () => {
         expect(renderMemberPerformances).toContain('performancePieceFormalLabel(piece)');
         expect(renderMemberPerformances).not.toContain('performancePieceLabel(piece)');
     });
+
+    test('member performance flyer is rendered below piece names', () => {
+        const appJs = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/app.js'), 'utf8');
+        const renderMemberPerformances = appJs.slice(
+            appJs.indexOf('function renderMemberPerformances()'),
+            appJs.indexOf('function renderMemberSchedules()')
+        );
+
+        expect(renderMemberPerformances.indexOf('performancePieceFormalLabel(piece)')).toBeLessThan(
+            renderMemberPerformances.indexOf('performance-flyer-preview')
+        );
+    });
 });

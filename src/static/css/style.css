@@ -241,6 +241,13 @@ body {
     margin: 0 0 1rem;
 }
 
+.portal-login-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
 .card {
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -346,6 +353,15 @@ body {
 
 .casting-member-vertical-list li {
     line-height: 1.5;
+}
+
+.casting-table .casting-part-cell {
+    padding-right: 0.35rem;
+    width: 1%;
+}
+
+.casting-table .casting-members-cell {
+    padding-left: 0.15rem;
 }
 
 .schedule-performance-group {

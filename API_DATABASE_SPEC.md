@@ -119,6 +119,21 @@ PUT は以下を許容:
 - desired_pieces
 - promotions
 
+### 3.2 アクセスログ API
+
+#### POST /api/system/access-logs
+
+- 用途: ログイン済み団員がアクセスしたメニューを記録する
+- 権限: 認証済み端末
+- 入力: `menu_key`, `menu_label`, `panel`
+- 保存時に `X-Device-Id` の認証端末から団員名、パート、権限、端末名を補完する
+
+#### GET /api/system/access-logs
+
+- 用途: アクセスログ一覧を新しい順で取得する
+- 権限: システム管理者
+- クエリ: `limit`（1〜1000、既定200）
+
 ## 4. 認証 API 詳細
 
 ### 4.1 POST /api/auth/portal-login
@@ -194,7 +209,7 @@ PUT は以下を許容:
 - view_url
 - download_url
 
-drive_files では、Cloud Storage上の録音識別には object_name を使用する。PostgreSQL の id は内部採番IDであり、旧JSON互換の文字列IDは保存時に object_name として扱う。
+drive_files では、Cloud Storage上の録音識別には object_name を使用する。PostgreSQL の id は内部採番IDであり、旧JSON互換の文字列IDは保存時に object_name として扱う。DB保存時は `created_at` / `updated_at` を必ず補完する。
 
 ## 6. JSON コレクション仕様
 

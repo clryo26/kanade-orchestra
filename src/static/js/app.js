@@ -173,6 +173,8 @@ const appState = {
     fullDataLoading: false,
     // 認証済み端末一覧。
     authDevices: [],
+    // システム管理で表示するアクセスログ一覧。
+    accessLogs: [],
     // 連鎖描画抑制フラグ（初期描画最適化用）。
     suppressDerivedRender: false,
     // 端末認証検証済みフラグ。
@@ -201,8 +203,12 @@ const appState = {
     portalSelectedAnnouncementId: null,
     // 団員向け楽曲情報で選択中の曲コンテキスト（演奏会ID + 曲名）。
     selectedPieceInfoContext: null,
+    // 団員向け楽曲情報の曲詳細が編集中かどうか。
+    pieceInfoEditing: false,
     // 団員向け練習指示で選択中の曲コンテキスト（演奏会ID + 曲名）。
     selectedPracticeInstructionContext: null,
+    // 団員向け練習指示の曲詳細が編集中かどうか。
+    practiceInstructionEditing: false,
     // 楽譜管理で一括操作対象として選択された楽譜 ID 群。
     selectedSheetIds: [],
     // 乗り番フォームで編集中のレコード ID。
@@ -594,6 +600,11 @@ function renderMenuGroups(container) {
 function openPortalMenuTab(tabName) {
     if (tabName === 'member-piece-info') {
         appState.selectedPieceInfoContext = null;
+        appState.pieceInfoEditing = false;
+    }
+    if (tabName === 'member-practice-instruction') {
+        appState.selectedPracticeInstructionContext = null;
+        appState.practiceInstructionEditing = false;
     }
     showMemberTab(tabName);
 }
@@ -743,6 +754,10 @@ function showPortalLogin() {
                         <label class="form-label mt-3" for="portalPasswordInput">パスワード</label>
                         <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password">
                         <button class="btn btn-primary w-100 mt-3" id="portalLoginBtn" type="button">ログイン</button>
+                        <div class="portal-login-actions mt-3">
+                            <button class="btn btn-outline-success btn-sm" id="portalLoginReloadBtn" type="button">更新</button>
+                            <span class="revision-inline">Rev. <span data-revision-number>${escapeHtml(currentRevisionText())}</span></span>
+                        </div>
                     </div>
                     <div id="portalPasswordSetupForm" hidden>
                         <h1>パスワード登録</h1>
@@ -762,7 +777,12 @@ function showPortalLogin() {
         loginPanel = $('portalLoginPanel');
         refreshPartSelectOptions();
         applyOrgSettings();
+        updateCloudRunRevision();
         $('portalLoginBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '確認中...', handlePortalLogin));
+        $('portalLoginReloadBtn').addEventListener('click', () => {
+            setLoadingBar('更新中...');
+            window.location.reload();
+        });
         $('portalPasswordSetupBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', handleMemberPasswordSetup));
         $('portalBackToLoginBtn').addEventListener('click', showPortalLoginForm);
         ['portalNameInput', 'portalPasswordInput'].forEach((id) => $(id).addEventListener('keydown', (event) => {
@@ -1034,6 +1054,7 @@ function bindForms() {
     if ($('clearSnsSettingBtn')) $('clearSnsSettingBtn').addEventListener('click', clearSnsSettingForm);
     if ($('saveConnectionSettingBtn')) $('saveConnectionSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveConnectionSetting()));
     if ($('clearConnectionSettingBtn')) $('clearConnectionSettingBtn').addEventListener('click', clearConnectionSettingForm);
+    if ($('accessLogReloadBtn')) $('accessLogReloadBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '読込中...', () => renderAccessLogView()));
 
     if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', updateSheetPieceOptions);
     if ($('uploadSheetBtn')) $('uploadSheetBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', () => uploadSheets()));
@@ -1143,6 +1164,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (target) target.hidden = false;
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
+    recordAccessLog(panelId, tabName);
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
     if (renderOnShow && tabName === 'member-manual') renderManualView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
@@ -1157,6 +1179,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
+    if (renderOnShow && tabName === 'system-access-log') renderAccessLogView();
     if (renderOnShow && tabName === 'system-database') renderDatabaseView();
     
     // 画面上部にスクロール
@@ -1204,9 +1227,78 @@ function toPascalTab(value) {
         'system-sns': 'systemSns',
         'system-connection': 'systemConnection',
         'system-part': 'systemPart',
+        'system-access-log': 'systemAccessLog',
         'system-database': 'systemDatabase',
     };
     return map[value] || value;
+}
+
+const ACCESS_LOG_MENU_LABELS = {
+    upload: '録音管理',
+    performance: '演奏会情報管理',
+    schedule: '練習予定管理',
+    announcement: 'お知らせ管理',
+    event: 'イベント管理',
+    member: '団員登録',
+    'payment-admin': '支払管理',
+    'payment-setting': '支払設定',
+    'venue-admin': '会場管理',
+    'casting-admin': '乗り番管理',
+    'sheet-admin': '楽譜管理',
+    'member-home': 'ポータルメニュー',
+    'member-announce': 'お知らせ',
+    'member-performance': '演奏会情報',
+    'member-schedule': '練習予定',
+    'member-practice-instruction': '練習指示',
+    'member-recording': '録音部屋',
+    'member-intro': '団員紹介',
+    'member-absence': '欠席連絡',
+    'member-sheet': '楽譜ライブラリ',
+    'member-sheet-viewer': '楽譜表示',
+    'member-payment': '支払状況',
+    'member-casting': '乗り番表',
+    'member-event': 'イベント調整',
+    'member-date-adjustment': '日程調整',
+    'member-piece-info': '楽曲紹介',
+    'member-desired-piece': '演奏希望曲',
+    'member-promotion': '宣伝',
+    'member-manual': 'マニュアル',
+    'member-album': 'アルバム',
+    'member-concert-record': '演奏会記録',
+    'member-sns': 'SNS',
+    'announcement-detail': 'お知らせ詳細',
+    'system-auth': '認証端末管理',
+    'system-org': '団体情報管理',
+    'system-sns': 'SNS情報',
+    'system-connection': '接続先情報',
+    'system-part': 'パート管理',
+    'system-access-log': 'アクセスログ',
+    'system-database': 'データベース'
+};
+
+function accessLogPanelLabel(panelId) {
+    if (panelId === 'systemPanel') return 'システム管理';
+    if (panelId === 'adminPanel') return '管理者メニュー';
+    return '団員メニュー';
+}
+
+function recordAccessLog(panelId, tabName) {
+    if (!appState.portalAuthVerified) return;
+    const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY) || '';
+    if (!deviceId) return;
+    const payload = {
+        panel: accessLogPanelLabel(panelId),
+        menu_key: tabName,
+        menu_label: ACCESS_LOG_MENU_LABELS[tabName] || tabName
+    };
+    fetch('/api/system/access-logs', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Device-Id': deviceId
+        },
+        body: JSON.stringify(payload)
+    }).catch((error) => console.warn('Access log save failed:', error));
 }
 
 // アップロード先パスのプレビュー表示を更新する。
@@ -2632,6 +2724,46 @@ async function deleteAuthDevice(deviceId) {
     showAlert('認証端末を削除しました', 'success');
 }
 
+async function loadAccessLogs() {
+    appState.accessLogs = await request(`/api/system/access-logs?limit=200&_=${Date.now()}`);
+    return appState.accessLogs;
+}
+
+async function renderAccessLogView() {
+    const tbody = document.querySelector('#accessLogTable tbody');
+    const status = $('accessLogStatus');
+    if (!tbody) return;
+    if (status) {
+        status.hidden = false;
+        status.textContent = '読み込み中...';
+    }
+    try {
+        const logs = await loadAccessLogs();
+        if (status) {
+            status.hidden = false;
+            status.textContent = `${logs.length}件を表示しています`;
+        }
+        tbody.innerHTML = logs.length ? logs.map((item) => `
+            <tr>
+                <td class="text-nowrap">${escapeHtml(formatDateTimeLabel(item.accessed_at || item.created_at))}</td>
+                <td>${escapeHtml(item.member_name || '不明')}</td>
+                <td>${escapeHtml(item.member_part || '')}</td>
+                <td>${escapeHtml(item.permission || '')}</td>
+                <td>${escapeHtml(item.menu_label || item.menu_key || '')}</td>
+                <td>${escapeHtml(item.panel || '')}</td>
+                <td class="small text-break">${escapeHtml(item.device_name || item.device_id || '')}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="7" class="text-muted">アクセスログはまだありません</td></tr>';
+    } catch (error) {
+        if (status) {
+            status.hidden = false;
+            status.textContent = 'アクセスログの読み込みに失敗しました';
+        }
+        tbody.innerHTML = '<tr><td colspan="7" class="text-danger">アクセスログを取得できませんでした</td></tr>';
+        console.error('Load access logs failed', error);
+    }
+}
+
 function sortedPartSettings() {
     return [...(appState.partSettings || [])].sort((a, b) =>
         Number(a.display_order || 9999) - Number(b.display_order || 9999) ||
@@ -4012,8 +4144,8 @@ function renderMemberPerformances() {
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
-            ${perf.flyer_image ? `<div class="mb-3"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy"></div>` : ''}
-            <div class="mb-0">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceFormalLabel(piece))}</div>`).join('')}</div>
+            <div class="${perf.flyer_image ? 'mb-3' : 'mb-0'}">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceFormalLabel(piece))}</div>`).join('')}</div>
+            ${perf.flyer_image ? `<div class="mb-0"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy"></div>` : ''}
         </article>
     `).join('');
 }
@@ -5099,8 +5231,8 @@ function paymentMemberOptionsById(selected = '') {
     })).join('');
 }
 
-// 乗り番管理は「演奏会単位で 1 レコードを編集する」前提で組んでいる。
-// 一覧表示と編集フォームは別管理せず、選択中の演奏会を appState に展開して同期する。
+// 乗り番管理は保存済みレコードを編集フォーム用の配列へコピーして扱う。
+// 保存済みデータを直接触らず、一覧の「編集」はレコードIDで対象を特定する。
 function renderCastingAdmin() {
     const performanceSelect = $('castingPerformanceSelect');
     if (!performanceSelect) return;
@@ -5120,50 +5252,62 @@ function renderCastingAdmin() {
     if (!performanceSelect.value && appState.performances.length) {
         performanceSelect.value = String(appState.performances[0].id || '');
     }
-    loadCastingById(Number(performanceSelect.value) || 0);
+    const editingCasting = appState.castings.find((c) => String(c.id || '') === String(appState.castingEditingId || ''));
+    if (editingCasting) {
+        loadCastingRecord(editingCasting);
+        performanceSelect.value = String(editingCasting.performance_id || '');
+    } else {
+        loadCastingById(Number(performanceSelect.value) || 0);
+    }
     renderCastingAdminList();
+}
+
+function populateCastingForm() {
+    if ($('castingPieceInput')) $('castingPieceInput').value = appState.castingEditingPiece || '';
+    renderCastingMembersList();
+    renderCastingExtrasList();
+}
+
+function setCastingEditor(casting, fallbackPerformanceId = null) {
+    if (casting) {
+        appState.castingEditingId = casting.id || null;
+        appState.castingEditingPerformanceId = casting.performance_id || fallbackPerformanceId || null;
+        appState.castingEditingPiece = casting.piece || '';
+        appState.castingEditingMembers = Array.isArray(casting.members) ? casting.members.map((m) => ({ ...m })) : [];
+        appState.castingEditingExtras = Array.isArray(casting.extras) ? casting.extras.map((e) => ({ ...e })) : [];
+    } else {
+        appState.castingEditingId = null;
+        appState.castingEditingPerformanceId = fallbackPerformanceId || null;
+        appState.castingEditingPiece = '';
+        appState.castingEditingMembers = [];
+        appState.castingEditingExtras = [];
+    }
+    populateCastingForm();
+}
+
+function loadCastingRecord(casting) {
+    setCastingEditor(casting, casting?.performance_id || null);
 }
 
 function loadCastingById(performanceId) {
     if (!performanceId) {
-        appState.castingEditingId = null;
-        appState.castingEditingPerformanceId = null;
-        appState.castingEditingPiece = '';
-        appState.castingEditingMembers = [];
-        appState.castingEditingExtras = [];
-        clearCastingForm();
+        setCastingEditor(null, null);
         return;
     }
     
     // 保存済みデータを直接参照し続けると編集中に一覧側へ影響するため、
     // フォーム編集用には浅いコピーで別配列を持つ。
     const casting = appState.castings.find((c) => String(c.performance_id || '') === String(performanceId));
-    if (casting) {
-        appState.castingEditingId = casting.id || null;
-        appState.castingEditingPerformanceId = casting.performance_id || null;
-        appState.castingEditingPiece = casting.piece || '';
-        appState.castingEditingMembers = Array.isArray(casting.members) ? casting.members.map(m => ({ ...m })) : [];
-        appState.castingEditingExtras = Array.isArray(casting.extras) ? casting.extras.map(e => ({ ...e })) : [];
-    } else {
-        appState.castingEditingId = null;
-        appState.castingEditingPerformanceId = performanceId;
-        appState.castingEditingPiece = '';
-        appState.castingEditingMembers = [];
-        appState.castingEditingExtras = [];
-    }
-    
-    clearCastingForm();
-    $('castingPieceInput').value = appState.castingEditingPiece;
-    renderCastingMembersList();
-    renderCastingExtrasList();
+    setCastingEditor(casting || null, performanceId);
 }
 
 function clearCastingForm() {
-    $('castingPieceInput').value = '';
+    appState.castingEditingId = null;
+    appState.castingEditingPerformanceId = Number($('castingPerformanceSelect')?.value || 0) || null;
+    appState.castingEditingPiece = '';
     appState.castingEditingMembers = [];
     appState.castingEditingExtras = [];
-    renderCastingMembersList();
-    renderCastingExtrasList();
+    populateCastingForm();
 }
 
 function renderCastingMembersList() {
@@ -5298,7 +5442,7 @@ function renderCastingAdminList() {
                                     <strong>${escapeHtml(c.piece || '全曲')}</strong><br>
                                     <small class="text-muted">${escapeHtml(allCasting)}</small>
                                 </div>
-                                <button class="btn btn-sm btn-outline-primary casting-edit-btn" data-performance-id="${escapeHtml(String(c.performance_id || ''))}" data-piece="${escapeHtml(c.piece || '')}" type="button">編集</button>
+                                <button class="btn btn-sm btn-outline-primary casting-edit-btn" data-casting-id="${escapeHtml(String(c.id || ''))}" type="button">編集</button>
                             </div>
                         </div>
                     `;
@@ -5309,9 +5453,15 @@ function renderCastingAdminList() {
     
     list.querySelectorAll('.casting-edit-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => {
-            const perfId = e.target.dataset.performanceId || '';
-            $('castingPerformanceSelect').value = perfId;
-            loadCastingById(Number(perfId) || 0);
+            const castingId = e.currentTarget.dataset.castingId || '';
+            const casting = appState.castings.find((c) => String(c.id || '') === String(castingId));
+            if (!casting) {
+                showAlert('編集対象の乗り番データが見つかりません', 'warning');
+                return;
+            }
+            if ($('castingPerformanceSelect')) $('castingPerformanceSelect').value = String(casting.performance_id || '');
+            loadCastingRecord(casting);
+            $('castingPieceInput')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     });
 }
@@ -5542,10 +5692,10 @@ function renderCastingView() {
                 const memberList = Array.isArray(names) && names.length
                     ? `<ul class="casting-member-vertical-list mb-0">${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
                     : '<span class="text-muted">（未登録）</span>';
-                return `<tr><td class="text-nowrap pe-3 text-muted small fw-bold">${escapeHtml(part)}</td><td>${memberList}</td></tr>`;
+                return `<tr><td class="casting-part-cell text-nowrap text-muted small fw-bold">${escapeHtml(part)}</td><td class="casting-members-cell">${memberList}</td></tr>`;
             }).join('');
 
-            return `<div class="info-block mb-3"><strong class="d-block mb-2">${escapeHtml(r.piece || '全曲')}</strong><table class="table table-sm table-borderless mb-0"><tbody>${tableRows}</tbody></table></div>`;
+            return `<div class="info-block mb-3"><strong class="d-block mb-2">${escapeHtml(r.piece || '全曲')}</strong><table class="table table-sm table-borderless mb-0 casting-table"><tbody>${tableRows}</tbody></table></div>`;
         }).join('') : '<p class="text-muted">乗り番表は未登録です</p>';
 
         return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${castingContent}</section>`;
@@ -6241,6 +6391,7 @@ function renderPieceInfoView() {
 
     if (!rows.length) {
         appState.selectedPieceInfoContext = null;
+        appState.pieceInfoEditing = false;
         container.innerHTML = '<p class="text-muted mb-0">未開催の演奏会はありません</p>';
         return;
     }
@@ -6252,6 +6403,7 @@ function renderPieceInfoView() {
     const selectedContext = appState.selectedPieceInfoContext;
     if (!selectedContext || !hasPiece(selectedContext.performanceId, selectedContext.piece)) {
         appState.selectedPieceInfoContext = null;
+        appState.pieceInfoEditing = false;
     }
 
     if (!appState.selectedPieceInfoContext) {
@@ -6275,7 +6427,7 @@ function renderPieceInfoView() {
                         <h6 class="mb-2">${escapeHtml(heading)}</h6>
                         <div class="list-group">
                             ${row.pieces.map((piece) => {
-                                const pieceLabel = performancePieceLabel(piece);
+                                const pieceLabel = performancePieceFormalLabel(piece);
                                 const existing = findPieceScopedItem(appState.pieceInfos, row.performanceId, piece);
                                 const hasInfo = existing && String(existing.description || existing.notes || '').trim();
                                 return `
@@ -6296,6 +6448,7 @@ function renderPieceInfoView() {
                 const performanceId = button.dataset.pieceInfoPerformanceId || '';
                 const piece = decodeURIComponent(button.dataset.pieceInfoPiece || '');
                 appState.selectedPieceInfoContext = { performanceId, piece };
+                appState.pieceInfoEditing = false;
                 renderPieceInfoView();
             });
         });
@@ -6308,6 +6461,9 @@ function renderPieceInfoView() {
     const performancePiece = normalizePerformancePieces(performance?.pieces || []).find((candidate) => performancePieceLookupLabels(candidate).includes(piece)) || piece;
     const existing = findPieceScopedItem(appState.pieceInfos, performanceId, performancePiece);
     const initialDescription = String(existing?.description || existing?.notes || '');
+    const isEditing = Boolean(appState.pieceInfoEditing);
+    const actionButtonClass = isEditing ? 'btn-success' : 'btn-outline-primary';
+    const actionButtonLabel = isEditing ? '保存' : '編集';
 
     container.innerHTML = `
         <section class="info-block mb-3">
@@ -6319,23 +6475,28 @@ function renderPieceInfoView() {
         <section class="info-block">
             <div class="mb-3">
                 <label class="form-label" for="memberPieceInfoDescription">楽曲情報</label>
-                <textarea class="form-control" id="memberPieceInfoDescription" rows="8">${escapeHtml(initialDescription)}</textarea>
+                <textarea class="form-control" id="memberPieceInfoDescription" rows="8" ${isEditing ? '' : 'readonly'}>${escapeHtml(initialDescription)}</textarea>
                 <div class="form-text">URLを記載するとリンクとして表示されます。</div>
             </div>
-            ${initialDescription ? `<div class="multiline-text mb-3">${convertUrlsToLinks(initialDescription)}</div>` : ''}
             <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-success" id="memberPieceInfoSaveBtn" type="button">保存</button>
-                <button class="btn btn-danger" id="memberPieceInfoDeleteBtn" type="button" ${existing ? '' : 'disabled'}>削除</button>
+                <button class="btn ${actionButtonClass}" id="memberPieceInfoActionBtn" type="button">${actionButtonLabel}</button>
+                <button class="btn btn-danger" id="memberPieceInfoDeleteBtn" type="button" ${existing && isEditing ? '' : 'disabled'}>削除</button>
             </div>
         </section>
     `;
 
     $('pieceInfoBackBtn')?.addEventListener('click', () => {
         appState.selectedPieceInfoContext = null;
+        appState.pieceInfoEditing = false;
         renderPieceInfoView();
     });
 
-    $('memberPieceInfoSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', async () => {
+    $('memberPieceInfoActionBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, isEditing ? '保存中...' : '編集中...', async () => {
+        if (!appState.pieceInfoEditing) {
+            appState.pieceInfoEditing = true;
+            renderPieceInfoView();
+            return;
+        }
         const description = String($('memberPieceInfoDescription')?.value || '').trim();
         if (!description) {
             showAlert('楽曲情報を入力してください', 'warning');
@@ -6351,6 +6512,7 @@ function renderPieceInfoView() {
         } else {
             await saveExtra('piece_infos', payload);
         }
+        appState.pieceInfoEditing = false;
         await loadExtraData();
         showAlert('楽曲情報を保存しました', 'success');
         renderPieceInfoView();
@@ -6363,6 +6525,7 @@ function renderPieceInfoView() {
         }
         if (!confirmDelete()) return;
         await request(`/api/extra/piece_infos/${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
+        appState.pieceInfoEditing = false;
         await loadExtraData();
         showAlert('楽曲情報を削除しました', 'success');
         renderPieceInfoView();
@@ -6381,6 +6544,7 @@ function renderPracticeInstructionView() {
 
     if (!rows.length) {
         appState.selectedPracticeInstructionContext = null;
+        appState.practiceInstructionEditing = false;
         container.innerHTML = '<p class="text-muted mb-0">未開催の演奏会はありません</p>';
         return;
     }
@@ -6392,14 +6556,11 @@ function renderPracticeInstructionView() {
     const selectedContext = appState.selectedPracticeInstructionContext;
     if (!selectedContext || !hasPiece(selectedContext.performanceId, selectedContext.piece)) {
         appState.selectedPracticeInstructionContext = null;
+        appState.practiceInstructionEditing = false;
     }
 
     if (!appState.selectedPracticeInstructionContext) {
         container.innerHTML = `
-            <section class="info-block mb-3">
-                <h5 class="mb-2">未開催演奏会の曲一覧</h5>
-                <p class="text-muted small mb-0">曲を選択すると、曲ごとの練習指示登録・編集画面に遷移します。<span class="badge text-bg-success ms-1">指示あり</span> が登録済みの目印です。</p>
-            </section>
             ${rows.map((row) => {
                 const heading = `${formatDateWithWeekday(row.date, row.date)} ${row.title}`.trim();
                 if (!row.pieces.length) {
@@ -6415,7 +6576,7 @@ function renderPracticeInstructionView() {
                         <h6 class="mb-2">${escapeHtml(heading)}</h6>
                         <div class="list-group">
                             ${row.pieces.map((piece) => {
-                                const pieceLabel = performancePieceLabel(piece);
+                                const pieceLabel = performancePieceFormalLabel(piece);
                                 const existing = findPieceScopedItem(appState.practiceInstructions, row.performanceId, piece);
                                 return `
                                     <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-practice-performance-id="${escapeHtml(row.performanceId)}" data-practice-piece="${escapeHtml(encodeURIComponent(pieceLabel))}">
@@ -6435,6 +6596,7 @@ function renderPracticeInstructionView() {
                 const performanceId = button.dataset.practicePerformanceId || '';
                 const piece = decodeURIComponent(button.dataset.practicePiece || '');
                 appState.selectedPracticeInstructionContext = { performanceId, piece };
+                appState.practiceInstructionEditing = false;
                 renderPracticeInstructionView();
             });
         });
@@ -6447,6 +6609,9 @@ function renderPracticeInstructionView() {
     const performancePiece = normalizePerformancePieces(performance?.pieces || []).find((candidate) => performancePieceLookupLabels(candidate).includes(piece)) || piece;
     const existing = findPieceScopedItem(appState.practiceInstructions, performanceId, performancePiece);
     const initialNotes = String(existing?.practice_notes || '');
+    const isEditing = Boolean(appState.practiceInstructionEditing);
+    const actionButtonClass = isEditing ? 'btn-success' : 'btn-outline-primary';
+    const actionButtonLabel = isEditing ? '保存' : '編集';
 
     container.innerHTML = `
         <section class="info-block mb-3">
@@ -6458,22 +6623,28 @@ function renderPracticeInstructionView() {
         <section class="info-block">
             <div class="mb-3">
                 <label class="form-label" for="memberPracticeInstructionNotes">練習指示内容</label>
-                <textarea class="form-control" id="memberPracticeInstructionNotes" rows="8">${escapeHtml(initialNotes)}</textarea>
+                <textarea class="form-control" id="memberPracticeInstructionNotes" rows="8" ${isEditing ? '' : 'readonly'}>${escapeHtml(initialNotes)}</textarea>
                 <div class="form-text">URLを記載するとリンクとして表示されます。</div>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-success" id="memberPracticeInstructionSaveBtn" type="button">保存</button>
-                <button class="btn btn-danger" id="memberPracticeInstructionDeleteBtn" type="button" ${existing ? '' : 'disabled'}>削除</button>
+                <button class="btn ${actionButtonClass}" id="memberPracticeInstructionActionBtn" type="button">${actionButtonLabel}</button>
+                <button class="btn btn-danger" id="memberPracticeInstructionDeleteBtn" type="button" ${existing && isEditing ? '' : 'disabled'}>削除</button>
             </div>
         </section>
     `;
 
     $('practiceInstructionBackBtn')?.addEventListener('click', () => {
         appState.selectedPracticeInstructionContext = null;
+        appState.practiceInstructionEditing = false;
         renderPracticeInstructionView();
     });
 
-    $('memberPracticeInstructionSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', async () => {
+    $('memberPracticeInstructionActionBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, isEditing ? '保存中...' : '編集中...', async () => {
+        if (!appState.practiceInstructionEditing) {
+            appState.practiceInstructionEditing = true;
+            renderPracticeInstructionView();
+            return;
+        }
         const notes = String($('memberPracticeInstructionNotes')?.value || '').trim();
         if (!notes) {
             showAlert('練習指示内容を入力してください', 'warning');
@@ -6490,8 +6661,10 @@ function renderPracticeInstructionView() {
         } else {
             await saveExtra('practice_instructions', payload);
         }
+        appState.practiceInstructionEditing = false;
         await loadExtraData();
         showAlert('練習指示を保存しました', 'success');
+        renderPracticeInstructionView();
     }));
 
     $('memberPracticeInstructionDeleteBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', async () => {
@@ -6501,8 +6674,10 @@ function renderPracticeInstructionView() {
         }
         if (!confirmDelete()) return;
         await request(`/api/extra/practice_instructions/${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
+        appState.practiceInstructionEditing = false;
         await loadExtraData();
         showAlert('練習指示を削除しました', 'success');
+        renderPracticeInstructionView();
     }));
 }
 

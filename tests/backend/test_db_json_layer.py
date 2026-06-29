@@ -82,6 +82,37 @@ def test_drive_files_db_save_uses_object_name_instead_of_string_id(backend_env):
 
     assert "id" not in rows[0]
     assert rows[0]["object_name"] == "2026-06-14/Concert/take1.mp3"
+    assert rows[0]["created_at"]
+    assert rows[0]["updated_at"]
+
+
+def test_drive_files_db_row_has_required_timestamps(backend_env):
+    rows = backend_env.db_collection_rows_for_save(
+        "drive_files",
+        [
+            {
+                "source": "google_cloud_storage",
+                "object_name": "2026-06-14/Concert/take1.mp3",
+                "name": "take1.mp3",
+                "mime_type": "audio/mpeg",
+            }
+        ],
+    )
+    row_tuple = backend_env.db_row_tuple(
+        "drive_files",
+        backend_env.DB_COLLECTION_COLUMNS["drive_files"],
+        rows[0],
+    )
+
+    assert row_tuple[8] is not None
+    assert row_tuple[9] is not None
+
+
+def test_access_logs_are_db_backed_collection(backend_env):
+    assert "access_logs" in backend_env.PORTAL_DB_TABLES
+    assert backend_env.JSON_COLLECTION_TABLES["access_logs"] == "access_logs"
+    assert "accessed_at" in backend_env.DB_TIMESTAMP_COLUMNS["access_logs"]
+    assert "member_id" in backend_env.DB_INT_COLUMNS["access_logs"]
 
 
 def test_remember_drive_file_deduplicates_by_object_name(backend_env):
@@ -109,6 +140,8 @@ def test_remember_drive_file_deduplicates_by_object_name(backend_env):
     rows = backend_env.load_json_data("drive_files")
     assert len(rows) == 1
     assert rows[0]["name"] == "take1.mp3"
+    assert rows[0]["created_at"]
+    assert rows[0]["updated_at"]
 
 
 def test_payment_child_rows_are_built_for_db_foreign_keys(backend_env):

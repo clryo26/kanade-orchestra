@@ -644,6 +644,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-access-log" type="button">アクセスログ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-database" type="button">データベース</button>
             </div>
 
@@ -775,6 +776,35 @@
                             </div>
                         </div>
                         <div id="partSettingList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemAccessLogTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">アクセスログ</div>
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <p class="text-muted small mb-0">ログイン済み団員がアクセスしたメニューを新しい順で表示します。</p>
+                            <button class="btn btn-outline-primary btn-sm" id="accessLogReloadBtn" type="button">再読込</button>
+                        </div>
+                        <div id="accessLogStatus" class="text-muted small mb-2" hidden></div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0" id="accessLogTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>日時</th>
+                                        <th>団員</th>
+                                        <th>パート</th>
+                                        <th>権限</th>
+                                        <th>メニュー</th>
+                                        <th>区分</th>
+                                        <th>端末</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>

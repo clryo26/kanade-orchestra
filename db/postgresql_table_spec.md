@@ -173,6 +173,29 @@
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 
+### 2.7.1 access_logs
+- 用途: 団員のメニューアクセス記録
+- PK: id
+- FK: member_id -> members.id (ON DELETE SET NULL)
+- INDEX:
+  - idx_access_logs_accessed_at (accessed_at DESC)
+  - idx_access_logs_member_id (member_id)
+- 列レイアウト:
+  - id BIGINT IDENTITY PK （必須）
+  - member_id BIGINT （任意）
+  - member_name TEXT DEFAULT '' （任意）
+  - member_part TEXT DEFAULT '' （任意）
+  - permission TEXT DEFAULT '' （任意）
+  - menu_key TEXT NOT NULL （必須）
+  - menu_label TEXT NOT NULL （必須）
+  - panel TEXT DEFAULT '' （任意）
+  - device_id TEXT DEFAULT '' （任意）
+  - device_name TEXT DEFAULT '' （任意）
+  - user_agent TEXT DEFAULT '' （任意）
+  - accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
 ### 2.8 absences
 - 用途: 出欠回答（練習）
 - PK: id
@@ -570,7 +593,7 @@
 - FK: なし
 - UNIQUE/CHECK: なし
 - INDEX: idx_drive_files_object_name (object_name)
-- 備考: GCS録音の外部識別子は `object_name`。JSON互換データの文字列IDはDB保存時に `object_name` へ退避し、`id` はDB内部採番を使用する。
+- 備考: GCS録音の外部識別子は `object_name`。JSON互換データの文字列IDはDB保存時に `object_name` へ退避し、`id` はDB内部採番を使用する。保存時に `created_at` / `updated_at` が無い場合は現在時刻で補完する。
 - 列レイアウト:
   - id BIGINT IDENTITY PK （必須）
   - source TEXT DEFAULT '' （任意）
