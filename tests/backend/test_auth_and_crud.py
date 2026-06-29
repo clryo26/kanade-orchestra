@@ -63,6 +63,93 @@ def test_portal_login_reads_members_from_database_after_json_migration(client, b
     assert db_store["auth_devices"][0]["device_id"] == "db-device"
 
 
+def test_portal_login_allows_unique_member_when_part_label_differs(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 11,
+                "name": "Db Member",
+                "part": "Violin",
+                "password": "secret",
+                "permission": "一般",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [],
+    }
+
+    monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+
+    def fake_replace(name, data):
+        db_store[name] = [dict(item) for item in data]
+
+    monkeypatch.setattr(backend_env, "db_replace_collection", fake_replace)
+    backend_env._memory_cache.clear()
+
+    response = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "Db Member",
+            "part": "Vn",
+            "password": "secret",
+            "device_id": "db-device-2",
+            "device_name": "Browser",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["member_id"] == 11
+
+
+def test_portal_login_rejects_part_mismatch_when_same_name_is_duplicated(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 21,
+                "name": "Same Name",
+                "part": "Vn",
+                "password": "secret1",
+                "permission": "一般",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            },
+            {
+                "id": 22,
+                "name": "Same Name",
+                "part": "Va",
+                "password": "secret2",
+                "permission": "一般",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            },
+        ],
+        "auth_devices": [],
+    }
+
+    monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+    monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, data: db_store.__setitem__(name, [dict(item) for item in data]))
+    backend_env._memory_cache.clear()
+
+    response = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "Same Name",
+            "part": "Cello",
+            "password": "secret1",
+            "device_id": "db-device-3",
+            "device_name": "Browser",
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_create_performance_forbidden_for_general(client, seed_device_fn):
     seed_device_fn(device_id="dev-general", permission="一般")
     response = client.post(

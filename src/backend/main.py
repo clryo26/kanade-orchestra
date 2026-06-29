@@ -144,6 +144,7 @@ CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 SHEET_DIR = UPLOAD_DIR / "sheets"
 JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "auth_devices", "recording_metadata", "desired_pieces", "promotions")
+STARTUP_PRELOAD_COLLECTIONS = ("performances", "schedules", "announcements", "events", "members", "payments", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings")
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -950,6 +951,53 @@ def db_data_enabled() -> bool:
     return all(os.getenv(name, "").strip() for name in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"))
 
 
+def env_flag_enabled(name: str) -> bool:
+    return str(os.getenv(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def db_expected() -> bool:
+    # DB_REQUIRED が有効、または DB 関連環境変数のいずれかが設定されていれば
+    # DB 接続を期待している状態とみなす。
+    if env_flag_enabled("DB_REQUIRED"):
+        return True
+    return any(os.getenv(name, "").strip() for name in ("DB_URL", "DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+
+
+def ensure_db_expected_is_ready() -> None:
+    # DB 利用を期待しているのに接続設定が不完全な場合、
+    # JSON への暗黙フォールバックを防いで即時に設定不備として返す。
+    if db_expected() and not db_data_enabled():
+        raise HTTPException(
+            status_code=500,
+            detail="DB is expected but not fully configured. Set DB_URL or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD.",
+        )
+
+
+def run_db_startup_self_check() -> None:
+    # DB 利用を期待していない環境では何もしない。
+    if not db_expected():
+        return
+
+    # 期待時は設定不備を即時検知する。
+    ensure_db_expected_is_ready()
+    assert_db_ready()
+
+    try:
+        with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+                # 読み取りの中核となる members テーブル存在を確認する。
+                cur.execute("SELECT to_regclass('public.members')")
+                row = cur.fetchone()
+                if not row or row[0] is None:
+                    raise RuntimeError("members table does not exist")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"DB startup self-check failed: {exc}") from exc
+
+
 def db_json_value(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
@@ -1437,6 +1485,9 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
     if cached is not None:
         return cached
 
+    if name in JSON_COLLECTION_TABLES:
+        ensure_db_expected_is_ready()
+
     if db_data_enabled() and name in JSON_COLLECTION_TABLES:
         db_data = db_load_json_data(name)
         _memory_cache.set(name, db_data)
@@ -1464,6 +1515,9 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
 
 
 def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
+    if name in JSON_COLLECTION_TABLES:
+        ensure_db_expected_is_ready()
+
     if db_data_enabled() and name in DB_WRITABLE_COLLECTIONS:
         db_replace_collection(name, data)
         _memory_cache.set(name, data)
@@ -1564,13 +1618,15 @@ async def seed_cloud_data_from_local() -> None:
 
     # 起動時に主要コレクションをキャッシュへ温める。
     # さらに Cloud Storage が空なら、既存ローカル JSON を初回シードとして送る。
-    for name in JSON_DATA_NAMES:
+    for name in STARTUP_PRELOAD_COLLECTIONS:
         logger.info("Startup preload begin: %s", name)
         try:
             loaded = load_json_data(name)  # キャッシュに読み込み
             logger.info("Startup preload done: %s (%s items)", name, len(loaded))
         except HTTPException as exc:
             logger.exception("Startup preload failed: %s (%s)", name, exc)
+            if db_expected():
+                raise
     
     if not storage_enabled():
         logger.info("Storage disabled; skipping cloud seeding")
@@ -1596,6 +1652,7 @@ async def seed_cloud_data_from_local() -> None:
 
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
+    run_db_startup_self_check()
     await seed_cloud_data_from_local()
     yield
 
@@ -1640,6 +1697,11 @@ def compact_member_name(value: Any) -> str:
     return re.sub(r"[\s\u3000]+", "", str(value or "")).strip().lower()
 
 
+def compact_member_part(value: Any) -> str:
+    # パート比較でも空白差と大文字小文字差を吸収する。
+    return re.sub(r"[\s\u3000]+", "", str(value or "")).strip().lower()
+
+
 def member_display_name(member: dict[str, Any]) -> str:
     # 団員表示名の標準形を返す。
     full_name = f"{member.get('last_name') or ''}{member.get('first_name') or ''}"
@@ -1662,27 +1724,32 @@ def member_login_names(member: dict[str, Any]) -> set[str]:
 
 def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str = "") -> tuple[int, dict[str, Any]]:
     # ログイン入力の名前/パートから団員を特定する。
-    # インデックスを優先し、無ければ線形探索する。
+    # 一意名ならパート表記ゆれを許容し、同名複数人の誤認証は避ける。
     normalized = compact_member_name(name)
     if not normalized:
         raise HTTPException(status_code=400, detail="name is required")
-    
-    # インデックスを使用して高速検索
-    index_map = _memory_cache.get_index("members", "member_login")
-    if index_map and normalized in index_map:
-        index, item = index_map[normalized]
-        if part and part != member_part(item):
-            # パートが指定されている場合はチェック
-            pass
-        else:
-            return index, item
-    
-    # インデックスが無い場合は線形検索
+
+    normalized_part = compact_member_part(part)
+    candidates: list[tuple[int, dict[str, Any]]] = []
     for index, item in enumerate(items):
         if normalized in member_login_names(item):
-            if part and part != member_part(item):
-                continue
-            return index, item
+            candidates.append((index, item))
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if normalized_part:
+        strict_matches = [
+            (index, item)
+            for index, item in candidates
+            if compact_member_part(member_part(item)) == normalized_part
+        ]
+        if strict_matches:
+            return strict_matches[0]
+
+        if len(candidates) == 1:
+            return candidates[0]
+
     raise HTTPException(status_code=404, detail="Member not found")
 
 
@@ -2257,10 +2324,64 @@ async def health_check() -> dict[str, str]:
         "timestamp": datetime.now().isoformat(),
         "service": "Orchestra Activity Tool",
         "storage_configured": str(storage_enabled()).lower(),
+        "db_expected": str(db_expected()).lower(),
+        "db_configured": str(db_data_enabled()).lower(),
     }
 
 
 # 親レコードが削除されたために孤立したデータを検出して返す。
+
+
+def fk_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/api/maintenance/orphans")
+async def get_maintenance_orphans(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    """参照先が存在しない孤立レコードを返す（管理者専用）。"""
+    require_admin_device(x_device_id)
+
+    # child_collection, fk_key, parent_collection
+    relations = (
+        ("piece_infos", "performance_id", "performances"),
+        ("practice_instructions", "performance_id", "performances"),
+        ("castings", "performance_id", "performances"),
+        ("absences", "schedule_id", "schedules"),
+        ("absences", "member_id", "members"),
+        ("event_responses", "event_id", "events"),
+        ("event_responses", "member_id", "members"),
+        ("payments", "member_id", "members"),
+        ("desired_pieces", "member_id", "members"),
+    )
+
+    grouped_orphans: dict[str, list[dict[str, Any]]] = {}
+    for child_name, fk_key, parent_name in relations:
+        children = load_json_data(child_name)
+        parents = load_json_data(parent_name)
+
+        parent_ids = {fk_int(item.get("id")) for item in parents}
+        parent_ids.discard(None)
+
+        for item in children:
+            fk_value = fk_int(item.get(fk_key))
+            if fk_value is None:
+                continue
+            if fk_value not in parent_ids:
+                grouped_orphans.setdefault(child_name, []).append(item)
+
+    summary = {name: len(items) for name, items in grouped_orphans.items()}
+    total = sum(summary.values())
+    return {
+        "total": total,
+        "summary": summary,
+        "orphans": grouped_orphans,
+        "checked_at": datetime.now().isoformat(),
+    }
 
 @app.get("/api/system/database/tables")
 async def list_database_tables(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:

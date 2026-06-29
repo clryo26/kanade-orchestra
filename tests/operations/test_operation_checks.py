@@ -98,6 +98,31 @@ def test_op_api_004_etag_reuse_returns_304(client):
     assert second.status_code == 304
 
 
+def test_op_api_005_orphan_integrity_gate(client, backend_env):
+    _seed_member(
+        backend_env,
+        member_id=1,
+        name="op-admin",
+        part="Vn",
+        permission="管理者",
+        password="op-admin-pass",
+    )
+    login = _portal_login(
+        client,
+        name="op-admin",
+        part="Vn",
+        password="op-admin-pass",
+        device_id="op-dev-admin",
+    )
+    assert login.status_code == 200
+
+    response = client.get("/api/maintenance/orphans", headers={"X-Device-Id": "op-dev-admin"})
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload.get("total") == 0
+
+
 def test_op_ci_001_required_jobs_exist_in_ci_yaml():
     ci_path = Path(".github/workflows/ci.yml")
     text = ci_path.read_text(encoding="utf-8")
@@ -110,6 +135,13 @@ def test_op_ci_002_sticky_comment_action_exists():
     ci_path = Path(".github/workflows/ci.yml")
     text = ci_path.read_text(encoding="utf-8")
     assert "marocchino/sticky-pull-request-comment@v2" in text
+
+
+def test_op_ci_003_frontend_syntax_gate_exists():
+    ci_path = Path(".github/workflows/ci.yml")
+    text = ci_path.read_text(encoding="utf-8")
+    assert "Run frontend syntax check" in text
+    assert "npm run check:frontend:syntax" in text
 
 
 def test_op_doc_001_required_specs_exist():

@@ -1353,6 +1353,7 @@ function loadFullDataInBackground() {
         try {
             await loadAll({ includeHeavyLists: false });
             appState.dataLoaded = true;
+            renderBackgroundViews({ includeHeavyLists: false });
         } catch (error) {
             console.warn('Background data load failed', error);
         } finally {
@@ -1565,6 +1566,18 @@ function renderInitialViews(options = {}) {
     renderMemberExtraViews({ includeHeavyLists });
     renderAuthDevices();
     renderPartManagement();
+    renderSchedulePerformanceOptions();
+    updateSchedulePieceOptions();
+    renderPortalHome();
+}
+
+function renderBackgroundViews(options = {}) {
+    const includeHeavyLists = options.includeHeavyLists !== false;
+    renderMemberExtraViews({ includeHeavyLists });
+    renderSheetAdmin();
+    renderCastingAdmin();
+    renderPracticeInstructionAdmin();
+    renderAuthDevices();
     renderSchedulePerformanceOptions();
     updateSchedulePieceOptions();
     renderPortalHome();

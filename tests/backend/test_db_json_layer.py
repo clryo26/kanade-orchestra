@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+
+from fastapi import HTTPException
+import pytest
+
 
 def test_part_settings_db_rows_keep_frontend_display_order(backend_env):
     row = backend_env.db_row_to_json({"id": 1, "name": "Violin", "sort_order": 20, "is_active": True})
@@ -90,3 +95,101 @@ def test_db_rows_fill_json_compatibility_keys(backend_env):
     response_row = backend_env.db_row_to_json({"id": 2, "candidate_key": "cand-1"})
 
     assert response_row["candidate_id"] == "cand-1"
+
+
+def test_load_json_data_raises_when_db_is_expected_but_not_fully_configured(backend_env, monkeypatch):
+    monkeypatch.setenv("DB_HOST", "/cloudsql/project:region:instance")
+    monkeypatch.delenv("DB_NAME", raising=False)
+    monkeypatch.delenv("DB_USER", raising=False)
+    monkeypatch.delenv("DB_PASSWORD", raising=False)
+    backend_env._memory_cache.clear()
+
+    try:
+        backend_env.load_json_data("members")
+        assert False, "Expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 500
+        assert "DB is expected" in str(exc.detail)
+
+
+def test_seed_cloud_data_preloads_only_startup_collections(backend_env, monkeypatch):
+    loaded_names: list[str] = []
+
+    monkeypatch.setattr(backend_env, "seed_connection_settings_from_legacy_env", lambda: None)
+    monkeypatch.setattr(backend_env, "storage_enabled", lambda: False)
+
+    def fake_load_json_data(name):
+        loaded_names.append(name)
+        return []
+
+    monkeypatch.setattr(backend_env, "load_json_data", fake_load_json_data)
+
+    asyncio.run(backend_env.seed_cloud_data_from_local())
+
+    assert tuple(loaded_names) == backend_env.STARTUP_PRELOAD_COLLECTIONS
+
+
+def test_save_json_data_raises_when_db_is_expected_but_not_fully_configured(backend_env, monkeypatch):
+    monkeypatch.setenv("DB_REQUIRED", "true")
+    monkeypatch.delenv("DB_URL", raising=False)
+    monkeypatch.delenv("DB_HOST", raising=False)
+    monkeypatch.delenv("DB_NAME", raising=False)
+    monkeypatch.delenv("DB_USER", raising=False)
+    monkeypatch.delenv("DB_PASSWORD", raising=False)
+    backend_env._memory_cache.clear()
+
+    try:
+        backend_env.save_json_data("members", [{"id": 1, "name": "A"}])
+        assert False, "Expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 500
+        assert "DB is expected" in str(exc.detail)
+
+
+def test_bootstrap_reads_from_db_mode_for_members_and_extras(client, backend_env, monkeypatch):
+    db_store = {
+        "performances": [{"id": 1, "title": "Concert"}],
+        "schedules": [{"id": 1, "date": "2026-06-29"}],
+        "announcements": [{"id": 1, "content": "Notice"}],
+        "members": [{"id": 10, "name": "Db Member", "part": "Vn"}],
+        "payments": [{"id": 1, "member_id": 10, "paid_until_month": "2026-06"}],
+        "part_settings": [{"id": 1, "name": "Vn", "sort_order": 1, "display_order": 1, "is_active": True}],
+        "org_settings": [{"id": 1, "name": "Kanade"}],
+        "sns_settings": [],
+        "connection_settings": [],
+    }
+
+    monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+    monkeypatch.setattr(backend_env, "storage_enabled", lambda: False)
+    backend_env._memory_cache.clear()
+
+    response = client.get("/api/bootstrap-lite")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["members"][0]["name"] == "Db Member"
+    assert payload["extras"]["payments"][0]["member_id"] == 10
+
+
+def test_run_db_startup_self_check_skips_when_db_not_expected(backend_env, monkeypatch):
+    monkeypatch.setattr(backend_env, "db_expected", lambda: False)
+
+    backend_env.run_db_startup_self_check()
+
+
+def test_run_db_startup_self_check_raises_when_connection_fails(backend_env, monkeypatch):
+    monkeypatch.setattr(backend_env, "db_expected", lambda: True)
+    monkeypatch.setattr(backend_env, "ensure_db_expected_is_ready", lambda: None)
+    monkeypatch.setattr(backend_env, "assert_db_ready", lambda: None)
+    monkeypatch.setattr(backend_env, "db_connection_string", lambda: "host=example")
+
+    class _BrokenPsycopg:
+        @staticmethod
+        def connect(*args, **kwargs):
+            raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(backend_env, "psycopg", _BrokenPsycopg)
+
+    with pytest.raises(RuntimeError, match="DB startup self-check failed"):
+        backend_env.run_db_startup_self_check()

@@ -44,6 +44,7 @@ Cloud Run に割り当てるサービスアカウントに以下の権限が必�
 - GitHub Actions の CI が最新コミットで成功していること（frontend syntax check を含む）
 - ローカルで可能な範囲の構文・テスト確認を実施済みであること
 - デプロイ対象コミットは、CI 成功が確認できるコミット SHA のみを許可すること
+- 運用API整合性チェック（`GET /api/maintenance/orphans`）で `total=0` が確認できること
 
 禁止事項:
 
@@ -59,6 +60,9 @@ python -m compileall -q src tests
 
 # Python テスト
 uv run pytest -q tests/backend tests/integration/backend tests/operations
+
+# データ整合性（orphan）必須ゲート
+uv run pytest -q tests/operations -k op_api_005_orphan_integrity_gate
 
 # Node がある環境ではフロント構文チェックも実施
 npm run check:frontend:syntax

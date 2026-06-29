@@ -199,6 +199,8 @@
 - バックエンド: MemoryCache + インデックス + ETag
 - フロント: IndexedDB キャッシュ + in-flight dedupe
 - 初期描画: 軽量 bootstrap 先行、重い一覧は遅延
+- 起動時プリロード: 初期表示に必要な主要コレクションのみを先読みし、Cloud Run cold start の不要な全件ウォームアップを避ける
+- バックグラウンド補完: 追加データ取得後は、既に描画済みの基礎画面を再描画せず、依存ビューだけを更新する
 - `/api/revision` を `Cache-Control: no-store` で取得し、Cloud Run リビジョンを画面に動的表示。bootstrap 側の値は後方互換として扱う
 
 ## 8. 運用設計
@@ -1244,6 +1246,11 @@ LOG_LEVEL                        # ログレベル (INFO, DEBUG)
 - DATE/TIME/TIMESTAMPTZ列にDB型へ変換できない値がある場合は、移行処理を止めずにNULLまたは移行時刻の補完値へ正規化する。
 - 移行後にDB接続設定が有効な環境では、既存のJSON互換API（団員・端末認証・bootstrap等）はJSONファイルではなくPostgreSQLを優先して参照する。
 - DB接続設定が有効な環境では、`JSON_COLLECTION_TABLES` に対応する全JSON互換コレクションの保存先もPostgreSQLにする。
+- DB利用を期待する環境（`DB_REQUIRED=true` または `DB_URL/DB_HOST/DB_NAME/DB_USER/DB_PASSWORD` のいずれか設定）で接続設定が不完全な場合、APIはJSONへ暗黙フォールバックせず 500 を返して設定不備を即時検知する。
+- アプリ起動時は DBセルフチェック（接続確認 + `public.members` 存在確認）を実施し、DB期待環境で不整合があれば起動を失敗させる。
+- 団員ログインの名前照合は空白差と大小文字差を吸収し、パート照合は正規化後に判定する。移行後のパート表記ゆれがあっても、同名が1人だけなら認証を継続し、同名が複数いる場合は誤認証防止のため不一致を拒否する。
+- DBモード回帰テストでは、`/api/bootstrap-core` と `/api/bootstrap` の読込、および基本マスタ CRUD（performances/schedules/announcements/events）と extra CRUD（org_settings/absences）の保存経路が `db_replace_collection` を通ることを継続確認する。
+- JSONモードとDBモードの応答差分テストでは、`/api/performances`、`/api/members`、`/api/extra/org_settings`、`/api/bootstrap-lite`、`/api/bootstrap-core`、`/api/bootstrap` の読込応答が一致すること、および `POST /api/performances` と `POST /api/extra/org_settings` の応答スキーマ（キー集合・主要型）が一致することを確認する。
 - `part_settings.sort_order` / `venue_settings.sort_order` は表示順として扱い、画面互換の `display_order` も読み込み時に補完する。
 - `org_settings` は画面互換の `name` / `short_name` をDB列 `organization_name` / `organization_abbreviation` / `short_name` に対応させ、未入力の `membership_fee_amount` は0として保存する。
 - `date_adjustment_responses.candidate_key` は画面互換の `candidate_id` としても返す。

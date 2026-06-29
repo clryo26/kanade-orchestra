@@ -40,6 +40,7 @@
 | OP-API-002 | P0 | Yes | 更新系保護 | ヘッダなしでPOST /api/performances | 401 |
 | OP-API-003 | P0 | Yes | 管理運用 | 管理者ログイン後POST /api/performances | 200 |
 | OP-API-004 | P1 | Yes | ETag再利用 | If-None-Match付きGET /api/bootstrap-lite | 304 |
+| OP-API-005 | P0 | Yes | データ整合性必須ゲート | 管理者端末でGET /api/maintenance/orphans | 200 + total=0 |
 
 ### 4.2 CI運用
 
@@ -47,6 +48,7 @@
 |---|---|---|---|---|---|
 | OP-CI-001 | P0 | Yes | ジョブ構成 | ci.yml内のjobs確認 | backend/frontend/coverage-summaryが存在 |
 | OP-CI-002 | P1 | Yes | 品質可視化 | coverage-summary投稿設定確認 | sticky comment actionが存在 |
+| OP-CI-003 | P0 | Yes | Node未導入時の代替ゲート | ci.yml内のfrontend syntax check設定確認 | `Run frontend syntax check` と `npm run check:frontend:syntax` が存在 |
 
 ### 4.3 ドキュメント運用
 
@@ -60,6 +62,7 @@
 - 運用テスト実行: uv run pytest -q tests/operations
 - 全体確認: uv run pytest -q
 - CI常時実行: .github/workflows/ci.yml の backend-tests ジョブ内「Run backend operation tests」ステップ
+- デプロイ可否判定: OP-API-005（orphan整合性）が失敗したコミットはデプロイ不可
 
 ## 6. 実施記録（2026-06-18）
 

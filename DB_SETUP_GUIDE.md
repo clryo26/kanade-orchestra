@@ -309,6 +309,74 @@ gcloud run services describe kanade-orchestra --region asia-northeast2 --format=
 - DB_HOST, DB_PORT, DB_NAME, DB_USER が設定済み
 - DB_PASSWORD が Secret 参照
 
+### 6.4 Cloud Run未接続時のローカル検証（必須）
+
+Cloud Run に接続できない環境でも、次の手順で「DB移行後に必要な品質ゲート」を先に確認できます。
+
+#### 6.4.1 実行前準備
+
+```bash
+uv sync
+```
+
+Windows 環境で文字コード由来のエラーを避けるため、実行時は UTF-8 モードを有効化してください。
+
+PowerShell 例:
+
+```powershell
+$env:PYTHONUTF8='1'
+```
+
+#### 6.4.2 構文チェック
+
+```bash
+uv run python -m compileall -q src tests
+```
+
+合格基準:
+- エラー 0 件
+
+#### 6.4.3 バックエンド回帰テスト（DBモード含む）
+
+```bash
+uv run --with pytest pytest -q tests/backend tests/integration/backend tests/operations
+```
+
+合格基準:
+- 失敗 0 件
+
+#### 6.4.4 データ整合性ゲート（orphan 必須）
+
+```bash
+uv run --with pytest pytest -q tests/operations -k op_api_005_orphan_integrity_gate
+```
+
+合格基準:
+- `/api/maintenance/orphans` の結果が `total=0`
+- このケースが失敗するコミットはデプロイ不可
+
+#### 6.4.5 DB設定ミス検知（fail-fast）
+
+確認観点:
+- DB期待環境（`DB_REQUIRED=true` または DB環境変数が一部設定）で接続設定が不完全な場合、アプリは起動時セルフチェックで失敗すること。
+- DB期待環境では JSON への暗黙フォールバックが発生しないこと。
+
+補足:
+- 実クラウド疎通（Cloud Run URL / Cloud SQL 実接続）は、接続可能な環境で 6.1〜6.3 の確認を追加実施してください。
+
+#### 6.4.6 Node/npm が使えない環境の代替確認
+
+ローカルで `npm run check:frontend:syntax` を実行できない場合は、次を必須ゲートにしてください。
+
+確認項目:
+- backend / integration / operations テストが成功していること（6.4.3）
+- orphan 整合性ゲートが成功していること（6.4.4）
+- PR の GitHub Actions で frontend syntax check が成功していること
+
+補足:
+- frontend syntax check は CI の `frontend-tests` ジョブで `npm run check:frontend:syntax` を実行します。
+- Node 未導入環境では、ローカル代替としてこの CI 成功をデプロイ必須条件にします。
+
 ## 7. 監査向けスクショ取得ポイント一覧
 
 監査や引き継ぎで「構築した事実」を示しやすい画面を、取得推奨順に並べています。
@@ -381,12 +449,113 @@ gcloud run services describe kanade-orchestra --region asia-northeast2 --format=
 - [ ] Cloud RunのDB接続設定画面（環境変数 + Secret）
 - [ ] スキーマ適用後のテーブル一覧画面
 
-## 8. つまずきやすい点
+### 7.8 事前完成（Cloud Run未接続時に先に埋める項目）
 
-- DB自体は「Cloud SQL」で作る。ローカルにPostgreSQLサーバーを立てる想定ではない。
-- DBユーザーのパスワードは、Cloud Runの環境変数へ直接平文で入れない。Secret Manager経由で注入する。
-- テーブル作成は自動ではない。db/postgresql_schema.sql の適用が必要。
-- 既存のJSON保存は完全廃止ではないため、機能によって参照先が異なる期間がある。
+Cloud Run に接続できない期間でも、監査チェックリストの一部は先に完了できます。
+
+先行して完了できる項目:
+- [ ] 7.1 の「プロジェクト選択」「API有効化」
+- [ ] 7.2 の「Cloud SQLインスタンス」「DB」「ユーザー」
+- [ ] 7.3 の「Secret存在」「最新バージョン」
+- [ ] 7.4 の「IAMロール付与」
+- [ ] 6.4 のローカル品質ゲート（構文チェック / backend回帰 / orphan整合性 / Node未導入時のCI代替確認）
+
+接続可能になってから完了する項目:
+- [ ] 7.5 の Cloud Run DB接続設定証跡
+- [ ] 7.6 のスキーマ適用証跡（Cloud SQL Studio / Cloud Shell 実行結果）
+- [ ] 7.7 の最小セットで未完了の Cloud Run / テーブル一覧系
+
+運用手順:
+1. 先行完了できる項目は、`CLOUD_RUN_INITIAL_CHECKLIST_LOG.md` の該当行に証跡（コマンド結果やスクショファイル名）を先に記録する。
+2. 未接続で実施できない項目は判定を `N/A（接続待ち）` として一時記録する。
+3. 接続可能になったタイミングで `N/A（接続待ち）` の行だけを再実施し、最終判定を `OK/NG` に更新する。
+
+## 8. つまずきやすい点（症状別の対処）
+
+この章は「何が起きたら、どこを見て、どう直すか」を短時間で判断するための運用メモです。
+
+### 8.1 Cloud Run で DB 接続できない / 500 が出る
+
+よくある原因:
+- Cloud SQL 接続名の誤り
+- `DB_HOST` / `DB_NAME` / `DB_USER` の設定漏れ
+- `DB_PASSWORD` Secret 注入漏れ
+- 実行サービスアカウントに `roles/cloudsql.client` がない
+
+確認手順:
+```bash
+gcloud run services describe kanade-orchestra --region asia-northeast2 --format="yaml(spec.template.metadata.annotations,spec.template.spec.containers[0].env,spec.template.spec.serviceAccountName)"
+gcloud sql instances describe kanade-portal-pg --format="yaml(name,state,connectionName)"
+gcloud secrets describe kanade-portal-db-password
+```
+
+対処:
+- Cloud Run の DB 接続設定（5.8）を再設定して再デプロイ
+- IAM ロール付与（5.7）を再確認
+
+### 8.2 DB を作ったのにデータが空に見える
+
+よくある原因:
+- `db/postgresql_schema.sql` 未適用
+- JSON から DB への移行未実施、または `--dry-run` のみ実行
+
+確認手順:
+```bash
+gcloud sql connect kanade-portal-pg --user=kanade_app --database=kanade_portal
+```
+
+psql:
+```sql
+\dt
+\i db/post_migration_count_check.sql
+```
+
+対処:
+- スキーマ適用（4.7 または 5.9）
+- 移行スクリプト本実行（4.9, `--truncate`）
+
+### 8.3 ローカルで Python 実行時に文字コードエラーが出る（Windows）
+
+症状例:
+- `UnicodeDecodeError`（cp932 系）
+
+対処:
+```powershell
+$env:PYTHONUTF8='1'
+```
+
+その後、次を再実行:
+```bash
+uv run python -m compileall -q src tests
+uv run --with pytest pytest -q tests/backend tests/integration/backend tests/operations
+```
+
+### 8.4 Node/npm が無く frontend 構文チェックできない
+
+対処方針:
+- ローカル代替として 6.4.6 を適用
+- CI の `frontend-tests` で `npm run check:frontend:syntax` 成功を必須化
+
+確認:
+- `CLOUD_RUN_INITIAL_CHECKLIST_LOG.md` の 0.1 P-4 に記録
+
+### 8.5 Cloud Run 未接続で監査証跡が揃わない
+
+対処方針:
+- 7.8 の「事前完成」を使い、先に取れる証跡を完了
+- 取れない項目は `N/A（接続待ち）` で記録
+
+更新手順:
+1. 先行項目（7.1〜7.4, 6.4系）を `OK/NG` で確定
+2. 接続待ち項目（7.5〜7.7 の一部）を `N/A（接続待ち）`
+3. 接続可能化後に `N/A（接続待ち）` 行だけ再確認
+
+### 8.6 最終デプロイ前の再発防止ルール
+
+次の 3 点を満たしたコミットのみデプロイ可:
+- CI 成功コミットのみデプロイ可
+- 構文チェック実施
+- テスト実行（backend / integration / operations）
 
 ## 9. 元資料（詳細版）
 
