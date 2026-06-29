@@ -1,6 +1,6 @@
 ﻿# PostgreSQL テーブル仕様書
 
-最終更新: 2026-06-19
+最終更新: 2026-06-29
 参照DDL: db/postgresql_schema.sql
 
 ## 1. 共通仕様
@@ -34,6 +34,7 @@
   - venue TEXT （任意）
   - conductor TEXT （任意）
   - flyer_image TEXT DEFAULT '' （任意）
+  - performance_fee_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 （必須）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 
@@ -351,6 +352,7 @@
 
 ### 2.18 payments
 - 用途: 団費/演奏会費支払台帳（団員単位）
+- 備考: 金額の正本は org_settings.membership_fee_amount と performances.performance_fee_amount。payments.membership_fee_amount と payment_performance_fees.fee_amount は既存データ互換の保持列で、現行UIでは金額入力に使用しない。
 - PK: id
 - FK: member_id -> members.id (ON DELETE SET NULL)
 - UNIQUE/CHECK:
@@ -568,6 +570,7 @@
 - FK: なし
 - UNIQUE/CHECK: なし
 - INDEX: idx_drive_files_object_name (object_name)
+- 備考: GCS録音の外部識別子は `object_name`。JSON互換データの文字列IDはDB保存時に `object_name` へ退避し、`id` はDB内部採番を使用する。
 - 列レイアウト:
   - id BIGINT IDENTITY PK （必須）
   - source TEXT DEFAULT '' （任意）

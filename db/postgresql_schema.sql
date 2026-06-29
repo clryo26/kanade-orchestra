@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS performances (
     venue TEXT,
     conductor TEXT,
     flyer_image TEXT DEFAULT '',
+    performance_fee_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

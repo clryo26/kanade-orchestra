@@ -1,9 +1,16 @@
 const {
+    performancePieceFormalLabel,
     performancePieceLookupLabels,
     findPieceScopedItem
 } = require('../../src/static/js/frontend_testable_logic.js');
 
 describe('piece scoped lookup', () => {
+    test('formal label ignores alias for management list display', () => {
+        const piece = { composer: 'Beethoven', title: 'Symphony No.5', alias: 'Alias' };
+
+        expect(performancePieceFormalLabel(piece)).toBe('Beethoven: Symphony No.5');
+    });
+
     test('matches migrated rows saved with alias or formal piece labels', () => {
         const piece = { composer: 'Beethoven', title: 'Symphony No.5', alias: '運命' };
         const rows = [

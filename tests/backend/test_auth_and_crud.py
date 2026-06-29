@@ -187,6 +187,104 @@ def test_create_performance_allowed_for_admin(client, seed_device_fn, admin_head
     assert response.json()["id"] == 1
 
 
+def test_update_performance_saves_performance_fee_amount(client, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+    created = client.post(
+        "/api/performances",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert",
+            "date": "2026-06-18",
+            "open_time": "17:00",
+            "start_time": "18:00",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "pieces": [{"title": "Symphony"}],
+        },
+    )
+    assert created.status_code == 200
+
+    updated = client.put(
+        "/api/performances/1",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert",
+            "date": "2026-06-18",
+            "open_time": "17:00",
+            "start_time": "18:00",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "performance_fee_amount": 5000,
+            "pieces": [{"title": "Symphony"}],
+        },
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["performance_fee_amount"] == 5000
+    assert updated.json()["pieces"] == [{"title": "Symphony"}]
+
+
+def test_member_password_is_hashed_and_hidden_in_admin_api(client, backend_env, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+    created = client.post(
+        "/api/members",
+        headers=admin_headers_fixture,
+        json={
+            "last_name": "奏",
+            "first_name": "太郎",
+            "part": "Vn",
+            "password": "plain-secret",
+            "permission": "一般",
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["password"] == ""
+    assert created.json()["password_set"] is True
+    stored = backend_env.load_json_data("members")[0]
+    assert stored["password"].startswith("pbkdf2$")
+    assert backend_env.verify_password("plain-secret", stored["password"])
+
+    listed = client.get("/api/members")
+    assert listed.status_code == 200
+    assert listed.json()[0]["password"] == ""
+    assert listed.json()[0]["password_set"] is True
+
+
+def test_member_update_without_password_preserves_existing_hash(client, backend_env, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+    created = client.post(
+        "/api/members",
+        headers=admin_headers_fixture,
+        json={
+            "last_name": "奏",
+            "first_name": "花子",
+            "part": "Va",
+            "password": "first-secret",
+            "permission": "一般",
+        },
+    )
+    assert created.status_code == 200
+    stored_before = backend_env.load_json_data("members")[0]["password"]
+
+    updated = client.put(
+        "/api/members/1",
+        headers=admin_headers_fixture,
+        json={
+            "last_name": "奏",
+            "first_name": "花子",
+            "part": "Vc",
+            "password": "",
+            "permission": "一般",
+        },
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["password"] == ""
+    assert updated.json()["password_set"] is True
+    assert backend_env.load_json_data("members")[0]["password"] == stored_before
+
+
 def test_recording_delete_forbidden_for_general(client, seed_device_fn):
     seed_device_fn(device_id="dev-general", permission="一般")
     response = client.request(

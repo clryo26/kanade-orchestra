@@ -332,6 +332,7 @@
         renderInitialViewTargets,
         resolveOrgShortName,
         portalTitleTextFromOrg,
+        performancePieceFormalLabel,
         performancePieceLookupLabels,
         findPieceScopedItem,
         cloudRunRevisionLabel,

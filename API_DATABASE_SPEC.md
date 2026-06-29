@@ -1,7 +1,7 @@
 # 奏オケポータル API / データ仕様書
 
 版: 2.0
-最終更新: 2026-06-17
+最終更新: 2026-06-29
 
 ## 1. 概要
 
@@ -23,6 +23,7 @@
 ### 2.3 キャッシュ
 
 - bootstrap 系 API は ETag を返却
+- bootstrap 系 API の ETag は、レスポンスに含める全コレクションの ETag を合成して生成する
 - クライアントは If-None-Match を送信可能
 
 ## 3. API 一覧
@@ -146,6 +147,8 @@ PUT は以下を許容:
 - is_recording_manager
 - is_sheet_manager
 
+パスワードは保存時にハッシュ化し、団員一覧や bootstrap レスポンスでは `password` を空文字、`password_set` を設定有無として返す。元パスワードの復元表示は行わない。
+
 ### 4.2 POST /api/auth/member-password
 
 用途:
@@ -191,7 +194,11 @@ PUT は以下を許容:
 - view_url
 - download_url
 
+drive_files では、Cloud Storage上の録音識別には object_name を使用する。PostgreSQL の id は内部採番IDであり、旧JSON互換の文字列IDは保存時に object_name として扱う。
+
 ## 6. JSON コレクション仕様
+
+時刻フィールド（例: schedules.start_time / end_time / available_start_time / available_end_time）は、レスポンスでは秒を含めず `HH:MM` 形式に正規化する。
 
 ### 6.1 管理対象
 
@@ -233,9 +240,13 @@ members:
 payments:
 
 - paid_until_month
-- membership_fee_amount
 - performance_fees
-- performance_fee_amounts
+
+支払金額は、月額団費を org_settings.membership_fee_amount、演奏会費を performances.performance_fee_amount に保存する。payments は団員ごとの支払状況を保持し、金額入力の正本にはしない。
+
+performances:
+
+- performance_fee_amount
 
 castings:
 

@@ -807,6 +807,12 @@ details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::
     content: "▶";
 }
 
+.sheet-library-heading {
+    flex: 1 1 14rem;
+    min-width: 0;
+    text-align: left;
+}
+
 @media (max-width: 576px) {
     .portal-menu-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

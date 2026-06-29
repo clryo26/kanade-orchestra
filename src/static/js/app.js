@@ -1831,6 +1831,19 @@ function removePerformancePiece(index) {
     renderPerformancePieceList();
 }
 
+function movePerformancePiece(index, direction) {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= appState.performancePieces.length) return;
+    const [piece] = appState.performancePieces.splice(index, 1);
+    appState.performancePieces.splice(nextIndex, 0, piece);
+    if (appState.performancePieceEditIndex === index) {
+        appState.performancePieceEditIndex = nextIndex;
+    } else if (appState.performancePieceEditIndex === nextIndex) {
+        appState.performancePieceEditIndex = index;
+    }
+    renderPerformancePieceList();
+}
+
 function currentPerformancePieces() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
@@ -1971,14 +1984,24 @@ function renderPerformancePieceList() {
     list.innerHTML = emptyText(appState.performancePieces, '曲目はまだありません');
     appState.performancePieces.forEach((piece, index) => {
         const item = document.createElement('li');
-        item.className = 'list-group-item d-flex justify-content-between align-items-center gap-3';
+        item.className = 'list-group-item d-flex flex-wrap justify-content-between align-items-center gap-3';
+        const formalLabel = performancePieceFormalLabel(piece);
+        const alias = piece.alias || piece.short_name || '';
+        const aliasHtml = alias ? `<div class="small text-muted">略称: ${escapeHtml(alias)}</div>` : '';
         item.innerHTML = `
-            <span>${escapeHtml(performancePieceLabel(piece))}</span>
-            <span class="d-flex gap-2">
+            <span>
+                <span>${escapeHtml(formalLabel)}</span>
+                ${aliasHtml}
+            </span>
+            <span class="d-flex flex-wrap gap-2">
+                <button class="btn btn-sm btn-outline-secondary move-piece-up-btn" type="button" ${index === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-sm btn-outline-secondary move-piece-down-btn" type="button" ${index === appState.performancePieces.length - 1 ? 'disabled' : ''}>↓</button>
                 <button class="btn btn-sm btn-outline-primary edit-piece-btn" type="button">編集</button>
                 <button class="btn btn-sm btn-outline-danger delete-piece-btn" type="button">削除</button>
             </span>
         `;
+        item.querySelector('.move-piece-up-btn').addEventListener('click', () => movePerformancePiece(index, -1));
+        item.querySelector('.move-piece-down-btn').addEventListener('click', () => movePerformancePiece(index, 1));
         item.querySelector('.edit-piece-btn').addEventListener('click', () => editPerformancePiece(index));
         item.querySelector('.delete-piece-btn').addEventListener('click', () => removePerformancePiece(index));
         list.appendChild(item);
@@ -2026,12 +2049,12 @@ function selectSchedule(id) {
     $('schedDate').value = item.date || today();
     const practiceRange = splitTimeRange(item.time);
     const availableRange = splitTimeRange(item.available_hours);
-    $('schedStartTime').value = item.start_time || practiceRange.start || '13:00';
-    $('schedEndTime').value = item.end_time || practiceRange.end || '16:30';
+    $('schedStartTime').value = formatClockTime(item.start_time || practiceRange.start || '13:00');
+    $('schedEndTime').value = formatClockTime(item.end_time || practiceRange.end || '16:30');
     if ($('schedVenue')) $('schedVenue').innerHTML = venueSelectOptionsHtml('practice', item.venue || '');
     $('schedVenue').value = item.venue || '';
-    $('schedAvailableStartTime').value = item.available_start_time || availableRange.start || '12:30';
-    $('schedAvailableEndTime').value = item.available_end_time || availableRange.end || '16:30';
+    $('schedAvailableStartTime').value = formatClockTime(item.available_start_time || availableRange.start || '12:30');
+    $('schedAvailableEndTime').value = formatClockTime(item.available_end_time || availableRange.end || '16:30');
     $('schedPerformance').value = item.performance_id ? String(item.performance_id) : '';
     updateSchedulePieceOptions(item.pieces || '未定');
     if ($('schedConductorTraining')) $('schedConductorTraining').checked = Boolean(item.is_conductor_training);
@@ -2121,21 +2144,28 @@ function updateSchedulePieceOptions(preferredValue = null) {
     }).join('');
 }
 
+function formatClockTime(value) {
+    const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : String(value || '').trim();
+}
+
 function formatTimeRange(start, end) {
-    return start && end ? `${start} - ${end}` : start || end || '';
+    const formattedStart = formatClockTime(start);
+    const formattedEnd = formatClockTime(end);
+    return formattedStart && formattedEnd ? `${formattedStart} - ${formattedEnd}` : formattedStart || formattedEnd || '';
 }
 
 function splitTimeRange(value) {
-    const match = String(value || '').match(/(\d{1,2}:\d{2})\s*(?:-|〜|~|～)\s*(\d{1,2}:\d{2})/);
-    return match ? { start: match[1], end: match[2] } : { start: '', end: '' };
+    const match = String(value || '').match(/(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|〜|~|～)\s*(\d{1,2}:\d{2}(?::\d{2})?)/);
+    return match ? { start: formatClockTime(match[1]), end: formatClockTime(match[2]) } : { start: '', end: '' };
 }
 
 function scheduleTimeLabel(sched) {
-    return formatTimeRange(sched.start_time, sched.end_time) || sched.time || '';
+    return formatTimeRange(sched.start_time, sched.end_time) || formatTimeRange(splitTimeRange(sched.time).start, splitTimeRange(sched.time).end) || formatClockTime(sched.time);
 }
 
 function scheduleAvailableLabel(sched) {
-    return formatTimeRange(sched.available_start_time, sched.available_end_time) || sched.available_hours || '';
+    return formatTimeRange(sched.available_start_time, sched.available_end_time) || formatTimeRange(splitTimeRange(sched.available_hours).start, splitTimeRange(sched.available_hours).end) || formatClockTime(sched.available_hours);
 }
 
 function scheduleCalendarTitle(sched) {
@@ -2383,7 +2413,7 @@ async function saveMember() {
     const current = appState.members.find((member) => String(member.id) === String($('memberId').value));
     const photoFile = $('memberPhotoFile')?.files?.[0];
     const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current?.photo_url || '');
-    const password = $('memberPassword') ? $('memberPassword').value : '';
+    const password = $('memberPassword') ? $('memberPassword').value.trim() : '';
     const lastName = $('memberLastName') ? $('memberLastName').value.trim() : '';
     const firstName = $('memberFirstName') ? $('memberFirstName').value.trim() : '';
     const payload = {
@@ -2399,7 +2429,7 @@ async function saveMember() {
         is_founder: $('memberIsFounder') ? $('memberIsFounder').checked : false,
         is_recording_manager: $('memberIsRecordingManager') ? $('memberIsRecordingManager').checked : false,
         is_sheet_manager: $('memberIsSheetManager') ? $('memberIsSheetManager').checked : false,
-        password: password || current?.password || '',
+        password,
         permission: $('memberPermission') ? $('memberPermission').value : '一般',
         joined_at: $('memberJoinedAt') ? $('memberJoinedAt').value : '',
         system_access_until: $('memberSystemAccessUntil') ? $('memberSystemAccessUntil').value : '',
@@ -2447,7 +2477,7 @@ function selectMember(id) {
     if ($('memberIsFounder')) $('memberIsFounder').checked = Boolean(item.is_founder);
     if ($('memberIsRecordingManager')) $('memberIsRecordingManager').checked = Boolean(item.is_recording_manager);
     if ($('memberIsSheetManager')) $('memberIsSheetManager').checked = Boolean(item.is_sheet_manager);
-    if ($('memberPassword')) $('memberPassword').value = item.password || '';
+    if ($('memberPassword')) $('memberPassword').value = '';
     if ($('memberPermission')) $('memberPermission').value = item.permission || '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = item.joined_at || '';
     if ($('memberSystemAccessUntil')) $('memberSystemAccessUntil').value = item.system_access_until || '';
@@ -2548,7 +2578,7 @@ function renderMembers() {
                     <span class="d-flex flex-wrap gap-2">
                         <span class="badge text-bg-secondary">${escapeHtml(member.permission || '一般')}</span>
                         ${member.permission === 'エキストラ' ? `<span class="badge text-bg-info">利用終了: ${escapeHtml(member.system_access_until || '未設定')}</span>` : ''}
-                        <span class="badge ${member.password ? 'text-bg-success' : 'text-bg-warning'}">パスワード: ${escapeHtml(member.password || '未登録')}</span>
+                        <span class="badge ${member.password_set ? 'text-bg-success' : 'text-bg-warning'}">パスワード: ${member.password_set ? '設定済み' : '未設定'}</span>
                     </span>
                 </div>
             `;
@@ -3485,12 +3515,14 @@ function renderPerformances() {
     const list = $('perfListItems');
     list.innerHTML = emptyText(appState.performances, '演奏会情報はまだありません');
     appState.performances.forEach((perf) => {
+        const pieces = normalizePerformancePieces(perf.pieces || []).map(performancePieceFormalLabel).filter(Boolean);
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'list-group-item list-group-item-action';
         item.innerHTML = `
             <strong>${escapeHtml(perf.title)}</strong>
             <div class="small text-muted">${escapeHtml(formatDateWithWeekday(perf.date))} / ${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</div>
+            ${pieces.length ? `<div class="small mt-1">${pieces.map((piece) => `<div>${escapeHtml(piece)}</div>`).join('')}</div>` : ''}
         `;
         item.addEventListener('click', () => selectPerformance(perf.id));
         list.appendChild(item);
@@ -3981,7 +4013,7 @@ function renderMemberPerformances() {
             <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
             ${perf.flyer_image ? `<div class="mb-3"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy"></div>` : ''}
-            <div class="mb-0">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceLabel(piece))}</div>`).join('')}</div>
+            <div class="mb-0">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceFormalLabel(piece))}</div>`).join('')}</div>
         </article>
     `).join('');
 }
@@ -4484,14 +4516,14 @@ function renderSheetLibraryView() {
         return `
             <details class="mb-3 sheet-library-details sheet-performance-details" open>
                 <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <strong>${escapeHtml(performanceTitle)}</strong>
+                    <strong class="sheet-library-heading">${escapeHtml(performanceTitle)}</strong>
                     <a class="btn btn-sm btn-primary" href="${escapeHtml(sheetZipUrl(performanceId, '', filters.part))}">演奏会一括DL</a>
                 </summary>
                 <div class="mt-2">
                     ${Object.entries(pieceGroups).map(([piece, pieceSheets]) => `
                         <details class="mb-2 ms-md-3 sheet-library-details sheet-piece-details">
                             <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                                <span>${escapeHtml(piece || '未設定の曲名')}</span>
+                                <span class="sheet-library-heading">${escapeHtml(piece || '未設定の曲名')}</span>
                                 <a class="btn btn-sm btn-outline-primary" href="${escapeHtml(sheetZipUrl(performanceId, piece, filters.part))}">曲一括DL</a>
                             </summary>
                             <div class="list-group mt-2">
@@ -4954,20 +4986,19 @@ function renderPaymentView() {
 }
 
 function memberPaymentStatusHtml() {
-    const org = currentOrgSetting();
-    const membershipFee = Number(org.membership_fee_amount || 0);
-    const membershipFeeLabel = membershipFee > 0 ? `${membershipFee.toLocaleString('ja-JP')}円/月` : '未登録';
-    
+    const payment = findPaymentForMember(appState.currentUserMemberId, currentUserMemberName());
+    const feeMap = performanceFeeMap(payment);
+    const alertInfo = paymentAlertInfo(payment);
     const performanceFees = appState.performances.map((perf) => {
-        const amount = Number(perf.performance_fee_amount || 0);
-        const amountLabel = amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
-        return `<div class="small">${escapeHtml(perf.title)} - ${amountLabel}</div>`;
+        const paid = Boolean(feeMap[String(perf.id)]);
+        const overdue = alertInfo.overduePerformanceIds.has(String(perf.id));
+        return `<div class="small"><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
     }).join('');
     
     return `
         <div class="info-block">
             <h6>団費</h6>
-            <div>${membershipFeeLabel}</div>
+            <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">${escapeHtml(payment ? paymentPaymentRangeLabel(payment) : '未登録')}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
             <h6 class="mt-3">演奏会費</h6>
             <div>${performanceFees || '<p class="text-muted mb-0">演奏会情報は未登録です</p>'}</div>
         </div>
@@ -4991,6 +5022,16 @@ function performanceFeeAmountMap(payment) {
     return payment?.performance_fee_amounts && typeof payment.performance_fee_amounts === 'object'
         ? payment.performance_fee_amounts
         : {};
+}
+
+function orgMembershipFeeAmountLabel() {
+    const amount = Number(currentOrgSetting().membership_fee_amount || 0);
+    return amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
+}
+
+function performanceFeeAmountLabel(performance) {
+    const amount = Number(performance?.performance_fee_amount || 0);
+    return amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
 }
 
 function monthValue(monthText) {
@@ -5035,20 +5076,15 @@ function paymentAlertInfo(payment = null) {
 
 function paymentStatusHtml(payment) {
     const feeMap = performanceFeeMap(payment);
-    const feeAmountMap = performanceFeeAmountMap(payment);
     const alertInfo = paymentAlertInfo(payment);
-    const membershipFeeAmount = Number(payment.membership_fee_amount || 0);
     const performanceFees = appState.performances.map((perf) => {
         const paid = Boolean(feeMap[String(perf.id)]);
         const overdue = alertInfo.overduePerformanceIds.has(String(perf.id));
-        const amount = Number(feeAmountMap[String(perf.id)] || 0);
-        const amountLabel = amount > 0 ? ` / 金額: ${amount.toLocaleString('ja-JP')}円` : '';
-        return `<div><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${amountLabel}${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
+        return `<div><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
     }).join('');
     return `
         <div class="info-block">
             <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
-            <div>団員費用額: ${membershipFeeAmount > 0 ? `${membershipFeeAmount.toLocaleString('ja-JP')}円` : '未登録'}</div>
             <div>最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
             <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
         </div>
@@ -5386,9 +5422,8 @@ function renderPaymentAdmin() {
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <label class="form-check mb-0">
                     <input class="form-check-input payment-performance-checkbox" type="checkbox" value="${escapeHtml(String(perf.id))}">
-                    <span class="form-check-label">${escapeHtml(perf.title)}</span>
+                    <span class="form-check-label">${escapeHtml(perf.title)}（${escapeHtml(performanceFeeAmountLabel(perf))}）</span>
                 </label>
-                <input class="form-control form-control-sm payment-performance-amount" type="number" min="0" step="1" value="" data-performance-id="${escapeHtml(String(perf.id))}" style="width: 12rem;" placeholder="演奏会費（円）">
             </div>
         `).join('')
         : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
@@ -5397,12 +5432,10 @@ function renderPaymentAdmin() {
         ? `<div class="list-group">${appState.payments.map((payment) => {
             const member = appState.members.find((item) => String(item.id || '') === String(payment.member_id || ''));
             const name = member ? memberDisplayName(member) : (payment.name || '未設定');
-            const membershipFeeAmount = Number(payment.membership_fee_amount || 0);
-            const membershipFeeLabel = membershipFeeAmount > 0 ? `${membershipFeeAmount.toLocaleString('ja-JP')}円` : '未登録';
             return `
                 <button class="list-group-item list-group-item-action payment-admin-item" type="button" data-payment-id="${escapeHtml(String(payment.id || ''))}">
                     <strong>${escapeHtml(name)}</strong>
-                    <div class="small text-muted">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))} / 団員費用額: ${escapeHtml(membershipFeeLabel)} / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+                    <div class="small text-muted">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))} / 月額団費: ${escapeHtml(orgMembershipFeeAmountLabel())} / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
                 </button>
             `;
         }).join('')}</div>`
@@ -5434,16 +5467,9 @@ function fillPaymentForm(payment, memberId = '') {
     if ($('paymentPaidFromMonth')) $('paymentPaidFromMonth').value = payment?.paid_from_month || '';
     $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
     $('paymentLatestDate').value = payment?.latest_payment_date || today();
-    if ($('paymentMembershipFeeAmount')) $('paymentMembershipFeeAmount').value = Number(payment?.membership_fee_amount || 0) > 0 ? String(payment.membership_fee_amount) : '';
     const feeMap = performanceFeeMap(payment);
-    const feeAmountMap = performanceFeeAmountMap(payment);
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         checkbox.checked = Boolean(feeMap[String(checkbox.value)]);
-    });
-    document.querySelectorAll('.payment-performance-amount').forEach((input) => {
-        const performanceId = String(input.dataset.performanceId || '');
-        const amount = Number(feeAmountMap[performanceId] || 0);
-        input.value = amount > 0 ? String(amount) : '';
     });
 }
 
@@ -5459,23 +5485,15 @@ async function savePaymentStatus() {
         return;
     }
     const performanceFees = {};
-    const performanceFeeAmounts = {};
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         performanceFees[String(checkbox.value)] = checkbox.checked;
-    });
-    document.querySelectorAll('.payment-performance-amount').forEach((input) => {
-        const performanceId = String(input.dataset.performanceId || '');
-        const amount = Number(input.value || 0);
-        performanceFeeAmounts[performanceId] = amount > 0 ? amount : 0;
     });
     const payload = {
         member_id: memberId,
         name: memberDisplayName(member),
         paid_until_month: $('paymentPaidUntilMonth')?.value || '',
         latest_payment_date: $('paymentLatestDate')?.value || '',
-        membership_fee_amount: Number($('paymentMembershipFeeAmount')?.value || 0),
-        performance_fees: performanceFees,
-        performance_fee_amounts: performanceFeeAmounts
+        performance_fees: performanceFees
     };
     const id = $('paymentId')?.value || findPaymentForMember(memberId, payload.name)?.id || '';
     const saved = id
@@ -6666,13 +6684,25 @@ async function saveOrgMembershipFee() {
 }
 
 async function savePerformanceFee(performanceId) {
-    const amount = Number($(`input[data-performance-id="${performanceId}"]`)?.value || 0);
+    const input = Array.from(document.querySelectorAll('#performanceFeeSettings input[data-performance-id]'))
+        .find((element) => String(element.dataset.performanceId || '') === String(performanceId));
+    const amount = Number(input?.value || 0);
     const perf = appState.performances.find((p) => String(p.id || '') === String(performanceId));
     if (!perf) {
         showAlert('演奏会が見つかりません', 'warning');
         return;
     }
-    const payload = { ...perf, performance_fee_amount: amount };
+    const payload = {
+        title: perf.title || '',
+        date: perf.date || today(),
+        open_time: perf.open_time || '18:00',
+        start_time: perf.start_time || '19:00',
+        venue: perf.venue || '',
+        conductor: perf.conductor || '',
+        flyer_image: perf.flyer_image || '',
+        performance_fee_amount: amount,
+        pieces: normalizePerformancePieces(perf.pieces || [])
+    };
     await request(`/api/performances/${encodeURIComponent(perf.id)}`, jsonOptions('PUT', payload));
     await loadEssentialData();
     showAlert('演奏会費を保存しました', 'success');

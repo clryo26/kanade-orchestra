@@ -196,6 +196,7 @@ class Performance(BaseModel):
     venue: str
     conductor: str
     flyer_image: str = ""
+    performance_fee_amount: float = 0
     pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
@@ -259,6 +260,7 @@ class Member(BaseModel):
     is_recording_manager: bool = False
     is_sheet_manager: bool = False
     password: str = ""
+    password_set: bool = False
     permission: str = "一般"
     joined_at: str = ""
     system_access_until: str = ""
@@ -460,6 +462,34 @@ def is_hashed_password(stored: str) -> bool:
     return stored.startswith("pbkdf2$")
 
 
+def prepare_member_payload(member: Member, current: dict[str, Any] | None = None) -> dict[str, Any]:
+    # 管理画面から新パスワードが送られた場合だけハッシュ化し、
+    # 未入力更新では既存ハッシュを保持する。元パスワードの復元は行わない。
+    payload = model_dump(member)
+    raw_password = str(payload.get("password") or "")
+    if raw_password:
+        payload["password"] = raw_password if is_hashed_password(raw_password) else hash_password(raw_password)
+    elif current is not None:
+        payload["password"] = current.get("password") or ""
+    else:
+        payload["password"] = ""
+    payload.pop("password_set", None)
+    payload["name"] = member_display_name(payload)
+    return payload
+
+
+def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
+    # APIレスポンスや bootstrap には認証用ハッシュを出さず、設定有無だけを返す。
+    payload = dict(member)
+    payload["password_set"] = bool(payload.get("password"))
+    payload["password"] = ""
+    return payload
+
+
+def public_member_list(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [public_member_payload(member) for member in members]
+
+
 def device_auth_record(device_id: str) -> dict[str, Any]:
     if not device_id:
         raise HTTPException(status_code=401, detail="X-Device-Id is required")
@@ -553,6 +583,13 @@ def assert_db_ready() -> None:
         raise HTTPException(status_code=500, detail="psycopg is not installed")
 
 
+def ensure_db_schema_compatibility(conn: Any) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE performances ADD COLUMN IF NOT EXISTS performance_fee_amount NUMERIC(12, 2) NOT NULL DEFAULT 0"
+        )
+
+
 PORTAL_DB_TABLES = {
     "performances",
     "performance_pieces",
@@ -617,7 +654,19 @@ JSON_COLLECTION_TABLES = {
 }
 DB_WRITABLE_COLLECTIONS = set(JSON_COLLECTION_TABLES)
 DB_COLLECTION_COLUMNS = {
-    "performances": ("id", "title", "date", "open_time", "start_time", "venue", "conductor", "flyer_image", "created_at", "updated_at"),
+    "performances": (
+        "id",
+        "title",
+        "date",
+        "open_time",
+        "start_time",
+        "venue",
+        "conductor",
+        "flyer_image",
+        "performance_fee_amount",
+        "created_at",
+        "updated_at",
+    ),
     "schedules": (
         "id",
         "date",
@@ -804,6 +853,7 @@ DB_TIMESTAMP_COLUMNS = {
 DB_NUMERIC_COLUMNS = {
     "payments": {"membership_fee_amount"},
     "payment_performance_fees": {"fee_amount"},
+    "performances": {"performance_fee_amount"},
     "org_settings": {"membership_fee_amount"},
     "recording_metadata": {"duration_seconds"},
 }
@@ -984,6 +1034,7 @@ def run_db_startup_self_check() -> None:
 
     try:
         with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+            ensure_db_schema_compatibility(conn)
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 cur.fetchone()
@@ -1047,9 +1098,9 @@ def parse_db_time(value: Any) -> str | None:
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
-        return value.time().replace(microsecond=0).isoformat()
+        return value.time().replace(microsecond=0).isoformat(timespec="minutes")
     if isinstance(value, time):
-        return value.replace(microsecond=0).isoformat()
+        return value.replace(microsecond=0).isoformat(timespec="minutes")
     value_text = str(value).strip()
     if "T" in value_text:
         value_text = value_text.split("T", 1)[1]
@@ -1059,7 +1110,7 @@ def parse_db_time(value: Any) -> str | None:
         return None
     hour, minute, second = match.groups()
     try:
-        return time(int(hour), int(minute), int(second or "0")).isoformat()
+        return time(int(hour), int(minute), int(second or "0")).isoformat(timespec="minutes")
     except ValueError:
         return None
 
@@ -1161,6 +1212,22 @@ def db_item_value(table_name: str, item: dict[str, Any], column: str) -> Any:
 
 def db_row_tuple(table_name: str, columns: tuple[str, ...], item: dict[str, Any]) -> tuple[Any, ...]:
     return tuple(db_write_value(table_name, column, db_item_value(table_name, item, column)) for column in columns)
+
+
+def db_collection_rows_for_save(name: str, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if name != "drive_files":
+        return data
+
+    rows: list[dict[str, Any]] = []
+    for item in data:
+        row = dict(item)
+        object_name = str(row.get("object_name") or row.get("id") or row.get("path") or "").strip()
+        if object_name:
+            row["object_name"] = object_name
+        if db_write_value("drive_files", "id", row.get("id")) is None:
+            row.pop("id", None)
+        rows.append(row)
+    return rows
 
 
 def db_upsert_rows(cur: Any, table_name: str, columns: tuple[str, ...], rows: list[dict[str, Any]]) -> None:
@@ -1435,25 +1502,26 @@ def db_replace_collection(name: str, data: list[dict[str, Any]]) -> None:
     if table_name not in DB_WRITABLE_COLLECTIONS:
         raise HTTPException(status_code=500, detail=f"DB write is not implemented for {name}")
 
+    rows = db_collection_rows_for_save(name, data)
     with psycopg.connect(db_connection_string(), autocommit=False) as conn:
         with conn.cursor() as cur:
             db_delete_collection_children(cur, name)
-            if not data:
+            if not rows:
                 cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
                 conn.commit()
                 return
 
             columns = DB_COLLECTION_COLUMNS[table_name]
-            db_fill_missing_ids(cur, table_name, data)
+            db_fill_missing_ids(cur, table_name, rows)
 
-            kept_ids = [db_write_value(table_name, "id", item.get("id")) for item in data if item.get("id") is not None]
+            kept_ids = [db_write_value(table_name, "id", item.get("id")) for item in rows if item.get("id") is not None]
             if kept_ids:
                 cur.execute(psql.SQL("DELETE FROM {} WHERE NOT (id = ANY(%s))").format(psql.Identifier(table_name)), (kept_ids,))
             else:
                 cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
 
-            db_upsert_rows(cur, table_name, columns, data)
-            for child_table, child_rows in db_child_rows_for_collection(name, data).items():
+            db_upsert_rows(cur, table_name, columns, rows)
+            for child_table, child_rows in db_child_rows_for_collection(name, rows).items():
                 db_fill_missing_ids(cur, child_table, child_rows)
                 db_insert_rows(cur, child_table, DB_CHILD_COLUMNS[child_table], child_rows)
         conn.commit()
@@ -1690,6 +1758,26 @@ def check_etag(request: Request, data_name: str) -> Response | None:
     if if_none_match == etag:
         return Response(status_code=304)
     return None
+
+
+def combined_collection_etag(names: tuple[str, ...]) -> str:
+    # bootstrap は複数コレクションをまとめて返すため、単一テーブルではなく
+    # レスポンスに含まれる全データの ETag を合成して 304 判定に使う。
+    parts: list[str] = []
+    for name in dict.fromkeys(names):
+        load_json_data(name)
+        parts.append(f"{name}:{_memory_cache.etag(name) or ''}")
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def bootstrap_response(request: Request, data: dict[str, Any], etag: str) -> dict[str, Any] | Response:
+    if request.headers.get("if-none-match", "") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    return Response(
+        content=json.dumps(data, ensure_ascii=False),
+        media_type="application/json",
+        headers={"ETag": etag},
+    )
 
 
 def compact_member_name(value: Any) -> str:
@@ -1930,100 +2018,59 @@ async def delete_auth_device(device_id: str, x_device_id: str = Header(default="
 @app.get("/api/bootstrap-lite", response_model=None)
 async def get_bootstrap_lite_data(request: Request) -> dict[str, Any] | Response:
     """初期表示に必要な最小限のデータだけを返す。"""
-    cached_etag = _memory_cache.etag("performances")
-    
-    # ETagチェック
-    if cached_etag:
-        if_none_match = request.headers.get("if-none-match", "")
-        if if_none_match == cached_etag:
-            return Response(status_code=304, headers={"ETag": cached_etag})
-    
     extra_names = ("payments", "part_settings", "org_settings", "sns_settings", "connection_settings")
+    etag = combined_collection_etag(("performances", "schedules", "announcements", "members", *extra_names))
     extras = {name: load_json_data(name) for name in extra_names}
     data = {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
-        "members": load_json_data("members"),
+        "members": public_member_list(load_json_data("members")),
         "extras": extras,
         "cloudRunRevision": cloud_run_revision(),
     }
-    
-    # レスポンスにETagを追加
-    if cached_etag:
-        return Response(
-            content=json.dumps(data, ensure_ascii=False),
-            media_type="application/json",
-            headers={"ETag": cached_etag}
-        )
-    return data
+    return bootstrap_response(request, data, etag)
 
 
 # 録音/楽譜の重い走査を除いた通常 bootstrap API。
 @app.get("/api/bootstrap-core", response_model=None)
 async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response:
     """録音・楽譜一覧のファイル走査を除いた通常データ。"""
-    cached_etag = _memory_cache.etag("performances")
-    
-    if cached_etag:
-        if_none_match = request.headers.get("if-none-match", "")
-        if if_none_match == cached_etag:
-            return Response(status_code=304, headers={"ETag": cached_etag})
-    
     extra_names = ("absences", "event_responses", "date_adjustments", "date_adjustment_responses", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
+    etag = combined_collection_etag(("performances", "schedules", "announcements", "events", "members", "auth_devices", *extra_names))
     extras = {name: load_json_data(name) for name in extra_names}
     data = {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
         "events": load_json_data("events"),
-        "members": load_json_data("members"),
+        "members": public_member_list(load_json_data("members")),
         "extras": extras,
         "auth_devices": await get_auth_devices(),
         "cloudRunRevision": cloud_run_revision(),
     }
-    
-    if cached_etag:
-        return Response(
-            content=json.dumps(data, ensure_ascii=False),
-            media_type="application/json",
-            headers={"ETag": cached_etag}
-        )
-    return data
+    return bootstrap_response(request, data, etag)
 
 
 # 画面に必要なデータを包括的に返すフル bootstrap API。
 @app.get("/api/bootstrap", response_model=None)
 async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
-    cached_etag = _memory_cache.etag("performances")
-    
-    if cached_etag:
-        if_none_match = request.headers.get("if-none-match", "")
-        if if_none_match == cached_etag:
-            return Response(status_code=304, headers={"ETag": cached_etag})
-    
     extra_names = ("absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
+    etag = combined_collection_etag(("performances", "schedules", "announcements", "events", "members", "drive_files", "recording_metadata", "auth_devices", *extra_names))
     extras = {name: load_json_data(name) for name in extra_names}
     data = {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
         "events": load_json_data("events"),
-        "members": load_json_data("members"),
+        "members": public_member_list(load_json_data("members")),
         "recordings": recording_payload(),
         "sheets": {"files": sheet_payload()},
         "extras": extras,
         "auth_devices": await get_auth_devices(),
         "cloudRunRevision": cloud_run_revision(),
     }
-    
-    if cached_etag:
-        return Response(
-            content=json.dumps(data, ensure_ascii=False),
-            media_type="application/json",
-            headers={"ETag": cached_etag}
-        )
-    return data
+    return bootstrap_response(request, data, etag)
 
 
 # ===== アップロード・ファイル補助 =====
@@ -2102,8 +2149,13 @@ def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
 def remember_drive_file(item: dict[str, Any]) -> None:
     # Cloud 録音一覧へ最新項目を先頭追加で保存する。
+    object_name = str(item.get("object_name") or item.get("id") or "").strip()
     items = load_json_data("drive_files")
-    items = [existing for existing in items if existing.get("id") != item.get("id")]
+    items = [
+        existing
+        for existing in items
+        if str(existing.get("object_name") or existing.get("id") or "").strip() != object_name
+    ]
     items.insert(0, item)
     save_json_data("drive_files", items[:500])
 
@@ -2590,7 +2642,7 @@ async def delete_schedule(schedule_id: int, x_device_id: str = Header(default=""
 # 団員一覧を取得する。
 @app.get("/api/members", response_model=list[Member])
 async def get_members() -> list[dict[str, Any]]:
-    return load_json_data("members")
+    return public_member_list(load_json_data("members"))
 
 
 # 団員を新規作成する。
@@ -2599,12 +2651,11 @@ async def create_member(member: Member, x_device_id: str = Header(default="", al
     require_admin_device(x_device_id)
     items = load_json_data("members")
     now = datetime.now().isoformat()
-    payload = model_dump(member)
-    payload["name"] = member_display_name(payload)
+    payload = prepare_member_payload(member)
     payload.update({"id": next_id(items), "created_at": now, "updated_at": now})
     items.append(payload)
     save_json_data("members", items)
-    return payload
+    return public_member_payload(payload)
 
 
 # 指定 ID の団員情報を更新する。
@@ -2613,8 +2664,7 @@ async def update_member(member_id: int, member: Member, x_device_id: str = Heade
     require_admin_device(x_device_id)
     items = load_json_data("members")
     index, current = find_item(items, member_id)
-    payload = model_dump(member)
-    payload["name"] = member_display_name(payload)
+    payload = prepare_member_payload(member, current)
     payload.update({
         "id": member_id,
         "created_at": current.get("created_at"),
@@ -2622,7 +2672,7 @@ async def update_member(member_id: int, member: Member, x_device_id: str = Heade
     })
     items[index] = payload
     save_json_data("members", items)
-    return payload
+    return public_member_payload(payload)
 
 
 # 指定 ID の団員情報を削除する。

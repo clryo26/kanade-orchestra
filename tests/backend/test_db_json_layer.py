@@ -44,6 +44,73 @@ def test_db_write_values_accept_month_and_display_order_alias(backend_env):
     assert payment_row[5] == "2022-09-01"
 
 
+def test_db_time_values_are_returned_as_hour_minute(backend_env):
+    assert backend_env.parse_db_time("18:30:00") == "18:30"
+    assert backend_env.parse_db_time(backend_env.time(9, 5, 30)) == "09:05"
+
+
+def test_performance_db_row_keeps_performance_fee_amount(backend_env):
+    row = backend_env.db_row_tuple(
+        "performances",
+        backend_env.DB_COLLECTION_COLUMNS["performances"],
+        {
+            "id": "1",
+            "title": "Concert",
+            "date": "2026-07-01",
+            "open_time": "17:00",
+            "start_time": "18:00",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "performance_fee_amount": "5000",
+        },
+    )
+
+    assert row[8] == backend_env.Decimal("5000")
+
+
+def test_drive_files_db_save_uses_object_name_instead_of_string_id(backend_env):
+    rows = backend_env.db_collection_rows_for_save(
+        "drive_files",
+        [
+            {
+                "id": "2026-06-14/Concert/take1.mp3",
+                "name": "take1.mp3",
+                "source": "google_cloud_storage",
+            }
+        ],
+    )
+
+    assert "id" not in rows[0]
+    assert rows[0]["object_name"] == "2026-06-14/Concert/take1.mp3"
+
+
+def test_remember_drive_file_deduplicates_by_object_name(backend_env):
+    backend_env.save_json_data(
+        "drive_files",
+        [
+            {
+                "id": 1,
+                "object_name": "2026-06-14/Concert/take1.mp3",
+                "name": "old.mp3",
+                "source": "google_cloud_storage",
+            }
+        ],
+    )
+
+    backend_env.remember_drive_file(
+        {
+            "id": "2026-06-14/Concert/take1.mp3",
+            "object_name": "2026-06-14/Concert/take1.mp3",
+            "name": "take1.mp3",
+            "source": "google_cloud_storage",
+        }
+    )
+
+    rows = backend_env.load_json_data("drive_files")
+    assert len(rows) == 1
+    assert rows[0]["name"] == "take1.mp3"
+
+
 def test_payment_child_rows_are_built_for_db_foreign_keys(backend_env):
     rows = backend_env.db_child_rows_for_collection(
         "payments",
@@ -170,6 +237,24 @@ def test_bootstrap_reads_from_db_mode_for_members_and_extras(client, backend_env
     payload = response.json()
     assert payload["members"][0]["name"] == "Db Member"
     assert payload["extras"]["payments"][0]["member_id"] == 10
+
+
+def test_bootstrap_lite_etag_changes_when_non_performance_data_changes(client, backend_env):
+    backend_env._memory_cache.clear()
+    backend_env.save_json_data("performances", [{"id": 1, "title": "Concert"}])
+    backend_env.save_json_data("schedules", [{"id": 1, "date": "2026-06-29", "venue": "A"}])
+
+    first = client.get("/api/bootstrap-lite")
+    assert first.status_code == 200
+    etag = first.headers.get("etag") or first.headers.get("ETag")
+    assert etag
+
+    backend_env.save_json_data("schedules", [{"id": 1, "date": "2026-06-29", "venue": "B"}])
+    second = client.get("/api/bootstrap-lite", headers={"If-None-Match": etag})
+
+    assert second.status_code == 200
+    assert second.json()["schedules"][0]["venue"] == "B"
+    assert (second.headers.get("etag") or second.headers.get("ETag")) != etag
 
 
 def test_run_db_startup_self_check_skips_when_db_not_expected(backend_env, monkeypatch):
