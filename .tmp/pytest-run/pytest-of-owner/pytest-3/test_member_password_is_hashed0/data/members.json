@@ -1,0 +1,28 @@
+[
+  {
+    "id": 1,
+    "name": "奏太郎",
+    "last_name": "奏",
+    "first_name": "太郎",
+    "maiden_name": "",
+    "last_name_kana": "",
+    "first_name_kana": "",
+    "maiden_name_kana": "",
+    "part": "Vn",
+    "photo_url": "",
+    "is_founder": false,
+    "is_recording_manager": false,
+    "is_sheet_manager": false,
+    "password": "pbkdf2$sha256$260000$910ceaa319318fe87333bd5b5304d2ff$10d5602bdacf8e5936bc9c2e14b959ebfc79fa8f3fbfa000c6edd30f8133b236",
+    "permission": "一般",
+    "joined_at": "",
+    "system_access_until": "",
+    "introducer": "",
+    "role": "",
+    "instrument_history": "",
+    "past_orchestras": "",
+    "comment": "",
+    "created_at": "2026-06-29T22:51:56.695022",
+    "updated_at": "2026-06-29T22:51:56.695022"
+  }
+]

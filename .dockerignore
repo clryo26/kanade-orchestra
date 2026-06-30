@@ -1,12 +1,41 @@
-.venv
-__pycache__
-*.pyc
-.env
-.env.*
-credentials
-src/uploads
-src/data
-logs
-*.log
+# VCS / local environments
 .git
 .gitignore
+.venv
+venv
+.env
+.env.*
+!.env.example
+
+# Node / Python caches
+node_modules
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.ruff-cache-local
+.mypy_cache
+.coverage
+coverage
+htmlcov
+.uv-cache-local
+.uv-cache
+
+# Runtime-generated data and uploads
+src/data/*.json
+!src/data/.gitkeep
+src/uploads/*
+!src/uploads/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Large local archives
+*.zip
+*.tar
+*.tar.gz

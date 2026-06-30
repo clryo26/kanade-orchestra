@@ -1,0 +1,30 @@
+C:\AITool\オケポータル\.venv\lib\site-packages\google\api_core\_python_version_support.py:255: FutureWarning: You are using a Python version (3.10.20) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.api_core past that date.
+  warnings.warn(message, FutureWarning)
+C:\AITool\オケポータル\.venv\lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+INFO:     Started server process [8348]
+INFO:     Waiting for application startup.
+INFO:src.backend.app_core:Startup preload begin: performances
+INFO:src.backend.app_core:Startup preload done: performances (0 items)
+INFO:src.backend.app_core:Startup preload begin: schedules
+INFO:src.backend.app_core:Startup preload done: schedules (0 items)
+INFO:src.backend.app_core:Startup preload begin: announcements
+INFO:src.backend.app_core:Startup preload done: announcements (0 items)
+INFO:src.backend.app_core:Startup preload begin: events
+INFO:src.backend.app_core:Startup preload done: events (0 items)
+INFO:src.backend.app_core:Startup preload begin: members
+INFO:src.backend.app_core:Startup preload done: members (0 items)
+INFO:src.backend.app_core:Startup preload begin: payments
+INFO:src.backend.app_core:Startup preload done: payments (0 items)
+INFO:src.backend.app_core:Startup preload begin: part_settings
+INFO:src.backend.app_core:Startup preload done: part_settings (0 items)
+INFO:src.backend.app_core:Startup preload begin: venue_settings
+INFO:src.backend.app_core:Startup preload done: venue_settings (0 items)
+INFO:src.backend.app_core:Startup preload begin: org_settings
+INFO:src.backend.app_core:Startup preload done: org_settings (0 items)
+INFO:src.backend.app_core:Startup preload begin: sns_settings
+INFO:src.backend.app_core:Startup preload done: sns_settings (0 items)
+INFO:src.backend.app_core:Startup preload begin: connection_settings
+INFO:src.backend.app_core:Startup preload done: connection_settings (1 items)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)

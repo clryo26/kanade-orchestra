@@ -133,7 +133,11 @@ CONVERTED_DIR = UPLOAD_DIR / "converted"
 DRIVE_STAGING_DIR = UPLOAD_DIR / "drive-staging"
 SHEET_DIR = UPLOAD_DIR / "sheets"
 JSON_DATA_NAMES = ("performances", "schedules", "announcements", "drive_files", "events", "members", "absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "performance_day_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "auth_devices", "access_logs", "recording_metadata", "desired_pieces", "promotions")
-STARTUP_PRELOAD_COLLECTIONS = ("performances", "schedules", "announcements", "events", "members", "payments", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings")
+DEFAULT_STARTUP_PRELOAD_COLLECTIONS = ("performances", "schedules", "announcements", "events", "members", "payments", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings")
+_startup_preload_env = os.getenv("STARTUP_PRELOAD_COLLECTIONS", "").strip()
+STARTUP_PRELOAD_COLLECTIONS = tuple(
+    name.strip() for name in _startup_preload_env.split(",") if name.strip()
+) or DEFAULT_STARTUP_PRELOAD_COLLECTIONS
 
 for directory in (UPLOAD_DIR, DATA_DIR, CONVERTED_DIR, DRIVE_STAGING_DIR, SHEET_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -701,9 +705,24 @@ def ensure_db_schema_compatibility(conn: Any) -> None:
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_access_logs_accessed_at ON access_logs(accessed_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_access_logs_member_id ON access_logs(member_id)")
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS portal_json_collections (
+                collection_name TEXT PRIMARY KEY,
+                items JSONB NOT NULL DEFAULT '[]'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portal_json_collections_updated_at "
+            "ON portal_json_collections(updated_at DESC)"
+        )
 
 
 PORTAL_DB_TABLES = {
+    "portal_json_collections",
     "performances",
     "performance_pieces",
     "schedules",
@@ -1136,17 +1155,35 @@ def env_flag_enabled(name: str) -> bool:
     return str(os.getenv(name, "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def local_json_fallback_enabled() -> bool:
+    """Return True only when local JSON fallback is explicitly requested.
+
+    Long-term operation uses the database as the single source of truth.
+    Set DATA_BACKEND=local or LOCAL_JSON_FALLBACK_ENABLED=true only for
+    emergency local development without a database.
+    """
+
+    data_backend = os.getenv("DATA_BACKEND", "db").strip().lower()
+    if data_backend in {"local", "json", "file", "files"}:
+        return True
+    return env_flag_enabled("LOCAL_JSON_FALLBACK_ENABLED")
+
+
 def db_expected() -> bool:
+    if local_json_fallback_enabled():
+        return False
     if env_flag_enabled("DB_REQUIRED"):
         return True
-    return any(os.getenv(name, "").strip() for name in ("DB_URL", "DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"))
+    # The portal now treats DB as the default data backend.
+    return True
 
 
 def ensure_db_expected_is_ready() -> None:
     if db_expected() and not db_data_enabled():
         raise HTTPException(
             status_code=500,
-            detail="DB is expected but not fully configured. Set DB_URL or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD.",
+            detail="DB backend is required. Set DB_URL or DB_HOST/DB_NAME/DB_USER/DB_PASSWORD. "
+            "For emergency local development only, set DATA_BACKEND=local.",
         )
 
 
@@ -1560,6 +1597,37 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     return children
 
 
+def db_load_generic_json_collection(name: str) -> list[dict[str, Any]]:
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT items FROM portal_json_collections WHERE collection_name = %s",
+                (name,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return []
+            items = row[0]
+            if isinstance(items, list):
+                return [item for item in items if isinstance(item, dict)]
+            return []
+
+
+def db_save_generic_json_collection(name: str, data: list[dict[str, Any]]) -> None:
+    payload = Jsonb(data) if Jsonb is not None else json.dumps(data, ensure_ascii=False)
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO portal_json_collections (collection_name, items, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (collection_name)
+                DO UPDATE SET items = EXCLUDED.items, updated_at = NOW()
+                """,
+                (name, payload),
+            )
+
+
 def db_load_json_data(name: str) -> list[dict[str, Any]]:
     table_name = JSON_COLLECTION_TABLES.get(name)
     if not table_name:
@@ -1677,33 +1745,42 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
     if cached is not None:
         return cached
 
-    if name in JSON_COLLECTION_TABLES:
+    if not local_json_fallback_enabled():
         ensure_db_expected_is_ready()
-    if db_data_enabled() and name in JSON_COLLECTION_TABLES:
-        db_data = db_load_json_data(name)
+        if name in JSON_COLLECTION_TABLES:
+            db_data = db_load_json_data(name)
+        elif name in JSON_DATA_NAMES or name in EXTRA_COLLECTIONS:
+            db_data = db_load_generic_json_collection(name)
+        else:
+            raise HTTPException(status_code=404, detail=f"Unknown collection: {name}")
         _memory_cache.set(name, db_data)
         return db_data
 
+    # Emergency local development only. Production/Cloud Run must not use this path.
     local_data = load_local_json_data(name)
     _memory_cache.set(name, local_data)
     return local_data
 
 
 def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
-    if name in JSON_COLLECTION_TABLES:
+    if not local_json_fallback_enabled():
         ensure_db_expected_is_ready()
-
-    if db_data_enabled() and name in DB_WRITABLE_COLLECTIONS:
-        db_replace_collection(name, data)
+        if name in DB_WRITABLE_COLLECTIONS:
+            db_replace_collection(name, data)
+        elif name in JSON_DATA_NAMES or name in EXTRA_COLLECTIONS:
+            db_save_generic_json_collection(name, data)
+        else:
+            raise HTTPException(status_code=404, detail=f"Unknown collection: {name}")
         _memory_cache.set(name, data)
         return
 
+    # Emergency local development only. Production/Cloud Run must not use this path.
     path = data_file(name)
     tmp_path = path.with_suffix(".tmp")
     with tmp_path.open("w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
     tmp_path.replace(path)
-    
+
     _memory_cache.set(name, data)
 
 
@@ -1778,6 +1855,10 @@ def seed_connection_settings_from_legacy_env() -> None:
 
 async def seed_cloud_data_from_local() -> None:
     seed_connection_settings_from_legacy_env()
+
+    if os.getenv("STARTUP_PRELOAD_ENABLED", "true").strip().lower() in {"0", "false", "no", "off"}:
+        logger.info("Startup preload skipped by STARTUP_PRELOAD_ENABLED")
+        return
 
     for name in STARTUP_PRELOAD_COLLECTIONS:
         logger.info("Startup preload begin: %s", name)

@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "title": "Concert",
+    "date": "2026-06-18",
+    "open_time": "17:00",
+    "start_time": "18:00",
+    "venue": "Hall",
+    "conductor": "Cond",
+    "flyer_image": "",
+    "performance_fee_amount": 5000.0,
+    "pieces": [
+      {
+        "title": "Symphony"
+      }
+    ],
+    "created_at": "2026-06-29T22:51:56.630789",
+    "updated_at": "2026-06-29T22:51:56.630789"
+  }
+]
