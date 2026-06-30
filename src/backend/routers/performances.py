@@ -51,9 +51,9 @@ async def download_performance_timetable_xlsx(
     date_text = str(performance.get("date") or "").strip()
     title_text = core.excel_safe_filename(performance.get("title") or "performance")
     filename = (
-        f"{date_text}_{title_text}_譛ｬ逡ｪ繧ｿ繧､繝繝・・繝悶Ν.xlsx"
+        f"{date_text}_{title_text}_本番タイムテーブル.xlsx"
         if date_text
-        else f"{title_text}_譛ｬ逡ｪ繧ｿ繧､繝繝・・繝悶Ν.xlsx"
+        else f"{title_text}_本番タイムテーブル.xlsx"
     )
     quoted = core.quote(filename)
     return StreamingResponse(

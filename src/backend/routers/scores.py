@@ -1,27 +1,51 @@
 from __future__ import annotations
 
-# ruff: noqa: F403,F405
-from fastapi import APIRouter
+import io
+import zipfile
+from datetime import datetime
+from typing import Any
+from urllib.parse import quote
 
-from ..app_core import *
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response
+
+from ..app_core import (
+    DRIVE_STAGING_DIR,
+    SHEET_DIR,
+    UPLOAD_DIR,
+    delete_sheet_file,
+    ensure_pdf_file,
+    find_item,
+    load_json_data,
+    local_sheet_path,
+    next_id,
+    normalize_extra_payload,
+    require_sheet_manager_device,
+    safe_segment,
+    save_json_data,
+    save_upload_to_path,
+    sheet_file_bytes,
+    sheet_metadata,
+    sheet_payload,
+    unique_zip_name,
+)
+from ..drive_storage import get_storage_bucket, storage_enabled
+from ..models.schemas import SheetBulkPartUpdateRequest, SheetDeleteRequest, SheetPartUpdateRequest
+from ..services.blob_streaming_service import stream_storage_blob
 
 router = APIRouter()
 
-# ===== 讌ｽ隴・API =====
-# 讌ｽ隴應ｸ隕ｧ繧定ｿ斐☆縲・
 @router.get("/api/sheets")
 async def get_sheets() -> dict[str, list[dict[str, Any]]]:
     return {"files": sheet_payload()}
 
 
-# 繝ｭ繝ｼ繧ｫ繝ｫ讌ｽ隴懊ｒ豺ｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒霑斐☆縲・
 @router.get("/api/sheets/download/{path:path}")
 async def download_local_sheet(path: str) -> FileResponse:
     requested = local_sheet_path(path)
     return FileResponse(requested, media_type="application/pdf", filename=requested.name)
 
 
-# 繝ｭ繝ｼ繧ｫ繝ｫ讌ｽ隴懊ｒ繧､繝ｳ繝ｩ繧､繝ｳ陦ｨ遉ｺ逕ｨ縺ｫ霑斐☆縲・
 @router.get("/api/sheets/view/{path:path}")
 async def view_local_sheet(path: str) -> Response:
     requested = local_sheet_path(path)
@@ -35,19 +59,16 @@ async def view_local_sheet(path: str) -> Response:
     )
 
 
-# Cloud 讌ｽ隴懊ｒ豺ｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒霑斐☆縲・
 @router.get("/api/sheets/cloud/download/{object_name:path}")
 async def download_cloud_sheet(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=True, request=request)
 
 
-# Cloud 讌ｽ隴懊ｒ繧､繝ｳ繝ｩ繧､繝ｳ陦ｨ遉ｺ逕ｨ縺ｫ霑斐☆縲・
 @router.get("/api/sheets/cloud/view/{object_name:path}")
 async def view_cloud_sheet(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=False, request=request)
 
 
-# 譚｡莉ｶ縺ｫ荳閾ｴ縺吶ｋ讌ｽ隴懊ｒ ZIP 縺ｫ縺ｾ縺ｨ繧√※霑斐☆縲・
 @router.get("/api/sheets/download-zip")
 async def download_sheets_zip(performance_id: str = "", piece: str = "", part: str = "") -> Response:
     if not performance_id:
@@ -89,7 +110,6 @@ async def download_sheets_zip(performance_id: str = "", piece: str = "", part: s
     )
 
 
-# 讌ｽ隴・PDF 繧貞女縺大叙繧翫∽ｿ晏ｭ伜・縺ｫ蠢懊§縺ｦ逋ｻ骭ｲ縺吶ｋ縲・
 @router.post("/api/sheets/upload")
 async def upload_sheet(
     file: UploadFile = File(...),
@@ -151,7 +171,6 @@ async def upload_sheet(
     return sheet_metadata(payload)
 
 
-# 謖・ｮ壽･ｽ隴懊・繝代・繝域ュ蝣ｱ繧呈峩譁ｰ縺吶ｋ縲・
 @router.put("/api/sheets/{sheet_id}/part")
 async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
     require_sheet_manager_device(x_device_id)
@@ -164,7 +183,6 @@ async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest, x_de
     return sheet_metadata(current)
 
 
-# 隍・焚讌ｽ隴懊・繝代・繝域ュ蝣ｱ繧剃ｸ諡ｬ譖ｴ譁ｰ縺吶ｋ縲・
 @router.put("/api/sheets/parts")
 async def update_sheets_parts(payload: SheetBulkPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
     require_sheet_manager_device(x_device_id)
@@ -178,8 +196,6 @@ async def update_sheets_parts(payload: SheetBulkPartUpdateRequest, x_device_id: 
     part_value = payload.part.strip()
     now_str = datetime.now().isoformat()
     
-    # 荳諡ｬ譖ｴ譁ｰ縺ｯ莉ｶ謨ｰ縺梧ｯ碑ｼ・噪蟆上＆縺・燕謠舌・縺溘ａ縲・
-    # 譌｢蟄倥・鬆・ｺ上ｒ菫昴▲縺溘∪縺ｾ蟇ｾ雎｡縺縺代ｒ譖ｸ縺肴鋤縺医ｋ蜊倡ｴ斐↑譖ｴ譁ｰ縺ｫ縺励※縺・ｋ縲・
     for sheet_id in payload.sheet_ids:
         for i, item in enumerate(items):
             if item.get("id") == sheet_id:
@@ -192,7 +208,6 @@ async def update_sheets_parts(payload: SheetBulkPartUpdateRequest, x_device_id: 
     return {"updated_count": updated_count, "message": f"{updated_count} sheets updated"}
 
 
-# 譚｡莉ｶ謖・ｮ壹〒讌ｽ隴懊ｒ蜑企勁縺吶ｋ・亥腰逾ｨ/譖ｲ蜊倅ｽ・貍泌･丈ｼ壼腰菴搾ｼ峨・
 @router.delete("/api/sheets")
 async def delete_sheets(payload: SheetDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
     require_sheet_manager_device(x_device_id)

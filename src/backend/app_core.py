@@ -115,9 +115,6 @@ load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
-# 縺薙・繝輔ぃ繧､繝ｫ縺ｯ繧｢繝励Μ蜈ｨ菴薙・ API 縺ｨ繝ｭ繝ｼ繧ｫ繝ｫ JSON 繧ｹ繝医Ξ繝ｼ繧ｸ縺ｮ莉ｲ莉句ｽｹ縲・
-# 蝓ｺ譛ｬ譁ｹ驥昴・縲繰SON 繝輔ぃ繧､繝ｫ繧呈ｭ｣縺ｨ縺励▽縺､縲∝ｿ・ｦ√↑繧・Cloud Storage 縺ｫ繧ょ酔譛溘☆繧九肴ｧ区・縺ｧ縲・
-# 繝輔Ο繝ｳ繝医お繝ｳ繝牙髄縺代↓縺ｯ隍・焚繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ繧偵∪縺ｨ繧√◆ bootstrap API 繧よ署萓帙＠縺ｦ縺・ｋ縲・
 
 # ===== Memory cache =====
 _memory_cache = MemoryCache(member_login_names)
@@ -147,8 +144,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS_ORIGINS 迺ｰ蠅・､画焚縺ｧ險ｱ蜿ｯ繧ｪ繝ｪ繧ｸ繝ｳ繧偵き繝ｳ繝槫玄蛻・ｊ縺ｧ險ｭ螳壹〒縺阪ｋ縲・
-# 譛ｪ險ｭ螳壹・蝣ｴ蜷医・繝ｭ繝ｼ繧ｫ繝ｫ髢狗匱蜷代￠縺ｫ繝ｯ繧､繝ｫ繝峨き繝ｼ繝峨ｒ邯咏ｶ壹＠縺ｦ菴ｿ逕ｨ縺吶ｋ縲・
 # 萓・ CORS_ORIGINS=https://sites.google.com,https://kanade-portal-xxx.run.app
 _cors_env = os.getenv("CORS_ORIGINS", "").strip()
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else ["*"]
@@ -166,8 +161,6 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict[str, Any]) -> Response:
         response = await super().get_response(path, scope)
-        # 髱咏噪繝輔ぃ繧､繝ｫ縺ｯ繝悶Λ繧ｦ繧ｶ繧ｭ繝｣繝・す繝･繧定ｨｱ蜿ｯ縺励※蛻晏屓莉･髯阪・陦ｨ遉ｺ繧帝ｫ倬溷喧縺吶ｋ縲・
-        # index.html 縺ｯ荳九・繝ｫ繝ｼ繝医〒 no-store 縺ｫ縺励※縲∫判髱｢譛ｬ菴薙・譖ｴ譁ｰ貍上ｌ繧帝亟縺舌・
         if path.endswith((".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webmanifest", ".ico")):
             response.headers["Cache-Control"] = "public, max-age=3600"
         else:
@@ -180,7 +173,6 @@ app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
-    # Pydantic v1/v2 荳｡蟇ｾ蠢懊〒霎樊嶌蛹悶☆繧九◆繧√・莠呈鋤繝倥Ν繝代・縲・
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
 
@@ -487,7 +479,6 @@ def excel_safe_filename(text: str) -> str:
 
 
 def excel_row_count_from_template(ws: Any) -> int:
-    # 繝・Φ繝励Ξ繝ｼ繝医・ B4:B23 縺梧悽菴薙・蝗ｺ螳壽棧・・0陦鯉ｼ峨ょｰ・擂螟画峩譎ゅ・縺薙％縺ｧ閾ｪ蜍戊ｿｽ蠕薙☆繧九・
     if ws.merged_cells and ws.merged_cells.ranges:
         for merged in ws.merged_cells.ranges:
             if merged.min_col == 2 and merged.max_col == 2 and merged.min_row <= 4 and merged.max_row >= 4:
@@ -497,7 +488,6 @@ def excel_row_count_from_template(ws: Any) -> int:
 
 def set_sheet_value_if_writable(sheet: Any, cell_ref: str, value: Any) -> None:
     cell = sheet[cell_ref]
-    # 繝・Φ繝励Ξ繝ｼ繝医・邨仙粋繧ｻ繝ｫ縺ｯ蟾ｦ荳翫そ繝ｫ莉･螟悶′ read-only 縺ｫ縺ｪ繧九◆繧√√◎縺ｮ蝣ｴ蜷医・繧ｹ繧ｭ繝・・縺吶ｋ縲・
     if cell.__class__.__name__ == "MergedCell":
         return
     cell.value = value
@@ -517,7 +507,6 @@ def build_timetable_workbook_bytes(performance: dict[str, Any], info: dict[str, 
     workbook = load_workbook(TIMETABLE_TEMPLATE_PATH)
     sheet = workbook.active
 
-    # B4 縺ｯ譌･莉假ｼ・4:B23 縺ｮ邨仙粋蜈磯ｭ繧ｻ繝ｫ・・
     raw_date = str(performance.get("date") or "").strip()
     try:
         sheet["B4"] = datetime.fromisoformat(raw_date).date() if raw_date else ""
@@ -531,10 +520,10 @@ def build_timetable_workbook_bytes(performance: dict[str, Any], info: dict[str, 
     assignment_rows = parse_assignment_rows(info)
     default_mc = choose_assignment_value(assignment_rows, ["mc", "蜿ｸ莨・"])
     default_reception = choose_assignment_value(assignment_rows, ["蜿嶺ｻ・", "繝√こ繝・ヨ"])
-    default_setting = choose_assignment_value(assignment_rows, ["繧ｻ繝・ユ繧｣繝ｳ繧ｰ", "險ｭ蝟ｶ", "闊槫床"])
+    default_setting = choose_assignment_value(assignment_rows, ["セッティング", "設営", "舞台"])
     assignment_note = compact_assignment_text(
         assignment_rows,
-        ["mc", "蜿ｸ莨・", "蜿嶺ｻ・", "繝√こ繝・ヨ", "繧ｻ繝・ユ繧｣繝ｳ繧ｰ", "險ｭ蝟ｶ", "闊槫床"],
+        ["mc", "司会", "司会者", "チケット", "セッティング", "設営", "舞台"],
     )
 
     row_count = excel_row_count_from_template(sheet)
@@ -564,18 +553,12 @@ def build_timetable_workbook_bytes(performance: dict[str, Any], info: dict[str, 
     return buffer.getvalue()
 
 
-# ===== 繝代せ繝ｯ繝ｼ繝峨ワ繝・す繝･繝ｦ繝ｼ繝・ぅ繝ｪ繝・ぅ =====
-# PBKDF2-SHA256 繧剃ｽｿ縺｣縺溘ワ繝・す繝･蛹悶りｿｽ蜉繝ｩ繧､繝悶Λ繝ｪ荳崎ｦ√・
-# 繝上ャ繧ｷ繝･蠖｢蠑・ "pbkdf2$sha256$<iterations>$<salt>$<hex_hash>"
-# 譌ｧ蠖｢蠑擾ｼ医・繝ｬ繝ｼ繝ｳ繝・く繧ｹ繝茨ｼ峨・繝励Ξ繝輔ぅ繝・け繧ｹ縺ｪ縺励・
 
 _PBKDF2_ALGO = "sha256"
 _PBKDF2_ITERATIONS = 260000  # OWASP 2023謗ｨ螂ｨ蛟､
 
 
 def prepare_member_payload(member: Member, current: dict[str, Any] | None = None) -> dict[str, Any]:
-    # 邂｡逅・判髱｢縺九ｉ譁ｰ繝代せ繝ｯ繝ｼ繝峨′騾√ｉ繧後◆蝣ｴ蜷医□縺代ワ繝・す繝･蛹悶＠縲・
-    # 譛ｪ蜈･蜉帶峩譁ｰ縺ｧ縺ｯ譌｢蟄倥ワ繝・す繝･繧剃ｿ晄戟縺吶ｋ縲ょ・繝代せ繝ｯ繝ｼ繝峨・蠕ｩ蜈・・陦後ｏ縺ｪ縺・・
     payload = model_dump(member)
     raw_password = str(payload.get("password") or "")
     if raw_password:
@@ -590,7 +573,6 @@ def prepare_member_payload(member: Member, current: dict[str, Any] | None = None
 
 
 def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
-    # API繝ｬ繧ｹ繝昴Φ繧ｹ繧・bootstrap 縺ｫ縺ｯ隱崎ｨｼ逕ｨ繝上ャ繧ｷ繝･繧貞・縺輔★縲∬ｨｭ螳壽怏辟｡縺縺代ｒ霑斐☆縲・
     payload = dict(member)
     payload["password_set"] = bool(payload.get("password"))
     payload["password"] = ""
@@ -638,13 +620,11 @@ def require_system_admin_device(device_id: str) -> dict[str, Any]:
 
 
 def cloud_run_revision() -> str:
-    # Cloud Run 讓呎ｺ悶・ K_REVISION 繧貞━蜈医＠縲∵里蟄倥・迢ｬ閾ｪ迺ｰ蠅・､画焚繧ょｾ梧婿莠呈鋤縺ｧ隱ｭ繧縲・
     return os.getenv("K_REVISION", "").strip() or os.getenv("CLOUD_RUN_REVISION", "").strip()
 
 
 @app.get("/api/revision", response_model=None)
 async def get_revision() -> Response:
-    # 繝ｪ繝薙ず繝ｧ繝ｳ縺ｯ繝・・繧ｿ譖ｴ譁ｰ縺ｨ縺ｯ迢ｬ遶九＠縺ｦ螟峨ｏ繧九◆繧√｜ootstrap 縺ｮ ETag 繧ｭ繝｣繝・す繝･縺ｨ縺ｯ蛻・屬縺吶ｋ縲・
     return Response(
         content=json.dumps({"cloudRunRevision": cloud_run_revision()}, ensure_ascii=False),
         media_type="application/json",
@@ -1130,7 +1110,6 @@ def ensure_expected_updated_at(current: dict[str, Any], expected_updated_at: str
 
 
 def next_updated_at(previous: Any = None) -> str:
-    # 鬮倬溘↑騾｣邯壽峩譁ｰ縺ｧ繧よ･ｽ隕ｳ繝ｭ繝・け逕ｨ縺ｮ updated_at 縺悟ｿ・★蜑榊屓蛟､繧医ｊ騾ｲ繧繧医≧縺ｫ縺吶ｋ縲・
     current = datetime.now()
     previous_text = str(previous or "").strip()
     if previous_text:
@@ -1145,7 +1124,6 @@ def next_updated_at(previous: Any = None) -> str:
     return current.isoformat()
 
 
-# ===== JSON 繝・・繧ｿ蜈･蜃ｺ蜉・=====
 def db_data_enabled() -> bool:
     if psycopg is None or psql is None:
         return False
@@ -1159,16 +1137,12 @@ def env_flag_enabled(name: str) -> bool:
 
 
 def db_expected() -> bool:
-    # DB_REQUIRED 縺梧怏蜉ｹ縲√∪縺溘・ DB 髢｢騾｣迺ｰ蠅・､画焚縺ｮ縺・★繧後°縺瑚ｨｭ螳壹＆繧後※縺・ｌ縺ｰ
-    # DB 謗･邯壹ｒ譛溷ｾ・＠縺ｦ縺・ｋ迥ｶ諷九→縺ｿ縺ｪ縺吶・
     if env_flag_enabled("DB_REQUIRED"):
         return True
     return any(os.getenv(name, "").strip() for name in ("DB_URL", "DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"))
 
 
 def ensure_db_expected_is_ready() -> None:
-    # DB 蛻ｩ逕ｨ繧呈悄蠕・＠縺ｦ縺・ｋ縺ｮ縺ｫ謗･邯夊ｨｭ螳壹′荳榊ｮ悟・縺ｪ蝣ｴ蜷医・
-    # JSON 縺ｸ縺ｮ證鈴ｻ吶ヵ繧ｩ繝ｼ繝ｫ繝舌ャ繧ｯ繧帝亟縺・〒蜊ｳ譎ゅ↓險ｭ螳壻ｸ榊ｙ縺ｨ縺励※霑斐☆縲・
     if db_expected() and not db_data_enabled():
         raise HTTPException(
             status_code=500,
@@ -1177,11 +1151,9 @@ def ensure_db_expected_is_ready() -> None:
 
 
 def run_db_startup_self_check() -> None:
-    # DB 蛻ｩ逕ｨ繧呈悄蠕・＠縺ｦ縺・↑縺・腸蠅・〒縺ｯ菴輔ｂ縺励↑縺・・
     if not db_expected():
         return
 
-    # 譛溷ｾ・凾縺ｯ險ｭ螳壻ｸ榊ｙ繧貞叉譎よ､懃衍縺吶ｋ縲・
     ensure_db_expected_is_ready()
     assert_db_ready()
 
@@ -1191,7 +1163,6 @@ def run_db_startup_self_check() -> None:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 cur.fetchone()
-                # 隱ｭ縺ｿ蜿悶ｊ縺ｮ荳ｭ譬ｸ縺ｨ縺ｪ繧・members 繝・・繝悶Ν蟄伜惠繧堤｢ｺ隱阪☆繧九・
                 cur.execute("SELECT to_regclass('public.members')")
                 row = cur.fetchone()
                 if not row or row[0] is None:
@@ -1431,7 +1402,6 @@ def db_fill_missing_ids(cur: Any, table_name: str, rows: list[dict[str, Any]]) -
 
 
 def db_delete_collection_children(cur: Any, name: str) -> None:
-    # save_json_data 縺ｯ蟶ｸ縺ｫ繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ蜈ｨ菴薙ｒ菫晏ｭ倥☆繧九◆繧√∝ｭ舌ユ繝ｼ繝悶Ν繧ょ・菴薙ｒ菴懊ｊ逶ｴ縺吶・
     for child_table in DB_CHILD_TABLES.get(name, ()):
         cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(child_table)))
 
@@ -1686,12 +1656,10 @@ def db_replace_collection(name: str, data: list[dict[str, Any]]) -> None:
 
 
 def data_file(name: str) -> Path:
-    # 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ蜷阪°繧峨Ο繝ｼ繧ｫ繝ｫ JSON 繝輔ぃ繧､繝ｫ繝代せ繧定ｧ｣豎ｺ縺吶ｋ縲・
     return DATA_DIR / f"{name}.json"
 
 
 def load_local_json_data(name: str) -> list[dict[str, Any]]:
-    # 繝ｭ繝ｼ繧ｫ繝ｫ JSON 繧定ｪｭ縺ｿ霎ｼ縺ｿ縲・・蛻励〒縺ｪ縺代ｌ縺ｰ遨ｺ驟榊・縺ｨ縺励※謇ｱ縺・・
     path = data_file(name)
     if not path.exists():
         return []
@@ -1705,7 +1673,6 @@ def load_local_json_data(name: str) -> list[dict[str, Any]]:
 
 
 def load_json_data(name: str) -> list[dict[str, Any]]:
-    # 蜿ら・鬆ｻ蠎ｦ縺ｮ鬮倥＞荳隕ｧ縺ｯ縺ｾ縺壹Γ繝｢繝ｪ繧ｭ繝｣繝・す繝･繧定ｦ九ｋ縲・
     cached = _memory_cache.get(name)
     if cached is not None:
         return cached
@@ -1737,12 +1704,10 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
         json.dump(data, file, ensure_ascii=False, indent=2)
     tmp_path.replace(path)
     
-    # 譖ｸ縺崎ｾｼ縺ｿ逶ｴ蠕後・蜀崎ｪｭ霎ｼ繧帝溘￥縺吶ｋ縺溘ａ縲∽ｿ晏ｭ俶・蜉滓凾轤ｹ縺ｧ繧ｭ繝｣繝・す繝･繧よ峩譁ｰ縺吶ｋ縲・
     _memory_cache.set(name, data)
 
 
 def has_connection_setting(items: list[dict[str, Any]]) -> bool:
-    # 謗･邯夊ｨｭ螳壹→縺励※諢丞袖縺ｮ縺ゅｋ蛟､縺・莉ｶ縺ｧ繧ゅ≠繧後・險ｭ螳壽ｸ医∩縺ｨ縺ｿ縺ｪ縺吶・
     primary_keys = (
         "google_project_id",
         "google_cloud_storage_bucket",
@@ -1759,7 +1724,7 @@ def has_connection_setting(items: list[dict[str, Any]]) -> bool:
             not in {
                 "your_bucket_name_here",
                 "あなたのGCSバケット名",
-                "縺ゅ↑縺溘・GCS繝舌こ繝・ヨ蜷・",
+                "あなたのGCSバケット名",
             }
             for value in values
         ):
@@ -1768,7 +1733,6 @@ def has_connection_setting(items: list[dict[str, Any]]) -> bool:
 
 
 def legacy_connection_setting_from_env() -> dict[str, Any]:
-    # 譌ｧ驕狗畑縺ｮ迺ｰ蠅・､画焚繧呈眠縺励＞ connection_settings 繝ｬ繧ｳ繝ｼ繝峨∈螟画鋤縺吶ｋ縲・
     bucket = os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "").strip()
     if not bucket:
         return {}
@@ -1784,7 +1748,6 @@ def legacy_connection_setting_from_env() -> dict[str, Any]:
     return {
         "google_project_id": os.getenv("GOOGLE_CLOUD_PROJECT", "").strip(),
         "google_cloud_storage_bucket": bucket,
-        # 譌ｧ驕狗畑莠呈鋤縺ｮ縺溘ａ縲∵悴險ｭ螳壽凾縺ｯ遨ｺ譁・ｭ励・縺ｾ縺ｾ逋ｻ骭ｲ縺吶ｋ縲・
         "google_cloud_storage_data_prefix": os.getenv("GOOGLE_CLOUD_STORAGE_DATA_PREFIX", "").strip(),
         "google_cloud_storage_public": public_value,
         "google_service_account_file": os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip(),
@@ -1793,8 +1756,6 @@ def legacy_connection_setting_from_env() -> dict[str, Any]:
 
 
 def seed_connection_settings_from_legacy_env() -> None:
-    # connection_settings 縺檎ｩｺ縺ｮ迺ｰ蠅・〒縺ｯ縲∵立迺ｰ蠅・､画焚蛟､繧・莉ｶ閾ｪ蜍慕匳骭ｲ縺吶ｋ縲・
-    # 縺薙ｌ縺ｫ繧医ｊ謗･邯壽ュ蝣ｱ繝｡繝九Η繝ｼ蟆主・蠕後ｂ譌｢蟄倥ョ繝励Ο繧､縺ｮ險ｭ螳壹ｒ蠑輔″邯吶￡繧九・
     items = load_json_data("connection_settings")
     if has_connection_setting(items):
         return
@@ -1816,14 +1777,12 @@ def seed_connection_settings_from_legacy_env() -> None:
 
 
 async def seed_cloud_data_from_local() -> None:
-    # 譌ｧ迺ｰ蠅・､画焚驕狗畑縺九ｉ遘ｻ陦後＠縺溽腸蠅・〒縺ｯ謗･邯夊ｨｭ螳壹ｒ蜈医↓陬懷ｮ後☆繧九・
     seed_connection_settings_from_legacy_env()
 
-    # 襍ｷ蜍墓凾縺ｫ荳ｻ隕√さ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ繧偵く繝｣繝・す繝･縺ｸ貂ｩ繧√ｋ縲・
     for name in STARTUP_PRELOAD_COLLECTIONS:
         logger.info("Startup preload begin: %s", name)
         try:
-            loaded = load_json_data(name)  # 繧ｭ繝｣繝・す繝･縺ｫ隱ｭ縺ｿ霎ｼ縺ｿ
+            loaded = load_json_data(name)
             logger.info("Startup preload done: %s (%s items)", name, len(loaded))
         except HTTPException as exc:
             logger.exception("Startup preload failed: %s (%s)", name, exc)
@@ -1842,19 +1801,16 @@ app.router.lifespan_context = app_lifespan
 
 
 def next_id(items: list[dict[str, Any]]) -> int:
-    # 譌｢蟄俶怙螟ｧ ID + 1 繧定ｿ斐☆縲・
     return max((int(item.get("id", 0)) for item in items), default=0) + 1
 
 
 def find_item(items: list[dict[str, Any]], item_id: int) -> tuple[int, dict[str, Any]]:
-    # 繧ｭ繝｣繝・す繝･貂医∩繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ縺ｯ ID 繧､繝ｳ繝・ャ繧ｯ繧ｹ繧剃ｽｿ縺｣縺ｦ O(1) 縺ｧ謗｢縺吶・
     for data_name in JSON_DATA_NAMES:
         if _memory_cache.get(data_name) is items:
             index_map = _memory_cache.get_index(data_name, "id")
             if index_map and item_id in index_map:
                 return index_map[item_id]
     
-    # 繧､繝ｳ繝・ャ繧ｯ繧ｹ縺檎┌縺・ｴ蜷医・邱壼ｽ｢讀懃ｴ｢
     for index, item in enumerate(items):
         if item.get("id") == item_id:
             return index, item
@@ -1862,7 +1818,7 @@ def find_item(items: list[dict[str, Any]], item_id: int) -> tuple[int, dict[str,
 
 
 def check_etag(request: Request, data_name: str) -> Response | None:
-    """ETag繝√ぉ繝・け - 螟画峩縺後↑縺代ｌ縺ｰ304繧定ｿ斐☆"""
+    """ETagチェック。変更がなければ304を返す。"""
     etag = _memory_cache.etag(data_name)
     if not etag:
         return None
@@ -1874,8 +1830,6 @@ def check_etag(request: Request, data_name: str) -> Response | None:
 
 
 def combined_collection_etag(names: tuple[str, ...]) -> str:
-    # bootstrap 縺ｯ隍・焚繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ繧偵∪縺ｨ繧√※霑斐☆縺溘ａ縲∝腰荳繝・・繝悶Ν縺ｧ縺ｯ縺ｪ縺・
-    # 繝ｬ繧ｹ繝昴Φ繧ｹ縺ｫ蜷ｫ縺ｾ繧後ｋ蜈ｨ繝・・繧ｿ縺ｮ ETag 繧貞粋謌舌＠縺ｦ 304 蛻､螳壹↓菴ｿ縺・・
     parts: list[str] = []
     for name in dict.fromkeys(names):
         load_json_data(name)
@@ -1893,7 +1847,6 @@ def bootstrap_response(request: Request, data: dict[str, Any], etag: str) -> dic
     )
 
 
-# ===== 隱崎ｨｼ繝ｻ遶ｯ譛ｫ邂｡逅・API =====
 async def list_auth_devices() -> list[dict[str, Any]]:
     return sorted(
         load_json_data("auth_devices"),
@@ -1902,8 +1855,6 @@ async def list_auth_devices() -> list[dict[str, Any]]:
     )
 
 
-# ===== 繧｢繧ｯ繧ｻ繧ｹ繝ｭ繧ｰ =====
-# 蝗｣蜩｡縺後←縺ｮ繝｡繝九Η繝ｼ縺ｸ蜈･縺｣縺溘°繧剃ｿ晏ｭ倥☆繧九る夢隕ｧ縺ｯ繧ｷ繧ｹ繝・Β邂｡逅・・↓髯仙ｮ壹☆繧九・
 @app.post("/api/system/access-logs")
 async def create_access_log(request: Request, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
     device = require_device(x_device_id)
@@ -1927,7 +1878,6 @@ async def create_access_log(request: Request, x_device_id: str = Header(default=
         "updated_at": now,
     }
     items.append(payload)
-    # 繝ｭ繧ｰ縺檎┌蛻ｶ髯舌↓蠅励∴縺ｪ縺・ｈ縺・∫峩霑・000莉ｶ繧剃ｿ晄戟縺吶ｋ縲・
     items = sorted(items, key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""))[-2000:]
     save_json_data("access_logs", items)
     return payload
@@ -1941,8 +1891,6 @@ async def list_access_logs(limit: int = 200, x_device_id: str = Header(default="
     return sorted(items, key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""), reverse=True)[:safe_limit]
 
 
-# ===== 蛻晄悄謠冗判逕ｨ bootstrap API =====
-# 蛻晄悄謠冗判縺ｫ蠢・ｦ√↑譛蟆上ョ繝ｼ繧ｿ繧定ｿ斐☆霆ｽ驥・bootstrap API縲・
 @app.get("/api/bootstrap-lite", response_model=None)
 async def get_bootstrap_lite_data(request: Request) -> dict[str, Any] | Response:
     # Return the minimal data needed for initial rendering.
@@ -1960,7 +1908,6 @@ async def get_bootstrap_lite_data(request: Request) -> dict[str, Any] | Response
     return bootstrap_response(request, data, etag)
 
 
-# 骭ｲ髻ｳ/讌ｽ隴懊・驥阪＞襍ｰ譟ｻ繧帝勁縺・◆騾壼ｸｸ bootstrap API縲・
 @app.get("/api/bootstrap-core", response_model=None)
 async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response:
     # Return core bootstrap data without heavy file listings.
@@ -1980,7 +1927,6 @@ async def get_bootstrap_core_data(request: Request) -> dict[str, Any] | Response
     return bootstrap_response(request, data, etag)
 
 
-# 逕ｻ髱｢縺ｫ蠢・ｦ√↑繝・・繧ｿ繧貞桁諡ｬ逧・↓霑斐☆繝輔Ν bootstrap API縲・
 @app.get("/api/bootstrap", response_model=None)
 async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
     extra_names = ("absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "performance_day_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions")
@@ -2001,9 +1947,7 @@ async def get_bootstrap_data(request: Request) -> dict[str, Any] | Response:
     return bootstrap_response(request, data, etag)
 
 
-# ===== 繧｢繝・・繝ｭ繝ｼ繝峨・繝輔ぃ繧､繝ｫ陬懷勧 =====
 def safe_segment(value: str, default: str) -> str:
-    # 繝輔ぃ繧､繝ｫ/繝輔か繝ｫ繝蜷阪→縺励※蜊ｱ髯ｺ縺ｪ譁・ｭ励ｒ髯､蜴ｻ縺励※螳牙・蛹悶☆繧九・
     value = (value or default).strip()
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
     value = re.sub(r"\s+", " ", value).strip(" .")
@@ -2011,14 +1955,12 @@ def safe_segment(value: str, default: str) -> str:
 
 
 def safe_upload_name(filename: str) -> str:
-    # 蜈・ヵ繧｡繧､繝ｫ蜷阪ｒ螳牙・縺ｪ菫晏ｭ伜錐縺ｸ螟画鋤縺吶ｋ縲・
     suffix = Path(filename).suffix.lower()
     stem = safe_segment(Path(filename).stem, "audio")
     return f"{stem}{suffix}"
 
 
 def ensure_audio_file(file: UploadFile) -> str:
-    # 骭ｲ髻ｳ繧｢繝・・繝ｭ繝ｼ繝牙ｯｾ雎｡縺・mp3/m4a 縺九ｒ讀懆ｨｼ縺吶ｋ縲・
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".mp3", ".m4a"}:
         raise HTTPException(status_code=400, detail="Please upload an MP3 or M4A file")
@@ -2026,14 +1968,12 @@ def ensure_audio_file(file: UploadFile) -> str:
 
 
 def ensure_pdf_file(file: UploadFile) -> None:
-    # 讌ｽ隴懊い繝・・繝ｭ繝ｼ繝牙ｯｾ雎｡縺・PDF 縺九ｒ讀懆ｨｼ縺吶ｋ縲・
     suffix = Path(file.filename or "").suffix.lower()
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail="Please upload a PDF file")
 
 
 def local_recording_metadata(path: Path) -> dict[str, Any]:
-    # 迚ｩ逅・ヵ繧｡繧､繝ｫ縺ｮ螻樊ｧ縺ｨ縲∝挨邂｡逅・＠縺ｦ縺・ｋ骭ｲ髻ｳ譎る俣繝｡繧ｿ繝・・繧ｿ繧貞粋謌舌＠縺ｦ霑斐☆縲・
     stat = path.stat()
     rel = path.relative_to(UPLOAD_DIR).as_posix()
     parts = path.relative_to(CONVERTED_DIR).parts if path.is_relative_to(CONVERTED_DIR) else path.parts
@@ -2058,7 +1998,6 @@ def local_recording_metadata(path: Path) -> dict[str, Any]:
 
 
 def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
-    # Cloud 骭ｲ髻ｳ繝｡繧ｿ繝・・繧ｿ縺ｫ蜀咲函/繝繧ｦ繝ｳ繝ｭ繝ｼ繝・API URL 繧定｣懷ｮ後☆繧九・
     normalized = dict(item)
     object_name = normalized.get("object_name") or normalized.get("id")
     if normalized.get("source") != "google_cloud_storage" or not object_name:
@@ -2076,7 +2015,6 @@ def cloud_recording_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def remember_drive_file(item: dict[str, Any]) -> None:
-    # Cloud 骭ｲ髻ｳ荳隕ｧ縺ｸ譛譁ｰ鬆・岼繧貞・鬆ｭ霑ｽ蜉縺ｧ菫晏ｭ倥☆繧九・
     object_name = str(item.get("object_name") or item.get("id") or "").strip()
     now = datetime.now().isoformat()
     normalized_item = dict(item)
@@ -2093,7 +2031,6 @@ def remember_drive_file(item: dict[str, Any]) -> None:
 
 
 def forget_drive_file(object_name: str) -> None:
-    # Cloud 骭ｲ髻ｳ荳隕ｧ縺九ｉ object_name 縺ｫ荳閾ｴ縺吶ｋ鬆・岼繧帝勁蜴ｻ縺吶ｋ縲・
     items = load_json_data("drive_files")
     save_json_data(
         "drive_files",
@@ -2106,7 +2043,6 @@ def forget_drive_file(object_name: str) -> None:
 
 
 def save_upload_to_path(file: UploadFile, directory: Path) -> Path:
-    # 繧｢繝・・繝ｭ繝ｼ繝峨ヵ繧｡繧､繝ｫ繧呈欠螳壹ョ繧｣繝ｬ繧ｯ繝医Μ縺ｸ菫晏ｭ倥＠縲∽ｿ晏ｭ倥ヱ繧ｹ繧定ｿ斐☆縲・
     directory.mkdir(parents=True, exist_ok=True)
     output_path = directory / safe_upload_name(file.filename or "audio")
     with output_path.open("wb") as target:
@@ -2115,7 +2051,6 @@ def save_upload_to_path(file: UploadFile, directory: Path) -> Path:
 
 
 def local_sheet_path(path: str) -> Path:
-    # 讌ｽ隴懊・繝ｭ繝ｼ繧ｫ繝ｫ螳滉ｽ薙ヱ繧ｹ繧呈､懆ｨｼ莉倥″縺ｧ隗｣豎ｺ縺吶ｋ縲・
     requested = (UPLOAD_DIR / path).resolve()
     if not requested.is_file() or SHEET_DIR.resolve() not in requested.parents:
         raise HTTPException(status_code=404, detail="File not found")
@@ -2123,8 +2058,6 @@ def local_sheet_path(path: str) -> Path:
 
 
 def sheet_metadata(item: dict[str, Any]) -> dict[str, Any]:
-    # 菫晏ｭ伜・縺後Ο繝ｼ繧ｫ繝ｫ縺・Cloud Storage 縺九↓縺九°繧上ｉ縺壹・
-    # 繝輔Ο繝ｳ繝医′蜷後§繧ｭ繝ｼ蜷阪〒謇ｱ縺医ｋ繧医≧ view/download URL 繧呈ｭ｣隕丞喧縺吶ｋ縲・
     normalized = dict(item)
     source = normalized.get("source")
     if source == "google_cloud_storage":
@@ -2143,12 +2076,10 @@ def sheet_metadata(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def sheet_payload() -> list[dict[str, Any]]:
-    # 讌ｽ隴應ｸ隕ｧ繧偵ヵ繝ｭ繝ｳ繝郁｡ｨ遉ｺ蜷代￠繝｡繧ｿ繝・・繧ｿ蠖｢蠑上∈螟画鋤縺吶ｋ縲・
     return [sheet_metadata(item) for item in load_json_data("sheet_library")]
 
 
 def delete_sheet_file(item: dict[str, Any]) -> None:
-    # 讌ｽ隴懷ｮ滉ｽ薙ｒ菫晏ｭ伜・・・loud/繝ｭ繝ｼ繧ｫ繝ｫ・峨↓蠢懊§縺ｦ蜑企勁縺吶ｋ縲・
     if item.get("source") == "google_cloud_storage":
         object_name = str(item.get("object_name") or "")
         if object_name and storage_enabled():
@@ -2166,7 +2097,6 @@ def delete_sheet_file(item: dict[str, Any]) -> None:
 
 
 def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
-    # 讌ｽ隴・ZIP 菴懈・逕ｨ縺ｫ繝輔ぃ繧､繝ｫ螳滉ｽ薙ｒ bytes 縺ｧ蜿門ｾ励☆繧九・
     if item.get("source") == "google_cloud_storage":
         object_name = str(item.get("object_name") or "")
         if object_name and storage_enabled():
@@ -2185,7 +2115,6 @@ def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
 
 
 def recording_file_bytes(item: dict[str, Any]) -> bytes | None:
-    # 骭ｲ髻ｳ ZIP 菴懈・逕ｨ縺ｫ繝輔ぃ繧､繝ｫ螳滉ｽ薙ｒ bytes 縺ｧ蜿門ｾ励☆繧九・
     if item.get("source") == "google_cloud_storage":
         object_name = str(item.get("object_name") or "")
         if object_name and storage_enabled():
@@ -2204,7 +2133,6 @@ def recording_file_bytes(item: dict[str, Any]) -> bytes | None:
 
 
 def unique_zip_name(name: str, used_names: set[str]) -> str:
-    # ZIP 蜀・〒繝輔ぃ繧､繝ｫ蜷阪′陦晉ｪ√＠縺ｪ縺・ｈ縺・｣逡ｪ莉倥″縺ｧ荳諢丞喧縺吶ｋ縲・
     base_name = safe_upload_name(name or "score.pdf")
     if not Path(base_name).suffix:
         base_name = f"{base_name}.pdf"
@@ -2243,7 +2171,6 @@ def convert_path_to_mp3(source_path: Path, suffix: str, bitrate: int) -> Path:
 
 
 def get_audio_duration_seconds(path: Path) -> float | None:
-    # 骭ｲ髻ｳ繝輔ぃ繧､繝ｫ髟ｷ・育ｧ抵ｼ峨ｒ蜿門ｾ励☆繧九ょ､ｱ謨玲凾縺ｯ None縲・
     if AudioSegment is None:
         return None
     try:
@@ -2255,7 +2182,6 @@ def get_audio_duration_seconds(path: Path) -> float | None:
 
 
 def format_duration(seconds: float | int | None) -> str:
-    # 遘呈焚繧・mm:ss / h:mm:ss 蠖｢蠑上∈謨ｴ蠖｢縺吶ｋ縲・
     if seconds is None:
         return ""
     total = int(round(float(seconds)))
@@ -2266,12 +2192,10 @@ def format_duration(seconds: float | int | None) -> str:
     return f"{minutes}:{sec:02d}"
 
 def recording_metadata_map() -> dict[str, dict[str, Any]]:
-    # 骭ｲ髻ｳ譎る俣繝｡繧ｿ繝・・繧ｿ繧・path/object_name 繧ｭ繝ｼ縺ｮ霎樊嶌縺ｫ螻暮幕縺吶ｋ縲・
-    items = load_json_data("recording_metadata")  # 繧ｭ繝｣繝・す繝･縺九ｉ鬮倬溷叙蠕・
+    items = load_json_data("recording_metadata")
     return {str(item.get("path") or item.get("object_name") or item.get("id") or ""): item for item in items}
 
 def remember_recording_duration(path_key: str, duration_seconds: float | None) -> None:
-    # 骭ｲ髻ｳ譎る俣繝｡繧ｿ繝・・繧ｿ繧・upsert 縺吶ｋ縲・
     if not path_key or duration_seconds is None:
         return
     items = load_json_data("recording_metadata")
@@ -2287,8 +2211,6 @@ def remember_recording_duration(path_key: str, duration_seconds: float | None) -
     save_json_data("recording_metadata", items)
 
 
-# ===== 繝ｫ繝ｼ繝医・豁ｻ豢ｻ逶｣隕・=====
-# SPA 縺ｮ繧ｨ繝ｳ繝医Μ HTML 繧定ｿ斐☆繝ｫ繝ｼ繝医・
 @app.get("/")
 async def root() -> FileResponse:
     return FileResponse(
@@ -2300,7 +2222,6 @@ async def root() -> FileResponse:
     )
 
 
-# 繧ｵ繝ｼ繝薙せ縺ｮ豁ｻ豢ｻ縺ｨ蝓ｺ譛ｬ迥ｶ諷九ｒ霑斐☆繝倥Ν繧ｹ繝√ぉ繝・け API縲・
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:
     return {
@@ -2313,7 +2234,6 @@ async def health_check() -> dict[str, str]:
     }
 
 
-# 隕ｪ繝ｬ繧ｳ繝ｼ繝峨′蜑企勁縺輔ｌ縺溘◆繧√↓蟄､遶九＠縺溘ョ繝ｼ繧ｿ繧呈､懷・縺励※霑斐☆縲・
 
 
 def fk_int(value: Any) -> int | None:
@@ -2458,13 +2378,10 @@ async def list_database_records(
     }
 
 
-# ===== 蝓ｺ譛ｬ繝槭せ繧ｿ CRUD =====
 # Basic CRUD endpoints live in src/backend/routers/*.py.
 
-# ===== 骭ｲ髻ｳ繝輔ぃ繧､繝ｫ API =====
 # Endpoints moved to src/backend/routers/recordings.py.
 
-# ===== 讌ｽ隴・API =====
 # Endpoints moved to src/backend/routers/scores.py.
 
 
@@ -2560,7 +2477,6 @@ def assert_extra_collection_permission(name: str, device: dict[str, Any], payloa
             return
         raise HTTPException(status_code=403, detail="Only owner can modify response")
 
-    # absences / event_responses 縺ｯ譛ｬ莠ｺ蜈･蜉帶Φ螳壹・
     if name in {"absences", "event_responses"}:
         if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
             return
@@ -2575,9 +2491,6 @@ def assert_extra_collection_permission(name: str, device: dict[str, Any], payloa
             return
         raise HTTPException(status_code=403, detail="Only owner can modify this record")
 
-# ===== 豎守畑 extra 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ CRUD =====
-# 讖溯・霑ｽ蜉縺ｮ縺溘・縺ｫ蟆ら畑 API 繧貞｢励ｄ縺輔★縺ｫ貂医・繧医≧縲・
-# JSON 驟榊・繝吶・繧ｹ縺ｮ陬懷勧繝・・繧ｿ縺ｯ縺薙・蜈ｱ騾壹お繝ｳ繝峨・繧､繝ｳ繝医〒謇ｱ縺・・
 def normalize_extra_payload(payload: dict[str, Any], item_id: int | None = None, current: dict[str, Any] | None = None) -> dict[str, Any]:
     now = next_updated_at((current or {}).get("updated_at"))
     data = dict(payload or {})
@@ -2600,7 +2513,6 @@ def collection_items(name: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=404, detail="Collection not found")
     return load_json_data(name)
 
-# 謖・ｮ・extra 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ縺ｮ荳隕ｧ繧定ｿ斐☆縲・
 # Extra and album endpoints moved to src/backend/routers/albums.py.
 
 try:

@@ -79,7 +79,7 @@ class Member(BaseModel):
     is_sheet_manager: bool = False
     password: str = ""
     password_set: bool = False
-    permission: str = "荳闊ｬ"
+    permission: str = "一般"
     joined_at: str = ""
     system_access_until: str = ""
     introducer: str = ""

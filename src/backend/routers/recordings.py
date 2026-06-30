@@ -1,14 +1,42 @@
 from __future__ import annotations
 
-# ruff: noqa: F403,F405
-from fastapi import APIRouter
+import io
+import mimetypes
+import zipfile
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote
 
-from ..app_core import *
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response
+
+from ..app_core import (
+    CONVERTED_DIR,
+    UPLOAD_DIR,
+    cloud_recording_metadata,
+    ensure_audio_file,
+    forget_drive_file,
+    format_duration,
+    get_audio_duration_seconds,
+    load_json_data,
+    local_recording_metadata,
+    logger,
+    recording_file_bytes,
+    remember_drive_file,
+    remember_recording_duration,
+    require_recording_manager_device,
+    safe_segment,
+    safe_upload_name,
+    save_upload_to_path,
+    unique_zip_name,
+)
+from ..drive_storage import get_storage_bucket, storage_enabled, upload_file_to_drive
+from ..models.schemas import RecordingDeleteRequest
+from ..services.blob_streaming_service import stream_storage_blob
 
 router = APIRouter()
 
-# ===== 骭ｲ髻ｳ繝輔ぃ繧､繝ｫ API =====
-# 骭ｲ髻ｳ繝輔ぃ繧､繝ｫ繧貞女縺大叙繧翫∝ｿ・ｦ√↓蠢懊§縺ｦ繧ｯ繝ｩ繧ｦ繝峨∈蜷梧悄縺励※逋ｻ骭ｲ縺吶ｋ縲・
 @router.post("/api/convert")
 async def convert_audio(
     file: UploadFile = File(...),
@@ -61,9 +89,6 @@ async def convert_audio(
 
 
 def recording_payload() -> dict[str, list[dict[str, Any]]]:
-    # Cloud 荳翫・骭ｲ髻ｳ繧貞・鬆ｭ縺ｫ縲√Ο繝ｼ繧ｫ繝ｫ骭ｲ髻ｳ繧呈峩譁ｰ譌･譎る剄鬆・〒邯壹￠縺ｦ霑斐☆縲・
-    # 蜷後§骭ｲ髻ｳ縺・Cloud 縺ｨ繝ｭ繝ｼ繧ｫ繝ｫ縺ｮ荳｡譁ｹ縺ｫ縺ゅｋ蝣ｴ蜷医・ Cloud 蛛ｴ繧貞━蜈医＠縲・
-    # 繧｢繝・・繝ｭ繝ｼ繝臥峩蠕後・荳隕ｧ縺ｧ蜷御ｸ繝輔ぃ繧､繝ｫ縺御ｺ碁㍾陦ｨ遉ｺ縺輔ｌ縺ｪ縺・ｈ縺・↓縺吶ｋ縲・
     drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
     mirrored_local_paths = {
         f"converted/{object_name}"
@@ -84,13 +109,11 @@ def recording_payload() -> dict[str, list[dict[str, Any]]]:
     return {"files": drive_files + local_files}
 
 
-# 骭ｲ髻ｳ荳隕ｧ・・loud + 繝ｭ繝ｼ繧ｫ繝ｫ邨ｱ蜷茨ｼ峨ｒ霑斐☆縲・
 @router.get("/api/recordings")
 async def get_recordings() -> dict[str, list[dict[str, Any]]]:
     return recording_payload()
 
 
-# 譚｡莉ｶ縺ｫ荳閾ｴ縺吶ｋ骭ｲ髻ｳ繧・ZIP 縺ｫ縺ｾ縺ｨ繧√※繝繧ｦ繝ｳ繝ｭ繝ｼ繝峨＆縺帙ｋ縲・
 @router.get("/api/recordings/download-zip")
 async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
     recordings = [
@@ -136,7 +159,6 @@ def local_recording_path(path: str) -> Path:
     return requested
 
 
-# 繝ｭ繝ｼ繧ｫ繝ｫ骭ｲ髻ｳ繧貞・逕溽畑騾斐〒霑斐☆縲・
 @router.get("/api/recordings/play/{path:path}")
 async def play_recording(path: str) -> FileResponse:
     requested = local_recording_path(path)
@@ -146,14 +168,12 @@ async def play_recording(path: str) -> FileResponse:
     )
 
 
-# 繝ｭ繝ｼ繧ｫ繝ｫ骭ｲ髻ｳ繧呈ｷｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒霑斐☆縲・
 @router.get("/api/recordings/download/{path:path}")
 async def download_recording(path: str) -> FileResponse:
     requested = local_recording_path(path)
     return FileResponse(requested, filename=requested.name)
 
 
-# 骭ｲ髻ｳ・・loud 縺ｾ縺溘・繝ｭ繝ｼ繧ｫ繝ｫ・峨ｒ蜑企勁縺吶ｋ縲・
 @router.delete("/api/recordings")
 async def delete_recording(payload: RecordingDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
     require_recording_manager_device(x_device_id)
@@ -177,89 +197,17 @@ async def delete_recording(payload: RecordingDeleteRequest, x_device_id: str = H
     return {"message": "Deleted"}
 
 
-def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | None:
-    if not range_header or not range_header.startswith("bytes="):
-        return None
-    first_range = range_header.removeprefix("bytes=").split(",", 1)[0].strip()
-    if "-" not in first_range:
-        return None
-    start_text, end_text = first_range.split("-", 1)
-    if not start_text and not end_text:
-        return None
-    if start_text:
-        start = int(start_text)
-        end = int(end_text) if end_text else total_size - 1
-    else:
-        suffix_length = int(end_text)
-        start = max(total_size - suffix_length, 0)
-        end = total_size - 1
-    if start >= total_size:
-        return None
-    return max(start, 0), min(end, total_size - 1)
 
-
-def stream_storage_blob(object_name: str, download: bool, request: Request):
-    # Cloud Storage 荳翫・繝輔ぃ繧､繝ｫ繧偵∝・逕滓凾縺ｯ Range 蟇ｾ蠢懊〒縲・
-    # 繝繧ｦ繝ｳ繝ｭ繝ｼ繝画凾縺ｯ騾壼ｸｸ豺ｻ莉倥→縺励※驟堺ｿ｡縺吶ｋ蜈ｱ騾壹せ繝医Μ繝ｼ繝槭・縲・
-    if not storage_enabled():
-        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
-    if not object_name:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    blob = get_storage_bucket().blob(object_name)
-    if not blob.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    blob.reload()
-    filename = Path(object_name).name
-    total_size = int(blob.size or 0)
-    disposition = "attachment" if download else "inline"
-    content_type = blob.content_type or mimetypes.guess_type(filename)[0] or "audio/mpeg"
-    base_headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
-        "Cache-Control": "private, max-age=3600",
-    }
-
-    requested_range = None if download else parse_range_header(request.headers.get("range", ""), total_size)
-    if requested_range:
-        start, end = requested_range
-        data = blob.download_as_bytes(start=start, end=end)
-        headers = {
-            **base_headers,
-            "Content-Range": f"bytes {start}-{end}/{total_size}",
-            "Content-Length": str(len(data)),
-        }
-        return Response(content=data, status_code=206, media_type=content_type, headers=headers)
-
-    headers = dict(base_headers)
-    if total_size:
-        headers["Content-Length"] = str(total_size)
-
-    def chunks():
-        with blob.open("rb") as source:
-            while True:
-                chunk = source.read(1024 * 1024)
-                if not chunk:
-                    break
-                yield chunk
-
-    return StreamingResponse(chunks(), media_type=content_type, headers=headers)
-
-
-# Cloud 骭ｲ髻ｳ繧・Range 蟇ｾ蠢懊〒蜀咲函驟堺ｿ｡縺吶ｋ縲・
 @router.get("/api/recordings/cloud/play/{object_name:path}")
 async def play_cloud_recording(object_name: str, request: Request):
     return stream_storage_blob(object_name, download=False, request=request)
 
 
-# Cloud 骭ｲ髻ｳ繧呈ｷｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒驟堺ｿ｡縺吶ｋ縲・
 @router.get("/api/recordings/cloud/download/{object_name:path}")
 async def download_cloud_recording(object_name: str, request: Request) :
     return stream_storage_blob(object_name, download=True, request=request)
 
 
-# 骭ｲ髻ｳ繧・Cloud Storage 縺ｸ繧｢繝・・繝ｭ繝ｼ繝峨＠繝｡繧ｿ繝・・繧ｿ繧定ｿ斐☆縲・
 @router.post("/api/drive/upload")
 async def upload_to_drive(
     file: UploadFile = File(...),
@@ -313,7 +261,6 @@ async def upload_to_drive(
     }
 
 
-# Cloud 骭ｲ髻ｳ繝｡繧ｿ繝・・繧ｿ荳隕ｧ繧定ｿ斐☆縲・
 @router.get("/api/drive/files")
 async def get_drive_files() -> dict[str, list[dict[str, Any]]]:
     return {"files": load_json_data("drive_files")}
