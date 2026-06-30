@@ -26,6 +26,41 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 try:
+    from .models.schemas import (
+        Announcement,
+        EventAdjustment,
+        ExtraUpsertRequest,
+        Member,
+        MemberPasswordSetupRequest,
+        Performance,
+        PortalLoginRequest,
+        RecordingDeleteRequest,
+        Schedule,
+        SheetBulkPartUpdateRequest,
+        SheetDeleteRequest,
+        SheetPartUpdateRequest,
+    )
+    from .services.memory_cache import MemoryCache
+    from .services.security_service import hash_password, is_hashed_password, verify_password
+except ImportError:  # pragma: no cover - allows running main.py directly.
+    from models.schemas import (
+        Announcement,
+        EventAdjustment,
+        ExtraUpsertRequest,
+        Member,
+        MemberPasswordSetupRequest,
+        Performance,
+        PortalLoginRequest,
+        RecordingDeleteRequest,
+        Schedule,
+        SheetBulkPartUpdateRequest,
+        SheetDeleteRequest,
+        SheetPartUpdateRequest,
+    )
+    from services.memory_cache import MemoryCache
+    from services.security_service import hash_password, is_hashed_password, verify_password
+
+try:
     from openpyxl import load_workbook
 except ImportError:  # pragma: no cover
     load_workbook = None
@@ -84,66 +119,9 @@ logger = logging.getLogger(__name__)
 # 蝓ｺ譛ｬ譁ｹ驥昴・縲繰SON 繝輔ぃ繧､繝ｫ繧呈ｭ｣縺ｨ縺励▽縺､縲∝ｿ・ｦ√↑繧・Cloud Storage 縺ｫ繧ょ酔譛溘☆繧九肴ｧ区・縺ｧ縲・
 # 繝輔Ο繝ｳ繝医お繝ｳ繝牙髄縺代↓縺ｯ隍・焚繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ繧偵∪縺ｨ繧√◆ bootstrap API 繧よ署萓帙＠縺ｦ縺・ｋ縲・
 
-# ===== 繝｡繝｢繝ｪ繧ｭ繝｣繝・す繝ｳ繧ｰ螻､ =====
-class MemoryCache:
-    """In-memory cache for JSON collections."""
-    def __init__(self):
-        self._cache: dict[str, list[dict[str, Any]]] = {}
-        self._etags: dict[str, str] = {}
-        self._indexes: dict[str, dict[str, dict[str, Any]]] = {}  # name -> index_type -> index
-    
-    def get(self, name: str) -> list[dict[str, Any]] | None:
-        """Return cached collection data."""
-        return self._cache.get(name)
-    
-    def set(self, name: str, data: list[dict[str, Any]]) -> None:
-        """Cache collection data and update its ETag."""
-        self._cache[name] = data
-        # JSON繧呈枚蟄怜・蛹悶＠縺ｦSHA256繝上ャ繧ｷ繝･繧堤函謌・
-        json_str = json.dumps(data, ensure_ascii=False, sort_keys=True)
-        self._etags[name] = hashlib.sha256(json_str.encode()).hexdigest()
-        # 繧､繝ｳ繝・ャ繧ｯ繧ｹ繧偵Μ繧ｻ繝・ヨ
-        self._indexes.pop(name, None)
-    
-    def clear(self, name: str | None = None) -> None:
-        """Clear one collection cache or all cached collections."""
-        if name:
-            self._cache.pop(name, None)
-            self._etags.pop(name, None)
-            self._indexes.pop(name, None)
-        else:
-            self._cache.clear()
-            self._etags.clear()
-            self._indexes.clear()
-    
-    def etag(self, name: str) -> str | None:
-        """Return the cached ETag for a collection."""
-        return self._etags.get(name)
-    
-    def get_index(self, name: str, index_type: str = "id") -> dict[str, Any] | None:
-        """Return a cached index for a collection."""
-        data = self._cache.get(name)
-        if not data:
-            return None
+# ===== Memory cache =====
+_memory_cache = MemoryCache(member_login_names)
 
-        per_name_indexes = self._indexes.setdefault(name, {})
-        if index_type not in per_name_indexes:
-            if index_type == "id":
-                # ID繧､繝ｳ繝・ャ繧ｯ繧ｹ・夐ｫ倬櫑D讀懃ｴ｢逕ｨ
-                per_name_indexes[index_type] = {item.get("id"): (idx, item) for idx, item in enumerate(data)}
-            elif index_type == "member_login":
-                # 繝｡繝ｳ繝舌・繝ｭ繧ｰ繧､繝ｳ繧､繝ｳ繝・ャ繧ｯ繧ｹ・壽ｭ｣隕丞喧縺輔ｌ縺溷錐蜑阪°繧画､懃ｴ｢
-                member_index: dict[str, Any] = {}
-                for idx, item in enumerate(data):
-                    for name_variant in member_login_names(item):
-                        member_index[name_variant] = (idx, item)
-                per_name_indexes[index_type] = member_index
-            else:
-                return None
-
-        return per_name_indexes.get(index_type)
-
-_memory_cache = MemoryCache()
 
 if AudioSegment is not None and imageio_ffmpeg is not None:
     AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
@@ -199,133 +177,6 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
-
-
-class Performance(BaseModel):
-    id: int | None = None
-    title: str
-    date: str
-    open_time: str
-    start_time: str
-    venue: str
-    conductor: str
-    flyer_image: str = ""
-    performance_fee_amount: float = 0
-    pieces: list[Any] = Field(default_factory=list)
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class Schedule(BaseModel):
-    id: int | None = None
-    date: str
-    time: str = ""
-    start_time: str = ""
-    end_time: str = ""
-    venue: str
-    available_hours: str = ""
-    available_start_time: str = ""
-    available_end_time: str = ""
-    performance_id: int | None = None
-    performance_title: str = ""
-    pieces: str = ""
-    is_conductor_training: bool = False
-    is_main_performance: bool = False
-    notes: str = ""
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class Announcement(BaseModel):
-    id: int | None = None
-    date: str
-    title: str = ""
-    content: str
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class EventAdjustment(BaseModel):
-    id: int | None = None
-    title: str
-    date: str = ""
-    start_time: str = ""
-    deadline: str = ""
-    url: str = ""
-    notes: str = ""
-    delete_phrase: str = ""
-    fee: str = ""
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class Member(BaseModel):
-    id: int | None = None
-    name: str = ""
-    last_name: str = ""
-    first_name: str = ""
-    maiden_name: str = ""
-    last_name_kana: str = ""
-    first_name_kana: str = ""
-    maiden_name_kana: str = ""
-    part: str = ""
-    photo_url: str = ""
-    is_founder: bool = False
-    is_recording_manager: bool = False
-    is_sheet_manager: bool = False
-    password: str = ""
-    password_set: bool = False
-    permission: str = "荳闊ｬ"
-    joined_at: str = ""
-    system_access_until: str = ""
-    introducer: str = ""
-    role: str = ""
-    instrument_history: str = ""
-    past_orchestras: str = ""
-    comment: str = ""
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class RecordingDeleteRequest(BaseModel):
-    source: str
-    object_name: str = ""
-    path: str = ""
-
-
-class SheetDeleteRequest(BaseModel):
-    performance_id: str
-    piece: str = ""
-    sheet_id: int | None = None
-
-
-class SheetPartUpdateRequest(BaseModel):
-    part: str = ""
-
-
-class SheetBulkPartUpdateRequest(BaseModel):
-    sheet_ids: list[int] = []
-    part: str = ""
-
-
-class PortalLoginRequest(BaseModel):
-    name: str = ""
-    part: str = ""
-    password: str
-    device_id: str
-    device_name: str = ""
-    user_agent: str = ""
-
-
-class MemberPasswordSetupRequest(BaseModel):
-    name: str
-    part: str = ""
-    password: str
-
-
-class ExtraUpsertRequest(BaseModel):
-    payload: dict[str, Any] = Field(default_factory=dict)
-    expected_updated_at: str = ""
 
 
 def model_dump(model: BaseModel) -> dict[str, Any]:
@@ -720,33 +571,6 @@ def build_timetable_workbook_bytes(performance: dict[str, Any], info: dict[str, 
 
 _PBKDF2_ALGO = "sha256"
 _PBKDF2_ITERATIONS = 260000  # OWASP 2023謗ｨ螂ｨ蛟､
-
-
-def hash_password(password: str) -> str:
-    """Hash a password with PBKDF2-SHA256."""
-    salt = secrets.token_hex(16)
-    dk = hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode(), salt.encode(), _PBKDF2_ITERATIONS)
-    return f"pbkdf2${_PBKDF2_ALGO}${_PBKDF2_ITERATIONS}${salt}${dk.hex()}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    """Compare a submitted password with a stored password value."""
-    if not stored:
-        return False
-    if not stored.startswith("pbkdf2$"):
-        # 譌ｧ蠖｢蠑・ 繝励Ξ繝ｼ繝ｳ繝・く繧ｹ繝医・螳壽焚譎る俣豈碑ｼ・ｼ医ち繧､繝溘Φ繧ｰ繧｢繧ｿ繝・け蟇ｾ遲厄ｼ・
-        return secrets.compare_digest(password.encode(), stored.encode())
-    try:
-        _, algo, iterations_str, salt, stored_hash = stored.split("$")
-        dk = hashlib.pbkdf2_hmac(algo, password.encode(), salt.encode(), int(iterations_str))
-        return secrets.compare_digest(dk.hex(), stored_hash)
-    except (ValueError, TypeError):
-        return False
-
-
-def is_hashed_password(stored: str) -> bool:
-    """Return whether a stored password already uses the hash format."""
-    return stored.startswith("pbkdf2$")
 
 
 def prepare_member_payload(member: Member, current: dict[str, Any] | None = None) -> dict[str, Any]:
