@@ -1,15 +1,15 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json
 import logging
-import mimetypes
+import mimetypes  # noqa: F401
 import os
 import re
 import secrets
 import shutil
 import io
-import zipfile
+import zipfile  # noqa: F401
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -18,10 +18,10 @@ from typing import Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile  # noqa: F401
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse  # noqa: F401
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -43,13 +43,13 @@ try:
     from .drive_storage import (
         get_storage_bucket,
         storage_enabled,
-        upload_file_to_drive,
+        upload_file_to_drive,  # noqa: F401
     )
 except ImportError:  # pragma: no cover - allows running main.py directly.
     from drive_storage import (
         get_storage_bucket,
         storage_enabled,
-        upload_file_to_drive,
+        upload_file_to_drive,  # noqa: F401
     )
 
 try:
@@ -2638,62 +2638,14 @@ async def list_database_records(
 # Basic CRUD endpoints live in src/backend/routers/*.py.
 
 # ===== 骭ｲ髻ｳ繝輔ぃ繧､繝ｫ API =====
-# 骭ｲ髻ｳ繝輔ぃ繧､繝ｫ繧貞女縺大叙繧翫∝ｿ・ｦ√↓蠢懊§縺ｦ繧ｯ繝ｩ繧ｦ繝峨∈蜷梧悄縺励※逋ｻ骭ｲ縺吶ｋ縲・
-@app.post("/api/convert")
-async def convert_audio(
-    file: UploadFile = File(...),
-    date: str = Form(""),
-    piece: str = Form(""),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, Any]:
-    require_recording_manager_device(x_device_id)
-    ensure_audio_file(file)
+# Endpoints moved to src/backend/routers/recordings.py.
 
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
-    piece_dir = safe_segment(piece, "uncategorized")
-    output_dir = CONVERTED_DIR / date_dir / piece_dir
-    output_path = save_upload_to_path(file, output_dir)
-
-    duration_seconds = get_audio_duration_seconds(output_path)
-    rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
-    remember_recording_duration(rel_path, duration_seconds)
-    response = {
-        "filename": output_path.name,
-        "path": rel_path,
-        "download_url": f"/api/recordings/download/{rel_path}",
-        "source": "local",
-        "duration_seconds": duration_seconds,
-        "duration": format_duration(duration_seconds),
-        "message": "Uploaded",
-    }
-
-    if storage_enabled():
-        storage_file = upload_file_to_drive(
-            local_path=output_path,
-            practice_date=date_dir,
-            song_name=piece_dir,
-        )
-        logger.info("Google Cloud Storage upload complete: %s", storage_file)
-        storage_file["duration_seconds"] = duration_seconds
-        storage_file["duration"] = format_duration(duration_seconds)
-        remember_drive_file(storage_file)
-        response.update(
-            {
-                "drive_file_id": storage_file["id"],
-                "share_link": storage_file.get("view_url") or storage_file.get("download_url"),
-                "download_url": storage_file.get("download_url") or response["download_url"],
-                "source": "google_cloud_storage",
-                "message": "Uploaded and mirrored to Google Cloud Storage",
-            }
-        )
-
-    return response
+# ===== 讌ｽ隴・API =====
+# Endpoints moved to src/backend/routers/scores.py.
 
 
 def recording_payload() -> dict[str, list[dict[str, Any]]]:
-    # Cloud 荳翫・骭ｲ髻ｳ繧貞・鬆ｭ縺ｫ縲√Ο繝ｼ繧ｫ繝ｫ骭ｲ髻ｳ繧呈峩譁ｰ譌･譎る剄鬆・〒邯壹￠縺ｦ霑斐☆縲・
-    # 蜷後§骭ｲ髻ｳ縺・Cloud 縺ｨ繝ｭ繝ｼ繧ｫ繝ｫ縺ｮ荳｡譁ｹ縺ｫ縺ゅｋ蝣ｴ蜷医・ Cloud 蛛ｴ繧貞━蜈医＠縲・
-    # 繧｢繝・・繝ｭ繝ｼ繝臥峩蠕後・荳隕ｧ縺ｧ蜷御ｸ繝輔ぃ繧､繝ｫ縺御ｺ碁㍾陦ｨ遉ｺ縺輔ｌ縺ｪ縺・ｈ縺・↓縺吶ｋ縲・
+    # Merge cloud recording metadata with non-mirrored local files.
     drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
     mirrored_local_paths = {
         f"converted/{object_name}"
@@ -2714,452 +2666,11 @@ def recording_payload() -> dict[str, list[dict[str, Any]]]:
     return {"files": drive_files + local_files}
 
 
-# 骭ｲ髻ｳ荳隕ｧ・・loud + 繝ｭ繝ｼ繧ｫ繝ｫ邨ｱ蜷茨ｼ峨ｒ霑斐☆縲・
-@app.get("/api/recordings")
-async def get_recordings() -> dict[str, list[dict[str, Any]]]:
-    return recording_payload()
-
-
-# 譚｡莉ｶ縺ｫ荳閾ｴ縺吶ｋ骭ｲ髻ｳ繧・ZIP 縺ｫ縺ｾ縺ｨ繧√※繝繧ｦ繝ｳ繝ｭ繝ｼ繝峨＆縺帙ｋ縲・
-@app.get("/api/recordings/download-zip")
-async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
-    recordings = [
-        item
-        for item in recording_payload()["files"]
-        if (not date or str(item.get("date") or "") == date)
-        and (not piece or str(item.get("piece") or "") == piece)
-    ]
-    if not recordings:
-        raise HTTPException(status_code=404, detail="Recordings not found")
-
-    buffer = io.BytesIO()
-    used_names: set[str] = set()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for item in recordings:
-            data = recording_file_bytes(item)
-            if data is None:
-                continue
-            filename = safe_upload_name(str(item.get("name") or "recording.mp3"))
-            if not Path(filename).suffix:
-                filename = f"{filename}.mp3"
-            filename = unique_zip_name(filename, used_names)
-            archive.writestr(filename, data)
-
-    if not buffer.tell():
-        raise HTTPException(status_code=404, detail="Recording files not found")
-
-    zip_name = safe_segment(f"recordings_{date or 'all'}_{piece or 'all'}", "recordings") + ".zip"
-    return Response(
-        content=buffer.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_name)}",
-            "Cache-Control": "private, max-age=60",
-        },
-    )
-
-
 def local_recording_path(path: str) -> Path:
     requested = (UPLOAD_DIR / path).resolve()
     if not requested.is_file() or UPLOAD_DIR.resolve() not in requested.parents:
         raise HTTPException(status_code=404, detail="File not found")
     return requested
-
-
-# 繝ｭ繝ｼ繧ｫ繝ｫ骭ｲ髻ｳ繧貞・逕溽畑騾斐〒霑斐☆縲・
-@app.get("/api/recordings/play/{path:path}")
-async def play_recording(path: str) -> FileResponse:
-    requested = local_recording_path(path)
-    return FileResponse(
-        requested,
-        media_type=mimetypes.guess_type(requested.name)[0] or "application/octet-stream",
-    )
-
-
-# 繝ｭ繝ｼ繧ｫ繝ｫ骭ｲ髻ｳ繧呈ｷｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒霑斐☆縲・
-@app.get("/api/recordings/download/{path:path}")
-async def download_recording(path: str) -> FileResponse:
-    requested = local_recording_path(path)
-    return FileResponse(requested, filename=requested.name)
-
-
-# 骭ｲ髻ｳ・・loud 縺ｾ縺溘・繝ｭ繝ｼ繧ｫ繝ｫ・峨ｒ蜑企勁縺吶ｋ縲・
-@app.delete("/api/recordings")
-async def delete_recording(payload: RecordingDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
-    require_recording_manager_device(x_device_id)
-    if payload.source == "google_cloud_storage":
-        object_name = payload.object_name.strip()
-        if not object_name:
-            raise HTTPException(status_code=400, detail="object_name is required")
-
-        blob = get_storage_bucket().blob(object_name)
-        if blob.exists():
-            blob.delete()
-        forget_drive_file(object_name)
-        return {"message": "Deleted"}
-
-    path = payload.path.strip()
-    if not path:
-        raise HTTPException(status_code=400, detail="path is required")
-
-    requested = local_recording_path(path)
-    requested.unlink()
-    return {"message": "Deleted"}
-
-
-def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | None:
-    if not range_header or not range_header.startswith("bytes="):
-        return None
-    first_range = range_header.removeprefix("bytes=").split(",", 1)[0].strip()
-    if "-" not in first_range:
-        return None
-    start_text, end_text = first_range.split("-", 1)
-    if not start_text and not end_text:
-        return None
-    if start_text:
-        start = int(start_text)
-        end = int(end_text) if end_text else total_size - 1
-    else:
-        suffix_length = int(end_text)
-        start = max(total_size - suffix_length, 0)
-        end = total_size - 1
-    if start >= total_size:
-        return None
-    return max(start, 0), min(end, total_size - 1)
-
-
-def stream_storage_blob(object_name: str, download: bool, request: Request):
-    # Cloud Storage 荳翫・繝輔ぃ繧､繝ｫ繧偵∝・逕滓凾縺ｯ Range 蟇ｾ蠢懊〒縲・
-    # 繝繧ｦ繝ｳ繝ｭ繝ｼ繝画凾縺ｯ騾壼ｸｸ豺ｻ莉倥→縺励※驟堺ｿ｡縺吶ｋ蜈ｱ騾壹せ繝医Μ繝ｼ繝槭・縲・
-    if not storage_enabled():
-        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
-    if not object_name:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    blob = get_storage_bucket().blob(object_name)
-    if not blob.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    blob.reload()
-    filename = Path(object_name).name
-    total_size = int(blob.size or 0)
-    disposition = "attachment" if download else "inline"
-    content_type = blob.content_type or mimetypes.guess_type(filename)[0] or "audio/mpeg"
-    base_headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
-        "Cache-Control": "private, max-age=3600",
-    }
-
-    requested_range = None if download else parse_range_header(request.headers.get("range", ""), total_size)
-    if requested_range:
-        start, end = requested_range
-        data = blob.download_as_bytes(start=start, end=end)
-        headers = {
-            **base_headers,
-            "Content-Range": f"bytes {start}-{end}/{total_size}",
-            "Content-Length": str(len(data)),
-        }
-        return Response(content=data, status_code=206, media_type=content_type, headers=headers)
-
-    headers = dict(base_headers)
-    if total_size:
-        headers["Content-Length"] = str(total_size)
-
-    def chunks():
-        with blob.open("rb") as source:
-            while True:
-                chunk = source.read(1024 * 1024)
-                if not chunk:
-                    break
-                yield chunk
-
-    return StreamingResponse(chunks(), media_type=content_type, headers=headers)
-
-
-# Cloud 骭ｲ髻ｳ繧・Range 蟇ｾ蠢懊〒蜀咲函驟堺ｿ｡縺吶ｋ縲・
-@app.get("/api/recordings/cloud/play/{object_name:path}")
-async def play_cloud_recording(object_name: str, request: Request):
-    return stream_storage_blob(object_name, download=False, request=request)
-
-
-# Cloud 骭ｲ髻ｳ繧呈ｷｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒驟堺ｿ｡縺吶ｋ縲・
-@app.get("/api/recordings/cloud/download/{object_name:path}")
-async def download_cloud_recording(object_name: str, request: Request) :
-    return stream_storage_blob(object_name, download=True, request=request)
-
-
-# 骭ｲ髻ｳ繧・Cloud Storage 縺ｸ繧｢繝・・繝ｭ繝ｼ繝峨＠繝｡繧ｿ繝・・繧ｿ繧定ｿ斐☆縲・
-@app.post("/api/drive/upload")
-async def upload_to_drive(
-    file: UploadFile = File(...),
-    date: str = Form(""),
-    piece: str = Form(""),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, Any]:
-    require_recording_manager_device(x_device_id)
-    ensure_audio_file(file)
-
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
-    logger.info(f"date={date}")
-    logger.info(f"piece={piece}")
-    piece_dir = safe_segment(piece, "uncategorized")
-    output_path = save_upload_to_path(file, CONVERTED_DIR / date_dir / piece_dir)
-    duration_seconds = get_audio_duration_seconds(output_path)
-    rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
-    remember_recording_duration(rel_path, duration_seconds)
-
-    if not storage_enabled():
-        return {
-            "drive_file_id": None,
-            "share_link": f"/api/recordings/download/{rel_path}",
-            "source": "local",
-            "duration_seconds": duration_seconds,
-            "duration": format_duration(duration_seconds),
-            "message": "Google Cloud Storage is not configured. Saved locally.",
-        }
-
-    try:
-        drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
-        drive_item["duration_seconds"] = duration_seconds
-        drive_item["duration"] = format_duration(duration_seconds)
-        remember_recording_duration(str(drive_item.get("object_name") or drive_item.get("id") or ""), duration_seconds)
-        remember_drive_file(drive_item)
-    except Exception as exc:
-        logger.exception("Google Cloud Storage upload failed")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Google Cloud Storage upload failed: {exc}",
-        ) from exc
-
-    return {
-        "drive_file_id": drive_item["id"],
-        "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
-        "download_url": drive_item.get("download_url"),
-        "source": "google_cloud_storage",
-        "duration_seconds": duration_seconds,
-        "duration": format_duration(duration_seconds),
-        "message": "Uploaded to Google Cloud Storage",
-    }
-
-
-# Cloud 骭ｲ髻ｳ繝｡繧ｿ繝・・繧ｿ荳隕ｧ繧定ｿ斐☆縲・
-@app.get("/api/drive/files")
-async def get_drive_files() -> dict[str, list[dict[str, Any]]]:
-    return {"files": load_json_data("drive_files")}
-
-
-# ===== 讌ｽ隴・API =====
-# 讌ｽ隴應ｸ隕ｧ繧定ｿ斐☆縲・
-@app.get("/api/sheets")
-async def get_sheets() -> dict[str, list[dict[str, Any]]]:
-    return {"files": sheet_payload()}
-
-
-# 繝ｭ繝ｼ繧ｫ繝ｫ讌ｽ隴懊ｒ豺ｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒霑斐☆縲・
-@app.get("/api/sheets/download/{path:path}")
-async def download_local_sheet(path: str) -> FileResponse:
-    requested = local_sheet_path(path)
-    return FileResponse(requested, media_type="application/pdf", filename=requested.name)
-
-
-# 繝ｭ繝ｼ繧ｫ繝ｫ讌ｽ隴懊ｒ繧､繝ｳ繝ｩ繧､繝ｳ陦ｨ遉ｺ逕ｨ縺ｫ霑斐☆縲・
-@app.get("/api/sheets/view/{path:path}")
-async def view_local_sheet(path: str) -> Response:
-    requested = local_sheet_path(path)
-    return Response(
-        content=requested.read_bytes(),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(requested.name)}",
-            "Cache-Control": "private, max-age=3600",
-        },
-    )
-
-
-# Cloud 讌ｽ隴懊ｒ豺ｻ莉倥ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨〒霑斐☆縲・
-@app.get("/api/sheets/cloud/download/{object_name:path}")
-async def download_cloud_sheet(object_name: str, request: Request):
-    return stream_storage_blob(object_name, download=True, request=request)
-
-
-# Cloud 讌ｽ隴懊ｒ繧､繝ｳ繝ｩ繧､繝ｳ陦ｨ遉ｺ逕ｨ縺ｫ霑斐☆縲・
-@app.get("/api/sheets/cloud/view/{object_name:path}")
-async def view_cloud_sheet(object_name: str, request: Request):
-    return stream_storage_blob(object_name, download=False, request=request)
-
-
-# 譚｡莉ｶ縺ｫ荳閾ｴ縺吶ｋ讌ｽ隴懊ｒ ZIP 縺ｫ縺ｾ縺ｨ繧√※霑斐☆縲・
-@app.get("/api/sheets/download-zip")
-async def download_sheets_zip(performance_id: str = "", piece: str = "", part: str = "") -> Response:
-    if not performance_id:
-        raise HTTPException(status_code=400, detail="performance_id is required")
-
-    sheets = [
-        item
-        for item in load_json_data("sheet_library")
-        if str(item.get("performance_id") or "") == str(performance_id)
-        and (not piece or str(item.get("piece") or "") == piece)
-        and (not part or str(item.get("part") or "") == part)
-    ]
-    if not sheets:
-        raise HTTPException(status_code=404, detail="Sheets not found")
-
-    buffer = io.BytesIO()
-    used_names: set[str] = set()
-    performance_title = sheets[0].get("performance_title") or "sheets"
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for item in sheets:
-            data = sheet_file_bytes(item)
-            if data is None:
-                continue
-            folder = safe_segment(str(item.get("piece") or "piece"), "piece")
-            filename = unique_zip_name(str(item.get("name") or "score.pdf"), used_names)
-            archive.writestr(f"{folder}/{filename}", data)
-
-    if not buffer.tell():
-        raise HTTPException(status_code=404, detail="Sheet files not found")
-
-    zip_name = safe_segment(f"{performance_title}_{piece or 'all'}_{part or 'all-parts'}", "sheets") + ".zip"
-    return Response(
-        content=buffer.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_name)}",
-            "Cache-Control": "private, max-age=60",
-        },
-    )
-
-
-# 讌ｽ隴・PDF 繧貞女縺大叙繧翫∽ｿ晏ｭ伜・縺ｫ蠢懊§縺ｦ逋ｻ骭ｲ縺吶ｋ縲・
-@app.post("/api/sheets/upload")
-async def upload_sheet(
-    file: UploadFile = File(...),
-    performance_id: str = Form(""),
-    performance_title: str = Form(""),
-    piece: str = Form(""),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
-    ensure_pdf_file(file)
-    if not performance_id:
-        raise HTTPException(status_code=400, detail="performance_id is required")
-    if not piece:
-        raise HTTPException(status_code=400, detail="piece is required")
-
-    performance_dir = safe_segment(f"{performance_id}_{performance_title}", "performance")
-    piece_dir = safe_segment(piece, "piece")
-    now = datetime.now().isoformat()
-
-    if storage_enabled():
-        staging_path = save_upload_to_path(file, DRIVE_STAGING_DIR / "sheets" / performance_dir / piece_dir)
-        object_name = "/".join(["sheets", performance_dir, piece_dir, staging_path.name])
-        blob = get_storage_bucket().blob(object_name)
-        blob.upload_from_filename(str(staging_path), content_type="application/pdf")
-        blob.reload()
-        item = {
-            "name": staging_path.name,
-            "performance_id": performance_id,
-            "performance_title": performance_title,
-            "piece": piece,
-            "part": "",
-            "size": blob.size or staging_path.stat().st_size,
-            "mime_type": blob.content_type or "application/pdf",
-            "modified_at": blob.updated.isoformat() if blob.updated else now,
-            "source": "google_cloud_storage",
-            "object_name": object_name,
-        }
-    else:
-        local_path = save_upload_to_path(file, SHEET_DIR / performance_dir / piece_dir)
-        rel = local_path.relative_to(UPLOAD_DIR).as_posix()
-        item = {
-            "name": local_path.name,
-            "performance_id": performance_id,
-            "performance_title": performance_title,
-            "piece": piece,
-            "part": "",
-            "size": local_path.stat().st_size,
-            "mime_type": "application/pdf",
-            "modified_at": now,
-            "source": "local",
-            "path": rel,
-        }
-
-    items = load_json_data("sheet_library")
-    payload = normalize_extra_payload(item)
-    payload["id"] = next_id(items)
-    items.insert(0, payload)
-    save_json_data("sheet_library", items)
-    return sheet_metadata(payload)
-
-
-# 謖・ｮ壽･ｽ隴懊・繝代・繝域ュ蝣ｱ繧呈峩譁ｰ縺吶ｋ縲・
-@app.put("/api/sheets/{sheet_id}/part")
-async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
-    items = load_json_data("sheet_library")
-    index, current = find_item(items, sheet_id)
-    current["part"] = payload.part.strip()
-    current["updated_at"] = datetime.now().isoformat()
-    items[index] = current
-    save_json_data("sheet_library", items)
-    return sheet_metadata(current)
-
-
-# 隍・焚讌ｽ隴懊・繝代・繝域ュ蝣ｱ繧剃ｸ諡ｬ譖ｴ譁ｰ縺吶ｋ縲・
-@app.put("/api/sheets/parts")
-async def update_sheets_parts(payload: SheetBulkPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
-    if not payload.sheet_ids:
-        raise HTTPException(status_code=400, detail="sheet_ids is required")
-    if not payload.part.strip():
-        raise HTTPException(status_code=400, detail="part is required")
-    
-    items = load_json_data("sheet_library")
-    updated_count = 0
-    part_value = payload.part.strip()
-    now_str = datetime.now().isoformat()
-    
-    # 荳諡ｬ譖ｴ譁ｰ縺ｯ莉ｶ謨ｰ縺梧ｯ碑ｼ・噪蟆上＆縺・燕謠舌・縺溘ａ縲・
-    # 譌｢蟄倥・鬆・ｺ上ｒ菫昴▲縺溘∪縺ｾ蟇ｾ雎｡縺縺代ｒ譖ｸ縺肴鋤縺医ｋ蜊倡ｴ斐↑譖ｴ譁ｰ縺ｫ縺励※縺・ｋ縲・
-    for sheet_id in payload.sheet_ids:
-        for i, item in enumerate(items):
-            if item.get("id") == sheet_id:
-                items[i]["part"] = part_value
-                items[i]["updated_at"] = now_str
-                updated_count += 1
-                break
-    
-    save_json_data("sheet_library", items)
-    return {"updated_count": updated_count, "message": f"{updated_count} sheets updated"}
-
-
-# 譚｡莉ｶ謖・ｮ壹〒讌ｽ隴懊ｒ蜑企勁縺吶ｋ・亥腰逾ｨ/譖ｲ蜊倅ｽ・貍泌･丈ｼ壼腰菴搾ｼ峨・
-@app.delete("/api/sheets")
-async def delete_sheets(payload: SheetDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
-    if not payload.performance_id:
-        raise HTTPException(status_code=400, detail="performance_id is required")
-
-    items = load_json_data("sheet_library")
-    delete_ids: set[int] = set()
-    for item in items:
-        item_id = int(item.get("id", -1))
-        if payload.sheet_id is not None:
-            if item_id == payload.sheet_id:
-                delete_ids.add(item_id)
-        elif str(item.get("performance_id") or "") == str(payload.performance_id):
-            if not payload.piece or str(item.get("piece") or "") == payload.piece:
-                delete_ids.add(item_id)
-
-    targets = [item for item in items if int(item.get("id", -1)) in delete_ids]
-    for item in targets:
-        delete_sheet_file(item)
-
-    save_json_data("sheet_library", [item for item in items if int(item.get("id", -1)) not in delete_ids])
-    return {"message": "Deleted", "deleted": len(targets)}
-
-
 EXTRA_COLLECTIONS = {"absences", "event_responses", "date_adjustments", "date_adjustment_responses", "sheet_library", "payments", "castings", "piece_infos", "practice_instructions", "performance_day_infos", "albums", "part_settings", "venue_settings", "org_settings", "sns_settings", "connection_settings", "desired_pieces", "promotions"}
 ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "sheet_library",
@@ -3266,242 +2777,27 @@ def collection_items(name: str) -> list[dict[str, Any]]:
     return load_json_data(name)
 
 # 謖・ｮ・extra 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ縺ｮ荳隕ｧ繧定ｿ斐☆縲・
-@app.get("/api/extra/{name}")
-async def get_extra_items(name: str) -> list[dict[str, Any]]:
-    return collection_items(name)
-
-# 謖・ｮ・extra 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ縺ｸ譁ｰ隕城・岼繧定ｿｽ蜉縺吶ｋ縲・
-@app.post("/api/extra/{name}")
-async def create_extra_item(name: str, request: Request, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    device = require_device(x_device_id)
-    items = collection_items(name)
-    upsert = parse_extra_upsert_request(await read_json_body(request))
-    normalized_body = normalize_extra_for_collection(name, upsert.payload)
-    assert_extra_collection_permission(name, device, payload=normalized_body)
-    payload = normalize_extra_payload(normalized_body, next_id(items))
-    items.append(payload)
-    save_json_data(name, items)
-    return payload
-
-# 謖・ｮ・extra 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ縺ｮ鬆・岼繧呈峩譁ｰ縺吶ｋ縲・
-@app.put("/api/extra/{name}/{item_id}")
-async def update_extra_item(name: str, item_id: int, request: Request, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    device = require_device(x_device_id)
-    items = collection_items(name)
-    index, current = find_item(items, item_id)
-    upsert = parse_extra_upsert_request(await read_json_body(request))
-    ensure_expected_updated_at(current, upsert.expected_updated_at)
-    normalized_body = normalize_extra_for_collection(name, upsert.payload)
-    assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
-    payload = normalize_extra_payload(normalized_body, item_id, current)
-    items[index] = payload
-    save_json_data(name, items)
-    return payload
-
-# 謖・ｮ・extra 繧ｳ繝ｬ繧ｯ繧ｷ繝ｧ繝ｳ縺ｮ鬆・岼繧貞炎髯､縺吶ｋ縲・
-@app.delete("/api/extra/{name}/{item_id}")
-async def delete_extra_item(name: str, item_id: int, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
-    device = require_device(x_device_id)
-    items = collection_items(name)
-    _, current = find_item(items, item_id)
-    assert_extra_collection_permission(name, device, current=current)
-    save_json_data(name, [item for item in items if item.get("id") != item_id])
-    return {"message": "Deleted"}
-
-
-# ===== 繧｢繝ｫ繝舌Β讖溯・・亥・逵溘い繝・・繝ｭ繝ｼ繝峨・蜑企勁・・=====
-# 繧｢繝ｫ繝舌Β縺ｸ縺ｮ蜀咏悄繧｢繝・・繝ｭ繝ｼ繝峨・oogle Cloud Storage 縺ｫ菫晏ｭ倥＠縲√Γ繧ｿ繝・・繧ｿ縺ｯ繝ｭ繝ｼ繧ｫ繝ｫ JSON 縺ｫ險倬鹸縲・
-@app.post("/api/extra/albums/{album_id}/photos")
-async def upload_album_photo(
-    album_id: int,
-    file: UploadFile = File(...),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, Any]:
-    device = require_device(x_device_id)
-    
-    # 繧｢繝ｫ繝舌Β繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ縲∬ｩｲ蠖薙☆繧九い繝ｫ繝舌Β繧呈､懷・
-    albums = load_json_data("albums")
-    index, album = find_item(albums, album_id)
-    
-    # 蜀咏悄繝｡繧ｿ繝・・繧ｿ逕ｨ縺ｮ諠・ｱ繧呈ｺ門ｙ
-    member_id = device.get("member_id")
-    member_name = device.get("member_name") or str(device.get("member_id") or "")
-    now = datetime.now().isoformat()
-    
-    # 谺｡縺ｮ蜀咏悄ID繧呈ｱｺ螳夲ｼ郁ｩｲ蠖薙い繝ｫ繝舌Β縺ｮ photos 驟榊・縺ｮ譛螟ｧ蛟､ + 1・・
-    photos = album.get("photos") or []
-    next_photo_id = max([p.get("id", 0) for p in photos], default=0) + 1
-    
-    # 繝輔ぃ繧､繝ｫ蜷阪ｒ螳牙・蛹・
-    filename = safe_upload_name(file.filename or "photo.jpg")
-    date_dir = datetime.now().strftime("%Y-%m-%d")
-    
-    # 荳譎ら噪縺ｫ繝輔ぃ繧､繝ｫ繧偵Γ繝｢繝ｪ縺ｫ隱ｭ縺ｿ霎ｼ繧
-    file_content = await file.read()
-    
-    # Google Cloud Storage 縺ｸ縺ｮ繧｢繝・・繝ｭ繝ｼ繝・
-    photo_metadata = None
-    if storage_enabled():
-        try:
-            bucket = get_storage_bucket()
-            object_name = f"albums/{album_id}/{date_dir}/{next_photo_id}_{filename}"
-            blob = bucket.blob(object_name)
-            blob.upload_from_string(
-                file_content,
-                content_type=file.content_type or "application/octet-stream"
-            )
-            
-            photo_metadata = {
-                "id": next_photo_id,
-                "filename": filename,
-                # 陦ｨ遉ｺURL縺ｯ蟶ｸ縺ｫAPI邨檎罰縺ｫ邨ｱ荳縺励∝・髢玖ｨｭ螳壹・譛臥┌縺ｫ萓晏ｭ倥＆縺帙↑縺・・
-                "url": f"/api/albums/{album_id}/photos/{next_photo_id}",
-                "uploaded_by_member_id": member_id,
-                "uploaded_by_member_name": member_name,
-                "uploaded_at": now,
-                "object_name": object_name,
-            }
-        except Exception as exc:
-            logger.exception("Album photo upload to GCS failed")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Photo upload failed: {exc}",
-            ) from exc
-    else:
-        # 繝ｭ繝ｼ繧ｫ繝ｫ繧ｹ繝医Ξ繝ｼ繧ｸ縺ｸ縺ｮ繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ
-        photo_dir = UPLOAD_DIR / "albums" / str(album_id) / date_dir
-        photo_dir.mkdir(parents=True, exist_ok=True)
-        photo_path = photo_dir / f"{next_photo_id}_{filename}"
-        photo_path.write_bytes(file_content)
-        
-        photo_metadata = {
-            "id": next_photo_id,
-            "filename": filename,
-            "url": f"/api/albums/{album_id}/photos/{next_photo_id}",
-            "uploaded_by_member_id": member_id,
-            "uploaded_by_member_name": member_name,
-            "uploaded_at": now,
-            "path": str(photo_path.relative_to(UPLOAD_DIR).as_posix()),
-        }
-    
-    # 繧｢繝ｫ繝舌Β縺ｮ photos 驟榊・縺ｫ霑ｽ蜉
-    if "photos" not in album:
-        album["photos"] = []
-    album["photos"].append(photo_metadata)
-    album["updated_at"] = now
-    
-    # 菫晏ｭ・
-    albums[index] = album
-    save_json_data("albums", albums)
-    
-    return photo_metadata
-
-
-# 繧｢繝ｫ繝舌Β蜀咏悄陦ｨ遉ｺ縲ゆｿ晏ｭ伜・縺・Cloud / 繝ｭ繝ｼ繧ｫ繝ｫ 縺ｩ縺｡繧峨〒繧ょ酔縺・API 縺ｧ驟堺ｿ｡縺吶ｋ縲・
-@app.get("/api/albums/{album_id}/photos/{photo_id}")
-async def get_album_photo(album_id: int, photo_id: int) -> Response:
-    albums = load_json_data("albums")
-    _, album = find_item(albums, album_id)
-
-    photos = album.get("photos") or []
-    photo = next((item for item in photos if item.get("id") == photo_id), None)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-
-    filename = str(photo.get("filename") or "photo")
-    content_type, _ = mimetypes.guess_type(filename)
-    media_type = content_type or "application/octet-stream"
-
-    object_name = str(photo.get("object_name") or "").strip()
-    if object_name:
-        try:
-            bucket = get_storage_bucket()
-            blob = bucket.blob(object_name)
-            if not blob.exists():
-                raise HTTPException(status_code=404, detail="Photo object not found")
-            data = blob.download_as_bytes()
-            return Response(content=data, media_type=media_type)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.exception("Album photo fetch from GCS failed")
-            raise HTTPException(status_code=502, detail=f"Photo fetch failed: {exc}") from exc
-
-    rel_path = str(photo.get("path") or "").strip()
-    if rel_path:
-        local_path = (UPLOAD_DIR / rel_path).resolve()
-        upload_root = UPLOAD_DIR.resolve()
-        if upload_root not in local_path.parents and local_path != upload_root:
-            raise HTTPException(status_code=400, detail="Invalid photo path")
-        if not local_path.exists() or not local_path.is_file():
-            raise HTTPException(status_code=404, detail="Photo file not found")
-        return FileResponse(local_path, media_type=media_type)
-
-    raise HTTPException(status_code=404, detail="Photo source not found")
-
-
-# 繧｢繝ｫ繝舌Β縺九ｉ縺ｮ蜀咏悄蜑企勁・育ｮ｡逅・・・縺ｿ・・
-@app.delete("/api/extra/albums/{album_id}/photos/{photo_id}")
-async def delete_album_photo(
-    album_id: int,
-    photo_id: int,
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
-) -> dict[str, str]:
-    require_admin_device(x_device_id)
-    
-    # 繧｢繝ｫ繝舌Β繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ縲∬ｩｲ蠖薙☆繧九い繝ｫ繝舌Β繧呈､懷・
-    albums = load_json_data("albums")
-    index, album = find_item(albums, album_id)
-    
-    # 隧ｲ蠖薙☆繧句・逵溘ｒ讀懷・
-    photos = album.get("photos") or []
-    photo_to_delete = next((p for p in photos if p.get("id") == photo_id), None)
-    
-    if not photo_to_delete:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    
-    # Cloud Storage 縺九ｉ蜑企勁
-    if storage_enabled() and photo_to_delete.get("object_name"):
-        try:
-            bucket = get_storage_bucket()
-            blob = bucket.blob(photo_to_delete["object_name"])
-            blob.delete()
-        except Exception:
-            logger.exception("Album photo deletion from GCS failed")
-            # 繝ｭ繧ｰ縺ｫ縺ｯ險倬鹸縺吶ｋ縺後√お繝ｩ繝ｼ縺ｯ蜃ｺ縺輔↑縺・ｼ・SON縺ｯ譖ｴ譁ｰ縺吶ｋ・・
-    
-    # 繝ｭ繝ｼ繧ｫ繝ｫ繧ｹ繝医Ξ繝ｼ繧ｸ縺九ｉ蜑企勁
-    if photo_to_delete.get("path"):
-        try:
-            photo_path = UPLOAD_DIR / photo_to_delete["path"]
-            photo_path.unlink()
-        except Exception:
-            logger.exception("Album photo deletion from local storage failed")
-    
-    # photos 驟榊・縺九ｉ蜑企勁
-    album["photos"] = [p for p in photos if p.get("id") != photo_id]
-    album["updated_at"] = datetime.now().isoformat()
-    
-    # 菫晏ｭ・
-    albums[index] = album
-    save_json_data("albums", albums)
-    
-    return {"message": "Photo deleted"}
-
+# Extra and album endpoints moved to src/backend/routers/albums.py.
 
 try:
     from .routers.announcements import router as announcements_router
+    from .routers.albums import router as albums_router
     from .routers.events import router as events_router
     from .routers.members import router as members_router
     from .routers.performances import router as performances_router
+    from .routers.recordings import router as recordings_router
     from .routers.schedules import router as schedules_router
+    from .routers.scores import router as scores_router
     from .auth_api import router as auth_router
 except ImportError:  # pragma: no cover - allows running main.py directly.
+    from routers.albums import router as albums_router
     from routers.announcements import router as announcements_router
     from routers.events import router as events_router
     from routers.members import router as members_router
     from routers.performances import router as performances_router
+    from routers.recordings import router as recordings_router
     from routers.schedules import router as schedules_router
+    from routers.scores import router as scores_router
     from auth_api import router as auth_router
 
 
@@ -3510,6 +2806,9 @@ app.include_router(schedules_router)
 app.include_router(members_router)
 app.include_router(events_router)
 app.include_router(announcements_router)
+app.include_router(recordings_router)
+app.include_router(scores_router)
+app.include_router(albums_router)
 app.include_router(auth_router)
 
 
