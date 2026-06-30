@@ -187,6 +187,85 @@ def test_portal_login_normalizes_mobile_input_variants(client, backend_env, monk
     assert response.json()["member_id"] == 31
 
 
+
+
+def test_portal_login_treats_password_placeholder_as_setup_required(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 41,
+                "name": "Placeholder Member",
+                "part": "Violin",
+                "password": "設定済み",
+                "permission": "一般",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [],
+    }
+
+    monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+    monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, data: db_store.__setitem__(name, [dict(item) for item in data]))
+    backend_env._memory_cache.clear()
+
+    response = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "Placeholder Member",
+            "part": "Violin",
+            "password": "secret",
+            "device_id": "placeholder-device",
+            "device_name": "Browser",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is False
+    assert payload["needs_password_setup"] is True
+
+
+def test_portal_login_accepts_trimmed_mobile_password_input(client, backend_env, monkeypatch):
+    stored_password = backend_env.hash_password("secret")
+    db_store = {
+        "members": [
+            {
+                "id": 42,
+                "name": "Mobile Password",
+                "part": "Violin",
+                "password": stored_password,
+                "permission": "一般",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [],
+    }
+
+    monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+    monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, data: db_store.__setitem__(name, [dict(item) for item in data]))
+    backend_env._memory_cache.clear()
+
+    response = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "Mobile Password",
+            "part": "Violin",
+            "password": " secret ",
+            "device_id": "mobile-password-device",
+            "device_name": "Browser",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+
+
 def test_hidden_admin_login_accepts_lowercase_name(client):
     response = client.post(
         "/api/auth/portal-login",

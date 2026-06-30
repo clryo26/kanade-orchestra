@@ -8,8 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from google.cloud import storage
-from google.oauth2 import service_account
+try:
+    from google.cloud import storage
+    from google.oauth2 import service_account
+except Exception:  # pragma: no cover - optional in local tests without GCS.
+    storage = None
+    service_account = None
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -87,6 +91,8 @@ def storage_bucket_name() -> str:
 
 def get_storage_client() -> storage.Client:
     # サービスアカウント JSON 文字列 -> ファイルパス -> 既定認証の順で接続する。
+    if storage is None or service_account is None:
+        raise RuntimeError("google-cloud-storage is not installed")
     # 管理画面で JSON を直接持たせる運用を最優先にしている。
     service_account_json = _setting_value("google_service_account_json", "GOOGLE_SERVICE_ACCOUNT_JSON")
     service_account_file = _setting_value("google_service_account_file", "GOOGLE_SERVICE_ACCOUNT_FILE")
@@ -110,6 +116,8 @@ def get_storage_client() -> storage.Client:
 
 def storage_enabled() -> bool:
     # バケット名の未設定や、指定された秘密鍵ファイルの不存在をここで早期検知する。
+    if storage is None or service_account is None:
+        return False
     bucket_name = storage_bucket_name()
     if not bucket_name or bucket_name in {"your_bucket_name_here", "あなたのGCSバケット名"}:
         return False

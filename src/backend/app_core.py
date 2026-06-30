@@ -41,7 +41,7 @@ try:
         SheetPartUpdateRequest,
     )
     from .services.memory_cache import MemoryCache
-    from .services.security_service import hash_password, is_hashed_password, verify_password
+    from .services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 except ImportError:  # pragma: no cover - allows running main.py directly.
     from models.schemas import (
         Announcement,
@@ -58,7 +58,7 @@ except ImportError:  # pragma: no cover - allows running main.py directly.
         SheetPartUpdateRequest,
     )
     from services.memory_cache import MemoryCache
-    from services.security_service import hash_password, is_hashed_password, verify_password
+    from services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 
 try:
     from openpyxl import load_workbook
@@ -80,12 +80,25 @@ try:
         storage_enabled,
         upload_file_to_drive,  # noqa: F401
     )
-except ImportError:  # pragma: no cover - allows running main.py directly.
-    from drive_storage import (
-        get_storage_bucket,
-        storage_enabled,
-        upload_file_to_drive,  # noqa: F401
-    )
+except ImportError as exc:  # pragma: no cover - allows running tests without optional Google deps.
+    # If the optional google-cloud-storage dependency is missing in a local test
+    # environment, keep the application importable and report storage as disabled.
+    # When the file is executed directly, fall back to the non-package import.
+    if getattr(exc, "name", "") and str(exc.name).startswith("google"):
+        def get_storage_bucket():
+            return None
+
+        def storage_enabled() -> bool:
+            return False
+
+        def upload_file_to_drive(*args, **kwargs):  # noqa: ANN001
+            raise HTTPException(status_code=500, detail="Google Cloud Storage dependency is not installed")
+    else:
+        from drive_storage import (
+            get_storage_bucket,
+            storage_enabled,
+            upload_file_to_drive,  # noqa: F401
+        )
 
 try:
     from .auth_helpers import (

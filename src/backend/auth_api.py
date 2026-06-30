@@ -42,7 +42,7 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         if member_access_expired(member):
             raise HTTPException(status_code=403, detail="システム利用期限が終了しています")
         member_password = str(member.get("password") or "")
-        if not member_password:
+        if backend_api().is_password_placeholder(member_password):
             return {
                 "authenticated": False,
                 "needs_password_setup": True,
