@@ -150,6 +150,167 @@ def test_portal_login_rejects_part_mismatch_when_same_name_is_duplicated(client,
     assert response.status_code == 404
 
 
+def test_portal_login_normalizes_mobile_input_variants(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 31,
+                "name": "KanaVn",
+                "part": "Vn",
+                "password": "secret",
+                "permission": "一般",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [],
+    }
+
+    monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+    monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, data: db_store.__setitem__(name, [dict(item) for item in data]))
+    backend_env._memory_cache.clear()
+
+    response = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "Ｋａｎａ\u200bＶｎ",
+            "part": "Ｖｎ",
+            "password": "secret",
+            "device_id": "db-device-mobile",
+            "device_name": "iPhone",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["member_id"] == 31
+
+
+def test_hidden_admin_login_accepts_lowercase_name(client):
+    response = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "administrator",
+            "part": "",
+            "password": "systemadminadmin",
+            "device_id": "hidden-admin-device",
+            "device_name": "Mobile",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert payload["permission"] == "システム管理者"
+    assert payload["hidden_user"] is True
+
+
+def test_performance_day_infos_is_admin_only_extra_collection(client, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+    seed_device_fn(device_id="dev-general", permission="一般")
+
+    created = client.post(
+        "/api/extra/performance_day_infos",
+        headers=admin_headers_fixture,
+        json={
+            "performance_id": "1",
+            "timeline": "09:00 集合",
+            "costume": "黒衣装",
+            "assignments": "受付: 田中",
+        },
+    )
+    assert created.status_code == 200
+
+    denied = client.post(
+        "/api/extra/performance_day_infos",
+        headers={"X-Device-Id": "dev-general"},
+        json={
+            "performance_id": "1",
+            "timeline": "10:00 リハ",
+            "costume": "白衣装",
+            "assignments": "誘導: 鈴木",
+        },
+    )
+    assert denied.status_code == 403
+
+
+def test_performance_timetable_xlsx_requires_admin(client, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+    seed_device_fn(device_id="dev-general", permission="一般")
+
+    created_perf = client.post(
+        "/api/performances",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert",
+            "date": "2026-06-18",
+            "open_time": "17:00",
+            "start_time": "18:00",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "pieces": [{"title": "Symphony", "duration": "8"}],
+        },
+    )
+    assert created_perf.status_code == 200
+
+    created_info = client.post(
+        "/api/extra/performance_day_infos",
+        headers=admin_headers_fixture,
+        json={
+            "performance_id": "1",
+            "timeline": "09:00 Symphony",
+            "assignments_rows": [{"role": "受付", "members": "田中"}],
+        },
+    )
+    assert created_info.status_code == 200
+
+    denied = client.get(
+        "/api/reports/performance-timetable/1/xlsx",
+        headers={"X-Device-Id": "dev-general"},
+    )
+    assert denied.status_code == 403
+
+
+def test_performance_timetable_xlsx_returns_excel(client, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+
+    created_perf = client.post(
+        "/api/performances",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert",
+            "date": "2026-06-18",
+            "open_time": "17:00",
+            "start_time": "18:00",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "pieces": [{"title": "Symphony", "duration": "8"}],
+        },
+    )
+    assert created_perf.status_code == 200
+
+    created_info = client.post(
+        "/api/extra/performance_day_infos",
+        headers=admin_headers_fixture,
+        json={
+            "performance_id": "1",
+            "timeline": "09:00 Symphony",
+            "assignments_rows": [{"role": "受付", "members": "田中"}],
+        },
+    )
+    assert created_info.status_code == 200
+
+    response = client.get(
+        "/api/reports/performance-timetable/1/xlsx",
+        headers=admin_headers_fixture,
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert "attachment;" in response.headers.get("content-disposition", "")
+    assert response.content[:2] == b"PK"
+
+
 def test_create_performance_forbidden_for_general(client, seed_device_fn):
     seed_device_fn(device_id="dev-general", permission="一般")
     response = client.post(
@@ -199,7 +360,7 @@ def test_update_performance_saves_performance_fee_amount(client, seed_device_fn,
             "start_time": "18:00",
             "venue": "Hall",
             "conductor": "Cond",
-            "pieces": [{"title": "Symphony"}],
+            "pieces": [{"title": "Symphony", "duration": "8"}],
         },
     )
     assert created.status_code == 200
@@ -215,13 +376,13 @@ def test_update_performance_saves_performance_fee_amount(client, seed_device_fn,
             "venue": "Hall",
             "conductor": "Cond",
             "performance_fee_amount": 5000,
-            "pieces": [{"title": "Symphony"}],
+            "pieces": [{"title": "Symphony", "duration": "8"}],
         },
     )
 
     assert updated.status_code == 200
     assert updated.json()["performance_fee_amount"] == 5000
-    assert updated.json()["pieces"] == [{"title": "Symphony"}]
+    assert updated.json()["pieces"] == [{"title": "Symphony", "duration": "8"}]
 
 
 def test_member_password_is_hashed_and_hidden_in_admin_api(client, backend_env, seed_device_fn, admin_headers_fixture):

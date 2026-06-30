@@ -60,6 +60,7 @@
         <section id="adminPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="performance-day-admin" type="button">本番情報管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
@@ -147,21 +148,25 @@
                                 <label class="form-label" for="perfPieceTitle">曲名</label>
                                 <input type="text" class="form-control" id="perfPieceTitle" placeholder="例: 交響曲第5番">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <label class="form-label" for="perfPieceAlias">略称</label>
                                 <input type="text" class="form-control" id="perfPieceAlias" placeholder="例: チャイ5">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <label class="form-label" for="perfPieceComposer">作曲者</label>
                                 <input type="text" class="form-control" id="perfPieceComposer" placeholder="例: チャイコフスキー">
                             </div>
-                            <div class="col-md-2 d-flex align-items-end">
+                            <div class="col-md-2">
+                                <label class="form-label" for="perfPieceDuration">演奏時間(分)</label>
+                                <input type="text" class="form-control" id="perfPieceDuration" placeholder="例: 8">
+                            </div>
+                            <div class="col-md-1 d-flex align-items-end">
                                 <label class="form-check mb-2">
                                     <input class="form-check-input" id="perfPieceEncore" type="checkbox">
                                     <span class="form-check-label">アンコール</span>
                                 </label>
                             </div>
-                            <div class="col-md-2 d-flex align-items-end">
+                            <div class="col-md-1 d-flex align-items-end">
                                 <button class="btn btn-outline-primary w-100" id="addPieceBtn" type="button">曲を追加</button>
                             </div>
                             <div class="col-12">
@@ -180,6 +185,88 @@
                             <button class="btn btn-danger" id="deletePerfBtn" type="button">削除</button>
                         </div>
                         <ul class="list-group" id="perfListItems"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 本番情報管理 -->
+            <div id="performanceDayAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">本番情報管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="performanceDayInfoId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-12">
+                                <label class="form-label" for="performanceDayInfoPerformance">演奏会</label>
+                                <select class="form-select" id="performanceDayInfoPerformance"></select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="performanceDayTimeline">当日タイムテーブル</label>
+                                <textarea class="form-control" id="performanceDayTimeline" rows="5" placeholder="例: 09:00 集合&#10;10:00 リハーサル&#10;14:00 開場"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">本番衣装（男女別）</label>
+                                <div class="row g-2">
+                                    <div class="col-12 col-lg-6">
+                                        <div class="border rounded p-2 h-100">
+                                            <div class="fw-bold mb-2">男性</div>
+                                            <div class="mb-2">
+                                                <label class="form-label mb-1" for="performanceDayCostumeMaleUpper">上</label>
+                                                <input type="text" class="form-control" id="performanceDayCostumeMaleUpper" placeholder="例: 白シャツ / 黒蝶ネクタイ">
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="form-label mb-1" for="performanceDayCostumeMaleLower">下</label>
+                                                <input type="text" class="form-control" id="performanceDayCostumeMaleLower" placeholder="例: 黒スラックス">
+                                            </div>
+                                            <div>
+                                                <label class="form-label mb-1" for="performanceDayCostumeMaleOther">その他</label>
+                                                <input type="text" class="form-control" id="performanceDayCostumeMaleOther" placeholder="例: 黒靴 / 黒靴下">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-lg-6">
+                                        <div class="border rounded p-2 h-100">
+                                            <div class="fw-bold mb-2">女性</div>
+                                            <div class="mb-2">
+                                                <label class="form-label mb-1" for="performanceDayCostumeFemaleUpper">上</label>
+                                                <input type="text" class="form-control" id="performanceDayCostumeFemaleUpper" placeholder="例: 黒ブラウス">
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="form-label mb-1" for="performanceDayCostumeFemaleLower">下</label>
+                                                <input type="text" class="form-control" id="performanceDayCostumeFemaleLower" placeholder="例: 黒ロングスカート">
+                                            </div>
+                                            <div>
+                                                <label class="form-label mb-1" for="performanceDayCostumeFemaleOther">その他</label>
+                                                <input type="text" class="form-control" id="performanceDayCostumeFemaleOther" placeholder="例: 黒靴 / ベージュストッキング">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">係り割</label>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered align-middle mb-2" id="performanceDayAssignmentTable">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 35%;">担当</th>
+                                                <th>氏名</th>
+                                                <th style="width: 90px;">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="performanceDayAssignmentRows"></tbody>
+                                    </table>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" id="addPerformanceDayAssignmentRowBtn" type="button">行を追加</button>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="savePerformanceDayInfoBtn" type="button">保存</button>
+                            <button class="btn btn-outline-primary" id="exportPerformanceDayInfoExcelBtn" type="button">Excel出力</button>
+                            <button class="btn btn-outline-secondary" id="clearPerformanceDayInfoBtn" type="button">選択解除</button>
+                            <button class="btn btn-danger" id="deletePerformanceDayInfoBtn" type="button">削除</button>
+                        </div>
+                        <div id="performanceDayInfoList"></div>
                     </div>
                 </div>
             </div>
@@ -851,6 +938,7 @@
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance-day" type="button">本番情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-practice-instruction" type="button">練習指示</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-recording" type="button">録音部屋</button>
@@ -890,6 +978,14 @@
                 <div class="card">
                     <div class="card-header">演奏会情報</div>
                     <div class="card-body" id="memberPerfInfo"></div>
+                </div>
+            </div>
+
+            <!-- 団員向け: 本番情報 -->
+            <div id="memberPerformanceDayTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">本番情報</div>
+                    <div class="card-body" id="memberPerformanceDayInfo"></div>
                 </div>
             </div>
 
@@ -976,6 +1072,16 @@
 
     <div id="toastArea" class="toast-area"></div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/app.js?v=20260627-1"></script>
+    <script src="/static/js/config.js?v=20260630-2"></script>
+    <script src="/static/js/api.js?v=20260630-2"></script>
+    <script src="/static/js/utils/api.js?v=20260630-2"></script>
+    <script src="/static/js/utils/audio.js?v=20260630-2"></script>
+    <script src="/static/js/utils/calendar.js?v=20260630-2"></script>
+    <script src="/static/js/utils/cache.js?v=20260630-2"></script>
+    <script src="/static/js/utils/dialog.js?v=20260630-2"></script>
+    <script src="/static/js/auth_feature.js?v=20260630-1"></script>
+    <script src="/static/js/recordings_feature.js?v=20260630-1"></script>
+    <script src="/static/js/main.js?v=20260630-2"></script>
+    <script src="/static/js/modules/announcements.js?v=20260630-3"></script>
 </body>
 </html>

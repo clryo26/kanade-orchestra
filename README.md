@@ -76,7 +76,7 @@ uv run uvicorn src.backend.main:app --host 0.0.0.0 --port 8080 --reload
 ### 5. ブラウザでアクセス
 
 ```
-http://localhost:8000
+http://localhost:8080
 ```
 
 ## 📁 プロジェクト構造
@@ -155,7 +155,7 @@ http://localhost:8000
 ```
 GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:8080/auth/callback
 ```
 
 ## 🧪 テスト実行

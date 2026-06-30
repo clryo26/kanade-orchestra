@@ -2,7 +2,7 @@
 
 最終更新: 2026-06-25
 
-この資料は、「このシステムで、どのDBを、どこで、どう作るか」を1本で理解できるようにまとめた手順書です。
+この資料は、「このシステムで、どのDBを、どこで、どう確認するか」を短くまとめた手順書です。
 
 ## 1. まず結論（何を構築するか）
 
@@ -14,11 +14,11 @@
 - データベース名: kanade_portal
 - アプリ接続ユーザー: kanade_app
 - パスワード保管先: Secret Manager（kanade-portal-db-password）
-- スキーマ定義ファイル: db/postgresql_schema.sql
+- スキーマ定義: PostgreSQL 側に適用済み
 
 補足:
-- 現行実装は JSON ストレージも併用中です。
-- ただし、DB移行対象の業務データは Cloud SQL（PostgreSQL）側に作る前提です。
+- 業務データの参照先は Cloud SQL（PostgreSQL）です。
+- JSON や移行用SQLはこの手順では扱いません。
 
 ## 2. どこから作るか（作業場所）
 
@@ -39,10 +39,9 @@
 4. DB作成
 5. DBユーザー作成
 6. DBパスワードをSecret Managerに登録
-7. スキーマ適用（db/postgresql_schema.sql）
+7. DB接続確認
 8. Cloud RunにDB接続設定を入れてデプロイ
-9. 接続確認
-10. JSONデータをDBへ移行
+9. 稼働確認
 
 ## 4. 手順（そのまま実行）
 
@@ -98,23 +97,19 @@ echo -n 'REPLACE_WITH_STRONG_PASSWORD' | gcloud secrets create kanade-portal-db-
 echo -n 'REPLACE_WITH_STRONG_PASSWORD' | gcloud secrets versions add kanade-portal-db-password --data-file=-
 ```
 
-### 4.7 スキーマを適用
+### 4.7 DB接続を確認
 
-まずDBへ接続します。
+DBスキーマは適用済みです。ここでは接続だけ確認します。
 
 ```bash
 gcloud sql connect kanade-portal-pg --user=kanade_app --database=kanade_portal
 ```
 
-psqlプロンプトで、次を実行します。
+psql で次を実行します。
 
 ```sql
-\i db/postgresql_schema.sql
+\dt
 ```
-
-注意:
-- 実行ディレクトリは、このリポジトリのルートに合わせてください。
-- 上記でパスが解決できない場合は、絶対パスで指定してください。
 
 ### 4.8 Cloud RunにDB接続設定を入れてデプロイ
 
@@ -129,48 +124,9 @@ gcloud run deploy kanade-orchestra \
   --set-secrets DB_PASSWORD=kanade-portal-db-password:latest
 ```
 
-### 4.9 JSONデータをDBへ移行
+### 4.9 稼働を確認
 
-前提:
-- すでに `db/postgresql_schema.sql` 適用済み
-- このリポジトリのルートでコマンド実行
-
-```bash
-uv sync
-```
-
-ローカルから Cloud SQL に接続できる構成（Public IP許可済み、またはCloud SQL Auth Proxy利用）で次を実行します。
-
-```bash
-uv run python scripts/migrate_json_to_postgres.py \
-  --db-host REPLACE_DB_HOST \
-  --db-port 5432 \
-  --db-name kanade_portal \
-  --db-user kanade_app \
-  --db-password 'REPLACE_WITH_STRONG_PASSWORD' \
-  --truncate
-```
-
-Cloud Run の Unix Domain Socket 経由（`/cloudsql/...`）で接続できる環境の場合は `--db-host` に `/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg` を指定します。
-
-安全確認だけ先に行う場合:
-
-```bash
-uv run python scripts/migrate_json_to_postgres.py \
-  --db-host REPLACE_DB_HOST \
-  --db-port 5432 \
-  --db-name kanade_portal \
-  --db-user kanade_app \
-  --db-password 'REPLACE_WITH_STRONG_PASSWORD' \
-  --dry-run
-```
-
-注意:
-- `--truncate` は既存DBデータを全削除して再投入します（初回移行時に推奨）。
-- まず `--dry-run` で件数確認し、その後 `--truncate` 付き本実行を推奨します。
-- 移行スクリプトは本実行後に「JSON件数 vs DB件数」の自動照合を実施し、`RECONCILIATION_RESULT: MATCHED/MISMATCH` を出力します。
-
-手動での再確認（任意）:
+接続できたら、主要テーブルの件数だけ確認します。
 
 ```bash
 gcloud sql connect kanade-portal-pg --user=kanade_app --database=kanade_portal
@@ -179,11 +135,10 @@ gcloud sql connect kanade-portal-pg --user=kanade_app --database=kanade_portal
 psql で次を実行:
 
 ```sql
-\i db/post_migration_count_check.sql
+\dt
+SELECT COUNT(*) FROM performances;
+SELECT COUNT(*) FROM members;
 ```
-
-確認ポイント:
-- 各テーブル件数が、移行スクリプトの `Migration row counts` / `Reconciliation` 出力と一致すること。
 
 ## 5. 手順（画面操作だけで作る版 / Cloud Console中心）
 
@@ -262,22 +217,9 @@ psql で次を実行:
   - バージョン: `latest`
 5. デプロイを実行
 
-### 5.9 スキーマを適用（テーブル作成）
+### 5.9 DB確認
 
-画面操作だけでは `db/postgresql_schema.sql` の直接投入が難しいため、ここだけ次のいずれかを使います。
-
-方法A（推奨）:
-1. Cloud Shell を開く（Console右上の `>_` アイコン）
-2. リポジトリと `db/postgresql_schema.sql` を参照できる場所で、`psql` または `gcloud sql connect` を使って接続
-3. SQLファイルを実行してテーブル作成
-
-方法B:
-1. Cloud SQL Studio（利用可能な環境のみ）を開く
-2. `db/postgresql_schema.sql` の内容を貼り付けて実行
-
-注意:
-- この手順だけは「完全ノーCLI」にしづらいポイントです。
-- ただしCloud Shellを使えば、ローカルPCのCLI準備なしで進められます。
+Cloud Shell または Cloud SQL Studio では、既存テーブル一覧だけを確認します。
 
 ## 6. 構築後チェック
 
@@ -355,11 +297,9 @@ uv run --with pytest pytest -q tests/operations -k op_api_005_orphan_integrity_g
 - `/api/maintenance/orphans` の結果が `total=0`
 - このケースが失敗するコミットはデプロイ不可
 
-#### 6.4.5 DB設定ミス検知（fail-fast）
+#### 6.4.5 DB設定確認
 
-確認観点:
-- DB期待環境（`DB_REQUIRED=true` または DB環境変数が一部設定）で接続設定が不完全な場合、アプリは起動時セルフチェックで失敗すること。
-- DB期待環境では JSON への暗黙フォールバックが発生しないこと。
+DB期待環境では、接続先と認証情報が正しく設定されていることだけ確認します。
 
 補足:
 - 実クラウド疎通（Cloud Run URL / Cloud SQL 実接続）は、接続可能な環境で 6.1〜6.3 の確認を追加実施してください。
@@ -433,7 +373,7 @@ uv run --with pytest pytest -q tests/operations -k op_api_005_orphan_integrity_g
 
 ### 7.6 スキーマ適用証跡
 
-- [ ] Cloud SQL Studio または Cloud Shell で `db/postgresql_schema.sql` を実行した結果画面
+- [ ] Cloud SQL Studio または Cloud Shell でテーブル一覧を確認した結果画面
 - [ ] テーブル一覧画面（主要テーブルが作成済みと分かる画面）
   - performances
   - members
@@ -447,7 +387,7 @@ uv run --with pytest pytest -q tests/operations -k op_api_005_orphan_integrity_g
 - [ ] DB / ユーザーの存在画面
 - [ ] Secret存在と最新バージョン画面
 - [ ] Cloud RunのDB接続設定画面（環境変数 + Secret）
-- [ ] スキーマ適用後のテーブル一覧画面
+- [ ] テーブル一覧画面
 
 ### 7.8 事前完成（Cloud Run未接続時に先に埋める項目）
 
@@ -493,11 +433,11 @@ gcloud secrets describe kanade-portal-db-password
 - Cloud Run の DB 接続設定（5.8）を再設定して再デプロイ
 - IAM ロール付与（5.7）を再確認
 
-### 8.2 DB を作ったのにデータが空に見える
+### 8.2 DB が空に見える
 
 よくある原因:
-- `db/postgresql_schema.sql` 未適用
-- JSON から DB への移行未実施、または `--dry-run` のみ実行
+- DB 接続設定の不備
+- 参照先 DB が想定と異なる
 
 確認手順:
 ```bash
@@ -507,12 +447,13 @@ gcloud sql connect kanade-portal-pg --user=kanade_app --database=kanade_portal
 psql:
 ```sql
 \dt
-\i db/post_migration_count_check.sql
+SELECT COUNT(*) FROM performances;
+SELECT COUNT(*) FROM members;
 ```
 
 対処:
-- スキーマ適用（4.7 または 5.9）
-- 移行スクリプト本実行（4.9, `--truncate`）
+- DB 接続設定を見直す
+- `\dt` と主要テーブル件数を確認する
 
 ### 8.3 ローカルで Python 実行時に文字コードエラーが出る（Windows）
 
@@ -562,6 +503,5 @@ uv run --with pytest pytest -q tests/backend tests/integration/backend tests/ope
 - CLOUD_RUN_DEPLOYMENT.md
 - CLOUD_RUN_INITIAL_CHECKLIST.md
 - SYSTEM_DESIGN.md
-- db/postgresql_schema.sql
 - db/postgresql_table_spec.md
 - db/postgresql_table_layout.md

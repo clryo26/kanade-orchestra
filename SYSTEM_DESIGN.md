@@ -1,7 +1,7 @@
 ﻿# 奏オケポータル システム設計書
 
-版: 2.1
-最終更新: 2026-06-26
+版: 2.2
+最終更新: 2026-06-30
 
 ## 1. システム概要
 
@@ -20,19 +20,33 @@
 
 - クライアント: HTML + CSS + Vanilla JavaScript + Bootstrap
 - API: FastAPI
-- 永続化: JSON ファイル
+- 永続化: PostgreSQL
 - ファイル保存: ローカル uploads + Google Cloud Storage
 
 ### 2.2 主要コンポーネント
 
-- src/static/js/app.js: 画面制御、状態管理、API 呼び出し
-- src/backend/main.py: API 本体、JSON CRUD、ファイル配信
+- src/static/js/main.js: 画面制御、状態管理、既存機能の互換実装
+- src/static/js/app.js: 既存テスト互換用の参照ファイル
+- src/static/js/api.js: Fetch 通信の共通入口
+- src/static/js/config.js: フロントエンド共通設定
+- src/static/js/auth_feature.js: ログイン画面、端末認証、ログアウト処理
+- src/static/js/recordings_feature.js: 録音一覧、再生、削除の独立機能
+- src/static/js/modules/: 機能別 UI モジュールの移行先
+- src/static/js/utils/: audio / calendar / cache / dialog / API エラー処理の共通化先
+- src/backend/main.py: FastAPI アプリ公開と起動入口
+- src/backend/app_core.py: 既存 API 本体、JSON CRUD、ファイル配信の互換実装
+- src/backend/routers/: 機能別 FastAPI ルーターの移行先
+- src/backend/services/: GCS、録音、ストレージなどのサービス層
+- src/backend/db/: DB 接続とリポジトリ層
+- src/backend/models/: Pydantic モデル
+- src/backend/auth_api.py: 認証 API ルーター（login / device / password）
+- src/backend/auth_helpers.py: 団員名照合と認証判定の共通ヘルパー
 - src/backend/drive_storage.py: Cloud 接続設定解決と保存処理
 
 ### 2.3 データ同期方針
 
-- 基本は JSON コレクションを正として扱う
-- Cloud 設定有効時は JSON も Cloud へ保存
+- 業務データの正は PostgreSQL
+- Cloud Storage は録音・楽譜などのファイル資産と接続設定の保管に限定
 - 起動時にキャッシュを温めて応答速度を確保
 - connection_settings が空の場合は旧環境変数から1件自動登録して互換運用する
 
@@ -44,6 +58,12 @@
 - エキストラ
 - 管理者
 - システム管理者
+
+### 3.4 データ保存方針
+
+- 業務データの正は PostgreSQL
+- `src/data/*.json` と Cloud Storage 上の JSON は正規データソースとして扱わない
+- Cloud Storage は録音・楽譜などのファイル資産と接続設定の保管に限定
 
 ### 3.2 補助権限
 
@@ -181,20 +201,15 @@
 
 ### 6.8 一時運用メニュー（システム管理）
 
-- ボタン操作で `scripts/migrate_json_to_postgres.py` をサーバー側から起動
-- サーバー側実行時は現在参照している JSON データを一時スナップショットに書き出し、そのディレクトリを `--data-dir` として渡す
-- Cloud Run 用 Docker イメージには `scripts/` と `db/` を含め、移行スクリプトと件数確認 SQL を実行時に参照可能にする
-- JSON に `created_at` / `updated_at` がない行は、DB の NOT NULL 制約に合わせて移行時刻を補完して INSERT する
-- 実行モード:
+- このメニューは削除済み
+- データ移行と件数照合は完了済み
 
 ### 6.9 恒久運用メニュー（システム管理）
 
 - システム管理パネルに「データベース」メニューを配置
-- 当ポータル利用テーブルのみを一覧表示し、ページング付きでレコード閲覧可能
-- 機微情報カラム（password / service account情報）はマスク表示
-- API:
-  - GET /api/system/database/tables
-  - GET /api/system/database/records?table=...&limit=...&offset=...
+- 対象は当ポータル利用テーブルのみ
+- 機微情報はマスク表示
+- API: GET /api/system/database/tables, GET /api/system/database/records
 
 ## 7. パフォーマンス設計
 
@@ -210,7 +225,7 @@
 - Cloud Run 配備を想定
 - 静的アセットはバージョンクエリで更新制御
 - index.html は no-store で常に最新を取得
-- JSON から PostgreSQL への初期移行は `scripts/migrate_json_to_postgres.py` を利用し、`src/data/*.json` を正規化テーブルへ投入する
+- 業務データは PostgreSQL を参照し、ファイル資産は GCS を参照する
 
 ## 9. 正本ドキュメント
 
@@ -263,15 +278,14 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 - 権限分岐が増える機能は必ず認可ルールを設計書へ明記
 - 画面追加時は団員/管理者/システム管理のどの導線に属するかを明記
 
-## 12. PostgreSQL テーブル設計（ドラフト）
+## 12. PostgreSQL テーブル設計
 
-- 現行 JSON コレクションを Cloud SQL for PostgreSQL へ移行するための初期 DDL は `db/postgresql_schema.sql` を参照
-- テーブル仕様書は `db/postgresql_table_spec.md` を参照
-- テーブルレイアウト（ER）は `db/postgresql_table_layout.md` を参照
-- 対象は音声/画像などのバイナリ本体を除く業務データとメタデータ
-- バイナリ本体は従来どおり Google Cloud Storage を継続利用する想定
+- テーブル仕様は `db/postgresql_table_spec.md` を参照
+- テーブルレイアウトは `db/postgresql_table_layout.md` を参照
+- 業務データとメタデータは PostgreSQL に保持
+- 音声/画像などのバイナリ本体は Google Cloud Storage を継続利用
 
-## 13. Cloud Run 構築値（PostgreSQL移行方針）
+## 13. Cloud Run 構築値（PostgreSQL）
 
 ### 13.1 本番採用値
 
@@ -286,10 +300,10 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 
 ### 13.2 接続方式
 
-- Cloud Run から Cloud SQL for PostgreSQL へ Cloud SQL Connector（Unix socket）で接続する
+- Cloud Run から Cloud SQL for PostgreSQL へ Unix socket で接続する
 - `DB_HOST=/cloudsql/kanade-orchestra:asia-northeast2:kanade-portal-pg` を使用する
 - `DB_PASSWORD` は Secret Manager から注入する
-- 既存の GCS 連携設定（GOOGLE_CLOUD_STORAGE_*）は継続利用する
+- GCS はファイル資産用に継続利用する
 
 ### 13.3 必要権限
 
@@ -338,9 +352,9 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 │  └─────────────────────────────────────────────────┘      │
 │  ┌─────────────────────────────────────────────────┐      │
 │  │  Memory Cache Layer                             │      │
-│  │  - JSONデータメモリキャッシュ                    │      │
+│  │  - DBデータメモリキャッシュ                      │      │
 │  │  - IDインデックス                                │      │
-│  │  - ETag管理                                     │      │
+│  │  - ETag管理                                      │      │
 │  └─────────────────────────────────────────────────┘      │
 └────────┬───────────────────────────────────────────────────┘
          │
@@ -886,12 +900,14 @@ root (/)
 
 | モジュール | 責務 | 行数（目安） |
 |-----------|------|------------|
-| Cache/Auth | ログイン、セッション管理、キャッシュ | 500+ |
+| Cache/Auth | ログイン、セッション管理、認証ヘルパー、キャッシュ | 500+ |
 | Portal Home | ホームページ、メニュー、カウントダウン | 300+ |
 | Content Rendering | Performance, Schedule, Announcement 表示 | 1000+ |
 | Member Views | 団員向けビュー表示 | 2000+ |
 | Admin Views | CRUD管理画面 | 1500+ |
-| File Management | 音声再生、楽譜表示、ダウンロード | 1000+ |
+| Auth Module | ログイン画面、端末認証、パスワード登録 | 別ファイル化済み |
+| File Management | 録音再生、楽譜表示、ダウンロード | 1000+ |
+| Recordings Module | 録音一覧、連続再生、削除 | 別ファイル化済み |
 | UI Utilities | ヘルパー関数、イベントハンドラ | 500+ |
 
 ### 3. 主要関数

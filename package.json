@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "check:frontend:syntax": "node --check src/static/js/app.js && node --check src/static/js/frontend_testable_logic.js",
+    "check:frontend:syntax": "node --check src/static/js/app.js && node --check src/static/js/main.js && node --check src/static/js/api.js && node --check src/static/js/config.js && node --check src/static/js/utils/api.js && node --check src/static/js/utils/audio.js && node --check src/static/js/utils/calendar.js && node --check src/static/js/utils/cache.js && node --check src/static/js/utils/dialog.js && node --check src/static/js/modules/announcements.js && node --check src/static/js/modules/performances.js && node --check src/static/js/modules/schedules.js && node --check src/static/js/modules/recordings.js && node --check src/static/js/modules/members.js && node --check src/static/js/modules/absences.js && node --check src/static/js/modules/payments.js && node --check src/static/js/modules/events.js && node --check src/static/js/modules/scores.js && node --check src/static/js/modules/albums.js && node --check src/static/js/modules/sns.js && node --check src/static/js/frontend_testable_logic.js",
     "test:frontend": "vitest run",
     "test:frontend:integration": "vitest run tests/integration/frontend",
     "test:frontend:coverage": "vitest run --coverage tests/frontend"

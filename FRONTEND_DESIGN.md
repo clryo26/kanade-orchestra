@@ -21,6 +21,7 @@
 ### 3.1 レイアウト
 
 - 共通ヘッダー
+- ホーム画面追加時の表示名は `org_settings` の略称（`short_name` / `organization_abbreviation` / `abbreviation` / `name`）を優先し、`{略称}ポータル` 形式で表示する
 - サイドドロワー
 - サイドドロワー下部アクション（マニュアル/ログアウト/更新）はドロワー描画時に動的生成し、その場でイベントをバインド
 - 団員パネル
@@ -32,6 +33,7 @@
 - member-home
 - member-announce
 - member-performance
+- member-performance-day
 - member-schedule
 - member-recording
 - member-absence
@@ -53,6 +55,7 @@
 
 - upload
 - performance
+- performance-day-admin
 - schedule
 - announcement
 - event
@@ -65,6 +68,11 @@
 ### 3.5 演奏会情報管理
 
 - 管理側と団員側の演奏会情報では、曲目一覧を略称ではなく正式名称（作曲者: 曲名）で表示する
+- 管理側の曲追加フォームには演奏時間（分）入力欄を持ち、曲データの `duration` に保存する
+- 管理側の曲目一覧には、略称に加えて演奏時間（分）を補助表示する
+- 本番情報のタイムテーブルは互換用の `timeline` 文字列に加えて `timeline_rows`（start_time / end_time / duration_minutes / content など）を保持し、将来のExcel自動出力に利用する
+- `timeline_rows` 未登録の既存データは `timeline` テキストから自動変換し、表示と保存で段階的に構造化へ移行する
+- 本番情報管理には演奏会単位の `Excel出力` ボタンを配置し、`/api/reports/performance-timetable/{performance_id}/xlsx` からテンプレートベースのタイムテーブルをダウンロードできる
 - チラシ画像ファイル欄は曲目一覧の下に配置する
 - 団員向け演奏会情報の登録画像は曲名一覧の下に表示する
 
@@ -147,6 +155,20 @@
 - DL 導線
 - 楽譜ライブラリの演奏会名・曲名見出しは左寄せで表示する
 
+### 7.1 本番情報
+
+- 団員画面の「本番情報」では、演奏会ごとに次の3項目を表示する
+	- 演奏会当日のタイムテーブル
+	- 本番衣装
+	- 係り割
+- 管理画面の「本番情報管理」で演奏会単位に登録・更新・削除できる
+- 同一演奏会に対しては1件の本番情報レコードとして管理する
+- 団員画面の本番情報一覧は、演奏会日付の新しい順で表示する
+- 係り割は管理画面で「担当 / 氏名」の表形式入力（行追加）で登録する
+- 本番衣装は演奏会単位で、男女別に次の項目を登録・表示する
+	- 男性: 上 / 下 / その他
+	- 女性: 上 / 下 / その他
+
 ### 7.2 支払状況
 
 - 支払設定で月額団費と演奏会費の金額を管理
@@ -200,6 +222,7 @@
 
 - DESIGN_WEB.md
 - API_DATABASE_SPEC.md
+- FRONTEND_LAYOUT_SPEC.md
 
 ## 10. 録音管理追記
 

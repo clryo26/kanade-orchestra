@@ -15,6 +15,7 @@
 - ACCESS_AND_SOURCE_SYNC_GUIDE.md: 2台PC開発向けのGitHub/Googleアクセス情報とソース同期手順
 - DB_SETUP_GUIDE.md: DB構築の一本化手順（どのDBをどこからどう作るか）
 - FRONTEND_DESIGN.md: フロント実装観点
+- FRONTEND_LAYOUT_SPEC.md: 画面レイアウト仕様（表示イメージ中心）
 - API_DATABASE_SPEC.md: API と JSON データ仕様
 - PERFORMANCE_IMPROVEMENTS.md: 性能改善履歴
 - UNIT_TEST_SPEC.md: 単体テスト仕様（全体網羅）

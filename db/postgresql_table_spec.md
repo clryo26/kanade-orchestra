@@ -1,7 +1,7 @@
 ﻿# PostgreSQL テーブル仕様書
 
 最終更新: 2026-06-29
-参照DDL: db/postgresql_schema.sql
+参照DDL: PostgreSQL schema（本番DBへ適用済み）
 
 ## 1. 共通仕様
 

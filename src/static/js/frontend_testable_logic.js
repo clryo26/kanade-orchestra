@@ -138,8 +138,11 @@
         return String(
             org?.short_name
             || org?.shortName
+            || org?.abbreviation
+            || org?.short
             || org?.organization_abbreviation
             || org?.organizationAbbreviation
+            || org?.name
             || org?.organization_name
             || org?.organizationName
             || org?.organization_name_full

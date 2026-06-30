@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from fastapi import APIRouter, Header, HTTPException, Request
+
+from .auth_helpers import (
+    find_member_by_login_name,
+    is_hidden_system_admin_login,
+    member_access_expired,
+    member_display_name,
+    member_part,
+)
+from .app_core import MemberPasswordSetupRequest, PortalLoginRequest
+
+router = APIRouter(prefix="/api/auth")
+
+
+def backend_api():
+    # main is the public compatibility surface; tests and scripts patch it.
+    from . import main
+
+    return main
+
+
+@router.post("/portal-login")
+async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str, Any]:
+    if is_hidden_system_admin_login(login):
+        member = {
+            "id": None,
+            "name": "Administrator",
+            "part": "System",
+            "permission": "システム管理者",
+            "is_recording_manager": True,
+            "is_sheet_manager": True,
+            "hidden_user": True,
+        }
+    else:
+        members = backend_api().load_json_data("members")
+        _, member = find_member_by_login_name(members, login.name, login.part)
+        if member_access_expired(member):
+            raise HTTPException(status_code=403, detail="システム利用期限が終了しています")
+        member_password = str(member.get("password") or "")
+        if not member_password:
+            return {
+                "authenticated": False,
+                "needs_password_setup": True,
+                "member_id": member.get("id"),
+            }
+        if not backend_api().verify_password(login.password, member_password):
+            raise HTTPException(status_code=401, detail="Invalid member password")
+        if not backend_api().is_hashed_password(member_password):
+            members = backend_api().load_json_data("members")
+            for m in members:
+                if m.get("id") == member.get("id"):
+                    m["password"] = backend_api().hash_password(login.password)
+                    m["updated_at"] = datetime.now().isoformat()
+                    break
+            backend_api().save_json_data("members", members)
+
+    device_id = login.device_id.strip()
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id is required")
+
+    devices = backend_api().load_json_data("auth_devices")
+    now = datetime.now().isoformat()
+    existing = next((item for item in devices if item.get("device_id") == device_id), None)
+    payload = {
+        "device_id": device_id,
+        "device_name": login.device_name or "Unknown device",
+        "member_id": member.get("id"),
+        "member_name": member_display_name(member),
+        "member_part": member_part(member),
+        "permission": member.get("permission") or "一般",
+        "system_access_until": member.get("system_access_until") or "",
+        "is_recording_manager": bool(member.get("is_recording_manager")),
+        "is_sheet_manager": bool(member.get("is_sheet_manager")),
+        "hidden_user": bool(member.get("hidden_user")),
+        "user_agent": login.user_agent or request.headers.get("user-agent", ""),
+        "authenticated_at": now,
+        "last_seen_at": now,
+    }
+    if existing:
+        existing.update(payload)
+    else:
+        payload["id"] = backend_api().next_id(devices)
+        devices.append(payload)
+    backend_api().save_json_data("auth_devices", devices)
+    return {
+        "authenticated": True,
+        "device_id": device_id,
+        "member_id": payload["member_id"],
+        "member_name": payload["member_name"],
+        "member_part": payload["member_part"],
+        "permission": payload["permission"],
+        "system_access_until": payload["system_access_until"],
+        "is_recording_manager": payload["is_recording_manager"],
+        "is_sheet_manager": payload["is_sheet_manager"],
+        "hidden_user": payload["hidden_user"],
+    }
+
+
+@router.post("/member-password")
+async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, Any]:
+    password = payload.password.strip()
+    if not password:
+        raise HTTPException(status_code=400, detail="password is required")
+    members = backend_api().load_json_data("members")
+    index, member = find_member_by_login_name(members, payload.name, payload.part)
+    if member.get("password"):
+        raise HTTPException(status_code=409, detail="Member password is already set")
+    member["password"] = backend_api().hash_password(password)
+    member["updated_at"] = datetime.now().isoformat()
+    members[index] = member
+    backend_api().save_json_data("members", members)
+    return {"password_registered": True, "member_id": member.get("id")}
+
+
+@router.get("/devices/{device_id}")
+async def get_auth_device(device_id: str) -> dict[str, Any]:
+    devices = backend_api().load_json_data("auth_devices")
+    item = next((device for device in devices if device.get("device_id") == device_id), None)
+    if not item:
+        return {"authenticated": False}
+
+    member_id = item.get("member_id")
+    if member_id is not None:
+        members = backend_api().load_json_data("members")
+        member = next((value for value in members if value.get("id") == member_id), None)
+        if member and member_access_expired(member):
+            backend_api().save_json_data("auth_devices", [device for device in devices if device.get("device_id") != device_id])
+            return {"authenticated": False}
+
+    item["last_seen_at"] = datetime.now().isoformat()
+    backend_api().save_json_data("auth_devices", devices)
+    return {"authenticated": True, "device": item}
+
+
+@router.get("/devices")
+async def get_auth_devices() -> list[dict[str, Any]]:
+    return await backend_api().list_auth_devices()
+
+
+@router.delete("/devices/{device_id}")
+async def delete_auth_device(device_id: str, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
+    backend_api().require_admin_device(x_device_id)
+    devices = backend_api().load_json_data("auth_devices")
+    backend_api().save_json_data("auth_devices", [item for item in devices if item.get("device_id") != device_id])
+    return {"message": "Deleted"}

@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -60,11 +61,15 @@ logs/*
 
 # テスト
 .pytest_cache/
+.pytest-tmp/
 .coverage
 htmlcov/
+.ruff_cache/
+.ruff-cache-local/
 
 # UV
 .uv-virtualenvs/
+.uv-cache-local/
 uv.lock
 
 # Docker

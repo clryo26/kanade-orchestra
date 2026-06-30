@@ -1,7 +1,7 @@
 # PostgreSQL テーブルレイアウト
 
 最終更新: 2026-06-19
-参照DDL: db/postgresql_schema.sql
+参照DDL: PostgreSQL schema（本番DBへ適用済み）
 
 ## 1. レイアウト方針
 
