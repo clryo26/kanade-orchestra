@@ -44,3 +44,8 @@ Thumbs.db
 # Local JSON is no longer the production data source
 src/data/*.json
 !src/data/.gitkeep
+
+# Database backups
+/db/backups/
+*.dump
+*.sql.gz
