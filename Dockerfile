@@ -12,7 +12,6 @@ RUN apt-get update \
 
 COPY pyproject.toml .python-version ./
 COPY src ./src
-COPY scripts ./scripts
 COPY db ./db
 
 RUN pip install --no-cache-dir uv \
