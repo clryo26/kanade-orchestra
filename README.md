@@ -2,6 +2,94 @@
 
 オーケストラの団員向けWebアプリケーション。管理者がWAV形式の音声ファイルをMP3形式に変換して、Google Cloud Storageを経由で共有・再生できます。
 
+## Version 5.1 安定化方針
+
+- データソースは DB Only（PostgreSQL）を標準とする
+- 本番フロントエンドは `src/static/js/main.js` を利用する
+- `src/static/js/app.js` はテスト互換のためにのみ保持し、新規機能は追加しない
+- `src/static/js/app.js` へ新規実装禁止
+- CI 成功コミットのみデプロイ可能とする
+- Cloud Run 起動互換（`src.backend.main:app`）を維持する
+
+## Frontend Phase3 方針
+
+- 巨大だった `src/static/js/app.js` は互換ローダー化し、本番ロジックは保持しない
+- 本番フロント処理は `src/static/js/main.js` と `src/static/js/modules/` / `src/static/js/utils/` / `src/static/js/store/` に集約する
+- pure helper は `src/static/js/frontend_testable_logic.js` を正とし、Vitest で直接検証する
+- `src/static/js/main.js` は runtime context 存在確認を行う最小ブリッジとして維持する
+
+## appState 移行方針（Phase4）
+
+- 正式な共有状態名は `window.portalAppState` とする
+- `window.appState` は互換 alias としてのみ維持する
+- 新規コードは `window.getAppState()` または `window.portalRuntimeContext.appState` 経由で参照する
+- 新規実装で `window.appState` へ直接アクセスする実装を追加しない
+
+## Phase5 分割状況（2026-07-01）
+
+- `src/static/js/modules/date_piece_promotion.js` は薄い互換ローダー化し、
+  `modules/date_piece_promotion/state.js` / `api.js` / `render.js` へ責務を追加分割した
+- `src/static/js/modules/admin_system.js` は薄い互換ローダー化し、
+  `modules/admin_system/render.js` / `api.js` / `database_viewer.js` / `diagnostics.js` へ責務を追加分割した
+- `src/backend/app_core.py` は互換面維持を優先して段階的に薄化し、現在は 500 行近傍（513 行）
+
+## Phase6 分割状況（2026-07-01）
+
+- `src/static/js/modules/navigation.js` は薄い互換ローダー化し、
+  `modules/navigation/helpers.js` / `tabs.js` / `menu.js` / `routes.js` / `events.js` へ責務を追加分割した
+- `src/static/js/modules/members.js` は薄い互換ローダー化し、
+  `modules/members/helpers.js` / `form.js` / `api.js` / `render.js` / `events.js` へ責務を追加分割した
+- `src/static/js/modules/practice_casting.js` は薄い互換ローダー化し、
+  `modules/practice_casting/helpers.js` / `api.js` / `render.js` / `events.js` へ責務を追加分割した
+- `src/static/js/frontend_testable_logic.js` は互換集約レイヤー化し、
+  `src/static/js/testable/` 配下へ pure helper を分離した
+- `src/backend/app_core.py` は 503 行まで薄化したが、400 行以下は安全優先で未実施
+
+## Phase7 品質保証・本番準備（2026-07-01）
+
+- Playwright E2E 基盤を追加（`playwright.config.js`, `tests/e2e/*`）
+- 主要導線の smoke テストを追加（トップ表示、ログイン、団員/管理メニュー遷移）
+- CI は軽量テストを `ci.yml`、E2E を `e2e.yml` に分離
+- 本番前チェックリストを追加（`docs/PRODUCTION_RELEASE_CHECKLIST.md`）
+- 追加分割候補の棚卸しを作成（`docs/PHASE7_REFACTORING_CANDIDATES.md`）
+- 社内プロキシ環境向けに E2E 実行時のローカル通信プロキシ除外と Playwright ダウンロード設定を整備
+
+## ローカルテスト手順
+
+- 詳細手順: [docs/LOCAL_TEST_SETUP.md](docs/LOCAL_TEST_SETUP.md)
+- 最短手順:
+
+```bash
+uv sync
+npm install
+pytest
+npm run test:frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+社内プロキシ環境で Playwright ブラウザ取得が失敗する場合の例:
+
+```powershell
+$env:NODE_TLS_REJECT_UNAUTHORIZED='0'
+Remove-Item Env:HTTP_PROXY -ErrorAction SilentlyContinue
+Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue
+Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue
+$env:NO_PROXY='127.0.0.1,localhost'
+$env:no_proxy='127.0.0.1,localhost'
+npx playwright install chromium
+npm run test:e2e
+```
+
+## 共有ZIP
+
+- 共有用ソースZIP作成手順: [docs/SOURCE_SHARE_ZIP.md](docs/SOURCE_SHARE_ZIP.md)
+- 共有ZIPには `.env.example` を含め、`.env` / `.env.local` は含めない
+- ローカル依存セットアップ手順: [docs/LOCAL_TEST_SETUP.md](docs/LOCAL_TEST_SETUP.md)
+- Phase5 分割レポート: [docs/PHASE5_REFACTORING_REPORT.md](docs/PHASE5_REFACTORING_REPORT.md)
+- Phase6 分割レポート: [docs/PHASE6_REFACTORING_REPORT.md](docs/PHASE6_REFACTORING_REPORT.md)
+- Phase7 QA/本番準備レポート: [docs/PHASE7_QA_AND_RELEASE_REPORT.md](docs/PHASE7_QA_AND_RELEASE_REPORT.md)
+
 ## 🎵 主な機能
 
 ### 管理者機能
@@ -51,6 +139,16 @@ cd c:\Users\owner\Desktop\オケツール
 uv sync
 ```
 
+### 2.1 テスト実行前のセットアップ（推奨）
+
+```bash
+# 開発・テスト依存（pytest / ruff / psycopg など）
+uv sync --extra dev
+```
+
+`psycopg` 未導入のまま DB モードのテストを実行すると、
+DB 接続関連で失敗します。`uv sync --extra dev` を先に実行してください。
+
 ### 3. ffmpegのインストール（オプション）
 
 ```bash
@@ -93,12 +191,13 @@ http://localhost:8080
     │   ├── css/
     │   │   └── style.css   # スタイルシート
     │   └── js/
-    │       └── app.js      # JavaScriptロジック
+    │       ├── main.js     # 本番JavaScriptエントリポイント
+    │       └── app.js      # deprecated（テスト互換のみ）
     ├── backend/
     │   ├── main.py         # FastAPPサーバー
     │   └── requirements.txt # 依存パッケージ
     ├── uploads/            # アップロードファイル保存先
-    └── data/               # JSONデータ保存先
+    └── data/               # DB Only移行に伴い本番では未使用
 ```
 
 ## 📡 APIエンドポイント
