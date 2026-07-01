@@ -250,3 +250,64 @@ def test_db_only_login_does_not_fallback_to_local_json(client, backend_env, monk
 
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
+
+
+def test_login_refreshes_cached_auth_devices_after_db_write(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 601,
+                "name": "Cached Login",
+                "part": "Vn",
+                "password": backend_env.hash_password("cached-pass"),
+                "permission": "荳闊ｬ",
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+
+    # A startup/bootstrap read can cache an empty auth_devices collection before
+    # login. The login write must refresh that cache immediately.
+    assert backend_env.load_json_data("auth_devices") == []
+
+    login_response = _login(
+        client,
+        name="Cached Login",
+        part="Vn",
+        password="cached-pass",
+        device_id="device-cached-login",
+    )
+    assert login_response.status_code == 200
+
+    device_response = client.get("/api/auth/devices/device-cached-login")
+    assert device_response.status_code == 200
+    assert device_response.json()["authenticated"] is True
+
+
+def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [],
+        "auth_devices": [],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+
+    assert backend_env.load_json_data("auth_devices") == []
+
+    response = _login(
+        client,
+        name="Administrator",
+        part="",
+        password="systemadminadmin",
+        device_id="device-hidden-admin",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert payload["hidden_user"] is True
+
+    device_response = client.get("/api/auth/devices/device-hidden-admin")
+    assert device_response.status_code == 200
+    assert device_response.json()["authenticated"] is True

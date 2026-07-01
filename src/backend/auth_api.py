@@ -58,9 +58,9 @@ def load_collection(name: str) -> list[dict[str, Any]]:
 
 def save_collection(name: str, data: list[dict[str, Any]]) -> None:
     api = persistence_api()
-    if api.db_data_enabled():
-        api.db_replace_collection(name, data)
-        return
+    # Route writes through the compatibility save layer so auth_devices cache is
+    # refreshed immediately after login. Direct DB writes leave later device
+    # checks reading a stale empty cache.
     api.save_json_data(name, data)
 
 
