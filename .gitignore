@@ -9,9 +9,11 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
 .ruff_cache/
 .ruff-cache-local/
 .mypy_cache/
+.tmp/
 .coverage
 coverage/
 htmlcov/
@@ -40,6 +42,9 @@ Thumbs.db
 *.zip
 *.tar
 *.tar.gz
+dist/source-share/
+
+# Note: .git/ is repository metadata and must never be included in shared ZIP.
 
 # Local JSON is no longer the production data source
 src/data/*.json
