@@ -26,6 +26,7 @@ INCLUDE_DIRS = [
 INCLUDE_FILES = [
     "README.md",
     "AGENTS.md",
+    "playwright.config.js",
     "package.json",
     "package-lock.json",
     "pyproject.toml",

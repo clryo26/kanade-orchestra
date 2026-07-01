@@ -17,6 +17,10 @@ const {
     displayNameWithoutExtension,
     formatDurationLabel,
     paymentPaymentRangeLabel,
+    integerAmountNumber,
+    integerAmountInputValue,
+    yenAmountLabel,
+    convertUrlsToLinks,
     foldSettledExtraResults,
     buildDateAdjustmentSummary,
     filterRespondentRows
@@ -134,6 +138,7 @@ describe('FE-TIME', () => {
     test('FE-TIME-004 compact calendar datetime', () => {
         expect(compactCalendarDate('2026-07-01')).toBe('20260701');
         expect(compactCalendarDate('2026-07-01', '18:30')).toBe('20260701T183000');
+        expect(compactCalendarDate('2026-07-01', '18:30:00')).toBe('20260701T183000');
     });
 
     test('FE-TIME-005 next all day date', () => {
@@ -158,8 +163,23 @@ describe('FE-PURE', () => {
         expect(paymentPaymentRangeLabel({})).toBe('未登録');
     });
 
-    test('FE-PURE-004 ics escape', () => {
+    test('FE-PURE-004 yen amount labels do not show decimals', () => {
+        expect(integerAmountNumber('5000.00')).toBe(5000);
+        expect(integerAmountInputValue('5000.00')).toBe('5000');
+        expect(yenAmountLabel('5000.00')).toBe('5,000円');
+        expect(yenAmountLabel('')).toBe('未設定');
+    });
+
+    test('FE-PURE-005 ics escape', () => {
         expect(icsEscape('a,b;c\\d\nline')).toBe('a\\,b\\;c\\\\d\\nline');
+    });
+
+    test('FE-PURE-006 convert URLs to safe links', () => {
+        const html = convertUrlsToLinks('参考: https://example.com/path?q=1&x=2 <script>');
+        expect(html).toContain('href="https://example.com/path?q=1&amp;x=2"');
+        expect(html).toContain('target="_blank"');
+        expect(html).toContain('rel="noopener noreferrer"');
+        expect(html).toContain('&lt;script&gt;');
     });
 });
 

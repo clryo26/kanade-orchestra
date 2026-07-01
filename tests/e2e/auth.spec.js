@@ -5,7 +5,7 @@ test.describe('Authentication smoke', () => {
     await page.goto('/');
 
     await page.fill('#portalNameInput', 'Administrator');
-    await page.fill('#portalPasswordInput', 'systemadminadmin');
+    await page.fill('#portalPasswordInput', 'ｓｙｓｔｅｍａｄｍｉｎａｄｍｉｎ');
     await page.click('#portalLoginBtn');
 
     await expect(page.locator('#portalLoginPanel')).toBeHidden();

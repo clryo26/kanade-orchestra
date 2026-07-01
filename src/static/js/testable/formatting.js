@@ -28,8 +28,9 @@
     function compactCalendarDate(date, time = '') {
         const ymd = String(date || '').replaceAll('-', '');
         if (!ymd) return '';
-        if (!time) return ymd;
-        return `${ymd}T${String(time).replace(':', '')}00`;
+        const normalizedTime = formatClockTime(time);
+        if (!normalizedTime) return ymd;
+        return `${ymd}T${normalizedTime.replaceAll(':', '')}00`;
     }
     function nextAllDayDate(date) {
         if (!date) return '';
@@ -58,7 +59,41 @@
         const until = payment?.paid_until_month || payment?.membership_fee || payment?.dues || '';
         return until ? `${until}まで支払い済み` : '未登録';
     }
-    const api = { cloudRunRevisionLabel, formatClockTime, splitTimeRange, formatTimeRange, addHoursToTime, compactCalendarDate, nextAllDayDate, icsEscape, displayNameWithoutExtension, formatDurationLabel, paymentPaymentRangeLabel };
+    function integerAmountNumber(value) {
+        const amount = Number(value || 0);
+        return Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0;
+    }
+    function integerAmountInputValue(value) {
+        const amount = integerAmountNumber(value);
+        return amount > 0 ? String(amount) : '';
+    }
+    function yenAmountLabel(value, fallback = '未設定') {
+        const amount = integerAmountNumber(value);
+        return amount > 0 ? `${amount.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}円` : fallback;
+    }
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+    }
+    function convertUrlsToLinks(text) {
+        const source = String(text ?? '');
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        let cursor = 0;
+        let html = '';
+        source.replace(urlRegex, (url, offset) => {
+            html += escapeHtml(source.slice(cursor, offset));
+            try {
+                new URL(url);
+                html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">${escapeHtml(url)}</a>`;
+            } catch {
+                html += escapeHtml(url);
+            }
+            cursor = offset + url.length;
+            return url;
+        });
+        html += escapeHtml(source.slice(cursor));
+        return html;
+    }
+    const api = { cloudRunRevisionLabel, formatClockTime, splitTimeRange, formatTimeRange, addHoursToTime, compactCalendarDate, nextAllDayDate, icsEscape, displayNameWithoutExtension, formatDurationLabel, paymentPaymentRangeLabel, integerAmountNumber, integerAmountInputValue, yenAmountLabel, escapeHtml, convertUrlsToLinks };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     globalObj.FrontendTestableFormatting = api;
 })(typeof window !== 'undefined' ? window : globalThis);

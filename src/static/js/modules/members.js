@@ -99,7 +99,7 @@ function memberKanaName(member) {
 
 
 async function saveOrgMembershipFee() {
-    const amount = Number($('orgMembershipFee')?.value || 0);
+    const amount = integerAmountNumber($('orgMembershipFee')?.value || 0);
     const current = currentOrgSetting();
     const name = current.name || current.organization_name || current.organization_name_full || '';
     const shortName = current.short_name || current.shortName || current.organization_abbreviation || '';

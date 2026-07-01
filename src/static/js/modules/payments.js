@@ -49,13 +49,11 @@ function performanceFeeAmountMap(payment) {
 }
 
 function orgMembershipFeeAmountLabel() {
-    const amount = Number(currentOrgSetting().membership_fee_amount || 0);
-    return amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
+    return yenAmountLabel(currentOrgSetting().membership_fee_amount);
 }
 
 function performanceFeeAmountLabel(performance) {
-    const amount = Number(performance?.performance_fee_amount || 0);
-    return amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
+    return yenAmountLabel(performance?.performance_fee_amount);
 }
 
 function monthValue(monthText) {

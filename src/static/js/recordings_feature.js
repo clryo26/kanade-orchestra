@@ -35,11 +35,11 @@ function renderRecordingList(containerId, canDelete) {
     grouped.forEach((dateGroup) => {
         const dateOpen = canDelete || dateGroup.date === latestDate;
         const dateDetails = document.createElement('details');
-        dateDetails.className = 'recording-date-group';
+        dateDetails.className = 'mb-3 sheet-library-details recording-date-group';
         dateDetails.open = dateOpen;
         dateDetails.innerHTML = `
-                <summary class="recording-summary recording-date-summary">
-                    <span>${escapeHtml(formatDateWithWeekday(dateGroup.date, '未分類'))}</span>
+                <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2 recording-date-summary">
+                    <strong class="sheet-library-heading">${escapeHtml(formatDateWithWeekday(dateGroup.date, '未分類'))}</strong>
                     ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">練習日を一括削除</button>' : `<a class="btn btn-sm btn-primary recording-bulk-download-btn" href="${escapeHtml(recordingZipUrl(dateGroup.date, ''))}">練習日一括DL</a>`}
                 </summary>
             `;
@@ -56,11 +56,10 @@ function renderRecordingList(containerId, canDelete) {
         }
         dateGroup.pieces.forEach((pieceGroup) => {
             const pieceDetails = document.createElement('details');
-            pieceDetails.className = 'recording-piece-group';
-            pieceDetails.open = canDelete || dateGroup.date === latestDate;
+            pieceDetails.className = 'mb-2 ms-md-3 sheet-library-details recording-piece-group';
             pieceDetails.innerHTML = `
-                <summary class="recording-summary recording-piece-summary">
-                    <span>${escapeHtml(pieceGroup.piece || '未分類')}</span>
+                <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2 recording-piece-summary">
+                    <span class="sheet-library-heading">${escapeHtml(pieceGroup.piece || '未分類')}</span>
                     ${canDelete ? '<button class="btn btn-sm btn-outline-danger recording-bulk-delete-btn" type="button">曲を一括削除</button>' : `<a class="btn btn-sm btn-outline-primary recording-bulk-download-btn" href="${escapeHtml(recordingZipUrl(dateGroup.date, pieceGroup.piece))}">曲一括DL</a>`}
                 </summary>
             `;
@@ -77,18 +76,7 @@ function renderRecordingList(containerId, canDelete) {
                 });
             }
             const list = document.createElement('div');
-            list.className = 'list-group mb-3';
-            if (!canDelete && dateGroup.date === latestDate) {
-                pieceDetails.classList.add('files-collapsed');
-                list.hidden = true;
-                const summary = pieceDetails.querySelector('summary');
-                summary.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    list.hidden = !list.hidden;
-                    pieceDetails.open = true;
-                    pieceDetails.classList.toggle('files-collapsed', list.hidden);
-                });
-            }
+            list.className = 'list-group mt-2';
             pieceGroup.files.forEach((file) => {
                 list.appendChild(recordingFileItem(file, canDelete));
             });

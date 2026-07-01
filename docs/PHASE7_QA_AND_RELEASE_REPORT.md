@@ -103,6 +103,14 @@ GitHub Actions の `playwright-smoke` ジョブでは、以下の流れで成功
 - `python scripts/create-source-zip.py` または `npm run zip:source`
 - `.env` / `.venv` / `.git` / `node_modules` / 録音実体 / DB 実体 / credentials 系の除外を維持
 
+## 補正ログ（2026-07-02）
+
+- `playwright.config.js` を共有 ZIP の含有対象へ追加した。
+- `scripts/create-source-zip.py` で `playwright.config.js` / `tests/e2e/` / `.github/workflows/e2e.yml` が含まれることを確認できるようにした。
+- E2E の標準ポートを `8000` に統一し、`E2E_BASE_URL` を明示的に扱うようにした。
+- CI の Playwright artifact 保存対象に `test-results` を追加した。
+- ローカル手順書を `npm ci` / `npx playwright install --with-deps chromium` / `uvicorn 8000` ベースへ更新した。
+
 ## 再検証ログ（2026-07-01 夜）
 
 運用手順の再現性を確認するため、以下を再実行した。

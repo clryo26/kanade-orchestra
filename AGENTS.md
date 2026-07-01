@@ -608,7 +608,13 @@ uv run python -m compileall .
 - ユーザー入力を信用しすぎない。
 - 例外を握りつぶさない。
 
-### 6.5 Frontend State Rules
+### 6.5 Shared Packaging Rules
+
+- 共有 ZIP 作成時は `playwright.config.js` と `tests/e2e/` を必ず含める。
+- 共有 ZIP には `.env` / `.venv` / `node_modules` / 録音実体・DB 実体・credentials 系を含めない。
+- E2E 実行手順は `npm ci` / `npx playwright install --with-deps chromium` / `npm run test:e2e` の流れで再現できるようにする。
+
+### 6.6 Frontend State Rules
 
 - 共有状態の正式名は `window.portalAppState` とする。
 - `window.appState` は互換 alias のみ許容し、新規実装で直接参照しない。

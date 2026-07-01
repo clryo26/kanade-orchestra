@@ -18,4 +18,15 @@ describe('sheet library alignment', () => {
         expect(css).toContain(`.${contract.headingClass}`);
         expect(css).toContain(`text-align: ${contract.textAlign};`);
     });
+
+    test('recording room uses sheet library collapse classes', () => {
+        const source = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/recordings_feature.js'), 'utf8');
+        const contract = sheetLibraryHeadingContract();
+
+        expect(source).toContain('sheet-library-details recording-date-group');
+        expect(source).toContain('sheet-library-details recording-piece-group');
+        expect(source).toContain(contract.headingClass);
+        expect(source).not.toContain('files-collapsed');
+        expect(source).not.toContain('recording-summary');
+    });
 });

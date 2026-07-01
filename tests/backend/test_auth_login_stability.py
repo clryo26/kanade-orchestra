@@ -313,6 +313,53 @@ def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backen
     assert device_response.json()["authenticated"] is True
 
 
+def test_login_accepts_fullwidth_ascii_password_input(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 701,
+                "name": "Fullwidth Password",
+                "part": "Vn",
+                "password": backend_env.hash_password("abc-123"),
+                "permission": "荳闊ｬ",
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+
+    response = _login(
+        client,
+        name="Fullwidth Password",
+        part="Vn",
+        password="ａｂｃ－１２３",
+        device_id="device-fullwidth-password",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+
+
+def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [],
+        "auth_devices": [],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+
+    response = _login(
+        client,
+        name="Administrator",
+        part="",
+        password="ｓｙｓｔｅｍａｄｍｉｎａｄｍｉｎ",
+        device_id="device-hidden-admin-fullwidth",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+
+
 def test_hidden_administrator_login_survives_auth_device_persistence_failure(client, backend_env, monkeypatch):
     db_store = {
         "members": [],

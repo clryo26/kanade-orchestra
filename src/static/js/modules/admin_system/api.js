@@ -123,7 +123,7 @@ async function saveOrgSetting() {
         organization_abbreviation: shortName,
         short_name: shortName,
         icon_url: iconUrl,
-        membership_fee_amount: Number(current.membership_fee_amount || 0)
+        membership_fee_amount: integerAmountNumber(current.membership_fee_amount || 0)
     };
     if (current.id) {
         await request(`/api/extra/org_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));

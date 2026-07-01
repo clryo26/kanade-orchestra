@@ -48,9 +48,12 @@ function renderPieceInfoView() {
     const isEditing = Boolean(appState.pieceInfoEditing);
     const actionButtonClass = isEditing ? 'btn-success' : 'btn-outline-primary';
     const actionButtonLabel = isEditing ? '保存' : '編集';
+    const descriptionFieldHtml = isEditing
+        ? `<textarea class="form-control" id="memberPieceInfoDescription" rows="8">${escapeHtml(initialDescription)}</textarea>`
+        : `<div class="form-control multiline-text bg-body-tertiary" id="memberPieceInfoDescriptionDisplay">${convertUrlsToLinks(initialDescription)}</div>`;
     container.innerHTML = `
         <section class="info-block mb-3"><button class="btn btn-sm btn-outline-secondary mb-3" id="pieceInfoBackBtn" type="button">曲一覧に戻る</button><h5 class="mb-1">${escapeHtml(performance?.title || '演奏会未設定')}</h5><div class="small text-muted mb-2">${escapeHtml(formatDateWithWeekday(performance?.date || '', '開催日未設定'))}</div><h6 class="mb-0">${escapeHtml(piece)}</h6></section>
-        <section class="info-block"><div class="mb-3"><label class="form-label" for="memberPieceInfoDescription">楽曲情報</label><textarea class="form-control" id="memberPieceInfoDescription" rows="8" ${isEditing ? '' : 'readonly'}>${escapeHtml(initialDescription)}</textarea><div class="form-text">URLを記載するとリンクとして表示されます。</div></div><div class="d-flex flex-wrap gap-2"><button class="btn ${actionButtonClass}" id="memberPieceInfoActionBtn" type="button">${actionButtonLabel}</button><button class="btn btn-danger" id="memberPieceInfoDeleteBtn" type="button" ${existing && isEditing ? '' : 'disabled'}>削除</button></div></section>
+        <section class="info-block"><div class="mb-3"><label class="form-label" for="${isEditing ? 'memberPieceInfoDescription' : 'memberPieceInfoDescriptionDisplay'}">楽曲情報</label>${descriptionFieldHtml}<div class="form-text">URLを記載するとリンクとして表示されます。</div></div><div class="d-flex flex-wrap gap-2"><button class="btn ${actionButtonClass}" id="memberPieceInfoActionBtn" type="button">${actionButtonLabel}</button><button class="btn btn-danger" id="memberPieceInfoDeleteBtn" type="button" ${existing && isEditing ? '' : 'disabled'}>削除</button></div></section>
     `;
     $('pieceInfoBackBtn')?.addEventListener('click', () => { appState.selectedPieceInfoContext = null; appState.pieceInfoEditing = false; renderPieceInfoView(); });
     $('memberPieceInfoActionBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, isEditing ? '保存中...' : '編集中...', async () => {
@@ -117,9 +120,12 @@ function renderPracticeInstructionView() {
     const isEditing = Boolean(appState.practiceInstructionEditing);
     const actionButtonClass = isEditing ? 'btn-success' : 'btn-outline-primary';
     const actionButtonLabel = isEditing ? '保存' : '編集';
+    const notesFieldHtml = isEditing
+        ? `<textarea class="form-control" id="memberPracticeInstructionNotes" rows="8">${escapeHtml(initialNotes)}</textarea>`
+        : `<div class="form-control multiline-text bg-body-tertiary" id="memberPracticeInstructionNotesDisplay">${convertUrlsToLinks(initialNotes)}</div>`;
     container.innerHTML = `
         <section class="info-block mb-3"><button class="btn btn-sm btn-outline-secondary mb-3" id="practiceInstructionBackBtn" type="button">曲一覧に戻る</button><h5 class="mb-1">${escapeHtml(performance?.title || '演奏会未設定')}</h5><div class="small text-muted mb-2">${escapeHtml(formatDateWithWeekday(performance?.date || '', '開催日未設定'))}</div><h6 class="mb-0">${escapeHtml(piece)}</h6></section>
-        <section class="info-block"><div class="mb-3"><label class="form-label" for="memberPracticeInstructionNotes">練習指示内容</label><textarea class="form-control" id="memberPracticeInstructionNotes" rows="8" ${isEditing ? '' : 'readonly'}>${escapeHtml(initialNotes)}</textarea><div class="form-text">URLを記載するとリンクとして表示されます。</div></div><div class="d-flex flex-wrap gap-2"><button class="btn ${actionButtonClass}" id="memberPracticeInstructionActionBtn" type="button">${actionButtonLabel}</button><button class="btn btn-danger" id="memberPracticeInstructionDeleteBtn" type="button" ${existing && isEditing ? '' : 'disabled'}>削除</button></div></section>
+        <section class="info-block"><div class="mb-3"><label class="form-label" for="${isEditing ? 'memberPracticeInstructionNotes' : 'memberPracticeInstructionNotesDisplay'}">練習指示内容</label>${notesFieldHtml}<div class="form-text">URLを記載するとリンクとして表示されます。</div></div><div class="d-flex flex-wrap gap-2"><button class="btn ${actionButtonClass}" id="memberPracticeInstructionActionBtn" type="button">${actionButtonLabel}</button><button class="btn btn-danger" id="memberPracticeInstructionDeleteBtn" type="button" ${existing && isEditing ? '' : 'disabled'}>削除</button></div></section>
     `;
     $('practiceInstructionBackBtn')?.addEventListener('click', () => { appState.selectedPracticeInstructionContext = null; appState.practiceInstructionEditing = false; renderPracticeInstructionView(); });
     $('memberPracticeInstructionActionBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, isEditing ? '保存中...' : '編集中...', async () => {

@@ -63,8 +63,10 @@ oke-portal-source-YYYYMMDD-HHMMSS.zip
 - `docs/`
 - `infra/`
 - `.github/`
+- `tests/e2e/`
 - `README.md`
 - `AGENTS.md`
+- `playwright.config.js`
 - `package.json`
 - `package-lock.json`
 - `pyproject.toml`

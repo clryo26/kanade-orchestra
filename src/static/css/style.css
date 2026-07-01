@@ -444,72 +444,8 @@ body {
     font-weight: 700;
 }
 
-.recording-date-group,
-.recording-piece-group {
-    margin-bottom: 0.65rem;
-}
-
-.recording-summary {
-    align-items: center;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    gap: 0.5rem;
-    font-weight: 700;
-    justify-content: space-between;
-    list-style: none;
-    padding: 0.65rem 0.75rem;
-}
-
-.recording-summary::-webkit-details-marker {
-    display: none;
-}
-
-.recording-summary::after {
-    content: "開く";
-    color: #667085;
-    flex: 0 0 auto;
-    font-size: 0.8rem;
-    font-weight: 700;
-}
-
-.recording-summary > span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .recording-bulk-delete-btn {
     flex: 0 0 auto;
-}
-
-details[open] > .recording-summary::after {
-    content: "閉じる";
-}
-
-.recording-piece-group.files-collapsed > .recording-summary::after {
-    content: "ファイルを開く";
-}
-
-details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::after {
-    content: "ファイルを閉じる";
-}
-
-.recording-date-summary {
-    background: #eef6ff;
-    color: var(--brand-dark);
-}
-
-.recording-piece-summary {
-    margin-left: 0.75rem;
-}
-
-.recording-piece-group .list-group {
-    margin-left: 0.75rem;
-    margin-top: 0.5rem;
 }
 
 .recording-controls {
@@ -614,14 +550,6 @@ details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::
         padding-right: 0.55rem;
     }
 
-    .recording-summary {
-        align-items: stretch;
-        flex-wrap: wrap;
-    }
-
-    .recording-summary > span {
-        flex: 1 1 100%;
-    }
 }
 
 .multiline-text {

@@ -9,7 +9,7 @@ var $ = window.portalRuntimeContext.getById;
 async function savePerformanceFee(performanceId) {
     const input = Array.from(document.querySelectorAll('#performanceFeeSettings input[data-performance-id]'))
         .find((element) => String(element.dataset.performanceId || '') === String(performanceId));
-    const amount = Number(input?.value || 0);
+    const amount = integerAmountNumber(input?.value || 0);
     const perf = appState.performances.find((p) => String(p.id || '') === String(performanceId));
     if (!perf) {
         showAlert('演奏会が見つかりません', 'warning');

@@ -1,5 +1,7 @@
 const { defineConfig, devices } = require('@playwright/test');
 
+const e2eBaseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:8000';
+
 module.exports = defineConfig({
   testDir: './tests/e2e',
   timeout: 30000,
@@ -8,7 +10,7 @@ module.exports = defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:19081',
+    baseURL: e2eBaseUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -17,8 +19,8 @@ module.exports = defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: 'uv run uvicorn src.backend.main:app --host 127.0.0.1 --port 19081',
-        url: 'http://127.0.0.1:19081',
+        command: 'uv run uvicorn src.backend.main:app --host 127.0.0.1 --port 8000',
+        url: 'http://127.0.0.1:8000',
         timeout: 120000,
         reuseExistingServer: false,
         env: {

@@ -26,7 +26,7 @@ uv sync
 4. Node依存を入れる
 
 ```bash
-npm install
+npm ci
 ```
 
 ## テスト実行
@@ -51,7 +51,9 @@ npm run test:frontend
 ### E2E (Playwright)
 
 ```bash
-npx playwright install chromium
+npm ci
+npx playwright install --with-deps chromium
+uv run uvicorn src.backend.main:app --host 127.0.0.1 --port 8000
 npm run test:e2e
 ```
 

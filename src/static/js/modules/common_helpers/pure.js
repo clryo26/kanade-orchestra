@@ -32,7 +32,7 @@ function formatClockTime(value) { const match = String(value || '').trim().match
 function formatTimeRange(start, end) { const formattedStart = formatClockTime(start); const formattedEnd = formatClockTime(end); return formattedStart && formattedEnd ? `${formattedStart} - ${formattedEnd}` : formattedStart || formattedEnd || ''; }
 function splitTimeRange(value) { const match = String(value || '').match(/(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|〜|~|～)\s*(\d{1,2}:\d{2}(?::\d{2})?)/); return match ? { start: formatClockTime(match[1]), end: formatClockTime(match[2]) } : { start: '', end: '' }; }
 function addHoursToTime(time, hours) { const match = String(time || '').match(/^(\d{1,2}):(\d{2})$/); if (!match) return ''; const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2])); date.setHours(date.getHours() + hours); return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`; }
-function compactCalendarDate(date, time = '') { const ymd = String(date || '').replaceAll('-', ''); if (!ymd) return ''; if (!time) return ymd; return `${ymd}T${String(time).replace(':', '')}00`; }
+function compactCalendarDate(date, time = '') { const ymd = String(date || '').replaceAll('-', ''); if (!ymd) return ''; const normalizedTime = formatClockTime(time); if (!normalizedTime) return ymd; return `${ymd}T${normalizedTime.replaceAll(':', '')}00`; }
 function nextAllDayDate(date) { if (!date) return ''; const value = new Date(`${date}T00:00:00`); value.setDate(value.getDate() + 1); const y = value.getFullYear(); const m = String(value.getMonth() + 1).padStart(2, '0'); const d = String(value.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; }
 function icsEscape(value) { return String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(',', '\\,').replaceAll(';', '\\;'); }
 function icsDateTime(date, time = '') { const compact = compactCalendarDate(date, time); return time ? compact : compact; }
@@ -40,6 +40,9 @@ function fileToDataUrl(file) { return new Promise((resolve, reject) => { const r
 function partSortIndex(partName) { const index = currentPartNames().indexOf(String(partName || '')); return index === -1 ? 9999 : index; }
 function cssSafeId(value) { return encodeURIComponent(String(value || 'none')).replace(/%/g, ''); }
 function paymentPaymentRangeLabel(payment) { const until = payment.paid_until_month || payment.membership_fee || payment.dues || ''; return until ? `${until}まで支払い済み` : '未登録'; }
+function integerAmountNumber(value) { const amount = Number(value || 0); return Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0; }
+function integerAmountInputValue(value) { const amount = integerAmountNumber(value); return amount > 0 ? String(amount) : ''; }
+function yenAmountLabel(value, fallback = '未設定') { const amount = integerAmountNumber(value); return amount > 0 ? `${amount.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}円` : fallback; }
 function formatDateWithWeekday(dateText, fallback = '未定') { if (!dateText) return fallback; const date = new Date(`${dateText}T00:00:00`); if (Number.isNaN(date.getTime())) return dateText; const weekdays = ['日', '月', '火', '水', '木', '金', '土']; const formattedDate = dateText.replace(/-/g, '/'); return `${formattedDate}（${weekdays[date.getDay()]}）`; }
 function formatDateTimeLabel(value) { if (!value) return '未記録'; const date = new Date(value); if (Number.isNaN(date.getTime())) return value; const dateText = date.toISOString().slice(0, 10); const timeText = date.toTimeString().slice(0, 5); return `${formatDateWithWeekday(dateText)} ${timeText}`; }
 function daysUntil(dateText) { const target = new Date(`${dateText}T00:00:00`); const base = new Date(`${window.portalRuntimeContext.today()}T00:00:00`); if (Number.isNaN(target.getTime())) return null; return Math.ceil((target - base) / 86400000); }
@@ -52,4 +55,22 @@ function emptyText(items, message) { return items.length ? '' : `<li class="list
 function groupBy(items, key) { return items.reduce((groups, item) => { const value = item[key] || '未分類'; groups[value] = groups[value] || []; groups[value].push(item); return groups; }, {}); }
 function formatBytes(bytes) { if (!bytes) return '0 B'; const units = ['B', 'KB', 'MB', 'GB']; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`; }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char])); }
-function convertUrlsToLinks(text) { const urlRegex = /(https?:\/\/[^\s]+)/g; return escapeHtml(text).replace(urlRegex, (url) => { try { new URL(url); return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">${escapeHtml(url)}</a>`; } catch { return escapeHtml(url); } }); }
+function convertUrlsToLinks(text) {
+    const source = String(text ?? '');
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    let cursor = 0;
+    let html = '';
+    source.replace(urlRegex, (url, offset) => {
+        html += escapeHtml(source.slice(cursor, offset));
+        try {
+            new URL(url);
+            html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">${escapeHtml(url)}</a>`;
+        } catch {
+            html += escapeHtml(url);
+        }
+        cursor = offset + url.length;
+        return url;
+    });
+    html += escapeHtml(source.slice(cursor));
+    return html;
+}

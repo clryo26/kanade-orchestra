@@ -259,6 +259,14 @@ GOOGLE_REDIRECT_URI=http://localhost:8080/auth/callback
 
 ## 🧪 テスト実行
 
+### E2E / 共有 ZIP 互換性
+
+- 共有 ZIP 展開後は `npm ci` と `npx playwright install --with-deps chromium` を実行してから `npm run test:e2e` を実施する。
+- Playwright は `playwright.config.js` を使い、既定のベース URL は `http://127.0.0.1:8000` を利用する。
+- バックエンドが必要な場合は `uv run uvicorn src.backend.main:app --host 127.0.0.1 --port 8000` を先に起動する。
+
+## 🧪 テスト実行
+
 ```bash
 # テストの実行
 uv run pytest

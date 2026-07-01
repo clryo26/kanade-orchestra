@@ -13,8 +13,14 @@ reading stale cached data and treating the device as unauthenticated.
 
 - Auth device writes now use the same `save_json_data` compatibility path as
   other collection writes.
+- PWA manifest is served from `/manifest.webmanifest` and uses
+  `<organization short name>ポータル` for home-screen app names.
 - The compatibility path refreshes the in-memory collection cache immediately.
 - Hidden `Administrator` login is covered by a DB-mode regression test.
+- Password fields normalize full-width ASCII input to half-width-compatible
+  values before login/password setup submission.
+- Hidden `Administrator` password validation also normalizes full-width ASCII
+  on the backend.
 - If `auth_devices` persistence fails after successful credential validation,
   the device is kept in a short-lived process-local fallback session so login
   does not fail only because the auth-device write path is unhealthy.
@@ -24,6 +30,7 @@ reading stale cached data and treating the device as unauthenticated.
 - Member login after a cached empty `auth_devices` read.
 - Hidden `Administrator` login after a cached empty `auth_devices` read.
 - Hidden `Administrator` login when `auth_devices` persistence fails.
+- Member and hidden `Administrator` login with full-width ASCII password input.
 - Browser E2E smoke for hidden `Administrator` entering the portal with local
   fallback data.
 

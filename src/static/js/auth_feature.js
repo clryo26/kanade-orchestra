@@ -18,6 +18,27 @@ function portalDeviceId() {
     return deviceId;
 }
 
+function normalizePortalPassword(value) {
+    return String(value || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff]/g, '').trim();
+}
+
+function normalizePortalPasswordInput(input) {
+    if (!input) return '';
+    const normalized = normalizePortalPassword(input.value);
+    if (input.value !== normalized) input.value = normalized;
+    return normalized;
+}
+
+function bindPortalPasswordNormalization(input) {
+    if (!input) return;
+    input.setAttribute('inputmode', 'latin');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('spellcheck', 'false');
+    input.addEventListener('input', () => normalizePortalPasswordInput(input));
+    input.addEventListener('blur', () => normalizePortalPasswordInput(input));
+}
+
 async function isPortalAuthenticated() {
     if (appState.portalAuthVerified) return true;
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY);
@@ -56,7 +77,7 @@ function showPortalLogin() {
                         <label class="form-label mt-3" for="portalPartInput">パート</label>
                         <select class="form-select" id="portalPartInput"></select>
                         <label class="form-label mt-3" for="portalPasswordInput">パスワード</label>
-                        <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password">
+                        <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button class="btn btn-primary w-100 mt-3" id="portalLoginBtn" type="button">ログイン</button>
                         <div class="portal-login-actions mt-3">
                             <button class="btn btn-outline-success btn-sm" id="portalLoginReloadBtn" type="button">更新</button>
@@ -69,9 +90,9 @@ function showPortalLogin() {
                         <input type="hidden" id="portalSetupName">
                         <input type="hidden" id="portalSetupPart">
                         <label class="form-label" for="portalNewPasswordInput">新しいパスワード</label>
-                        <input class="form-control" id="portalNewPasswordInput" type="password" autocomplete="new-password">
+                        <input class="form-control" id="portalNewPasswordInput" type="password" autocomplete="new-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <label class="form-label mt-3" for="portalNewPasswordConfirmInput">新しいパスワード（確認）</label>
-                        <input class="form-control" id="portalNewPasswordConfirmInput" type="password" autocomplete="new-password">
+                        <input class="form-control" id="portalNewPasswordConfirmInput" type="password" autocomplete="new-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button class="btn btn-primary w-100 mt-3" id="portalPasswordSetupBtn" type="button">登録</button>
                         <button class="btn btn-outline-secondary w-100 mt-2" id="portalBackToLoginBtn" type="button">ログインに戻る</button>
                     </div>
@@ -89,6 +110,7 @@ function showPortalLogin() {
         });
         $('portalPasswordSetupBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', handleMemberPasswordSetup));
         $('portalBackToLoginBtn').addEventListener('click', showPortalLoginForm);
+        ['portalPasswordInput', 'portalNewPasswordInput', 'portalNewPasswordConfirmInput'].forEach((id) => bindPortalPasswordNormalization($(id)));
         ['portalNameInput', 'portalPasswordInput'].forEach((id) => $(id).addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
@@ -116,14 +138,15 @@ async function handlePortalLogin() {
     // hidden admin は大文字小文字・全角半角の揺れを吸収して判定する。
     const normalizedName = String(name || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff\s\u3000]+/g, '').toLowerCase();
     const isHiddenAdmin = normalizedName === 'administrator';
-    if (!name || !passwordInput.value || (!isHiddenAdmin && !part)) {
+    const password = normalizePortalPasswordInput(passwordInput);
+    if (!name || !password || (!isHiddenAdmin && !part)) {
         showAlert('名前、パート、パスワードを入力してください', 'warning');
         return;
     }
     const response = await fetch('/api/auth/portal-login', jsonOptions('POST', {
         name,
         part,
-        password: passwordInput.value,
+        password,
         device_id: portalDeviceId(),
         device_name: portalDeviceName(),
         user_agent: navigator.userAgent || ''
@@ -172,8 +195,8 @@ function showMemberPasswordSetup(name, part = '') {
 async function handleMemberPasswordSetup() {
     const name = $('portalSetupName')?.value || $('portalNameInput')?.value.trim() || '';
     const part = $('portalSetupPart')?.value || $('portalPartInput')?.value || '';
-    const password = $('portalNewPasswordInput')?.value || '';
-    const confirmPassword = $('portalNewPasswordConfirmInput')?.value || '';
+    const password = normalizePortalPasswordInput($('portalNewPasswordInput'));
+    const confirmPassword = normalizePortalPasswordInput($('portalNewPasswordConfirmInput'));
     if (!password) {
         showAlert('新しいパスワードを入力してください', 'warning');
         return;
