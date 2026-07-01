@@ -112,6 +112,11 @@
 2. `Run E2E smoke` 失敗: `playwright-report` と失敗スクリーンショットを確認
 3. `webServer` 起動失敗: `DATA_BACKEND=local` と `LOCAL_JSON_FALLBACK_ENABLED=true` を確認
 
+ローカル実行補足（Node/npm未搭載端末）:
+
+1. `npm` / `npx` が利用できない端末では、ローカルE2Eを無理に実行せず `workflow_dispatch` の `E2E` workflow を実行して結果を採用する
+2. 代替として backend 健全性は `uv run python -c` + `TestClient` で `/api/health` と `/` の 200 応答を確認する
+
 最新実行メモ（2026-07-01）:
 
 - ローカル再検証: `npm run test:e2e` は `3 passed`

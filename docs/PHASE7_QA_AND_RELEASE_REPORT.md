@@ -117,3 +117,17 @@ GitHub Actions の `playwright-smoke` ジョブでは、以下の流れで成功
 補足:
 
 - `uv run ruff check .` は既存差分由来の lint 違反で失敗（今回の運用ドキュメント更新範囲外）。
+
+## 補足ログ（Node/npm未搭載端末での代替確認）
+
+同日、別端末セッションで `npm` / `npx` 実行ファイルを解決できない状態を確認した。
+
+- `where.exe npm`: not found
+- `cmd /c npm --version`: not recognized
+
+このためローカルE2E再実行は行わず、以下の代替確認を実施した。
+
+- `uv run python -c` + `TestClient` による `GET /api/health`: `200 / healthy`
+- `uv run python -c` + `TestClient` による `GET /`: `200`
+
+最終的な E2E 判定は `workflow_dispatch` の `E2E` workflow 実行結果を正とする。
