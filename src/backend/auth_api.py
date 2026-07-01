@@ -13,6 +13,7 @@ from .auth_helpers import (
     member_part,
 )
 from .models.schemas import MemberPasswordSetupRequest, PortalLoginRequest
+from .services.auth_session_fallback import fallback_auth_device, forget_auth_device, remember_auth_device
 from .services.auth_service import normalized_permission
 from .services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 
@@ -126,7 +127,12 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
     else:
         payload["id"] = persistence_api().next_id(devices)
         devices.append(payload)
-    save_collection("auth_devices", devices)
+    used_fallback_session = False
+    try:
+        save_collection("auth_devices", devices)
+    except Exception:
+        remember_auth_device(payload)
+        used_fallback_session = True
     return {
         "authenticated": True,
         "device_id": device_id,
@@ -138,6 +144,7 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         "is_recording_manager": payload["is_recording_manager"],
         "is_sheet_manager": payload["is_sheet_manager"],
         "hidden_user": payload["hidden_user"],
+        "auth_device_fallback": used_fallback_session,
     }
 
 
@@ -159,9 +166,18 @@ async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, 
 
 @router.get("/devices/{device_id}")
 async def get_auth_device(device_id: str) -> dict[str, Any]:
-    devices = load_collection("auth_devices")
+    try:
+        devices = load_collection("auth_devices")
+    except Exception:
+        fallback = fallback_auth_device(device_id)
+        if fallback:
+            return {"authenticated": True, "device": fallback}
+        raise
     item = next((device for device in devices if device.get("device_id") == device_id), None)
     if not item:
+        fallback = fallback_auth_device(device_id)
+        if fallback:
+            return {"authenticated": True, "device": fallback}
         return {"authenticated": False}
 
     member_id = item.get("member_id")
@@ -173,7 +189,10 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
             return {"authenticated": False}
 
     item["last_seen_at"] = datetime.now().isoformat()
-    save_collection("auth_devices", devices)
+    try:
+        save_collection("auth_devices", devices)
+    except Exception:
+        remember_auth_device(item)
     return {"authenticated": True, "device": item}
 
 
@@ -186,5 +205,6 @@ async def get_auth_devices() -> list[dict[str, Any]]:
 async def delete_auth_device(device_id: str, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
     persistence_api().require_admin_device(x_device_id)
     devices = load_collection("auth_devices")
+    forget_auth_device(device_id)
     save_collection("auth_devices", [item for item in devices if item.get("device_id") != device_id])
     return {"message": "Deleted"}

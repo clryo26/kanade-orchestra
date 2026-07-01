@@ -311,3 +311,53 @@ def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backen
     device_response = client.get("/api/auth/devices/device-hidden-admin")
     assert device_response.status_code == 200
     assert device_response.json()["authenticated"] is True
+
+
+def test_hidden_administrator_login_survives_auth_device_persistence_failure(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [],
+        "auth_devices": [],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+
+    original_save_json_data = backend_env.save_json_data
+
+    def failing_auth_device_save(name, data):
+        if name == "auth_devices":
+            raise RuntimeError("auth_devices write failed")
+        original_save_json_data(name, data)
+
+    monkeypatch.setattr(backend_env, "save_json_data", failing_auth_device_save)
+
+    response = _login(
+        client,
+        name="Administrator",
+        part="",
+        password="systemadminadmin",
+        device_id="device-hidden-admin-fallback",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert payload["hidden_user"] is True
+    assert payload["auth_device_fallback"] is True
+
+    device_response = client.get("/api/auth/devices/device-hidden-admin-fallback")
+    assert device_response.status_code == 200
+    assert device_response.json()["authenticated"] is True
+
+    admin_response = client.post(
+        "/api/performances",
+        headers={"X-Device-Id": "device-hidden-admin-fallback"},
+        json={
+            "title": "Fallback Login Concert",
+            "date": "2026-06-18",
+            "open_time": "17:00",
+            "start_time": "18:00",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "pieces": [],
+        },
+    )
+    assert admin_response.status_code == 200
