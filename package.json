@@ -3,12 +3,16 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "zip:source": "python scripts/create-source-zip.py",
     "check:frontend:syntax": "node scripts/check_frontend_syntax.mjs",
     "test:frontend": "vitest run",
     "test:frontend:integration": "vitest run tests/integration/frontend",
-    "test:frontend:coverage": "vitest run --coverage tests/frontend"
+    "test:frontend:coverage": "vitest run --coverage tests/frontend",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
     "@vitest/coverage-v8": "^2.1.9",
     "vitest": "^2.1.9"
   }
