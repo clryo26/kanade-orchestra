@@ -12,9 +12,11 @@ node_modules
 __pycache__
 *.py[cod]
 .pytest_cache
+.pytest-tmp
 .ruff_cache
 .ruff-cache-local
 .mypy_cache
+.tmp
 .coverage
 coverage
 htmlcov
