@@ -20,6 +20,8 @@ reading stale cached data and treating the device as unauthenticated.
 
 - Member login after a cached empty `auth_devices` read.
 - Hidden `Administrator` login after a cached empty `auth_devices` read.
+- Browser E2E smoke for hidden `Administrator` entering the portal with local
+  fallback data.
 
 ## Recurrence Prevention
 
