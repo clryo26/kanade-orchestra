@@ -1,5 +1,8 @@
 // 録音一覧、再生、削除の機能を app.js から分離したモジュール。
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function renderRecordings() {
     renderRecordingList('songTreeAdmin', true);
     renderRecordingList('songTreeMember', false);

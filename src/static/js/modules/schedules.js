@@ -1,6 +1,9 @@
 // This file was split from main.js during frontend refactor.
 // It depends on shared globals declared in main.js (appState, $, request, helpers).
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 async function saveSchedule() {
     const startTime = $('schedStartTime').value;
     const endTime = $('schedEndTime').value;
@@ -40,7 +43,7 @@ function selectSchedule(id) {
     const item = appState.schedules.find((sched) => sched.id === id);
     if (!item) return;
     $('schedId').value = item.id;
-    $('schedDate').value = item.date || today();
+    $('schedDate').value = item.date || window.portalRuntimeContext.today();
     const practiceRange = splitTimeRange(item.time);
     const availableRange = splitTimeRange(item.available_hours);
     $('schedStartTime').value = formatClockTime(item.start_time || practiceRange.start || '13:00');
@@ -74,7 +77,7 @@ async function deleteSchedule() {
 
 function clearScheduleForm() {
     $('schedId').value = '';
-    $('schedDate').value = today();
+    $('schedDate').value = window.portalRuntimeContext.today();
     $('schedStartTime').value = '13:00';
     $('schedEndTime').value = '16:30';
     if ($('schedVenue')) $('schedVenue').innerHTML = venueSelectOptionsHtml('practice', '');
@@ -283,7 +286,7 @@ function renderSchedules() {
 
 function renderMemberSchedules() {
     const container = $('memberSchedInfo');
-    const upcoming = sortedSchedules(appState.schedules).filter((sched) => !sched.date || sched.date >= today());
+    const upcoming = sortedSchedules(appState.schedules).filter((sched) => !sched.date || sched.date >= window.portalRuntimeContext.today());
     if (!upcoming.length) {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
         return;

@@ -1,5 +1,8 @@
 // Performance module.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 async function savePerformance() {
     const flyerFile = $('perfFlyerFile')?.files?.[0];
     const flyerImage = flyerFile ? await fileToDataUrl(flyerFile) : ($('perfFlyerImage')?.value || '');
@@ -30,7 +33,7 @@ function selectPerformance(id) {
     if (!item) return;
     $('perfId').value = item.id;
     $('perfTitle').value = item.title || '';
-    $('perfDate').value = item.date || today();
+    $('perfDate').value = item.date || window.portalRuntimeContext.today();
     $('perfOpenTime').value = item.open_time || '18:00';
     $('perfStartTime').value = item.start_time || '19:00';
     if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', item.venue || '');
@@ -59,7 +62,7 @@ async function deletePerformance() {
 function clearPerformanceForm() {
     $('perfId').value = '';
     $('perfTitle').value = '';
-    $('perfDate').value = today();
+    $('perfDate').value = window.portalRuntimeContext.today();
     $('perfOpenTime').value = '18:00';
     $('perfStartTime').value = '19:00';
     if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', '');

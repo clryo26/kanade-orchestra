@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import io
+import logging
 import mimetypes
 import zipfile
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -11,31 +11,25 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 
-from ..app_core import (
-    CONVERTED_DIR,
-    UPLOAD_DIR,
-    cloud_recording_metadata,
-    ensure_audio_file,
-    forget_drive_file,
-    format_duration,
-    get_audio_duration_seconds,
-    load_json_data,
-    local_recording_metadata,
-    logger,
-    recording_file_bytes,
-    remember_drive_file,
-    remember_recording_duration,
-    require_recording_manager_device,
-    safe_segment,
-    safe_upload_name,
-    save_upload_to_path,
-    unique_zip_name,
-)
-from ..drive_storage import get_storage_bucket, storage_enabled, upload_file_to_drive
+from ..drive_storage import get_storage_bucket
 from ..models.schemas import RecordingDeleteRequest
+from ..services.auth_service import require_recording_manager_device
 from ..services.blob_streaming_service import stream_storage_blob
+from ..services.file_service import format_duration, safe_segment, safe_upload_name
+from ..services.recording_asset_service import (
+    forget_drive_file,
+    local_recording_path,
+    recording_file_bytes,
+    recording_payload,
+    remember_drive_file,
+)
+from ..services.recording_service import duration_seconds_for_file, remember_recording_duration
+from ..services.recording_upload_service import convert_audio_upload, upload_to_drive_only
+from ..services.sheet_asset_service import unique_zip_name
+from ..services.storage_service import load_json_data, save_json_data
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/api/convert")
 async def convert_audio(
@@ -45,80 +39,27 @@ async def convert_audio(
     x_device_id: str = Header(default="", alias="X-Device-Id"),
 ) -> dict[str, Any]:
     require_recording_manager_device(x_device_id)
-    ensure_audio_file(file)
-
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
-    piece_dir = safe_segment(piece, "uncategorized")
-    output_dir = CONVERTED_DIR / date_dir / piece_dir
-    output_path = save_upload_to_path(file, output_dir)
-
-    duration_seconds = get_audio_duration_seconds(output_path)
-    rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
-    remember_recording_duration(rel_path, duration_seconds)
-    response = {
-        "filename": output_path.name,
-        "path": rel_path,
-        "download_url": f"/api/recordings/download/{rel_path}",
-        "source": "local",
-        "duration_seconds": duration_seconds,
-        "duration": format_duration(duration_seconds),
-        "message": "Uploaded",
-    }
-
-    if storage_enabled():
-        storage_file = upload_file_to_drive(
-            local_path=output_path,
-            practice_date=date_dir,
-            song_name=piece_dir,
-        )
-        logger.info("Google Cloud Storage upload complete: %s", storage_file)
-        storage_file["duration_seconds"] = duration_seconds
-        storage_file["duration"] = format_duration(duration_seconds)
-        remember_drive_file(storage_file)
-        response.update(
-            {
-                "drive_file_id": storage_file["id"],
-                "share_link": storage_file.get("view_url") or storage_file.get("download_url"),
-                "download_url": storage_file.get("download_url") or response["download_url"],
-                "source": "google_cloud_storage",
-                "message": "Uploaded and mirrored to Google Cloud Storage",
-            }
-        )
-
-    return response
-
-
-def recording_payload() -> dict[str, list[dict[str, Any]]]:
-    drive_files = [cloud_recording_metadata(item) for item in load_json_data("drive_files")]
-    mirrored_local_paths = {
-        f"converted/{object_name}"
-        for item in drive_files
-        for object_name in [str(item.get("object_name") or item.get("id") or "").strip("/")]
-        if object_name
-    }
-    local_paths = sorted(
-        [*CONVERTED_DIR.rglob("*.mp3"), *CONVERTED_DIR.rglob("*.m4a")],
-        key=lambda item: item.stat().st_mtime,
-        reverse=True,
+    return convert_audio_upload(
+        file,
+        date,
+        piece,
+        duration_getter=duration_seconds_for_file,
+        remember_recording_duration=remember_recording_duration,
+        format_duration=format_duration,
+        remember_drive_file=lambda item: remember_drive_file(item, load_json_data=load_json_data, save_json_data=save_json_data),
+        logger=logger,
     )
-    local_files = [
-        local_recording_metadata(path)
-        for path in local_paths
-        if path.relative_to(UPLOAD_DIR).as_posix() not in mirrored_local_paths
-    ]
-    return {"files": drive_files + local_files}
-
 
 @router.get("/api/recordings")
 async def get_recordings() -> dict[str, list[dict[str, Any]]]:
-    return recording_payload()
+    return recording_payload(load_json_data=load_json_data, format_duration=format_duration)
 
 
 @router.get("/api/recordings/download-zip")
 async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
     recordings = [
         item
-        for item in recording_payload()["files"]
+        for item in recording_payload(load_json_data=load_json_data, format_duration=format_duration)["files"]
         if (not date or str(item.get("date") or "") == date)
         and (not piece or str(item.get("piece") or "") == piece)
     ]
@@ -151,14 +92,6 @@ async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
         },
     )
 
-
-def local_recording_path(path: str) -> Path:
-    requested = (UPLOAD_DIR / path).resolve()
-    if not requested.is_file() or UPLOAD_DIR.resolve() not in requested.parents:
-        raise HTTPException(status_code=404, detail="File not found")
-    return requested
-
-
 @router.get("/api/recordings/play/{path:path}")
 async def play_recording(path: str) -> FileResponse:
     requested = local_recording_path(path)
@@ -185,7 +118,7 @@ async def delete_recording(payload: RecordingDeleteRequest, x_device_id: str = H
         blob = get_storage_bucket().blob(object_name)
         if blob.exists():
             blob.delete()
-        forget_drive_file(object_name)
+        forget_drive_file(object_name, load_json_data=load_json_data, save_json_data=save_json_data)
         return {"message": "Deleted"}
 
     path = payload.path.strip()
@@ -216,49 +149,16 @@ async def upload_to_drive(
     x_device_id: str = Header(default="", alias="X-Device-Id"),
 ) -> dict[str, Any]:
     require_recording_manager_device(x_device_id)
-    ensure_audio_file(file)
-
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
-    logger.info(f"date={date}")
-    logger.info(f"piece={piece}")
-    piece_dir = safe_segment(piece, "uncategorized")
-    output_path = save_upload_to_path(file, CONVERTED_DIR / date_dir / piece_dir)
-    duration_seconds = get_audio_duration_seconds(output_path)
-    rel_path = output_path.relative_to(UPLOAD_DIR).as_posix()
-    remember_recording_duration(rel_path, duration_seconds)
-
-    if not storage_enabled():
-        return {
-            "drive_file_id": None,
-            "share_link": f"/api/recordings/download/{rel_path}",
-            "source": "local",
-            "duration_seconds": duration_seconds,
-            "duration": format_duration(duration_seconds),
-            "message": "Google Cloud Storage is not configured. Saved locally.",
-        }
-
-    try:
-        drive_item = upload_file_to_drive(output_path, date_dir, piece_dir)
-        drive_item["duration_seconds"] = duration_seconds
-        drive_item["duration"] = format_duration(duration_seconds)
-        remember_recording_duration(str(drive_item.get("object_name") or drive_item.get("id") or ""), duration_seconds)
-        remember_drive_file(drive_item)
-    except Exception as exc:
-        logger.exception("Google Cloud Storage upload failed")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Google Cloud Storage upload failed: {exc}",
-        ) from exc
-
-    return {
-        "drive_file_id": drive_item["id"],
-        "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
-        "download_url": drive_item.get("download_url"),
-        "source": "google_cloud_storage",
-        "duration_seconds": duration_seconds,
-        "duration": format_duration(duration_seconds),
-        "message": "Uploaded to Google Cloud Storage",
-    }
+    return upload_to_drive_only(
+        file,
+        date,
+        piece,
+        duration_getter=duration_seconds_for_file,
+        remember_recording_duration=remember_recording_duration,
+        format_duration=format_duration,
+        remember_drive_file=lambda item: remember_drive_file(item, load_json_data=load_json_data, save_json_data=save_json_data),
+        logger=logger,
+    )
 
 
 @router.get("/api/drive/files")

@@ -26,7 +26,7 @@
 ### 2.2 主要コンポーネント
 
 - src/static/js/main.js: 画面制御、状態管理、既存機能の互換実装
-- src/static/js/app.js: 既存テスト互換用の参照ファイル
+- src/static/js/app.js: deprecated（既存テスト互換用のみ）
 - src/static/js/api.js: Fetch 通信の共通入口
 - src/static/js/config.js: フロントエンド共通設定
 - src/static/js/auth_feature.js: ログイン画面、端末認証、ログアウト処理
@@ -35,6 +35,7 @@
 - src/static/js/utils/: audio / calendar / cache / dialog / API エラー処理の共通化先
 - src/backend/main.py: FastAPI アプリ公開と起動入口
 - src/backend/app_core.py: 既存 API 本体、JSON CRUD、ファイル配信の互換実装
+- src/backend/app_core.py: 互換ファサード（新規ビジネスロジックは services/core/repositories に実装）
 - src/backend/routers/: 機能別 FastAPI ルーターの移行先
 - src/backend/services/: GCS、録音、ストレージなどのサービス層
 - src/backend/db/: DB 接続とリポジトリ層
@@ -49,6 +50,7 @@
 - Cloud Storage は録音・楽譜などのファイル資産と接続設定の保管に限定
 - 起動時にキャッシュを温めて応答速度を確保
 - connection_settings が空の場合は旧環境変数から1件自動登録して互換運用する
+- 本番運用では `src/data/*.json` を参照しない（DB Only）
 
 ## 3. ロール・認可
 

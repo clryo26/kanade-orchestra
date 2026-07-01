@@ -1,5 +1,8 @@
 // Album module.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function renderAlbumView() {
     const c = $('memberAlbumInfo');
     if (!c) return;

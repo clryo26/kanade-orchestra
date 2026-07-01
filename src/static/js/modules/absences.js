@@ -1,6 +1,9 @@
 // This file was split from main.js during frontend refactor.
 // It depends on shared globals declared in main.js (appState, $, request, helpers).
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function renderAbsenceView() {
     const container = $('memberAbsenceInfo');
     if (!container) return;
@@ -9,7 +12,7 @@ function renderAbsenceView() {
         container.innerHTML = '<p class="text-muted mb-0">ログイン中の団員情報が見つかりません</p>';
         return;
     }
-    const visibleSchedules = sortedSchedules(appState.schedules).filter((schedule) => !schedule?.date || String(schedule.date) >= today());
+    const visibleSchedules = sortedSchedules(appState.schedules).filter((schedule) => !schedule?.date || String(schedule.date) >= window.portalRuntimeContext.today());
     const visibleScheduleIds = new Set(visibleSchedules.map((schedule) => String(schedule.id || '')));
     const grouped = groupBy(appState.absences.filter((absence) => visibleScheduleIds.has(String(absence.schedule_id || ''))), 'schedule_id');
     const absenceScheduleOptions = ['<option value="">選択してください</option>'].concat(visibleSchedules.map((s) => `<option value="${escapeHtml(String(s.id))}">${escapeHtml(formatDateWithWeekday(s.date))} ${escapeHtml(scheduleTimeLabel(s))} ${escapeHtml(s.venue || '')}</option>`)).join('');

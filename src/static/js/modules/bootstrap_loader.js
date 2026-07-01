@@ -1,6 +1,9 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 async function loadPartSettingsForLogin() {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
@@ -39,9 +42,9 @@ function bindDownloadConfirmations() {
 
 function setDefaultDates() {
     ['uploadDate', 'schedDate', 'annDate', 'paymentLatestDate'].forEach((id) => {
-        if ($(id)) $(id).value = today();
+        if ($(id)) $(id).value = window.portalRuntimeContext.today();
     });
-    $('perfDate').value = today();
+    $('perfDate').value = window.portalRuntimeContext.today();
 }
 
 // 団員トップ画面と楽譜ビューワー枠を初期化する。

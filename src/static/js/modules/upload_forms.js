@@ -1,6 +1,9 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function bindUpload() {
     const fileInput = $('fileInput');
 
@@ -155,7 +158,7 @@ function clearUploadForm() {
     appState.selectedFiles = [];
     $('fileInput').value = '';
     $('selectedFileName').textContent = '未選択';
-    $('uploadDate').value = today();
+    $('uploadDate').value = window.portalRuntimeContext.today();
     if ($('uploadPerformance')) $('uploadPerformance').value = '';
     $('uploadPiece').value = '';
     renderUploadPieceOptions();

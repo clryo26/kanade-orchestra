@@ -7,6 +7,16 @@ const {
     dateAdjustmentCandidateLabel,
     mutationRelatedCacheKeys,
     buildRequestHeadersForApi,
+    formatClockTime,
+    splitTimeRange,
+    formatTimeRange,
+    addHoursToTime,
+    compactCalendarDate,
+    nextAllDayDate,
+    icsEscape,
+    displayNameWithoutExtension,
+    formatDurationLabel,
+    paymentPaymentRangeLabel,
     foldSettledExtraResults,
     buildDateAdjustmentSummary,
     filterRespondentRows
@@ -98,6 +108,58 @@ describe('FE-REQ', () => {
         expect(folded.values.absences).toEqual([{ id: 1 }]);
         expect(folded.values.eventResponses).toEqual([{ id: 2 }]);
         expect(folded.values.sheets.files).toEqual([{ id: 9 }]);
+    });
+});
+
+describe('FE-TIME', () => {
+    test('FE-TIME-001 clock normalize', () => {
+        expect(formatClockTime('9:05')).toBe('09:05');
+        expect(formatClockTime('18:30:00')).toBe('18:30');
+    });
+
+    test('FE-TIME-002 split range', () => {
+        expect(splitTimeRange('9:00-11:30')).toEqual({ start: '09:00', end: '11:30' });
+        expect(splitTimeRange('invalid')).toEqual({ start: '', end: '' });
+    });
+
+    test('FE-TIME-002b format range', () => {
+        expect(formatTimeRange('9:00', '11:30')).toBe('09:00 - 11:30');
+        expect(formatTimeRange('9:00', '')).toBe('09:00');
+    });
+
+    test('FE-TIME-003 add hours', () => {
+        expect(addHoursToTime('23:30', 2)).toBe('01:30');
+    });
+
+    test('FE-TIME-004 compact calendar datetime', () => {
+        expect(compactCalendarDate('2026-07-01')).toBe('20260701');
+        expect(compactCalendarDate('2026-07-01', '18:30')).toBe('20260701T183000');
+    });
+
+    test('FE-TIME-005 next all day date', () => {
+        expect(nextAllDayDate('2026-07-01')).toBe('2026-07-02');
+    });
+});
+
+describe('FE-PURE', () => {
+    test('FE-PURE-001 display name without extension', () => {
+        expect(displayNameWithoutExtension('sample.wav')).toBe('sample');
+        expect(displayNameWithoutExtension('nested/path/song.mp3')).toBe('nested/path/song');
+    });
+
+    test('FE-PURE-002 format duration from seconds', () => {
+        expect(formatDurationLabel({ duration_seconds: 65 })).toBe('1:05');
+        expect(formatDurationLabel({ duration: '2:34' })).toBe('2:34');
+        expect(formatDurationLabel({})).toBe('長さ未取得');
+    });
+
+    test('FE-PURE-003 payment range label', () => {
+        expect(paymentPaymentRangeLabel({ paid_until_month: '2026-12' })).toBe('2026-12まで支払い済み');
+        expect(paymentPaymentRangeLabel({})).toBe('未登録');
+    });
+
+    test('FE-PURE-004 ics escape', () => {
+        expect(icsEscape('a,b;c\\d\nline')).toBe('a\\,b\\;c\\\\d\\nline');
     });
 });
 

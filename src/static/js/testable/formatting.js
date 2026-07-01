@@ -1,0 +1,64 @@
+(function (globalObj) {
+    function cloudRunRevisionLabel(revision) {
+        const value = String(revision || '').trim();
+        if (!value) return '';
+        const match = value.match(/(?:^|-)(\d{5}-[a-z0-9]+)$/i);
+        return match ? match[1] : value;
+    }
+    function formatClockTime(value) {
+        const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+        return match ? `${match[1].padStart(2, '0')}:${match[2]}` : String(value || '').trim();
+    }
+    function splitTimeRange(value) {
+        const match = String(value || '').match(/(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|〜|~|～)\s*(\d{1,2}:\d{2}(?::\d{2})?)/);
+        return match ? { start: formatClockTime(match[1]), end: formatClockTime(match[2]) } : { start: '', end: '' };
+    }
+    function formatTimeRange(start, end) {
+        const formattedStart = formatClockTime(start);
+        const formattedEnd = formatClockTime(end);
+        return formattedStart && formattedEnd ? `${formattedStart} - ${formattedEnd}` : formattedStart || formattedEnd || '';
+    }
+    function addHoursToTime(time, hours) {
+        const match = String(time || '').match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return '';
+        const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+        date.setHours(date.getHours() + hours);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+    function compactCalendarDate(date, time = '') {
+        const ymd = String(date || '').replaceAll('-', '');
+        if (!ymd) return '';
+        if (!time) return ymd;
+        return `${ymd}T${String(time).replace(':', '')}00`;
+    }
+    function nextAllDayDate(date) {
+        if (!date) return '';
+        const value = new Date(`${date}T00:00:00`);
+        value.setDate(value.getDate() + 1);
+        const y = value.getFullYear();
+        const m = String(value.getMonth() + 1).padStart(2, '0');
+        const d = String(value.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    function icsEscape(value) {
+        return String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(',', '\\,').replaceAll(';', '\\;');
+    }
+    function displayNameWithoutExtension(name = '') { return String(name || '').replace(/\.[^.\\/]+$/, ''); }
+    function formatDurationLabel(file) {
+        if (file?.duration) return file.duration;
+        if (file?.duration_seconds || file?.duration_seconds === 0) {
+            const total = Math.round(Number(file.duration_seconds));
+            const minutes = Math.floor(total / 60);
+            const seconds = total % 60;
+            return `${minutes}:${String(seconds).padStart(2, '0')}`;
+        }
+        return '長さ未取得';
+    }
+    function paymentPaymentRangeLabel(payment) {
+        const until = payment?.paid_until_month || payment?.membership_fee || payment?.dues || '';
+        return until ? `${until}まで支払い済み` : '未登録';
+    }
+    const api = { cloudRunRevisionLabel, formatClockTime, splitTimeRange, formatTimeRange, addHoursToTime, compactCalendarDate, nextAllDayDate, icsEscape, displayNameWithoutExtension, formatDurationLabel, paymentPaymentRangeLabel };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    globalObj.FrontendTestableFormatting = api;
+})(typeof window !== 'undefined' ? window : globalThis);

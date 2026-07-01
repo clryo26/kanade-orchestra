@@ -1,5 +1,8 @@
 // Payment module.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function renderPaymentView() {
     const c = $('memberPaymentInfo');
     if (!c) return;
@@ -62,7 +65,7 @@ function monthValue(monthText) {
 }
 
 function currentMonthValue() {
-    return monthValue(today().slice(0, 7));
+    return monthValue(window.portalRuntimeContext.today().slice(0, 7));
 }
 
 function addMonths(dateText, months) {
@@ -83,7 +86,7 @@ function paymentAlertInfo(payment = null) {
         info.duesOverdue = true;
     }
     const feeMap = performanceFeeMap(targetPayment);
-    const now = new Date(`${today()}T00:00:00`);
+    const now = new Date(`${window.portalRuntimeContext.today()}T00:00:00`);
     appState.performances.forEach((perf) => {
         const dueDate = addMonths(perf.date, 6);
         const paid = Boolean(feeMap[String(perf.id)]);
@@ -184,7 +187,7 @@ function fillPaymentForm(payment, memberId = '') {
     $('paymentMemberId').value = memberId || payment?.member_id || '';
     if ($('paymentPaidFromMonth')) $('paymentPaidFromMonth').value = payment?.paid_from_month || '';
     $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
-    $('paymentLatestDate').value = payment?.latest_payment_date || today();
+    $('paymentLatestDate').value = payment?.latest_payment_date || window.portalRuntimeContext.today();
     const feeMap = performanceFeeMap(payment);
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         checkbox.checked = Boolean(feeMap[String(checkbox.value)]);

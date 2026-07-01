@@ -1,6 +1,9 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function renderConcertRecordView() {
     const container = $('memberConcertRecordInfo');
     if (!container) return;
@@ -135,7 +138,7 @@ function renderPortalHome() {
 
 function nextPerformance() {
     const upcoming = [...(appState.performances || [])]
-        .filter((perf) => perf.date && perf.date >= today())
+        .filter((perf) => perf.date && perf.date >= window.portalRuntimeContext.today())
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return upcoming[0] || null;
 }

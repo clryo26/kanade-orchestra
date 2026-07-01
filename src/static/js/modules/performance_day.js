@@ -1,19 +1,8 @@
 // Frontend split: extracted from main.js.
-// Loaded after main.js; functions intentionally remain global for legacy handlers.
+// performance_day.js now stays as a thin compatibility loader.
 
-function sortedPerformanceDayInfoRows() {
-    return [...(appState.performanceDayInfos || [])]
-        .map((item) => {
-            const performance = appState.performances.find((perf) => String(perf.id || '') === String(item.performance_id || ''));
-            return {
-                ...item,
-                performance,
-                performanceDate: String(performance?.date || ''),
-                performanceTitle: String(performance?.title || item.performance_title || '未設定の演奏会')
-            };
-        })
-        .sort((a, b) => String(b.performanceDate || '').localeCompare(String(a.performanceDate || '')) || String(a.performanceTitle).localeCompare(String(b.performanceTitle), 'ja'));
-}
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
 
 function inferDurationFromTimelineContent(content, performance) {
     const normalizedContent = String(content || '').trim();
@@ -450,7 +439,7 @@ async function exportPerformanceDayInfoExcel() {
         return;
     }
 
-    const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY) || '';
+    const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const response = await fetch(`/api/reports/performance-timetable/${encodeURIComponent(performanceId)}/xlsx`, {
         method: 'GET',
         headers: deviceId ? { 'X-Device-Id': deviceId } : {}

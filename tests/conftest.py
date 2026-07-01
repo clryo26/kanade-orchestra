@@ -30,6 +30,10 @@ def backend_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(backend, "SHEET_DIR", sheet_dir)
     monkeypatch.setattr(backend, "DRIVE_STAGING_DIR", staging_dir)
     monkeypatch.setattr(backend, "storage_enabled", lambda: False)
+    # Test fixtures operate on isolated JSON files and should not depend on the
+    # caller shell's DB backend environment.
+    monkeypatch.setenv("DATA_BACKEND", "local")
+    monkeypatch.setenv("LOCAL_JSON_FALLBACK_ENABLED", "true")
     backend._memory_cache.clear()
 
     for name in backend.JSON_DATA_NAMES:

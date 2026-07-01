@@ -19,6 +19,7 @@
 補足:
 - 業務データの参照先は Cloud SQL（PostgreSQL）です。
 - JSON や移行用SQLはこの手順では扱いません。
+- 本番運用では `src/data/*.json` を参照しません（DB Only）。
 
 ## 2. どこから作るか（作業場所）
 

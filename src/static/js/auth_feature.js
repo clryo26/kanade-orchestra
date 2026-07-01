@@ -1,5 +1,8 @@
 // 認証 UI と端末認証のクライアント側処理を app.js から分離したモジュール。
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function portalDeviceName() {
     const platform = navigator.platform || 'unknown';
     const language = navigator.language || '';
@@ -7,18 +10,18 @@ function portalDeviceName() {
 }
 
 function portalDeviceId() {
-    let deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY);
+    let deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY);
     if (!deviceId) {
         deviceId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        localStorage.setItem(PORTAL_DEVICE_ID_KEY, deviceId);
+        localStorage.setItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY, deviceId);
     }
     return deviceId;
 }
 
 async function isPortalAuthenticated() {
     if (appState.portalAuthVerified) return true;
-    const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY);
-    if (!deviceId || localStorage.getItem(PORTAL_AUTH_KEY) !== 'true') return false;
+    const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY);
+    if (!deviceId || localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') return false;
     try {
         const result = await request(`/api/auth/devices/${encodeURIComponent(deviceId)}`);
         appState.portalAuthVerified = Boolean(result.authenticated);
@@ -143,7 +146,7 @@ async function handlePortalLogin() {
     appState.currentUserPart = result.member_part || part || '';
     appState.currentUserIsRecordingManager = Boolean(result.is_recording_manager);
     appState.currentUserIsSheetManager = Boolean(result.is_sheet_manager);
-    localStorage.setItem(PORTAL_AUTH_KEY, 'true');
+    localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
     appState.portalAuthVerified = true;
     await enterPortal();
 }
@@ -185,7 +188,7 @@ async function handleMemberPasswordSetup() {
 }
 
 function logoutPortal() {
-    localStorage.removeItem(PORTAL_AUTH_KEY);
+    localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
     appState.currentUserMemberId = null;

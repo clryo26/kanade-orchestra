@@ -1,6 +1,9 @@
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 async function saveAnnouncement() {
     const payload = {
-        date: $('annDate').value || today(),
+        date: $('annDate').value || window.portalRuntimeContext.today(),
         title: $('annTitle') ? $('annTitle').value.trim() : '',
         content: $('annContent').value.trim()
     };
@@ -20,7 +23,7 @@ function selectAnnouncement(id) {
     const item = appState.announcements.find((ann) => ann.id === id);
     if (!item) return;
     $('annId').value = item.id;
-    $('annDate').value = item.date || today();
+    $('annDate').value = item.date || window.portalRuntimeContext.today();
     if ($('annTitle')) $('annTitle').value = item.title || '';
     $('annContent').value = item.content || '';
 }
@@ -40,7 +43,7 @@ async function deleteAnnouncement() {
 
 function clearAnnouncementForm() {
     $('annId').value = '';
-    $('annDate').value = today();
+    $('annDate').value = window.portalRuntimeContext.today();
     if ($('annTitle')) $('annTitle').value = '';
     $('annContent').value = '';
 }
