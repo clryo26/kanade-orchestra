@@ -2,19 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 
-from ..core import require_admin_device
+from ..core.auth_dependencies import get_admin_device_auth
 from ..core.storage_gateway import load_json_data
-from ..services.auth_service import device_auth_record
 from ..services import maintenance_service
 
 router = APIRouter()
 
 
 @router.get("/api/maintenance/orphans")
-async def get_maintenance_orphans(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_admin_device(x_device_id, device_auth_record)
+async def get_maintenance_orphans(_admin_device: dict[str, Any] = Depends(get_admin_device_auth)) -> dict[str, Any]:
     relations = (
         ("piece_infos", "performance_id", "performances"),
         ("practice_instructions", "performance_id", "performances"),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from fastapi import Request
 from fastapi.responses import Response
@@ -114,7 +114,7 @@ async def seed_cloud_data_from_local(
 
 
 async def list_auth_devices(*, compat_func: Callable[..., Any], load_json_data: Callable[[str], list[dict[str, Any]]]) -> list[dict[str, Any]]:
-    return await compat_func(load_json_data=load_json_data)
+    return cast(list[dict[str, Any]], await compat_func(load_json_data=load_json_data))
 
 
 def find_item(

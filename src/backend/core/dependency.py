@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from fastapi import Request
 
@@ -13,7 +14,7 @@ from .tenant_context import get_current_tenant_id
 
 def get_memory_cache() -> MemoryCache:
     # Keep one DI entrypoint for future service injection.
-    return get_memory_cache_instance()
+    return cast(MemoryCache, get_memory_cache_instance())
 
 
 @dataclass(frozen=True)

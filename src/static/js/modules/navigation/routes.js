@@ -117,6 +117,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
+    if (renderOnShow && tabName === 'system-readiness') renderReadinessDashboard();
     if (renderOnShow && tabName === 'system-access-log') renderAccessLogView();
     if (renderOnShow && tabName === 'system-database') renderDatabaseView();
     window.scrollTo({ top: 0, behavior: 'smooth' });

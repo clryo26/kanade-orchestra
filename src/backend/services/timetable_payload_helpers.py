@@ -158,7 +158,8 @@ def infer_duration_from_content(content: str, performance: dict[str, Any]) -> st
     normalized_content = str(content or "").strip()
     if not normalized_content:
         return ""
-    pieces = performance.get("pieces") if isinstance(performance.get("pieces"), list) else []
+    raw_pieces = performance.get("pieces")
+    pieces: list[Any] = raw_pieces if isinstance(raw_pieces, list) else []
     for piece in pieces:
         if not isinstance(piece, dict):
             continue
@@ -315,7 +316,7 @@ def excel_row_count_from_template(ws: Any) -> int:
     if ws.merged_cells and ws.merged_cells.ranges:
         for merged in ws.merged_cells.ranges:
             if merged.min_col == 2 and merged.max_col == 2 and merged.min_row <= 4 and merged.max_row >= 4:
-                return max(1, merged.max_row - 4 + 1)
+                return int(max(1, merged.max_row - 4 + 1))
     return 20
 
 

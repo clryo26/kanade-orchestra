@@ -83,6 +83,15 @@ const initialPortalAppState = {
         // 絞り込み対象のパート。
         part: ''
     },
+    // 団員向け録音一覧の絞り込み条件。
+    recordingFilters: {
+        // キーワード（曲名・ファイル名）
+        query: '',
+        // 練習日
+        date: '',
+        // 曲名
+        piece: ''
+    },
 };
 
 if (!window.portalAppState) {

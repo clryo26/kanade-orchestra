@@ -52,6 +52,7 @@ const ACCESS_LOG_MENU_LABELS = {
     'system-sns': 'SNS情報',
     'system-connection': '接続先情報',
     'system-part': 'パート管理',
+    'system-readiness': '運用Readyチェック',
     'system-access-log': 'アクセスログ',
     'system-database': 'データベース'
 };
@@ -116,6 +117,7 @@ function toPascalTab(value) {
         'system-sns': 'systemSns',
         'system-connection': 'systemConnection',
         'system-part': 'systemPart',
+        'system-readiness': 'systemReadiness',
         'system-access-log': 'systemAccessLog',
         'system-database': 'systemDatabase',
     };

@@ -72,6 +72,51 @@ async function loadCloudRunRevision() {
     }
 }
 
+async function renderReadinessDashboard() {
+    const status = $('readinessStatus');
+    const summary = $('readinessSummary');
+    const checks = $('readinessChecks');
+    if (!status || !summary || !checks) return;
+
+    status.hidden = false;
+    status.textContent = '読み込み中...';
+    summary.innerHTML = '';
+    checks.innerHTML = '';
+    try {
+        const data = await request('/api/system/readiness-summary');
+        const runtime = data.runtime || {};
+        const governance = data.governance || {};
+        const levelClass = data.overall_status === 'ok' ? 'text-success' : 'text-warning';
+        status.className = `${levelClass} small mb-2`;
+        status.textContent = data.overall_status === 'ok' ? 'Ready: 主要チェックは正常です' : 'Warning: 要確認項目があります';
+
+        summary.innerHTML = `
+            <div class="row g-2 small">
+                <div class="col-md-4"><strong>DATA_BACKEND:</strong> ${escapeHtml(String(runtime.data_backend || ''))}</div>
+                <div class="col-md-4"><strong>DB expected:</strong> ${runtime.db_expected ? 'yes' : 'no'}</div>
+                <div class="col-md-4"><strong>DB ready:</strong> ${runtime.db_ready ? 'yes' : 'no'}</div>
+                <div class="col-md-4"><strong>JSON fallback:</strong> ${runtime.local_json_fallback_enabled ? 'enabled' : 'disabled'}</div>
+                <div class="col-md-4"><strong>app_core:</strong> ${escapeHtml(String(governance.app_core_lines || 0))}/${escapeHtml(String(governance.app_core_budget || 520))}</div>
+                <div class="col-md-4"><strong>更新時刻:</strong> ${escapeHtml(formatDateTimeLabel(data.generated_at || ''))}</div>
+            </div>
+        `;
+
+        const rows = Array.isArray(data.checks) ? data.checks : [];
+        checks.innerHTML = rows.length ? rows.map((item) => `
+            <tr>
+                <td>${item.passed ? '<span class="text-success">OK</span>' : '<span class="text-warning">WARN</span>'}</td>
+                <td>${escapeHtml(String(item.label || item.key || ''))}</td>
+                <td class="small text-break">${escapeHtml(String(item.detail || ''))}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="3" class="text-muted">チェック項目がありません</td></tr>';
+    } catch (error) {
+        status.className = 'text-danger small mb-2';
+        status.textContent = '読み込みに失敗しました';
+        checks.innerHTML = '<tr><td colspan="3" class="text-danger">Readyチェックを取得できませんでした</td></tr>';
+        console.error('Readiness dashboard failed', error);
+    }
+}
+
 function cloudRunRevisionLabel(revision) {
     const value = String(revision || '').trim();
     if (!value) return '';

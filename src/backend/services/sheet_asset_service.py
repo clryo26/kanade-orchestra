@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 from fastapi import HTTPException
@@ -63,7 +63,7 @@ def sheet_file_bytes(item: dict[str, Any]) -> bytes | None:
         if object_name and storage_enabled():
             blob = get_storage_bucket().blob(object_name)
             if blob.exists():
-                return blob.download_as_bytes()
+                return cast(bytes, blob.download_as_bytes())
         return None
 
     path = str(item.get("path") or "")

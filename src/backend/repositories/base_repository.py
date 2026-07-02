@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from ..core.storage_gateway import load_json_data, save_json_data
 from ..utils.collection_utils import find_item, next_id
@@ -20,16 +20,16 @@ class BaseRepository:
             raise ValueError("collection_name is required")
 
     def list_all(self) -> list[dict[str, Any]]:
-        return load_json_data(self.collection_name)
+        return cast(list[dict[str, Any]], load_json_data(self.collection_name))
 
     def save_all(self, items: list[dict[str, Any]]) -> None:
         save_json_data(self.collection_name, items)
 
     def next_id(self) -> int:
-        return next_id(self.list_all())
+        return cast(int, next_id(self.list_all()))
 
     def find_by_id(self, item_id: int) -> tuple[int, dict[str, Any]]:
-        return find_item(self.list_all(), item_id)
+        return cast(tuple[int, dict[str, Any]], find_item(self.list_all(), item_id))
 
     def create(self, payload: dict[str, Any]) -> dict[str, Any]:
         items = self.list_all()

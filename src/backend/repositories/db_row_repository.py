@@ -35,6 +35,14 @@ from ..core.tenant_context import get_current_tenant_id
 _ORG_COLUMN_CACHE: dict[str, bool] = {}
 
 
+def _list_or_empty(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _core() -> None:
     # Backward-compat hook for tests that monkeypatch repository internals.
     return None
@@ -313,7 +321,8 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     if name == "performances":
         for parent in data:
             parent_id = parent.get("id")
-            for index, piece in enumerate(parent.get("pieces") if isinstance(parent.get("pieces"), list) else []):
+            pieces = _list_or_empty(parent.get("pieces"))
+            for index, piece in enumerate(pieces):
                 if isinstance(piece, dict):
                     title = str(piece.get("title") or "").strip()
                     if not title:
@@ -353,7 +362,8 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     elif name == "date_adjustments":
         for parent in data:
             parent_id = parent.get("id")
-            for index, candidate in enumerate(parent.get("candidates") if isinstance(parent.get("candidates"), list) else []):
+            candidates = _list_or_empty(parent.get("candidates"))
+            for index, candidate in enumerate(candidates):
                 if not isinstance(candidate, dict):
                     continue
                 children["date_adjustment_candidates"].append(
@@ -374,9 +384,9 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     elif name == "payments":
         for parent in data:
             parent_id = parent.get("id")
-            fee_map = parent.get("performance_fees") if isinstance(parent.get("performance_fees"), dict) else {}
-            amount_map = parent.get("performance_fee_amounts") if isinstance(parent.get("performance_fee_amounts"), dict) else {}
-            for performance_id in set(fee_map) | set(amount_map):
+            fee_map = _dict_or_empty(parent.get("performance_fees"))
+            amount_map = _dict_or_empty(parent.get("performance_fee_amounts"))
+            for performance_id in set(fee_map.keys()) | set(amount_map.keys()):
                 children["payment_performance_fees"].append(
                     {
                         "organization_id": parent.get("organization_id") or tenant_id,
@@ -391,7 +401,8 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     elif name == "castings":
         for parent in data:
             parent_id = parent.get("id")
-            for index, member in enumerate(parent.get("members") if isinstance(parent.get("members"), list) else []):
+            members = _list_or_empty(parent.get("members"))
+            for index, member in enumerate(members):
                 if isinstance(member, dict):
                     children["casting_members"].append(
                         {
@@ -405,7 +416,8 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
                             "updated_at": member.get("updated_at") or parent.get("updated_at") or now,
                         }
                     )
-            for index, extra in enumerate(parent.get("extras") if isinstance(parent.get("extras"), list) else []):
+            extras = _list_or_empty(parent.get("extras"))
+            for index, extra in enumerate(extras):
                 if isinstance(extra, dict):
                     children["casting_extras"].append(
                         {
@@ -423,7 +435,8 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     elif name == "desired_pieces":
         for parent in data:
             parent_id = parent.get("id")
-            for vote in parent.get("votes") if isinstance(parent.get("votes"), list) else []:
+            votes = _list_or_empty(parent.get("votes"))
+            for vote in votes:
                 if isinstance(vote, dict):
                     row = {
                         "organization_id": vote.get("organization_id") or parent.get("organization_id") or tenant_id,
@@ -449,7 +462,8 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
     elif name == "albums":
         for parent in data:
             parent_id = parent.get("id")
-            for photo in parent.get("photos") if isinstance(parent.get("photos"), list) else []:
+            photos = _list_or_empty(parent.get("photos"))
+            for photo in photos:
                 if isinstance(photo, dict):
                     children["album_photos"].append(
                         {

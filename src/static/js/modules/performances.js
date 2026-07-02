@@ -2,6 +2,16 @@
 
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
+var normalizePerformancePieces = window.normalizePerformancePieces;
+var performancePieceDurationText = window.performancePieceDurationText;
+var performancePieceLabel = window.performancePieceLabel;
+var performancePieceFormalLabel = window.performancePieceFormalLabel;
+var performancePieceLookupLabels = window.performancePieceLookupLabels;
+var findPieceScopedItem = window.findPieceScopedItem;
+var pieceScopedRows = window.pieceScopedRows;
+var uploadPieceOptions = function uploadPieceOptionsCompat(performance) {
+    return window.uploadPieceOptions(performance, window.WHOLE_PRACTICE_RECORDING_PIECE);
+};
 
 async function savePerformance() {
     const flyerFile = $('perfFlyerFile')?.files?.[0];
@@ -162,107 +172,10 @@ function currentPerformancePieces() {
     return pieces;
 }
 
-function normalizePerformancePieces(pieces) {
-    return (pieces || []).map((piece) => {
-        if (typeof piece === 'string') {
-            return { composer: '', title: piece };
-        }
-        return {
-            composer: piece.composer || '',
-            title: piece.title || piece.name || '',
-            alias: piece.alias || piece.short_name || '',
-            duration: piece.duration || '',
-            is_encore: Boolean(piece.is_encore || piece.encore)
-        };
-    }).filter((piece) => piece.title);
-}
-
-function performancePieceDurationText(piece) {
-    const value = String(piece?.duration || '').trim();
-    return value ? `演奏時間: ${value}分` : '';
-}
-
-function performancePieceLabel(piece) {
-    if (typeof piece === 'string') return piece;
-    // 曲名表示や保存フォルダ名は、登録済みの略称を優先して短く揃える。
-    const label = piece.alias || piece.short_name || (piece.composer ? `${piece.composer}: ${piece.title}` : piece.title);
-    return (piece.is_encore || piece.encore) ? `(${label})` : label;
-}
-
-function performancePieceFormalLabel(piece) {
-    if (typeof piece === 'string') return piece;
-    // 録音アップロードの選択肢では、略称ではなく登録された正式な曲名を見せる。
-    const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
-    return (piece.is_encore || piece.encore) ? `(${label})` : label;
-}
-
-function performancePieceLookupLabels(piece) {
-    // DB移行前の紹介/指示データは、曲名・略称・「作曲者: 曲名」のいずれかで保存されていることがある。
-    if (typeof piece === 'string') return [piece].filter(Boolean);
-    return [
-        performancePieceLabel(piece),
-        performancePieceFormalLabel(piece),
-        piece.title,
-        piece.alias,
-        piece.short_name,
-        piece.composer && piece.title ? `${piece.composer}: ${piece.title}` : ''
-    ].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
-}
-
-function findPieceScopedItem(items, performanceId, piece) {
-    const labels = performancePieceLookupLabels(piece);
-    return (items || []).find((item) =>
-        String(item.performance_id || '') === String(performanceId || '')
-        && labels.includes(String(item.piece || item.title || '').trim())
-    );
-}
-
-function pieceScopedRows(performances, scopedItems) {
-    return (performances || []).map((perf) => {
-        const normalizedPieces = normalizePerformancePieces(perf.pieces || []);
-        const labels = new Set(normalizedPieces.flatMap(performancePieceLookupLabels));
-        (scopedItems || []).forEach((item) => {
-            if (String(item.performance_id || '') !== String(perf.id || '')) return;
-            const itemPiece = String(item.piece || item.title || '').trim();
-            if (!itemPiece || labels.has(itemPiece)) return;
-            normalizedPieces.push({ composer: '', title: itemPiece, alias: '' });
-            labels.add(itemPiece);
-        });
-        return {
-            performanceId: String(perf.id || ''),
-            title: String(perf.title || ''),
-            date: String(perf.date || ''),
-            pieces: normalizedPieces
-        };
-    });
-}
-
 function selectedUploadPerformance() {
     const value = $('uploadPerformance')?.value || '';
     if (!value) return null;
     return appState.performances.find((perf) => String(perf.id) === value) || null;
-}
-
-function uploadPieceOptions(performance) {
-    if (!performance) return [];
-
-    const options = normalizePerformancePieces(performance?.pieces || [])
-        .map((piece) => ({
-            value: performancePieceLabel(piece),
-            label: performancePieceFormalLabel(piece)
-        }))
-        .filter((option) => option.value);
-    options.push({
-        value: WHOLE_PRACTICE_RECORDING_PIECE,
-        label: WHOLE_PRACTICE_RECORDING_PIECE
-    });
-
-    const seen = new Set();
-    return options.filter((option) => {
-        if (seen.has(option.value)) return false;
-        seen.add(option.value);
-        return true;
-    });
 }
 
 function renderUploadPerformanceOptions() {

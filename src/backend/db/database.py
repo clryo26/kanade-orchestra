@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 try:
     import psycopg
     from psycopg import sql as psql
@@ -21,15 +23,15 @@ def assert_db_ready() -> None:
 
 
 def db_connection_string() -> str:
-    return _db_connection_string()
+    return cast(str, _db_connection_string())
 
 
 def db_data_enabled() -> bool:
-    return _db_configured(psycopg, psql)
+    return cast(bool, _db_configured(psycopg, psql))
 
 
 def db_expected() -> bool:
-    return _db_expected(_local_json_fallback_enabled)
+    return cast(bool, _db_expected(_local_json_fallback_enabled))
 
 
 def _ensure_db_expected_ready() -> None:

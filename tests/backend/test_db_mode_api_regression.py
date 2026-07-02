@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.db_profile
+
 
 def _copy_rows(rows):
     return [dict(item) for item in rows]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 try:
@@ -12,8 +12,8 @@ except Exception:  # pragma: no cover - optional dependency guard
     psycopg = None
     psql = None
 
-from ..core import assert_db_ready, require_system_admin_device
-from ..services.auth_service import device_auth_record
+from ..core import assert_db_ready
+from ..core.auth_dependencies import get_system_admin_device_auth
 from ..services import system_service
 
 router = APIRouter()
@@ -26,8 +26,7 @@ class RolePermissionUpdate(BaseModel):
 
 
 @router.get("/api/system/database/tables")
-async def list_database_tables(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
+async def list_database_tables(_system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth)) -> dict[str, Any]:
     assert_db_ready(psycopg, psql)
     return system_service.list_database_tables()
 
@@ -37,9 +36,8 @@ async def list_database_records(
     table: str,
     limit: int = 50,
     offset: int = 0,
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
 ) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
     assert_db_ready(psycopg, psql)
     return system_service.list_database_records(table, limit, offset)
 
@@ -48,9 +46,8 @@ async def list_database_records(
 async def list_database_migrations(
     limit: int = 100,
     offset: int = 0,
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
 ) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
     assert_db_ready(psycopg, psql)
     return system_service.list_database_migrations(limit, offset)
 
@@ -61,16 +58,14 @@ async def list_audit_logs(
     offset: int = 0,
     actor_device_id: str = "",
     path: str = "",
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
 ) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
     assert_db_ready(psycopg, psql)
     return system_service.list_audit_logs(limit, offset, actor_device_id, path)
 
 
 @router.get("/api/system/role-permissions")
-async def list_role_permissions(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
+async def list_role_permissions(_system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth)) -> dict[str, Any]:
     assert_db_ready(psycopg, psql)
     return system_service.list_role_permissions()
 
@@ -78,14 +73,17 @@ async def list_role_permissions(x_device_id: str = Header(default="", alias="X-D
 @router.put("/api/system/role-permissions")
 async def upsert_role_permission(
     body: RolePermissionUpdate,
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
 ) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
     assert_db_ready(psycopg, psql)
     return system_service.upsert_role_permission(body.role_name, body.permission_key, body.enabled)
 
 
 @router.post("/api/system/cache/clear")
-async def clear_system_cache(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_system_admin_device(x_device_id, device_auth_record)
+async def clear_system_cache(_system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth)) -> dict[str, Any]:
     return system_service.clear_system_cache()
+
+
+@router.get("/api/system/readiness-summary")
+async def get_readiness_summary(_system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth)) -> dict[str, Any]:
+    return system_service.get_readiness_summary()

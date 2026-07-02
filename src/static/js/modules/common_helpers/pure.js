@@ -49,6 +49,93 @@ function daysUntil(dateText) { const target = new Date(`${dateText}T00:00:00`); 
 function formatDurationLabel(file) { if (file.duration) return file.duration; if (file.duration_seconds || file.duration_seconds === 0) { const total = Math.round(Number(file.duration_seconds)); const minutes = Math.floor(total / 60); const seconds = total % 60; return `${minutes}:${String(seconds).padStart(2, '0')}`; } return '長さ未取得'; }
 function normalizeClockText(value) { const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/); if (!match) return ''; const hour = Number(match[1]); const minute = Number(match[2]); if (Number.isNaN(hour) || Number.isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return ''; return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`; }
 function addMinutesToClockText(start, minutes) { const normalizedStart = normalizeClockText(start); const add = Number(minutes); if (!normalizedStart || Number.isNaN(add)) return ''; const [h, m] = normalizedStart.split(':').map((part) => Number(part)); const total = h * 60 + m + add; if (total < 0) return ''; const normalized = ((total % (24 * 60)) + (24 * 60)) % (24 * 60); const endH = Math.floor(normalized / 60); const endM = normalized % 60; return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`; }
+function normalizePerformancePieces(pieces) {
+    return (pieces || []).map((piece) => {
+        if (typeof piece === 'string') {
+            return { composer: '', title: piece };
+        }
+        return {
+            composer: piece.composer || '',
+            title: piece.title || piece.name || '',
+            alias: piece.alias || piece.short_name || '',
+            duration: piece.duration || '',
+            is_encore: Boolean(piece.is_encore || piece.encore)
+        };
+    }).filter((piece) => piece.title);
+}
+function performancePieceDurationText(piece) {
+    const value = String(piece?.duration || '').trim();
+    return value ? `演奏時間: ${value}分` : '';
+}
+function performancePieceLabel(piece) {
+    if (typeof piece === 'string') return piece;
+    const label = piece.alias || piece.short_name || (piece.composer ? `${piece.composer}: ${piece.title}` : piece.title);
+    return (piece.is_encore || piece.encore) ? `(${label})` : label;
+}
+function performancePieceFormalLabel(piece) {
+    if (typeof piece === 'string') return piece;
+    const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
+    return (piece.is_encore || piece.encore) ? `(${label})` : label;
+}
+function performancePieceLookupLabels(piece) {
+    if (typeof piece === 'string') return [piece].filter(Boolean);
+    return [
+        performancePieceLabel(piece),
+        performancePieceFormalLabel(piece),
+        piece.title,
+        piece.alias,
+        piece.short_name,
+        piece.composer && piece.title ? `${piece.composer}: ${piece.title}` : ''
+    ].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
+}
+function findPieceScopedItem(items, performanceId, piece) {
+    const labels = performancePieceLookupLabels(piece);
+    return (items || []).find((item) =>
+        String(item.performance_id || '') === String(performanceId || '')
+        && labels.includes(String(item.piece || item.title || '').trim())
+    );
+}
+function pieceScopedRows(performances, scopedItems) {
+    return (performances || []).map((perf) => {
+        const normalizedPieces = normalizePerformancePieces(perf.pieces || []);
+        const labels = new Set(normalizedPieces.flatMap(performancePieceLookupLabels));
+        (scopedItems || []).forEach((item) => {
+            if (String(item.performance_id || '') !== String(perf.id || '')) return;
+            const itemPiece = String(item.piece || item.title || '').trim();
+            if (!itemPiece || labels.has(itemPiece)) return;
+            normalizedPieces.push({ composer: '', title: itemPiece, alias: '' });
+            labels.add(itemPiece);
+        });
+        return {
+            performanceId: String(perf.id || ''),
+            title: String(perf.title || ''),
+            date: String(perf.date || ''),
+            pieces: normalizedPieces
+        };
+    });
+}
+function uploadPieceOptions(performance, wholePracticeLabel) {
+    if (!performance) return [];
+
+    const options = normalizePerformancePieces(performance.pieces || [])
+        .map((piece) => ({
+            value: performancePieceLabel(piece),
+            label: performancePieceFormalLabel(piece)
+        }))
+        .filter((option) => option.value);
+
+    options.push({
+        value: wholePracticeLabel,
+        label: wholePracticeLabel
+    });
+
+    const seen = new Set();
+    return options.filter((option) => {
+        if (seen.has(option.value)) return false;
+        seen.add(option.value);
+        return true;
+    });
+}
 function isAdmin_Portal() { const permission = String(appState.currentUserPermission || ''); return permission === '管理者' || permission === 'システム管理者'; }
 function jsonOptions(method, payload) { return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }; }
 function emptyText(items, message) { return items.length ? '' : `<li class="list-group-item text-muted">${message}</li>`; }

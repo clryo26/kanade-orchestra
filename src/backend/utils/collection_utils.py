@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Iterable, cast
 
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
@@ -23,7 +23,7 @@ def find_item(
             if cache.get(data_name) is items:
                 index_map = cache.get_index(data_name, "id")
                 if index_map and item_id in index_map:
-                    return index_map[item_id]
+                    return cast(tuple[int, dict[str, Any]], index_map[item_id])
 
     for index, item in enumerate(items):
         if item.get("id") == item_id:

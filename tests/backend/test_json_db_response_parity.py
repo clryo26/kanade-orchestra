@@ -1,5 +1,53 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.db_profile
+
+
+def _find_payload_mismatches(expected, actual, path="$"):
+    mismatches = []
+
+    if type(expected) is not type(actual):
+        mismatches.append(
+            f"{path}: type mismatch expected={type(expected).__name__} actual={type(actual).__name__}"
+        )
+        return mismatches
+
+    if isinstance(expected, dict):
+        expected_keys = set(expected.keys())
+        actual_keys = set(actual.keys())
+        missing = sorted(expected_keys - actual_keys)
+        extra = sorted(actual_keys - expected_keys)
+        if missing:
+            mismatches.append(f"{path}: missing keys {missing}")
+        if extra:
+            mismatches.append(f"{path}: extra keys {extra}")
+
+        for key in sorted(expected_keys & actual_keys):
+            mismatches.extend(_find_payload_mismatches(expected[key], actual[key], f"{path}.{key}"))
+        return mismatches
+
+    if isinstance(expected, list):
+        if len(expected) != len(actual):
+            mismatches.append(f"{path}: length mismatch expected={len(expected)} actual={len(actual)}")
+            return mismatches
+
+        for index, (exp_item, act_item) in enumerate(zip(expected, actual)):
+            mismatches.extend(_find_payload_mismatches(exp_item, act_item, f"{path}[{index}]"))
+        return mismatches
+
+    if expected != actual:
+        mismatches.append(f"{path}: value mismatch expected={expected!r} actual={actual!r}")
+
+    return mismatches
+
+
+def _assert_payloads_match(expected_payloads, actual_payloads):
+    mismatches = _find_payload_mismatches(expected_payloads, actual_payloads)
+    # Keep failure output concise while preserving first mismatch reasons.
+    assert not mismatches, "JSON/DB response contract mismatch:\n" + "\n".join(mismatches[:20])
+
 
 def _copy_rows(rows):
     return [dict(item) for item in rows]
@@ -121,7 +169,7 @@ def test_read_api_responses_are_equal_between_json_and_db_mode(client, backend_e
 
     db_mode_payloads = {path: client.get(path).json() for path in read_paths}
 
-    assert json_mode_payloads == db_mode_payloads
+    _assert_payloads_match(json_mode_payloads, db_mode_payloads)
 
 
 def _run_write_scenario(client, backend_env, monkeypatch, *, db_mode: bool):

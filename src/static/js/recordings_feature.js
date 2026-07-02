@@ -15,18 +15,27 @@ function renderRecordingList(containerId, canDelete) {
         return;
     }
 
-    const grouped = groupRecordingsByDateAndPiece(appState.recordings);
+    const filesForRender = canDelete ? appState.recordings : filteredMemberRecordings(appState.recordings);
+    if (!canDelete && !filesForRender.length) {
+        container.innerHTML = `${recordingFilterHtml()}<p class="text-muted mb-0 mt-2">条件に一致する録音はありません</p>`;
+        bindRecordingFilters();
+        return;
+    }
+
+    const grouped = groupRecordingsByDateAndPiece(filesForRender);
     const latestDate = grouped[0]?.date || '';
     container.innerHTML = '';
     if (!canDelete) {
         const controls = document.createElement('div');
         controls.className = 'recording-controls';
         controls.innerHTML = `
+            ${recordingFilterHtml()}
             <label class="form-check recording-continuous-check">
                 <input class="form-check-input" id="continuousPlaybackCheck" type="checkbox" ${appState.continuousPlayback ? 'checked' : ''}>
                 <span class="form-check-label">連続再生</span>
             </label>
         `;
+        bindRecordingFilters(controls);
         controls.querySelector('#continuousPlaybackCheck').addEventListener('change', (event) => {
             appState.continuousPlayback = event.currentTarget.checked;
         });
@@ -92,6 +101,99 @@ function recordingZipUrl(date = '', piece = '') {
     if (date) params.set('date', date);
     if (piece) params.set('piece', piece);
     return `/api/recordings/download-zip?${params.toString()}`;
+}
+
+function recordingFilterHtml() {
+    const filters = appState.recordingFilters || { query: '', date: '', piece: '' };
+    const dateOptions = recordingFilterDateOptions(filters.date);
+    const pieceOptions = recordingFilterPieceOptions(filters.piece, filters.date);
+    return `
+        <div class="row g-2 align-items-end recording-filter-row mb-2">
+            <div class="col-md-4">
+                <label class="form-label mb-1" for="memberRecordingQueryFilter">検索</label>
+                <input class="form-control" id="memberRecordingQueryFilter" placeholder="曲名/ファイル名" value="${escapeHtml(filters.query || '')}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-1" for="memberRecordingDateFilter">練習日</label>
+                <select class="form-select" id="memberRecordingDateFilter">${dateOptions}</select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-1" for="memberRecordingPieceFilter">曲名</label>
+                <select class="form-select" id="memberRecordingPieceFilter">${pieceOptions}</select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-outline-secondary w-100" id="memberRecordingFilterClearBtn" type="button">解除</button>
+            </div>
+        </div>
+    `;
+}
+
+function recordingFilterDateOptions(selected = '') {
+    const dates = [...new Set((appState.recordings || []).map((file) => String(file.date || '')).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+    const options = ['<option value="">すべて</option>'];
+    dates.forEach((date) => {
+        options.push(`<option value="${escapeHtml(date)}" ${String(selected) === date ? 'selected' : ''}>${escapeHtml(formatDateWithWeekday(date, date))}</option>`);
+    });
+    return options.join('');
+}
+
+function recordingFilterPieceOptions(selected = '', date = '') {
+    const pieces = [...new Set((appState.recordings || [])
+        .filter((file) => !date || String(file.date || '') === String(date))
+        .map((file) => String(file.piece || '未分類'))
+        .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+    const options = ['<option value="">すべて</option>'];
+    pieces.forEach((piece) => {
+        options.push(`<option value="${escapeHtml(piece)}" ${String(selected) === piece ? 'selected' : ''}>${escapeHtml(piece)}</option>`);
+    });
+    return options.join('');
+}
+
+function bindRecordingFilters(root = document) {
+    const query = root.querySelector('#memberRecordingQueryFilter') || document.querySelector('#memberRecordingQueryFilter');
+    const date = root.querySelector('#memberRecordingDateFilter') || document.querySelector('#memberRecordingDateFilter');
+    const piece = root.querySelector('#memberRecordingPieceFilter') || document.querySelector('#memberRecordingPieceFilter');
+    const clear = root.querySelector('#memberRecordingFilterClearBtn') || document.querySelector('#memberRecordingFilterClearBtn');
+    if (query) {
+        query.addEventListener('input', () => {
+            appState.recordingFilters.query = query.value;
+            renderRecordings();
+        });
+    }
+    if (date) {
+        date.addEventListener('change', () => {
+            appState.recordingFilters.date = date.value;
+            appState.recordingFilters.piece = '';
+            renderRecordings();
+        });
+    }
+    if (piece) {
+        piece.addEventListener('change', () => {
+            appState.recordingFilters.piece = piece.value;
+            renderRecordings();
+        });
+    }
+    if (clear) {
+        clear.addEventListener('click', () => {
+            appState.recordingFilters = { query: '', date: '', piece: '' };
+            renderRecordings();
+        });
+    }
+}
+
+function filteredMemberRecordings(recordings) {
+    const filters = appState.recordingFilters || { query: '', date: '', piece: '' };
+    const normalizedQuery = String(filters.query || '').trim().toLowerCase();
+    return (recordings || []).filter((file) => {
+        const dateOk = !filters.date || String(file.date || '') === String(filters.date);
+        const pieceName = String(file.piece || '未分類');
+        const pieceOk = !filters.piece || pieceName === String(filters.piece);
+        if (!normalizedQuery) return dateOk && pieceOk;
+        const fileName = String(displayNameWithoutExtension(file.name) || '').toLowerCase();
+        const pieceLower = pieceName.toLowerCase();
+        const queryOk = fileName.includes(normalizedQuery) || pieceLower.includes(normalizedQuery);
+        return dateOk && pieceOk && queryOk;
+    });
 }
 
 function groupRecordingsByDateAndPiece(recordings) {

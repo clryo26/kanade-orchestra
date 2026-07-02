@@ -2,11 +2,11 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 $pythonScript = Join-Path $scriptDir 'create-source-zip.py'
+$releaseSafetyScript = Join-Path $scriptDir 'check_release_safety.py'
 
 $commands = @(
     @('py', '-3'),
-    @('python'),
-    @('uv', 'run', 'python')
+    @('python')
 )
 
 foreach ($cmd in $commands) {
@@ -19,11 +19,20 @@ foreach ($cmd in $commands) {
     if ($cmd.Length -gt 1) {
         $args += $cmd[1..($cmd.Length - 1)]
     }
-    $args += $pythonScript
+    $runtimeArgs = @($args)
+    $zipArgs = @($runtimeArgs)
+    $zipArgs += $pythonScript
 
     Push-Location $repoRoot
     try {
-        & $name @args
+        if (Test-Path $releaseSafetyScript) {
+            & $name @runtimeArgs $releaseSafetyScript
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Release safety check failed before ZIP creation."
+                exit $LASTEXITCODE
+            }
+        }
+        & $name @zipArgs
         exit $LASTEXITCODE
     }
     finally {
@@ -31,5 +40,6 @@ foreach ($cmd in $commands) {
     }
 }
 
-Write-Error "Python runtime not found. Install or enable py, python, or uv."
+Write-Host '[ERROR] Python runtime not found.' -ForegroundColor Red
+Write-Host 'Next action: install Python 3.10+ (or run npm run setup:local after Python install).' -ForegroundColor Yellow
 exit 1

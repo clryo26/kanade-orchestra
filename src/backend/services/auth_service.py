@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from fastapi import HTTPException
 
@@ -71,7 +71,7 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
         member = next((value for value in members if value.get("id") == member_id), None)
         if member and member_access_expired(member):
             raise HTTPException(status_code=403, detail="Member access expired")
-    return device
+    return cast(dict[str, Any], device)
 
 
 def _require_manager_device(

@@ -5,6 +5,8 @@ import asyncio
 from fastapi import HTTPException
 import pytest
 
+pytestmark = pytest.mark.db_profile
+
 
 def test_part_settings_db_rows_keep_frontend_display_order(backend_env):
     row = backend_env.db_row_to_json({"id": 1, "name": "Violin", "sort_order": 20, "is_active": True})

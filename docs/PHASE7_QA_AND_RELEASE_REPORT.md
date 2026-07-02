@@ -139,3 +139,10 @@ GitHub Actions の `playwright-smoke` ジョブでは、以下の流れで成功
 - `uv run python -c` + `TestClient` による `GET /`: `200`
 
 最終的な E2E 判定は `workflow_dispatch` の `E2E` workflow 実行結果を正とする。
+
+## Phase8-A 引き継ぎメモ（2026-07-02）
+
+- `setup:local` / `qa:local` の自動化スクリプトを追加し、ローカル QA の手順漏れを防止した。
+- E2E は `member_flow.spec.js` / `admin_flow.spec.js` / `recordings_scores.spec.js` を追加し、実機前 smoke 範囲を拡張した。
+- 本番前確認を実チェック表へ更新し、手動確認項目を `MANUAL_DEVICE_QA_CHECKLIST.md` に分離した。
+- Cloud Run / GCS / DB 設定確認を `CLOUD_RUN_GCS_DB_CHECK.md` に集約した。

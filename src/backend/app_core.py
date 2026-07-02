@@ -1,4 +1,5 @@
 from __future__ import annotations
+# mypy: disable-error-code="no-redef,misc"
 
 import io  # noqa: F401
 import os

@@ -119,3 +119,68 @@ def write_audit_log(
                 )
     except Exception:
         logger.exception("Failed to write audit log")
+
+
+def write_diagnostic_access_log(
+    *,
+    path: str,
+    status_code: int | None,
+    device_id: str,
+    user_agent: str,
+    ip_address: str,
+    request_id: str = "",
+    detail: dict[str, Any] | None = None,
+) -> None:
+    try:
+        if not audit_enabled():
+            return
+        if not db_configured(psycopg, psql):
+            return
+
+        actor: dict[str, Any] = {}
+        if device_id:
+            try:
+                actor = device_auth_record(device_id)
+            except Exception:
+                actor = {}
+
+        with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO audit_logs (
+                        actor_device_id,
+                        actor_member_id,
+                        actor_member_name,
+                        actor_permission,
+                        action,
+                        method,
+                        path,
+                        status_code,
+                        target_table,
+                        target_id,
+                        request_id,
+                        user_agent,
+                        ip_address,
+                        detail
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        device_id or "",
+                        fk_int(actor.get("member_id")),
+                        str(actor.get("member_name") or actor.get("name") or ""),
+                        str(actor.get("permission") or ""),
+                        "diagnostic_view",
+                        "GET",
+                        path,
+                        status_code,
+                        "diagnostic",
+                        "config-status",
+                        request_id,
+                        user_agent,
+                        ip_address,
+                        json.dumps(detail or {}, ensure_ascii=False),
+                    ),
+                )
+    except Exception:
+        logger.exception("Failed to write diagnostic access log")

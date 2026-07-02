@@ -592,6 +592,20 @@ uv run python -m py_compile path/to/file.py
 uv run python -m compileall .
 ```
 
+### 5.9 Release Safety (Lightweight)
+
+共有ZIP作成前の安全確認は、依存未導入環境でも動く軽量コマンドを優先する。
+
+```bash
+npm run check:release-safety
+npm run zip:source
+```
+
+補足:
+
+- 上記2コマンドは `python` 直接実行（`uv run` 非依存）を前提とする
+- `pre-release` / `pytest` / frontend test は依存導入後（`uv sync` / `npm install`）に実行する
+
 ---
 
 ## 6. Coding Rules
@@ -1284,3 +1298,29 @@ gcp:
 - CI は軽量テスト（compileall / pytest / frontend syntax / frontend test）を通常実行し、E2E は別 workflow で実行可能にする。
 - 本番前には `docs/PRODUCTION_RELEASE_CHECKLIST.md` を必ず実施する。
 - 共有 ZIP 作成後は危険ファイル混入チェックを実施し、`.env` `.git` `.venv` `node_modules` 音声実体 DB 実体 credentials 系の非混入を確認する。
+
+## 25. Phase8-A QA Automation Addendum
+
+- ローカル実行の標準入口を `npm run setup:local` / `npm run qa:local` とする。
+- `qa:local` は以下を順に実行し、失敗時もサマリーを残す。
+  - `python -m compileall -q src/backend tests`
+  - `npm run check:frontend:syntax`
+  - `pytest`
+  - `npm run test:frontend`
+  - `npm run test:e2e`
+  - `python scripts/create-source-zip.py`
+  - `npm run zip:source`
+- E2E は CRUD 完全自動化ではなく smoke 優先とし、主要導線崩れの早期検知を目的とする。
+- 実機依存項目（iPhone Safari、PWA ホーム追加、実GCS/実Cloud Run/実DB接続）はチェックリスト運用で担保する。
+- 本番前は `docs/PRODUCTION_RELEASE_CHECKLIST.md` を実チェック表として使用する。
+- 実機確認は `docs/MANUAL_DEVICE_QA_CHECKLIST.md` を使用し、結果を記録する。
+- Cloud Run / GCS / DB 設定確認は `docs/CLOUD_RUN_GCS_DB_CHECK.md` を使用する。
+
+## 26. Phase8-B Security / Release Safety Addendum
+
+- 共有ZIP作成前に `npm run check:release-safety` を必須とする。
+- `src/data/*.json` 実データは共有ZIPへ含めない。テンプレートは `*.example.json` を使用する。
+- 診断API `GET /api/diagnostic/config-status` は既定で無効（`DIAGNOSTIC_CONFIG_ENABLED=false`）とする。
+- 本番環境では `DIAGNOSTIC_CONFIG_REQUIRE_ADMIN=true` を維持し、管理者認証を要求する。
+- 診断APIの応答には機密値の生値を含めず、必要最小限のマスク済み情報のみ返す。
+- pre-release は `npm run pre-release` を標準入口とし、release safety と frontend policy を通過させる。

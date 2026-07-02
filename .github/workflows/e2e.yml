@@ -48,8 +48,14 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: npm audit (high)
+        run: npm audit --audit-level=high
+
+      - name: Run release safety check
+        run: npm run check:release-safety
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps
 
       - name: Run E2E smoke
         run: npm run test:e2e

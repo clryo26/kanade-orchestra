@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
 from ..core import db_connection_string, get_memory_cache, mask_db_value
 from ..core.database import db_configured
+from ..core.db_runtime import db_expected, local_json_fallback_enabled
+from ..core.runtime_paths import DATA_DIR, UPLOAD_DIR
 from ..core.db_schema import PORTAL_DB_TABLES
 from ..repositories.system_repository import SystemRepository
 
@@ -18,6 +23,7 @@ except Exception:  # pragma: no cover - optional dependency guard
     psql = None
 
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _repository() -> SystemRepository:
@@ -104,3 +110,74 @@ def clear_system_cache() -> dict[str, Any]:
         except Exception:
             logger.exception("Failed to record cache invalidation event")
     return {"status": "ok"}
+
+
+def get_readiness_summary() -> dict[str, Any]:
+    data_backend = str(os.getenv("DATA_BACKEND", "db") or "db").strip().lower() or "db"
+    db_ready = db_configured(psycopg, psql)
+    expected_db = db_expected()
+    fallback_enabled = local_json_fallback_enabled()
+
+    app_core_path = PROJECT_ROOT / "src" / "backend" / "app_core.py"
+    app_core_lines = len(app_core_path.read_text(encoding="utf-8").splitlines()) if app_core_path.exists() else 0
+    app_core_budget = 520
+
+    required_release_files = [
+        PROJECT_ROOT / "scripts" / "source_zip_safety_rules.json",
+        PROJECT_ROOT / "scripts" / "check_release_safety.py",
+        PROJECT_ROOT / "scripts" / "check_app_core_slimming.py",
+        PROJECT_ROOT / "docs" / "PRODUCTION_RELEASE_CHECKLIST.md",
+        PROJECT_ROOT / "docs" / "SOURCE_SHARE_ZIP.md",
+    ]
+    release_missing = [str(path.relative_to(PROJECT_ROOT)).replace("\\", "/") for path in required_release_files if not path.exists()]
+
+    checks = [
+        {
+            "key": "db_ready_when_expected",
+            "label": "DB期待時にDB設定が有効",
+            "passed": (not expected_db) or db_ready,
+            "detail": "DB expected" if expected_db else "DB optional",
+        },
+        {
+            "key": "release_files",
+            "label": "リリース安全ファイルが揃っている",
+            "passed": not release_missing,
+            "detail": ", ".join(release_missing) if release_missing else "ok",
+        },
+        {
+            "key": "app_core_budget",
+            "label": "app_core 行数が予算内",
+            "passed": app_core_lines <= app_core_budget,
+            "detail": f"{app_core_lines}/{app_core_budget}",
+        },
+        {
+            "key": "upload_dir_exists",
+            "label": "アップロードディレクトリが存在",
+            "passed": UPLOAD_DIR.exists(),
+            "detail": str(UPLOAD_DIR),
+        },
+        {
+            "key": "data_dir_exists",
+            "label": "データディレクトリが存在",
+            "passed": DATA_DIR.exists(),
+            "detail": str(DATA_DIR),
+        },
+    ]
+
+    overall = all(bool(item.get("passed")) for item in checks)
+    return {
+        "overall_status": "ok" if overall else "warning",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runtime": {
+            "data_backend": data_backend,
+            "db_expected": expected_db,
+            "db_ready": db_ready,
+            "local_json_fallback_enabled": fallback_enabled,
+        },
+        "governance": {
+            "app_core_lines": app_core_lines,
+            "app_core_budget": app_core_budget,
+            "missing_release_files": release_missing,
+        },
+        "checks": checks,
+    }

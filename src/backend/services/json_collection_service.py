@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from fastapi import HTTPException
 
@@ -46,7 +46,7 @@ def load_json_data(
 ) -> list[dict[str, Any]]:
     cached = cache.get(name)
     if cached is not None:
-        return cached
+        return cast(list[dict[str, Any]], cached)
 
     if not local_json_fallback_enabled():
         ensure_db_expected_is_ready()
@@ -57,11 +57,11 @@ def load_json_data(
         else:
             raise HTTPException(status_code=404, detail=f"Unknown collection: {name}")
         cache.set(name, db_data)
-        return db_data
+        return cast(list[dict[str, Any]], db_data)
 
     local_data = load_local_json_data(name, data_dir=data_dir, logger=logger)
     cache.set(name, local_data)
-    return local_data
+    return cast(list[dict[str, Any]], local_data)
 
 
 def save_json_data(
@@ -98,8 +98,9 @@ def save_json_data(
 
 
 async def list_auth_devices(*, load_json_data: Callable[[str], list[dict[str, Any]]]) -> list[dict[str, Any]]:
-    return sorted(
+    sorted_items = sorted(
         load_json_data("auth_devices"),
         key=lambda item: str(item.get("authenticated_at") or ""),
         reverse=True,
     )
+    return cast(list[dict[str, Any]], sorted_items)

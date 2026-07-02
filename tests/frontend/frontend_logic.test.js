@@ -23,7 +23,11 @@ const {
     convertUrlsToLinks,
     foldSettledExtraResults,
     buildDateAdjustmentSummary,
-    filterRespondentRows
+    filterRespondentRows,
+    normalizePerformancePieces,
+    performancePieceDurationText,
+    pieceScopedRows,
+    uploadPieceOptions
 } = require('../../src/static/js/frontend_testable_logic.js');
 
 describe('FE-FN', () => {
@@ -180,6 +184,50 @@ describe('FE-PURE', () => {
         expect(html).toContain('target="_blank"');
         expect(html).toContain('rel="noopener noreferrer"');
         expect(html).toContain('&lt;script&gt;');
+    });
+
+    test('FE-PURE-007 normalize performance pieces', () => {
+        const normalized = normalizePerformancePieces([
+            'String Piece',
+            { composer: 'Mozart', title: 'Requiem', alias: 'Req', duration: '10', is_encore: true },
+            { name: 'Legacy Name Piece' },
+            { title: '' }
+        ]);
+
+        expect(normalized).toEqual([
+            { composer: '', title: 'String Piece' },
+            { composer: 'Mozart', title: 'Requiem', alias: 'Req', duration: '10', is_encore: true },
+            { composer: '', title: 'Legacy Name Piece', alias: '', duration: '', is_encore: false }
+        ]);
+    });
+
+    test('FE-PURE-008 performance piece duration label', () => {
+        expect(performancePieceDurationText({ duration: '7' })).toBe('演奏時間: 7分');
+        expect(performancePieceDurationText({})).toBe('');
+    });
+
+    test('FE-PURE-009 piece scoped rows include migrated rows', () => {
+        const rows = pieceScopedRows(
+            [{ id: 1, title: 'Concert', date: '2026-08-01', pieces: [{ title: 'Sym', composer: 'B' }] }],
+            [{ performance_id: 1, piece: '追加曲' }]
+        );
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0].pieces.map((piece) => piece.title)).toEqual(['Sym', '追加曲']);
+    });
+
+    test('FE-PURE-010 upload piece options include whole practice and dedupe', () => {
+        const options = uploadPieceOptions(
+            {
+                pieces: [
+                    { title: 'Sym', composer: 'B' },
+                    { title: 'Sym', composer: 'B' }
+                ]
+            },
+            '練習全体の通し'
+        );
+
+        expect(options.map((item) => item.value)).toEqual(['B: Sym', '練習全体の通し']);
     });
 });
 

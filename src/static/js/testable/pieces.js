@@ -21,7 +21,66 @@
         const labels = performancePieceLookupLabels(piece);
         return (items || []).find((item) => String(item.performance_id || '') === String(performanceId || '') && labels.includes(String(item.piece || item.title || '').trim()));
     }
-    const api = { resolveOrgShortName, portalTitleTextFromOrg, performancePieceLabel, performancePieceFormalLabel, performancePieceLookupLabels, findPieceScopedItem };
+    function normalizePerformancePieces(pieces) {
+        return (pieces || []).map((piece) => {
+            if (typeof piece === 'string') return { composer: '', title: piece };
+            return {
+                composer: piece?.composer || '',
+                title: piece?.title || piece?.name || '',
+                alias: piece?.alias || piece?.short_name || '',
+                duration: piece?.duration || '',
+                is_encore: Boolean(piece?.is_encore || piece?.encore),
+            };
+        }).filter((piece) => piece.title);
+    }
+    function performancePieceDurationText(piece) {
+        const value = String(piece?.duration || '').trim();
+        return value ? `演奏時間: ${value}分` : '';
+    }
+    function pieceScopedRows(performances, scopedItems) {
+        return (performances || []).map((perf) => {
+            const normalizedPieces = normalizePerformancePieces(perf?.pieces || []);
+            const labels = new Set(normalizedPieces.flatMap(performancePieceLookupLabels));
+            (scopedItems || []).forEach((item) => {
+                if (String(item?.performance_id || '') !== String(perf?.id || '')) return;
+                const itemPiece = String(item?.piece || item?.title || '').trim();
+                if (!itemPiece || labels.has(itemPiece)) return;
+                normalizedPieces.push({ composer: '', title: itemPiece, alias: '' });
+                labels.add(itemPiece);
+            });
+            return {
+                performanceId: String(perf?.id || ''),
+                title: String(perf?.title || ''),
+                date: String(perf?.date || ''),
+                pieces: normalizedPieces,
+            };
+        });
+    }
+    function uploadPieceOptions(performance, wholePracticeLabel = '練習全体の通し') {
+        if (!performance) return [];
+        const options = normalizePerformancePieces(performance?.pieces || [])
+            .map((piece) => ({ value: performancePieceLabel(piece), label: performancePieceFormalLabel(piece) }))
+            .filter((option) => option.value);
+        options.push({ value: wholePracticeLabel, label: wholePracticeLabel });
+        const seen = new Set();
+        return options.filter((option) => {
+            if (seen.has(option.value)) return false;
+            seen.add(option.value);
+            return true;
+        });
+    }
+    const api = {
+        resolveOrgShortName,
+        portalTitleTextFromOrg,
+        performancePieceLabel,
+        performancePieceFormalLabel,
+        performancePieceLookupLabels,
+        findPieceScopedItem,
+        normalizePerformancePieces,
+        performancePieceDurationText,
+        pieceScopedRows,
+        uploadPieceOptions,
+    };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     globalObj.FrontendTestablePieces = api;
 })(typeof window !== 'undefined' ? window : globalThis);

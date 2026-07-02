@@ -54,10 +54,49 @@
 - 追加分割候補の棚卸しを作成（`docs/PHASE7_REFACTORING_CANDIDATES.md`）
 - 社内プロキシ環境向けに E2E 実行時のローカル通信プロキシ除外と Playwright ダウンロード設定を整備
 
+## Phase8-A 自動QA基盤（2026-07-02）
+
+- `npm run setup:local` を追加（`uv sync --extra dev` / `npm install` / `npx playwright install`）
+- `npm run qa:local` を追加（compileall / Python依存脆弱性チェック / backend段階型チェック / frontend policy checks / pytest / frontend test / e2e / ZIP生成）
+- E2E を smoke 中心で拡充（団員導線、管理導線、録音/楽譜空データ耐性）
+- 本番前チェックを実チェック表化し、実機確認は専用チェックリストへ分離
+- Cloud Run / GCS / DB 設定確認の運用ドキュメントを追加
+
+## Phase8-B セキュリティ・運用品質強化（2026-07-02）
+
+- `scripts/check_release_safety.py` を追加し、共有ZIP候補・app_core import境界・frontend方針を事前検証
+- `check:release-safety` / `pre-release` npm scripts を追加
+- CI/E2E workflow に `npm audit --audit-level=high` と `check:release-safety` を追加
+- 診断API `/api/diagnostic/config-status` をデフォルト無効化し、環境変数で公開制御
+- 本番時は `DIAGNOSTIC_CONFIG_REQUIRE_ADMIN=true` を既定とし、管理者認証を要求
+- 診断レスポンスはマスク済み情報のみ返却し、アクセスは監査ログへ記録
+- `src/data/*.example.json` を追加し、実データJSONの共有ZIP混入を防止
+
+## Phase8-C 継続改善（2026-07-02）
+
+- 共有ZIP安全ルールを `scripts/source_zip_safety_rules.json` に外部化し、ZIP生成とrelease-safetyの判定を統一
+- `check:app-core:size` を追加し、`src/backend/app_core.py` の段階的薄化ラインをCI/ローカルで継続監視
+- `pre-release` に `check:app-core:size` と診断APIセキュリティスモーク（`tests/backend/test_diagnostic_config_status.py`）を追加
+- 録音部屋に団員向け検索/絞り込み（キーワード・練習日・曲名）を追加
+
+## Phase8-B 最終補正（Release Safety軽量化）
+
+- `npm run check:release-safety` は `python scripts/check_release_safety.py` で実行（`uv run` 非依存）
+- `npm run zip:source` は `python scripts/create-source-zip.py`（依存未導入環境でも実行可能）
+- `npm run pre-release` は軽量 safety check 後に frontend policy checks と `compileall` を実行する構成
+- フルテスト（`pytest`, `npm run test:frontend`, `npm run test:e2e`）は `uv sync --extra dev` / `npm install` 後に実行
+
 ## ローカルテスト手順
 
 - 詳細手順: [docs/LOCAL_TEST_SETUP.md](docs/LOCAL_TEST_SETUP.md)
 - 最短手順:
+
+```bash
+npm run setup:local
+npm run qa:local
+```
+
+個別実行する場合:
 
 ```bash
 uv sync
@@ -66,6 +105,22 @@ pytest
 npm run test:frontend
 npx playwright install chromium
 npm run test:e2e
+```
+
+## 品質ゲート運用基準
+
+- 日次開発では `npm run qa:local` を基準とし、以下がすべて PASS であることをマージ前条件とする。
+- Python: `compileall` / `check:security:python` / `check:types:backend` / `pytest`
+- Frontend: `check:frontend:syntax` / `check:frontend:load-order` / `check:frontend:state-access` / `test:frontend` / `test:e2e`
+- Operations: `check:ops:checklists` / `check:tenant:migration` / `check:decision-log` / `check:release:readiness`
+- Release safety: `check:release-safety` / `pre-release`
+- Coverage gate は CI の `quality-gates` ジョブ（backend 70%, frontend 50%）で判定する。
+
+共有ZIP作成前の最小手順:
+
+```bash
+npm run check:release-safety
+npm run zip:source
 ```
 
 社内プロキシ環境で Playwright ブラウザ取得が失敗する場合の例:
@@ -84,7 +139,14 @@ npm run test:e2e
 ## 共有ZIP
 
 - 共有用ソースZIP作成手順: [docs/SOURCE_SHARE_ZIP.md](docs/SOURCE_SHARE_ZIP.md)
+- 実機確認チェックリスト: [docs/MANUAL_DEVICE_QA_CHECKLIST.md](docs/MANUAL_DEVICE_QA_CHECKLIST.md)
+- Cloud Run/GCS/DB 設定確認: [docs/CLOUD_RUN_GCS_DB_CHECK.md](docs/CLOUD_RUN_GCS_DB_CHECK.md)
+- 設計判断ログ: [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md)
+- 判断ログ運用ガイド: [docs/DECISION_LOG_GUIDE.md](docs/DECISION_LOG_GUIDE.md)
+- app_core互換ポリシー: [docs/APP_CORE_COMPAT_POLICY.md](docs/APP_CORE_COMPAT_POLICY.md)
+- 状態アクセス移行計画: [docs/STATE_ACCESS_MIGRATION_PLAN.md](docs/STATE_ACCESS_MIGRATION_PLAN.md)
 - 共有ZIPには `.env.example` を含め、`.env` / `.env.local` は含めない
+- UI/CSS信頼性スモーク: [tests/e2e/ui_css_reliability.spec.js](tests/e2e/ui_css_reliability.spec.js)
 - ローカル依存セットアップ手順: [docs/LOCAL_TEST_SETUP.md](docs/LOCAL_TEST_SETUP.md)
 - Phase5 分割レポート: [docs/PHASE5_REFACTORING_REPORT.md](docs/PHASE5_REFACTORING_REPORT.md)
 - Phase6 分割レポート: [docs/PHASE6_REFACTORING_REPORT.md](docs/PHASE6_REFACTORING_REPORT.md)

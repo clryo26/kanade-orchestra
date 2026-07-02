@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 
+from ..core.auth_dependencies import get_recording_manager_device_auth
 from ..drive_storage import get_storage_bucket
 from ..models.schemas import RecordingDeleteRequest
-from ..services.auth_service import require_recording_manager_device
 from ..services.blob_streaming_service import stream_storage_blob
 from ..services.file_service import format_duration, safe_segment, safe_upload_name
 from ..services.recording_asset_service import (
@@ -36,9 +36,8 @@ async def convert_audio(
     file: UploadFile = File(...),
     date: str = Form(""),
     piece: str = Form(""),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _recording_manager: dict[str, Any] = Depends(get_recording_manager_device_auth),
 ) -> dict[str, Any]:
-    require_recording_manager_device(x_device_id)
     return convert_audio_upload(
         file,
         date,
@@ -108,8 +107,10 @@ async def download_recording(path: str) -> FileResponse:
 
 
 @router.delete("/api/recordings")
-async def delete_recording(payload: RecordingDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
-    require_recording_manager_device(x_device_id)
+async def delete_recording(
+    payload: RecordingDeleteRequest,
+    _recording_manager: dict[str, Any] = Depends(get_recording_manager_device_auth),
+) -> dict[str, str]:
     if payload.source == "google_cloud_storage":
         object_name = payload.object_name.strip()
         if not object_name:
@@ -146,9 +147,8 @@ async def upload_to_drive(
     file: UploadFile = File(...),
     date: str = Form(""),
     piece: str = Form(""),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _recording_manager: dict[str, Any] = Depends(get_recording_manager_device_auth),
 ) -> dict[str, Any]:
-    require_recording_manager_device(x_device_id)
     return upload_to_drive_only(
         file,
         date,

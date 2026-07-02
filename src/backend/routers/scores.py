@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Header, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 
+from ..core.auth_dependencies import get_sheet_manager_device_auth
 from ..models.schemas import SheetBulkPartUpdateRequest, SheetDeleteRequest, SheetPartUpdateRequest
-from ..services.auth_service import require_sheet_manager_device
 from ..services.blob_streaming_service import stream_storage_blob
 from ..services import sheet_service
 from ..services.sheet_asset_service import local_sheet_path
@@ -59,27 +59,33 @@ async def upload_sheet(
     performance_id: str = Form(""),
     performance_title: str = Form(""),
     piece: str = Form(""),
-    x_device_id: str = Header(default="", alias="X-Device-Id"),
+    _sheet_manager: dict[str, Any] = Depends(get_sheet_manager_device_auth),
 ) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
     return sheet_service.upload_sheet_file(file, performance_id, performance_title, piece)
 
 
 @router.put("/api/sheets/{sheet_id}/part")
-async def update_sheet_part(sheet_id: int, payload: SheetPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
+async def update_sheet_part(
+    sheet_id: int,
+    payload: SheetPartUpdateRequest,
+    _sheet_manager: dict[str, Any] = Depends(get_sheet_manager_device_auth),
+) -> dict[str, Any]:
     return sheet_service.update_sheet_part(sheet_id, payload.part)
 
 
 @router.put("/api/sheets/parts")
-async def update_sheets_parts(payload: SheetBulkPartUpdateRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
+async def update_sheets_parts(
+    payload: SheetBulkPartUpdateRequest,
+    _sheet_manager: dict[str, Any] = Depends(get_sheet_manager_device_auth),
+) -> dict[str, Any]:
     return sheet_service.update_sheets_parts(payload.sheet_ids, payload.part)
 
 
 @router.delete("/api/sheets")
-async def delete_sheets(payload: SheetDeleteRequest, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
-    require_sheet_manager_device(x_device_id)
+async def delete_sheets(
+    payload: SheetDeleteRequest,
+    _sheet_manager: dict[str, Any] = Depends(get_sheet_manager_device_auth),
+) -> dict[str, Any]:
     return sheet_service.delete_sheets(payload.performance_id, payload.piece, payload.sheet_id)
 
 
