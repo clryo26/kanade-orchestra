@@ -4,6 +4,7 @@ PORTAL_DB_TABLES = {
     "portal_json_collections",
     "performances",
     "performance_pieces",
+    "performance_day_infos",
     "schedules",
     "announcements",
     "events",
@@ -51,6 +52,7 @@ JSON_COLLECTION_TABLES = {
     "date_adjustment_responses": "date_adjustment_responses",
     "piece_infos": "piece_infos",
     "practice_instructions": "practice_instructions",
+    "performance_day_infos": "performance_day_infos",
     "payments": "payments",
     "castings": "castings",
     "desired_pieces": "desired_pieces",
@@ -169,6 +171,20 @@ DB_COLLECTION_COLUMNS = {
     "date_adjustment_responses": ("id", "adjustment_id", "candidate_key", "member_id", "name", "status", "note", "created_at", "updated_at"),
     "piece_infos": ("id", "performance_id", "piece", "description", "created_at", "updated_at"),
     "practice_instructions": ("id", "performance_id", "piece", "practice_notes", "performance_instruction", "created_at", "updated_at"),
+    "performance_day_infos": (
+        "id",
+        "performance_id",
+        "timeline",
+        "timeline_rows",
+        "costume_detail",
+        "costume",
+        "assignments_rows",
+        "assignments",
+        "timetable",
+        "duties",
+        "created_at",
+        "updated_at",
+    ),
     "payments": (
         "id",
         "member_id",
@@ -308,6 +324,7 @@ DB_INT_COLUMNS = {
     "date_adjustment_responses": {"id", "adjustment_id", "member_id"},
     "piece_infos": {"id", "performance_id"},
     "practice_instructions": {"id", "performance_id"},
+    "performance_day_infos": {"id", "performance_id"},
     "payments": {"id", "member_id"},
     "castings": {"id", "performance_id"},
     "desired_pieces": {"id", "member_id"},
@@ -346,6 +363,7 @@ DB_MONTH_COLUMNS = {
 }
 
 DB_JSON_COLUMNS = {
+    "performance_day_infos": {"timeline_rows", "costume_detail", "assignments_rows"},
     "sns_settings": {"extra_links"},
 }
 

@@ -27,6 +27,19 @@
         if (heavy) targets.splice(5, 0, 'renderRecordings', 'renderSheetAdmin');
         return targets;
     }
+    function renderBackgroundViewTargets(includeHeavyLists) {
+        const targets = ['renderSchedules','renderEvents','renderMembers','renderMemberExtraViews','renderSheetAdmin','renderCastingAdmin','renderPracticeInstructionAdmin','renderPerformanceDayInfoAdmin','renderAuthDevices','renderSchedulePerformanceOptions','updateSchedulePieceOptions','renderPortalHome'];
+        if (includeHeavyLists === false) return targets;
+        return targets;
+    }
+    function adminTabRenderTargets(tabName) {
+        const map = {
+            schedule: ['renderSchedulePerformanceOptions','updateSchedulePieceOptions','renderSchedules'],
+            event: ['renderEvents'],
+            member: ['renderMembers'],
+        };
+        return map[tabName] || [];
+    }
     function buildRequestHeadersForApi(headers, deviceId) { return { ...(headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) }; }
     function buildConditionalGetHeadersForApi(baseHeaders, etag) { return { ...(baseHeaders || {}), ...(etag ? { 'If-None-Match': etag } : {}) }; }
     function portalMenuStatePatch(tabName) {
@@ -61,7 +74,18 @@
         const state = currentState || {};
         return { failed, values: { absences: resultMap.get('absences') || state.absences || [], eventResponses: resultMap.get('eventResponses') || state.eventResponses || [], dateAdjustments: resultMap.get('dateAdjustments') || state.dateAdjustments || [], dateAdjustmentResponses: resultMap.get('dateAdjustmentResponses') || state.dateAdjustmentResponses || [], sheets: resultMap.get('sheets') || { files: state.sheetLibrary || [] }, payments: resultMap.get('payments') || state.payments || [], castings: resultMap.get('castings') || state.castings || [], pieceInfos: resultMap.get('pieceInfos') || state.pieceInfos || [], practiceInstructions: resultMap.get('practiceInstructions') || state.practiceInstructions || [], desiredPieces: resultMap.get('desiredPieces') || state.desiredPieces || [], promotions: resultMap.get('promotions') || state.promotions || [], albums: resultMap.get('albums') || state.albums || [], partSettings: resultMap.get('partSettings') || state.partSettings || [], venueSettings: resultMap.get('venueSettings') || state.venueSettings || [], orgSettings: resultMap.get('orgSettings') || state.orgSettings || [], snsSettings: resultMap.get('snsSettings') || state.snsSettings || [], connectionSettings: resultMap.get('connectionSettings') || state.connectionSettings || [] } };
     }
-    const api = { mutationRelatedCacheKeys, loadAllEndpointFromOptions, renderInitialViewTargets, buildRequestHeadersForApi, buildConditionalGetHeadersForApi, portalMenuStatePatch, detailEditorUiState, systemAccessLogContract, loginRevisionUiContract, memberPasswordBadgeState, memberSelectionFormPatch, paymentStatusContract, castingEditorState, castingTableLayoutContract, performanceFormLayoutContract, sheetLibraryHeadingContract, foldSettledExtraResults };
+    function performanceDayAssignmentRowsForPayload(rows) {
+        return (Array.isArray(rows) ? rows : [])
+            .map((row) => ({ role: String(row?.role || '').trim(), members: String(row?.members || '').trim() }))
+            .filter((row) => row.role || row.members);
+    }
+    function performanceDayAssignmentRowsAfterAdd(rows) {
+        const currentRows = Array.isArray(rows) && rows.length
+            ? rows.map((row) => ({ role: String(row?.role || '').trim(), members: String(row?.members || '').trim() }))
+            : [{ role: '', members: '' }];
+        return [...currentRows, { role: '', members: '' }];
+    }
+    const api = { mutationRelatedCacheKeys, loadAllEndpointFromOptions, renderInitialViewTargets, renderBackgroundViewTargets, adminTabRenderTargets, buildRequestHeadersForApi, buildConditionalGetHeadersForApi, portalMenuStatePatch, detailEditorUiState, systemAccessLogContract, loginRevisionUiContract, memberPasswordBadgeState, memberSelectionFormPatch, paymentStatusContract, castingEditorState, castingTableLayoutContract, performanceFormLayoutContract, sheetLibraryHeadingContract, foldSettledExtraResults, performanceDayAssignmentRowsForPayload, performanceDayAssignmentRowsAfterAdd };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     globalObj.FrontendTestableValidation = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 describe('runtime bootstrap order', () => {
     test('index.html loads app_state before runtime_context and both before main', () => {
@@ -25,5 +26,34 @@ describe('runtime bootstrap order', () => {
         expect(appStatePos).toBeGreaterThan(-1);
         expect(runtimePos).toBeGreaterThan(-1);
         expect(appStatePos).toBeLessThan(runtimePos);
+    });
+
+    test('runtime_context avoids recursive legacy appState getter fallback', () => {
+        const runtimeContextJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/utils/runtime_context.js'),
+            'utf8'
+        );
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            document: { getElementById: () => null },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.portalCacheState = {
+            dbCache: {},
+            inFlightGetRequests: new Map(),
+        };
+        Object.defineProperty(sandbox, 'appState', {
+            configurable: true,
+            get() {
+                return sandbox.portalRuntimeContext.appState;
+            },
+        });
+
+        vm.runInNewContext(runtimeContextJs, sandbox);
+
+        expect(() => sandbox.portalRuntimeContext.appState).not.toThrow();
+        expect(sandbox.portalRuntimeContext.appState).toBeUndefined();
     });
 });

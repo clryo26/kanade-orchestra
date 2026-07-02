@@ -249,8 +249,8 @@ function setCostumeDetailForm(detail) {
 function renderPerformanceDayAssignmentRows(rows = []) {
     const container = $('performanceDayAssignmentRows');
     if (!container) return;
-    const normalizedRows = (rows || []).filter((row) => String(row?.role || '').trim() || String(row?.members || '').trim());
-    const renderRows = normalizedRows.length ? normalizedRows : [{ role: '', members: '' }];
+    // Editing state must keep blank rows; the save payload is filtered separately.
+    const renderRows = Array.isArray(rows) && rows.length ? rows : [{ role: '', members: '' }];
     container.innerHTML = renderRows.map((row, index) => `
         <tr>
             <td><input type="text" class="form-control form-control-sm performance-day-assignment-role" value="${escapeHtml(String(row.role || ''))}" placeholder="例: 受付"></td>
@@ -260,7 +260,7 @@ function renderPerformanceDayAssignmentRows(rows = []) {
     `).join('');
     container.querySelectorAll('.performance-day-assignment-delete-btn').forEach((button) => {
         button.addEventListener('click', () => {
-            const currentRows = collectPerformanceDayAssignmentRows();
+            const currentRows = collectPerformanceDayAssignmentRows({ includeBlankRows: true });
             const targetIndex = Number(button.dataset.rowIndex || '-1');
             if (targetIndex >= 0) currentRows.splice(targetIndex, 1);
             renderPerformanceDayAssignmentRows(currentRows);
@@ -269,18 +269,20 @@ function renderPerformanceDayAssignmentRows(rows = []) {
 }
 
 function addPerformanceDayAssignmentRow() {
-    const currentRows = collectPerformanceDayAssignmentRows();
+    const currentRows = collectPerformanceDayAssignmentRows({ includeBlankRows: true });
     currentRows.push({ role: '', members: '' });
     renderPerformanceDayAssignmentRows(currentRows);
 }
 
-function collectPerformanceDayAssignmentRows() {
+function collectPerformanceDayAssignmentRows(options = {}) {
     const container = $('performanceDayAssignmentRows');
     if (!container) return [];
-    return [...container.querySelectorAll('tr')].map((row) => ({
+    const rows = [...container.querySelectorAll('tr')].map((row) => ({
         role: String(row.querySelector('.performance-day-assignment-role')?.value || '').trim(),
         members: String(row.querySelector('.performance-day-assignment-members')?.value || '').trim()
-    })).filter((item) => item.role || item.members);
+    }));
+    if (options.includeBlankRows) return rows;
+    return rows.filter((item) => item.role || item.members);
 }
 
 function assignmentRowsHtml(rows) {

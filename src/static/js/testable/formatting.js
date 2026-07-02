@@ -76,14 +76,17 @@
     }
     function convertUrlsToLinks(text) {
         const source = String(text ?? '');
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const urlRegex = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/g;
         let cursor = 0;
         let html = '';
         source.replace(urlRegex, (url, offset) => {
             html += escapeHtml(source.slice(cursor, offset));
+            const trailingMatch = url.match(/[.,;:!?。、，．）)\]}」』]+$/);
+            const trailingText = trailingMatch ? trailingMatch[0] : '';
+            const linkUrl = trailingText ? url.slice(0, -trailingText.length) : url;
             try {
-                new URL(url);
-                html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">${escapeHtml(url)}</a>`;
+                new URL(linkUrl);
+                html += `<a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">${escapeHtml(linkUrl)}</a>${escapeHtml(trailingText)}`;
             } catch {
                 html += escapeHtml(url);
             }

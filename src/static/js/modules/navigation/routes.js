@@ -109,6 +109,13 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-date-adjustment') renderDateAdjustmentView();
     if (renderOnShow && tabName === 'member-piece-info') renderPieceInfoView();
     if (renderOnShow && tabName === 'announcement-detail') renderAnnouncementDetail();
+    if (renderOnShow && tabName === 'schedule') {
+        renderSchedulePerformanceOptions();
+        updateSchedulePieceOptions();
+        renderSchedules();
+    }
+    if (renderOnShow && tabName === 'event') renderEvents();
+    if (renderOnShow && tabName === 'member') renderMembers();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();

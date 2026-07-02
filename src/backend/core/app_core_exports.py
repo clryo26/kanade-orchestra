@@ -16,6 +16,7 @@ APP_CORE_EXPORTS = (
     "DB_CHILD_COLUMNS",
     "DB_COLLECTION_COLUMNS",
     "DB_INT_COLUMNS",
+    "DB_JSON_COLUMNS",
     "DB_TIMESTAMP_COLUMNS",
     "db_configured",
     "db_connection_string",

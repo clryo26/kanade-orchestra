@@ -55,4 +55,119 @@ test.describe('UI CSS reliability smoke', () => {
 
     monitor.assertNoClientErrors();
   });
+
+  test('mobile recording controls and member intro photos keep stable layout', async ({ page }) => {
+    const monitor = attachErrorMonitor(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installPortalApiMocks(page, {
+      permission: '荳闊ｬ',
+      bootstrapOverrides: {
+        members: [{
+          id: 1,
+          name: 'Test Member',
+          last_name: 'Test',
+          first_name: 'Member',
+          part: 'Violin',
+          permission: 'member',
+          password_set: true,
+          photo_url: '/static/icons/icon-192.png',
+        }],
+      },
+    });
+    await page.goto('/');
+    await loginAsMember(page);
+
+    await page.click('#portalDrawerToggle');
+    await page.locator('#portalDrawerMenu [data-home-tab="member-recording"]').click();
+    await expect(page.locator('#memberRecordingTab')).toBeVisible();
+    await expect(page.locator('.recording-continuous-check')).toBeVisible();
+
+    const recordingLayout = await page.evaluate(() => {
+      const filter = document.querySelector('.recording-filter-row');
+      const continuous = document.querySelector('.recording-continuous-check');
+      const firstGroup = document.querySelector('#songTreeMember .recording-date-group');
+      const viewportWidth = document.documentElement.clientWidth;
+      const rect = (element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          top: box.top,
+          right: box.right,
+          bottom: box.bottom,
+          left: box.left,
+          width: box.width,
+          height: box.height,
+        };
+      };
+      return {
+        filter: rect(filter),
+        continuous: rect(continuous),
+        firstGroup: rect(firstGroup),
+        viewportWidth,
+      };
+    });
+
+    expect(recordingLayout.continuous.top).toBeGreaterThanOrEqual(recordingLayout.filter.bottom - 1);
+    expect(recordingLayout.continuous.bottom).toBeLessThanOrEqual(recordingLayout.firstGroup.top + 1);
+    expect(recordingLayout.continuous.left).toBeGreaterThanOrEqual(0);
+    expect(recordingLayout.continuous.right).toBeLessThanOrEqual(recordingLayout.viewportWidth);
+
+    await page.click('#portalDrawerToggle');
+    await page.locator('#portalDrawerMenu [data-home-tab="member-intro"]').click();
+    await expect(page.locator('#memberIntroTab')).toBeVisible();
+    await expect(page.locator('.member-photo')).toBeVisible();
+
+    const photoLayout = await page.locator('.member-photo').first().evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    });
+
+    expect(photoLayout.width).toBeGreaterThanOrEqual(220);
+    expect(photoLayout.height).toBeGreaterThan(photoLayout.width);
+    expect(photoLayout.height / photoLayout.width).toBeLessThanOrEqual(1.3);
+
+    monitor.assertNoClientErrors();
+  });
+
+  test('mobile album photo viewer can return to portal album screen', async ({ page }) => {
+    const monitor = attachErrorMonitor(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installPortalApiMocks(page, {
+      permission: '荳闊ｬ',
+      bootstrapOverrides: {
+        extras: {
+          albums: [{
+            id: 1,
+            event_name: 'Mobile Album',
+            created_by_member_id: 1,
+            created_by_member_name: 'Test Member',
+            created_at: '2026-07-02T10:00:00Z',
+            photos: [{
+              filename: 'sample.png',
+              url: '/static/icons/icon-192.png',
+              uploaded_by_member_name: 'Test Member',
+              uploaded_at: '2026-07-02T10:01:00Z',
+            }],
+          }],
+        },
+      },
+    });
+    await page.goto('/');
+    await loginAsMember(page);
+
+    await page.click('#portalDrawerToggle');
+    await page.locator('#portalDrawerMenu [data-home-tab="member-album"]').click();
+    await expect(page.locator('#memberAlbumTab')).toBeVisible();
+    await expect(page.locator('.album-photo-open-btn')).toBeVisible();
+
+    await page.locator('.album-photo-open-btn').first().click();
+    await expect(page.locator('#albumPhotoViewer')).toBeVisible();
+    await expect(page.locator('#albumPhotoViewerCloseBtn')).toBeVisible();
+
+    await page.locator('#albumPhotoViewerCloseBtn').click();
+    await expect(page.locator('#albumPhotoViewer')).toBeHidden();
+    await expect(page.locator('#memberAlbumTab')).toBeVisible();
+    await expect(page.locator('#memberPanel')).toBeVisible();
+
+    monitor.assertNoClientErrors();
+  });
 });

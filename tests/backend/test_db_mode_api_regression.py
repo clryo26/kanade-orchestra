@@ -218,6 +218,24 @@ def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkey
     )
     assert updated_org.status_code == 200
 
+    created_performance_day = client.post(
+        "/api/extra/performance_day_infos",
+        headers=admin_headers,
+        json={
+            "performance_id": str(perf_id),
+            "timeline": "09:00 集合",
+            "timeline_rows": [{"start_time": "09:00", "content": "集合"}],
+            "costume_detail": {"male": {"upper": "黒"}, "female": {"upper": "黒"}},
+            "costume": "黒衣装",
+            "assignments_rows": [{"role": "受付", "members": "田中"}],
+            "assignments": "受付: 田中",
+            "timetable": "09:00 集合",
+            "duties": "受付: 田中",
+        },
+    )
+    assert created_performance_day.status_code == 200
+    assert db_store["performance_day_infos"][0]["assignments_rows"] == [{"role": "受付", "members": "田中"}]
+
     created_absence = client.post(
         "/api/extra/absences",
         headers=user_headers,
@@ -243,3 +261,96 @@ def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkey
     )
     assert deleted_perf.status_code == 200
     assert all(item.get("id") != perf_id for item in db_store["performances"])
+
+
+def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 1,
+                "name": "Admin",
+                "last_name": "",
+                "first_name": "",
+                "part": "Vn",
+                "password": "pw-admin",
+                "permission": "管理者",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "system_access_until": "",
+            }
+        ],
+        "auth_devices": [
+            {
+                "id": 1,
+                "device_id": "dev-admin",
+                "member_id": 1,
+                "member_name": "Admin",
+                "member_part": "Vn",
+                "permission": "管理者",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "authenticated_at": "2026-06-29T00:00:00",
+                "last_seen_at": "2026-06-29T00:00:00",
+            }
+        ],
+        "performances": [{"id": 10, "title": "Concert", "date": "2026-07-01"}],
+        "schedules": [{"id": 20, "date": "2026-06-30", "venue": "Studio"}],
+        "announcements": [],
+        "events": [{"id": 30, "title": "Event"}],
+        "absences": [],
+        "event_responses": [],
+        "date_adjustments": [],
+        "date_adjustment_responses": [],
+        "sheet_library": [],
+        "payments": [],
+        "castings": [],
+        "piece_infos": [],
+        "practice_instructions": [],
+        "performance_day_infos": [],
+        "albums": [],
+        "part_settings": [],
+        "venue_settings": [],
+        "org_settings": [],
+        "sns_settings": [],
+        "connection_settings": [],
+        "desired_pieces": [],
+        "promotions": [],
+        "drive_files": [],
+        "recording_metadata": [],
+    }
+    _enable_db_mode(backend_env, monkeypatch, db_store)
+    headers = {"X-Device-Id": "dev-admin"}
+
+    payloads = {
+        "absences": {"schedule_id": 20, "member_id": 1, "name": "Admin", "status": "ng", "note": "late"},
+        "event_responses": {"event_id": 30, "member_id": 1, "name": "Admin", "status": "ok", "note": ""},
+        "date_adjustments": {
+            "title": "候補日",
+            "candidates": [{"id": "cand-1", "date": "2026-07-10", "start_time": "18:00", "end_time": "21:00"}],
+            "created_by": "Admin",
+            "member_id": 1,
+        },
+        "date_adjustment_responses": {"adjustment_id": 1, "candidate_id": "cand-1", "member_id": 1, "name": "Admin", "status": "ok"},
+        "sheet_library": {"performance_id": 10, "performance_title": "Concert", "piece": "Sym", "part": "Vn", "name": "sym.pdf"},
+        "payments": {"member_id": 1, "name": "Admin", "paid_until_month": "2026-07", "performance_fees": {"10": True}},
+        "castings": {"performance_id": 10, "piece": "Sym", "members": [{"member_id": 1, "part": "Vn"}], "extras": []},
+        "piece_infos": {"performance_id": 10, "piece": "Sym", "description": "note"},
+        "practice_instructions": {"performance_id": 10, "piece": "Sym", "practice_notes": "note"},
+        "performance_day_infos": {"performance_id": 10, "timeline": "09:00 集合", "assignments_rows": [{"role": "受付", "members": "Admin"}]},
+        "albums": {"event_name": "Concert Album", "created_by_member_id": 1, "created_by_member_name": "Admin"},
+        "part_settings": {"name": "Violin", "display_order": 1, "is_active": True},
+        "venue_settings": {"name": "Hall", "for_practice": True, "for_performance": True, "sort_order": 1},
+        "org_settings": {"name": "Kanade Orchestra", "short_name": "Kanade", "membership_fee_amount": 1000},
+        "sns_settings": {"x_url": "https://example.com/x", "extra_links": [{"label": "Web", "url": "https://example.com"}]},
+        "connection_settings": {"google_cloud_storage_bucket": "bucket", "google_cloud_storage_data_prefix": "app-data"},
+        "desired_pieces": {"title": "Request", "piece": "Sym", "member_id": 1, "registered_by": "Admin", "votes": []},
+        "promotions": {"title": "Promo", "summary": "summary", "member_id": 1, "registered_by": "Admin"},
+    }
+
+    for collection, payload in payloads.items():
+        created = client.post(f"/api/extra/{collection}", headers=headers, json=payload)
+        assert created.status_code == 200, collection
+        item = created.json()
+        updated = client.put(f"/api/extra/{collection}/{item['id']}", headers=headers, json={**payload, "id": item["id"]})
+        assert updated.status_code == 200, collection
+        assert db_store[collection], collection

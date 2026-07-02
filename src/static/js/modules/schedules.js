@@ -261,6 +261,7 @@ function scheduleToIcsEvent(sched) {
 
 function renderSchedules() {
     const container = $('schedListItems');
+    if (!container) return;
     if (!appState.schedules.length) {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
         if (!appState.suppressDerivedRender) renderMemberSchedules();

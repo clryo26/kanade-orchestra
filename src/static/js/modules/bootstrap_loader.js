@@ -231,12 +231,17 @@ async function legacyBootstrapData(includeHeavyLists = true) {
 
 function applyBootstrapData(data) {
     const extras = data.extras || {};
+    const collectionOrCurrent = (name) => (
+        Object.prototype.hasOwnProperty.call(data, name)
+            ? (data[name] || [])
+            : (appState[name] || [])
+    );
     Object.assign(appState, {
-        performances: data.performances || [],
-        schedules: data.schedules || [],
-        announcements: data.announcements || [],
-        events: data.events || [],
-        members: data.members || [],
+        performances: collectionOrCurrent('performances'),
+        schedules: collectionOrCurrent('schedules'),
+        announcements: collectionOrCurrent('announcements'),
+        events: collectionOrCurrent('events'),
+        members: collectionOrCurrent('members'),
         recordings: data.recordings?.files || appState.recordings || [],
         absences: extras.absences || [],
         eventResponses: extras.event_responses || [],
@@ -330,6 +335,9 @@ function renderInitialViews(options = {}) {
 
 function renderBackgroundViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
+    renderSchedules();
+    renderEvents();
+    renderMembers();
     renderMemberExtraViews({ includeHeavyLists });
     renderSheetAdmin();
     renderCastingAdmin();

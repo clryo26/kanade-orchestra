@@ -47,13 +47,6 @@ def get_diagnostic_admin_auth(
     """
 
     token = os.getenv("DIAGNOSTIC_CONFIG_ADMIN_TOKEN", "").strip()
-    allow_device_auth = os.getenv("DIAGNOSTIC_CONFIG_ALLOW_DEVICE_AUTH", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
     auth_header = (authorization or "").strip()
     if auth_header.lower().startswith("bearer "):
         candidate = auth_header[7:].strip()

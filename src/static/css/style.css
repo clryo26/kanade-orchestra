@@ -459,21 +459,24 @@ body {
 }
 
 .recording-controls {
-    align-items: center;
+    align-items: stretch;
     background: #fff;
     border: 1px solid var(--line);
     border-radius: 8px;
-    display: flex;
-    justify-content: flex-end;
+    display: grid;
+    gap: 0.65rem;
     margin-bottom: 0.75rem;
     padding: 0.65rem 0.75rem;
 }
 
 .recording-continuous-check {
     align-items: center;
-    display: inline-flex;
+    display: flex;
     gap: 0.45rem;
+    justify-self: start;
     margin: 0;
+    min-height: 2.2rem;
+    padding: 0.15rem 0;
 }
 
 .recording-row {
@@ -558,6 +561,18 @@ body {
         min-width: 48px;
         padding-left: 0.55rem;
         padding-right: 0.55rem;
+    }
+
+    .recording-controls {
+        padding: 0.75rem;
+    }
+
+    .recording-continuous-check {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0.45rem 0.55rem;
+        width: 100%;
     }
 
 }
@@ -813,6 +828,59 @@ body {
     border: 1px solid #dee2e6;
     background: #f8f9fa;
 }
+.album-photo-open-btn {
+    background: transparent;
+    border: 0;
+    display: block;
+    padding: 0;
+    width: 100%;
+}
+.album-photo-open-btn:focus-visible {
+    outline: 3px solid rgba(35, 87, 137, 0.35);
+    outline-offset: 3px;
+}
+.album-photo-viewer {
+    background: rgba(15, 23, 42, 0.94);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    inset: 0;
+    position: fixed;
+    z-index: 1200;
+}
+.album-photo-viewer[hidden] {
+    display: none !important;
+}
+.album-photo-viewer-toolbar {
+    align-items: center;
+    color: #fff;
+    display: flex;
+    gap: 0.75rem;
+    padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem 0.75rem;
+}
+.album-photo-viewer-title {
+    flex: 1;
+    font-size: 0.9rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.album-photo-viewer-body {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+    overflow: auto;
+    padding: 0 0.75rem max(0.75rem, env(safe-area-inset-bottom));
+}
+.album-photo-viewer-body img {
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+}
+body.album-photo-viewer-open {
+    overflow: hidden;
+}
 .payment-performance-list {
     display: grid;
     gap: 0.35rem;
@@ -930,9 +998,9 @@ body {
 }
 .member-photo {
     width: 100%;
-    max-width: 240px;
+    max-width: 320px;
     height: auto;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 4 / 5;
     object-fit: cover;
     border-radius: 0;
     align-self: center;

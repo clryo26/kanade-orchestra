@@ -4,11 +4,25 @@
         return;
     }
 
+    const readOwnDataProperty = (name) => {
+        const descriptor = Object.getOwnPropertyDescriptor(globalObj, name);
+        if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+            return undefined;
+        }
+        return descriptor.value;
+    };
+
     const resolveAppState = () => {
         if (typeof globalObj.getAppState === 'function') {
             return globalObj.getAppState();
         }
-        return globalObj.portalAppState || globalObj.appState;
+        const portalAppState = readOwnDataProperty('portalAppState');
+        if (portalAppState) {
+            return portalAppState;
+        }
+        // Do not read accessor-based window.appState here. Older compatibility
+        // getters may point back to portalRuntimeContext.appState and recurse.
+        return readOwnDataProperty('appState');
     };
 
     const context = {

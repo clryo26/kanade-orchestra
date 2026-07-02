@@ -27,7 +27,9 @@ const {
     normalizePerformancePieces,
     performancePieceDurationText,
     pieceScopedRows,
-    uploadPieceOptions
+    uploadPieceOptions,
+    performanceDayAssignmentRowsForPayload,
+    performanceDayAssignmentRowsAfterAdd
 } = require('../../src/static/js/frontend_testable_logic.js');
 
 describe('FE-FN', () => {
@@ -186,6 +188,12 @@ describe('FE-PURE', () => {
         expect(html).toContain('&lt;script&gt;');
     });
 
+    test('FE-PURE-006b linkifies URLs in place without duplicating text', () => {
+        const html = convertUrlsToLinks('前文 https://example.com/a?b=1。後文');
+        expect(html).toBe('前文 <a href="https://example.com/a?b=1" target="_blank" rel="noopener noreferrer" class="text-decoration-underline">https://example.com/a?b=1</a>。後文');
+        expect(html.match(/https:\/\/example\.com\/a\?b=1/g)).toHaveLength(2);
+    });
+
     test('FE-PURE-007 normalize performance pieces', () => {
         const normalized = normalizePerformancePieces([
             'String Piece',
@@ -228,6 +236,15 @@ describe('FE-PURE', () => {
         );
 
         expect(options.map((item) => item.value)).toEqual(['B: Sym', '練習全体の通し']);
+    });
+    test('FE-PURE-011 performance day assignment add keeps blank edit rows', () => {
+        const rows = performanceDayAssignmentRowsAfterAdd([{ role: '受付', members: '田中' }]);
+
+        expect(rows).toEqual([
+            { role: '受付', members: '田中' },
+            { role: '', members: '' }
+        ]);
+        expect(performanceDayAssignmentRowsForPayload(rows)).toEqual([{ role: '受付', members: '田中' }]);
     });
 });
 
