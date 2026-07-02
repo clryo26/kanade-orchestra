@@ -17,6 +17,34 @@ NextId = Callable[[list[dict[str, Any]]], int]
 FormatDuration = Callable[[float | int | None], str]
 
 
+def _looks_like_date(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+        try:
+            datetime.strptime(text, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _infer_date_and_piece(value: str | None) -> tuple[str, str]:
+    text = str(value or "").strip().replace("\\", "/")
+    if not text:
+        return "", ""
+    segments = [segment for segment in text.split("/") if segment]
+    if not segments:
+        return "", ""
+    for index, segment in enumerate(segments):
+        if _looks_like_date(segment):
+            return segment, segments[index + 1] if index + 1 < len(segments) else ""
+    if len(segments) >= 2:
+        return segments[0], segments[1]
+    return "", ""
+
+
 def recording_metadata_map(*, load_json_data: LoadJsonData) -> dict[str, dict[str, Any]]:
     items = load_json_data("recording_metadata")
     return {str(item.get("path") or item.get("object_name") or item.get("id") or ""): item for item in items}
@@ -99,6 +127,9 @@ def cloud_recording_metadata(
 
     encoded_object_name = quote(str(object_name), safe="/")
     normalized["object_name"] = object_name
+    inferred_date, inferred_piece = _infer_date_and_piece(str(object_name))
+    normalized["date"] = normalized.get("date") or inferred_date
+    normalized["piece"] = normalized.get("piece") or inferred_piece
     cached = metadata_by_key.get(str(object_name), {}) or metadata_by_key.get(str(normalized.get("id") or ""), {})
     if cached and not normalized.get("duration"):
         normalized["duration_seconds"] = cached.get("duration_seconds")
@@ -114,6 +145,10 @@ def remember_drive_file(item: dict[str, Any], *, load_json_data: LoadJsonData, s
     normalized_item = dict(item)
     normalized_item["created_at"] = normalized_item.get("created_at") or now
     normalized_item["updated_at"] = now
+    if object_name and normalized_item.get("source") == "google_cloud_storage":
+        inferred_date, inferred_piece = _infer_date_and_piece(object_name)
+        normalized_item["date"] = normalized_item.get("date") or inferred_date
+        normalized_item["piece"] = normalized_item.get("piece") or inferred_piece
     items = load_json_data("drive_files")
     items = [
         existing

@@ -577,6 +577,28 @@ def test_recording_list_deduplicates_cloud_mirrored_local_file(client, backend_e
     assert files[0]["source"] == "google_cloud_storage"
 
 
+def test_recording_list_infers_date_and_piece_from_cloud_object_name(client, backend_env):
+    backend_env.save_json_data(
+        "drive_files",
+        [
+            {
+                "id": "2026-06-18/Symphony/take1.mp3",
+                "name": "take1.mp3",
+                "object_name": "2026-06-18/Symphony/take1.mp3",
+                "source": "google_cloud_storage",
+            }
+        ],
+    )
+
+    response = client.get("/api/recordings")
+
+    assert response.status_code == 200
+    files = response.json()["files"]
+    assert len(files) == 1
+    assert files[0]["date"] == "2026-06-18"
+    assert files[0]["piece"] == "Symphony"
+
+
 def test_piece_info_crud_allowed_for_authenticated_member(client, seed_device_fn):
     seed_device_fn(device_id="dev-member", permission="一般")
 
