@@ -177,11 +177,11 @@ def db_write_value(table_name: str, column: str, value: Any) -> Any:
         return None
     if column in DB_NUMERIC_COLUMNS.get(table_name, set()):
         if value in (None, ""):
-            return None
+            return Decimal("0")
         try:
             return Decimal(str(value))
         except Exception:
-            return None
+            return Decimal("0")
     if column in DB_DATE_COLUMNS.get(table_name, set()):
         return parse_db_date(value)
     if column in DB_TIME_COLUMNS.get(table_name, set()):
@@ -333,7 +333,9 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
                     children["performance_pieces"].append(
                         {
                             "organization_id": piece.get("organization_id") or parent.get("organization_id") or tenant_id,
-                            "id": piece.get("id"),
+                            # Child rows are fully replaced on save. Let the DB layer allocate
+                            # fresh IDs so updates cannot collide with another organization's rows.
+                            "id": None,
                             "performance_id": parent_id,
                             "sort_order": piece.get("sort_order", index + 1),
                             "title": title,

@@ -17,6 +17,7 @@ BEGIN
         'castings',
         'casting_members',
         'casting_extras',
+        'performance_day_infos',
         'piece_infos',
         'practice_instructions',
         'desired_pieces',

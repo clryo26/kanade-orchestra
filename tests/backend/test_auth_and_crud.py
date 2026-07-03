@@ -464,6 +464,56 @@ def test_update_performance_saves_performance_fee_amount(client, seed_device_fn,
     assert updated.json()["pieces"] == [{"title": "Symphony", "duration": "8"}]
 
 
+def test_performance_save_normalizes_blank_fee_times_and_mixed_pieces(client, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+
+    created = client.post(
+        "/api/performances",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert",
+            "date": "",
+            "open_time": "",
+            "start_time": "",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "performance_fee_amount": "",
+            "pieces": ["Opening", {"title": "Symphony", "duration": "8"}, ""],
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["performance_fee_amount"] == 0
+    assert created.json()["date"] == ""
+    assert created.json()["open_time"] == ""
+    assert created.json()["start_time"] == ""
+    assert created.json()["pieces"] == ["Opening", {"title": "Symphony", "duration": "8"}]
+
+    updated = client.put(
+        "/api/performances/1",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert Updated",
+            "date": None,
+            "open_time": None,
+            "start_time": "",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "performance_fee_amount": None,
+            "pieces": [{"title": "Finale", "sort_order": 2}, "Encore"],
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["performance_fee_amount"] == 0
+    assert updated.json()["date"] == ""
+    assert updated.json()["open_time"] == ""
+    assert updated.json()["pieces"] == [{"title": "Finale", "sort_order": 2}, "Encore"]
+
+    listed = client.get("/api/performances")
+    assert listed.status_code == 200
+    assert listed.json()[0]["title"] == "Concert Updated"
+    assert listed.json()[0]["pieces"] == [{"title": "Finale", "sort_order": 2}, "Encore"]
+
+
 def test_member_password_is_hashed_and_hidden_in_admin_api(client, backend_env, seed_device_fn, admin_headers_fixture):
     seed_device_fn(device_id="dev-admin", permission="管理者")
     created = client.post(
