@@ -153,8 +153,6 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         dateAdjustmentResponses,
         sheetLibrary,
         payments,
-        flyerPlaces,
-        flyerDistributions,
         castings,
         pieceInfos,
         practiceInstructions,
@@ -182,8 +180,6 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         request('/api/extra/date_adjustment_responses'),
         request('/api/extra/sheet_library'),
         request('/api/extra/payments'),
-        request('/api/extra/flyer_places'),
-        request('/api/extra/flyer_distributions'),
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
         request('/api/extra/practice_instructions'),
@@ -213,8 +209,6 @@ async function legacyBootstrapData(includeHeavyLists = true) {
             date_adjustment_responses: dateAdjustmentResponses,
             sheet_library: sheetLibrary,
             payments,
-            flyer_places: flyerPlaces,
-            flyer_distributions: flyerDistributions,
             castings,
             piece_infos: pieceInfos,
             practice_instructions: practiceInstructions,
@@ -238,6 +232,16 @@ async function legacyBootstrapData(includeHeavyLists = true) {
 
 function applyBootstrapData(data) {
     const extras = data.extras || {};
+    const bootstrapErrors = data.extra_errors || data.extraErrors || [];
+    if (bootstrapErrors.length) {
+        const message = bootstrapErrors
+            .map((item) => `${item.collection || 'unknown'}: ${item.type || 'Error'} ${item.detail || ''}`.trim())
+            .join(' / ');
+        console.warn('Bootstrap extra collection load failures', bootstrapErrors);
+        if (typeof showAlert === 'function') {
+            showAlert(`一部データの読み込みに失敗しました: ${message}`, 'warning');
+        }
+    }
     const collectionOrCurrent = (name) => (
         Object.prototype.hasOwnProperty.call(data, name)
             ? (data[name] || [])
@@ -256,7 +260,7 @@ function applyBootstrapData(data) {
         dateAdjustmentResponses: extras.date_adjustment_responses || [],
         sheetLibrary: data.sheets?.files || extras.sheet_library || appState.sheetLibrary || [],
         payments: extras.payments || [],
-        flyerPlaces: extras.flyer_places || [],
+        flyerPlaces: extras.flyer_places || appState.flyerPlaces || [],
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
         practiceInstructions: extras.practice_instructions || [],

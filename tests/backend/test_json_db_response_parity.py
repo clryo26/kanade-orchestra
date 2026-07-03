@@ -237,7 +237,7 @@ def test_write_api_response_shape_matches_between_json_and_db_mode(client, backe
     assert isinstance(db_result["org"]["id"], int)
 
 
-def test_bootstrap_core_keeps_existing_extras_when_one_extra_collection_fails(client, backend_env, monkeypatch):
+def test_bootstrap_core_reports_extra_collection_failures_without_hiding_existing_extras(client, backend_env, monkeypatch):
     _reset_collections(backend_env)
     _seed_minimum_data(backend_env)
     backend_env.save_json_data("castings", [{"id": 1, "performance_id": 1, "piece": "Symphony", "members": [], "extras": []}])
@@ -246,8 +246,8 @@ def test_bootstrap_core_keeps_existing_extras_when_one_extra_collection_fails(cl
     original_load = backend_env.load_json_data
 
     def flaky_load(name):
-        if name == "flyer_places":
-            raise RuntimeError("flyer_places unavailable")
+        if name == "practice_instructions":
+            raise RuntimeError("practice_instructions unavailable")
         return original_load(name)
 
     monkeypatch.setattr(bootstrap_router.bootstrap_service, "combined_collection_etag", lambda *args, **kwargs: "etag")
@@ -258,6 +258,13 @@ def test_bootstrap_core_keeps_existing_extras_when_one_extra_collection_fails(cl
 
     assert response.status_code == 200
     extras = response.json()["extras"]
-    assert extras["flyer_places"] == []
+    assert extras["practice_instructions"] == []
     assert extras["castings"][0]["piece"] == "Symphony"
     assert extras["venue_settings"][0]["name"] == "Hall"
+    assert response.json()["extra_errors"] == [
+        {
+            "collection": "practice_instructions",
+            "type": "RuntimeError",
+            "detail": "practice_instructions unavailable",
+        }
+    ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from fastapi import HTTPException
@@ -35,6 +36,8 @@ from .db_row_repository import (
 )
 from ..core.tenant_context import get_current_tenant_id
 from ..db.database import db_connection_string
+
+logger = logging.getLogger(__name__)
 
 
 def _core() -> None:
@@ -73,11 +76,110 @@ def save_generic_json_collection(name: str, data: list[dict[str, Any]]) -> None:
             )
 
 
+def _legacy_generic_items(name: str) -> list[dict[str, Any]]:
+    try:
+        return load_generic_json_collection(name)
+    except Exception:
+        # Compatibility fallback must never hide the primary structured-table
+        # failure path, but logging the legacy lookup keeps recovery diagnosable.
+        logger.exception("Failed to load legacy portal_json_collections entry: %s", name)
+        return []
+
+
+def _merge_by_id(primary: list[dict[str, Any]], legacy: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = [dict(item) for item in primary]
+    seen_ids = {str(item.get("id")) for item in merged if item.get("id") is not None}
+    for item in legacy:
+        item_id = item.get("id")
+        if item_id is not None and str(item_id) in seen_ids:
+            continue
+        merged.append(dict(item))
+        if item_id is not None:
+            seen_ids.add(str(item_id))
+    return merged
+
+
+def _legacy_casting_items() -> list[dict[str, Any]]:
+    legacy_items: list[dict[str, Any]] = []
+    for collection_name in ("castings", "seating_assignments"):
+        legacy_items = _merge_by_id(legacy_items, _legacy_generic_items(collection_name))
+
+    performance_members = _legacy_generic_items("performance_members")
+    converted_members: dict[tuple[str, str], dict[str, Any]] = {}
+    for index, member in enumerate(performance_members, start=1):
+        if not isinstance(member, dict):
+            continue
+        performance_id = str(member.get("performance_id") or member.get("performanceId") or "")
+        piece = str(member.get("piece") or member.get("piece_title") or member.get("pieceTitle") or "")
+        if not performance_id and not piece:
+            legacy_items.append(dict(member))
+            continue
+        key = (performance_id, piece)
+        legacy_casting_id = member.get("casting_id") or member.get("castingId")
+        casting = converted_members.setdefault(
+            key,
+            {
+                "id": legacy_casting_id if isinstance(legacy_casting_id, int) else 900000000 + index,
+                "performance_id": member.get("performance_id") or member.get("performanceId"),
+                "piece": piece,
+                "members": [],
+                "extras": [],
+            },
+        )
+        casting["members"].append(
+            {
+                "member_id": member.get("member_id") or member.get("memberId") or member.get("id"),
+                "part": member.get("part") or member.get("instrument") or "",
+                "sort_order": member.get("sort_order") or member.get("sortOrder") or index,
+            }
+        )
+    return _merge_by_id(legacy_items, list(converted_members.values()))
+
+
+def _apply_legacy_payment_maps(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    legacy_items = _legacy_generic_items("payments")
+    if not items:
+        return legacy_items
+
+    legacy_by_id = {str(item.get("id")): item for item in legacy_items if item.get("id") is not None}
+    merged: list[dict[str, Any]] = []
+    for item in items:
+        copied = dict(item)
+        legacy = legacy_by_id.get(str(item.get("id")))
+        if legacy:
+            if not copied.get("performance_fees") and isinstance(legacy.get("performance_fees"), dict):
+                copied["performance_fees"] = legacy.get("performance_fees")
+            if not copied.get("performance_fee_amounts") and isinstance(legacy.get("performance_fee_amounts"), dict):
+                copied["performance_fee_amounts"] = legacy.get("performance_fee_amounts")
+        merged.append(copied)
+    return _merge_by_id(merged, legacy_items)
+
+
+def _legacy_collection_fallback(name: str) -> list[dict[str, Any]]:
+    if name == "castings":
+        return _legacy_casting_items()
+    if name in {"payments", "venue_settings"}:
+        return _legacy_generic_items(name)
+    return []
+
+
 def load_json_data(name: str) -> list[dict[str, Any]]:
     table_name = JSON_COLLECTION_TABLES.get(name)
     if not table_name:
         return []
 
+    try:
+        return _load_structured_json_data(name, table_name)
+    except Exception:
+        if name in {"castings", "payments", "venue_settings"}:
+            fallback = _legacy_collection_fallback(name)
+            if fallback:
+                logger.exception("Structured DB collection failed; serving legacy JSON collection: %s", name)
+                return fallback
+        raise
+
+
+def _load_structured_json_data(name: str, table_name: str) -> list[dict[str, Any]]:
     with psycopg.connect(db_connection_string(), autocommit=True) as conn:
         items = db_fetch_all(conn, table_name, order_by=DB_COLLECTION_ORDER_BY.get(name, "id"))
         if name == "performances":
@@ -109,6 +211,7 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
                     performance_fee_amounts[performance_id] = fee.get("fee_amount")
                 item["performance_fees"] = performance_fees
                 item["performance_fee_amounts"] = performance_fee_amounts
+            items = _apply_legacy_payment_maps(items)
         elif name == "castings":
             casting_members = db_fetch_all(conn, "casting_members", order_by="sort_order")
             casting_extras = db_fetch_all(conn, "casting_extras", order_by="sort_order")
@@ -121,6 +224,9 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
             for item in items:
                 item["members"] = members_by_casting.get(item.get("id"), [])
                 item["extras"] = extras_by_casting.get(item.get("id"), [])
+            items = _merge_by_id(items, _legacy_casting_items())
+        elif name == "venue_settings":
+            items = _merge_by_id(items, _legacy_generic_items("venue_settings"))
         elif name == "desired_pieces":
             votes = db_fetch_all(conn, "desired_piece_votes", order_by="id")
             by_piece: dict[Any, list[dict[str, Any]]] = {}

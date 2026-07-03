@@ -94,6 +94,68 @@ def test_db_json_repository_replace_collection_rejects_non_writable_collection(b
     assert "DB write is not implemented" in str(exc_info.value.detail)
 
 
+def test_db_json_repository_castings_reads_legacy_json_collections(backend_env, monkeypatch):
+    monkeypatch.setattr(db_json_repository, "_core", lambda: backend_env)
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class Psycopg:
+        @staticmethod
+        def connect(*args, **kwargs):
+            return Connection()
+
+    legacy = {
+        "seating_assignments": [{"id": 10, "performance_id": 1, "piece": "Legacy Seating"}],
+        "performance_members": [{"id": 2, "performance_id": 1, "piece": "Legacy Members", "member_id": 20, "part": "Vn"}],
+        "castings": [{"id": 30, "performance_id": 2, "piece": "Legacy Castings"}],
+    }
+
+    monkeypatch.setattr(db_json_repository, "psycopg", Psycopg)
+    monkeypatch.setattr(db_json_repository, "db_connection_string", lambda: "postgres://example")
+    monkeypatch.setattr(db_json_repository, "db_fetch_all", lambda conn, table, order_by="id": [])
+    monkeypatch.setattr(db_json_repository, "load_generic_json_collection", lambda name: list(legacy.get(name, [])))
+
+    items = db_json_repository.load_json_data("castings")
+
+    assert {item["piece"] for item in items} == {"Legacy Seating", "Legacy Members", "Legacy Castings"}
+    converted = next(item for item in items if item["piece"] == "Legacy Members")
+    assert converted["members"][0]["member_id"] == 20
+
+
+def test_db_json_repository_venue_and_payments_read_legacy_json_when_structured_empty(backend_env, monkeypatch):
+    monkeypatch.setattr(db_json_repository, "_core", lambda: backend_env)
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class Psycopg:
+        @staticmethod
+        def connect(*args, **kwargs):
+            return Connection()
+
+    legacy = {
+        "venue_settings": [{"id": 1, "name": "Legacy Hall"}],
+        "payments": [{"id": 2, "member_id": 5, "performance_fees": {"10": True}}],
+    }
+
+    monkeypatch.setattr(db_json_repository, "psycopg", Psycopg)
+    monkeypatch.setattr(db_json_repository, "db_connection_string", lambda: "postgres://example")
+    monkeypatch.setattr(db_json_repository, "db_fetch_all", lambda conn, table, order_by="id": [])
+    monkeypatch.setattr(db_json_repository, "load_generic_json_collection", lambda name: list(legacy.get(name, [])))
+
+    assert db_json_repository.load_json_data("venue_settings")[0]["name"] == "Legacy Hall"
+    assert db_json_repository.load_json_data("payments")[0]["performance_fees"] == {"10": True}
+
+
 def test_json_collection_service_uses_generic_db_store_for_non_table_extra():
     stored: dict[str, list[dict]] = {"custom_extra": [{"id": 1, "name": "legacy"}]}
     cache: dict[str, list[dict]] = {}
