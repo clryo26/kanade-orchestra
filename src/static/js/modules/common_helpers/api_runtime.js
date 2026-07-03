@@ -27,8 +27,6 @@ function apiTargetLabel(url) {
             desired_pieces: '希望曲',
             promotions: '宣伝情報',
             albums: 'アルバム',
-            flyer_places: 'チラシ配布管理',
-            flyer_distributions: 'チラシ配布予定',
         };
         return labels[extra[1]] || extra[1];
     }

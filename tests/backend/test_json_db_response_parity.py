@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from src.backend.routers import bootstrap as bootstrap_router
-
 pytestmark = pytest.mark.db_profile
 
 
@@ -134,8 +132,6 @@ def _seed_minimum_data(backend_env):
         ],
     )
     backend_env.save_json_data("payments", [{"id": 1, "member_id": 1, "paid_until_month": "2026-06"}])
-    backend_env.save_json_data("flyer_places", [])
-    backend_env.save_json_data("flyer_distributions", [])
     backend_env.save_json_data("part_settings", [{"id": 1, "name": "Vn", "sort_order": 1, "is_active": True}])
     backend_env.save_json_data("org_settings", [{"id": 1, "name": "Kanade", "short_name": "Kanade"}])
     backend_env.save_json_data("sns_settings", [])
@@ -235,36 +231,3 @@ def test_write_api_response_shape_matches_between_json_and_db_mode(client, backe
     assert isinstance(db_result["performance"]["id"], int)
     assert isinstance(json_result["org"]["id"], int)
     assert isinstance(db_result["org"]["id"], int)
-
-
-def test_bootstrap_core_reports_extra_collection_failures_without_hiding_existing_extras(client, backend_env, monkeypatch):
-    _reset_collections(backend_env)
-    _seed_minimum_data(backend_env)
-    backend_env.save_json_data("castings", [{"id": 1, "performance_id": 1, "piece": "Symphony", "members": [], "extras": []}])
-    backend_env.save_json_data("venue_settings", [{"id": 1, "name": "Hall", "sort_order": 1}])
-
-    original_load = backend_env.load_json_data
-
-    def flaky_load(name):
-        if name == "practice_instructions":
-            raise RuntimeError("practice_instructions unavailable")
-        return original_load(name)
-
-    monkeypatch.setattr(bootstrap_router.bootstrap_service, "combined_collection_etag", lambda *args, **kwargs: "etag")
-    monkeypatch.setattr(backend_env, "load_json_data", flaky_load)
-    monkeypatch.setattr(bootstrap_router, "load_json_data", flaky_load)
-
-    response = client.get("/api/bootstrap-core")
-
-    assert response.status_code == 200
-    extras = response.json()["extras"]
-    assert extras["practice_instructions"] == []
-    assert extras["castings"][0]["piece"] == "Symphony"
-    assert extras["venue_settings"][0]["name"] == "Hall"
-    assert response.json()["extra_errors"] == [
-        {
-            "collection": "practice_instructions",
-            "type": "RuntimeError",
-            "detail": "practice_instructions unavailable",
-        }
-    ]

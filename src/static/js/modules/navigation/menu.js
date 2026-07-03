@@ -37,7 +37,6 @@ function portalMenuGroups() {
             title: '演奏会情報',
             items: [
                 { tab: 'member-performance', label: '演奏会情報' },
-                { tab: 'member-flyer-distribution', label: 'チラシ配布' },
                 { tab: 'member-performance-day', label: '本番情報' },
                 { tab: 'member-piece-info', label: '楽曲紹介' },
                 { tab: 'member-sheet', label: '楽譜ライブラリ' },

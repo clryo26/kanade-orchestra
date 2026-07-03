@@ -4,7 +4,6 @@ from typing import Any
 
 from .extra_collection_helpers import (
     assert_extra_collection_permission,
-    canonical_extra_collection_name,
     collection_items,
     normalize_extra_payload,
     parse_extra_upsert_request,
@@ -21,34 +20,31 @@ def list_items(name: str) -> list[dict[str, Any]]:
 
 
 def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
-    canonical_name = canonical_extra_collection_name(name)
-    items = collection_items(canonical_name, load_json_data)
+    items = collection_items(name, load_json_data)
     upsert = parse_extra_upsert_request(raw_body)
-    normalized_body = normalize_extra_for_collection(canonical_name, upsert.payload)
-    assert_extra_collection_permission(canonical_name, device, payload=normalized_body)
+    normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    assert_extra_collection_permission(name, device, payload=normalized_body)
     payload = normalize_extra_payload(normalized_body, next_updated_at_func=next_updated_at, item_id=next_id(items))
     items.append(payload)
-    save_json_data(canonical_name, items)
+    save_json_data(name, items)
     return payload
 
 
 def update_item(name: str, item_id: int, raw_body: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
-    canonical_name = canonical_extra_collection_name(name)
-    items = collection_items(canonical_name, load_json_data)
+    items = collection_items(name, load_json_data)
     index, current = find_item(items, item_id)
     upsert = parse_extra_upsert_request(raw_body)
     ensure_expected_updated_at(current, upsert.expected_updated_at)
-    normalized_body = normalize_extra_for_collection(canonical_name, upsert.payload)
-    assert_extra_collection_permission(canonical_name, device, payload=normalized_body, current=current)
+    normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
     payload = normalize_extra_payload(normalized_body, next_updated_at_func=next_updated_at, item_id=item_id, current=current)
     items[index] = payload
-    save_json_data(canonical_name, items)
+    save_json_data(name, items)
     return payload
 
 
 def delete_item(name: str, item_id: int, device: dict[str, Any]) -> None:
-    canonical_name = canonical_extra_collection_name(name)
-    items = collection_items(canonical_name, load_json_data)
+    items = collection_items(name, load_json_data)
     _, current = find_item(items, item_id)
-    assert_extra_collection_permission(canonical_name, device, current=current)
-    save_json_data(canonical_name, [item for item in items if item.get("id") != item_id])
+    assert_extra_collection_permission(name, device, current=current)
+    save_json_data(name, [item for item in items if item.get("id") != item_id])

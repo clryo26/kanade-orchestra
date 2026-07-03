@@ -2,33 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import Response
-
-logger = logging.getLogger(__name__)
-
-
-def _safe_load_extra(
-    name: str,
-    load_json_data: Callable[[str], list[dict[str, Any]]],
-    errors: list[dict[str, str]],
-) -> list[dict[str, Any]]:
-    try:
-        return load_json_data(name)
-    except Exception as exc:
-        logger.exception("Failed to load bootstrap extra collection: %s", name)
-        errors.append(
-            {
-                "collection": name,
-                "type": type(exc).__name__,
-                "detail": str(exc),
-            }
-        )
-        return []
 
 
 def combined_collection_etag(
@@ -38,12 +16,8 @@ def combined_collection_etag(
 ) -> str:
     parts: list[str] = []
     for name in dict.fromkeys(names):
-        try:
-            load_json_data(name)
-            parts.append(f"{name}:{cache_etag(name) or ''}")
-        except Exception as exc:
-            logger.exception("Failed to include collection in bootstrap ETag: %s", name)
-            parts.append(f"{name}:error:{type(exc).__name__}")
+        load_json_data(name)
+        parts.append(f"{name}:{cache_etag(name) or ''}")
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
@@ -63,16 +37,14 @@ async def bootstrap_lite_payload(
     public_member_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
-    extra_errors: list[dict[str, str]] = []
     extra_names = ("payments", "part_settings", "org_settings", "sns_settings", "connection_settings")
-    extras = {name: _safe_load_extra(name, load_json_data, extra_errors) for name in extra_names}
+    extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
         "members": public_member_list(load_json_data("members")),
         "extras": extras,
-        "extra_errors": extra_errors,
         "cloudRunRevision": cloud_run_revision(),
     }
 
@@ -84,7 +56,6 @@ async def bootstrap_core_payload(
     list_auth_devices: Callable[[], Awaitable[list[dict[str, Any]]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
-    extra_errors: list[dict[str, str]] = []
     extra_names = (
         "absences",
         "event_responses",
@@ -104,7 +75,7 @@ async def bootstrap_core_payload(
         "desired_pieces",
         "promotions",
     )
-    extras = {name: _safe_load_extra(name, load_json_data, extra_errors) for name in extra_names}
+    extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
@@ -112,7 +83,6 @@ async def bootstrap_core_payload(
         "events": load_json_data("events"),
         "members": public_member_list(load_json_data("members")),
         "extras": extras,
-        "extra_errors": extra_errors,
         "auth_devices": await list_auth_devices(),
         "cloudRunRevision": cloud_run_revision(),
     }
@@ -127,7 +97,6 @@ async def bootstrap_payload(
     list_auth_devices: Callable[[], Awaitable[list[dict[str, Any]]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
-    extra_errors: list[dict[str, str]] = []
     extra_names = (
         "absences",
         "event_responses",
@@ -148,7 +117,7 @@ async def bootstrap_payload(
         "desired_pieces",
         "promotions",
     )
-    extras = {name: _safe_load_extra(name, load_json_data, extra_errors) for name in extra_names}
+    extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
@@ -158,7 +127,6 @@ async def bootstrap_payload(
         "recordings": recording_payload(),
         "sheets": {"files": sheet_payload()},
         "extras": extras,
-        "extra_errors": extra_errors,
         "auth_devices": await list_auth_devices(),
         "cloudRunRevision": cloud_run_revision(),
     }

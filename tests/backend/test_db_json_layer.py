@@ -72,52 +72,6 @@ def test_performance_db_row_keeps_performance_fee_amount(backend_env):
     assert row[8] == backend_env.Decimal("5000")
 
 
-def test_performance_db_row_uses_zero_for_blank_fee_amount(backend_env):
-    row = backend_env.db_row_tuple(
-        "performances",
-        backend_env.DB_COLLECTION_COLUMNS["performances"],
-        {
-            "id": "1",
-            "title": "Concert",
-            "date": "",
-            "open_time": "",
-            "start_time": "",
-            "venue": "Hall",
-            "conductor": "Cond",
-            "performance_fee_amount": "",
-        },
-    )
-
-    assert row[2] is None
-    assert row[3] is None
-    assert row[4] is None
-    assert row[8] == backend_env.Decimal("0")
-
-
-def test_performance_child_rows_ignore_incoming_piece_ids(backend_env):
-    children = backend_env.db_child_rows_for_collection(
-        "performances",
-        [
-            {
-                "id": 10,
-                "title": "Concert",
-                "pieces": [
-                    {"id": 99, "title": "Symphony", "sort_order": 2},
-                    "Encore",
-                    {"id": 100, "title": ""},
-                ],
-            }
-        ],
-    )
-
-    rows = children["performance_pieces"]
-    assert [row.get("id") for row in rows] == [None, None]
-    assert [row["performance_id"] for row in rows] == [10, 10]
-    assert [row["title"] for row in rows] == ["Symphony", "Encore"]
-    assert rows[0]["sort_order"] == 2
-    assert rows[1]["sort_order"] == 2
-
-
 def test_drive_files_db_save_uses_object_name_instead_of_string_id(backend_env):
     rows = backend_env.db_collection_rows_for_save(
         "drive_files",

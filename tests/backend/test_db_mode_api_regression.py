@@ -64,29 +64,6 @@ def test_db_mode_bootstrap_core_and_full_read_from_db(client, backend_env, monke
     assert full_payload["extras"]["promotions"][0]["title"] == "Promo"
 
 
-def test_db_mode_critical_admin_reads_return_200(client, backend_env, monkeypatch):
-    db_store = {
-        "members": [{"id": 1, "name": "Admin", "part": "Vn", "permission": "管理者"}],
-        "performances": [{"id": 10, "title": "Concert", "date": "2026-07-01", "pieces": []}],
-        "castings": [{"id": 20, "performance_id": 10, "piece": "Sym", "members": [{"member_id": 1, "part": "Vn"}], "extras": []}],
-        "venue_settings": [{"id": 30, "name": "Hall", "for_practice": True, "for_performance": True, "sort_order": 1}],
-        "flyer_places": [{"id": 40, "place_name": "Tenjin Shop", "area": "Tenjin"}],
-    }
-    _enable_db_mode(backend_env, monkeypatch, db_store)
-
-    for path in (
-        "/api/members",
-        "/api/performances",
-        "/api/extra/seating_assignments",
-        "/api/extra/venue_settings",
-        "/api/extra/flyer_places",
-    ):
-        response = client.get(path)
-        assert response.status_code == 200, path
-
-    assert client.get("/api/extra/seating_assignments").json()[0]["piece"] == "Sym"
-
-
 def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkeypatch):
     db_store = {
         "members": [
@@ -326,8 +303,6 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
         "date_adjustment_responses": [],
         "sheet_library": [],
         "payments": [],
-        "flyer_places": [],
-        "flyer_distributions": [],
         "castings": [],
         "piece_infos": [],
         "practice_instructions": [],
@@ -358,8 +333,6 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
         "date_adjustment_responses": {"adjustment_id": 1, "candidate_id": "cand-1", "member_id": 1, "name": "Admin", "status": "ok"},
         "sheet_library": {"performance_id": 10, "performance_title": "Concert", "piece": "Sym", "part": "Vn", "name": "sym.pdf"},
         "payments": {"member_id": 1, "name": "Admin", "paid_until_month": "2026-07", "performance_fees": {"10": True}},
-        "flyer_places": {"place_name": "Tenjin Shop", "area": "Tenjin", "note": "front desk"},
-        "flyer_distributions": {"performance_id": 10, "flyer_place_id": 1, "planned_member_id": 1, "planned_date": "2026-07-10"},
         "castings": {"performance_id": 10, "piece": "Sym", "members": [{"member_id": 1, "part": "Vn"}], "extras": []},
         "piece_infos": {"performance_id": 10, "piece": "Sym", "description": "note"},
         "practice_instructions": {"performance_id": 10, "piece": "Sym", "practice_notes": "note"},

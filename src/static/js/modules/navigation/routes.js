@@ -108,7 +108,6 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
     if (renderOnShow && tabName === 'member-date-adjustment') renderDateAdjustmentView();
     if (renderOnShow && tabName === 'member-piece-info') renderPieceInfoView();
-    if (renderOnShow && tabName === 'member-flyer-distribution') renderFlyerDistributionAdmin();
     if (renderOnShow && tabName === 'announcement-detail') renderAnnouncementDetail();
     if (renderOnShow && tabName === 'schedule') {
         renderSchedulePerformanceOptions();
@@ -120,7 +119,6 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'payment-admin') renderPaymentAdmin();
     if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();
-    if (renderOnShow && tabName === 'flyer-admin') renderFlyerPlacesAdmin();
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'performance-day-admin') renderPerformanceDayInfoAdmin();

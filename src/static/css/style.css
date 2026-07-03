@@ -1103,23 +1103,6 @@ body.album-photo-viewer-open {
     font-weight: 700;
 }
 
-.flyer-place-performance-card .card-header {
-    background: linear-gradient(90deg, #fff 0%, #f9fafb 100%);
-}
-
-.flyer-place-duplicate {
-    background: #fff8e1;
-}
-
-.flyer-place-duplicate-badge {
-    font-weight: 700;
-}
-
-.flyer-place-performance-card table td,
-.flyer-place-performance-card table th {
-    vertical-align: top;
-}
-
 .desired-piece-card .vote-count {
     font-size: 1.1rem;
     font-weight: 700;

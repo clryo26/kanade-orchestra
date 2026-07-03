@@ -32,10 +32,6 @@ function authResponse(permission = '一般') {
   };
 }
 
-function nextItemId(items) {
-  return items.length ? Math.max(...items.map((item) => Number(item.id || 0))) + 1 : 1;
-}
-
 async function fulfillJson(route, payload, status = 200) {
   await route.fulfill({
     status,
@@ -62,60 +58,6 @@ async function installPortalApiMocks(page, options = {}) {
       if (path.endsWith('/part_settings')) return fulfillJson(route, PART_SETTINGS);
       if (path.endsWith('/org_settings')) return fulfillJson(route, ORG_SETTINGS);
       return fulfillJson(route, SNS_SETTINGS);
-    }
-
-    if (path === '/api/extra/flyer_places') {
-      if (method === 'GET') return fulfillJson(route, bootstrapData.extras.flyer_places || []);
-      if (method === 'POST') {
-        const payload = request.postDataJSON ? await request.postDataJSON() : {};
-        const record = { id: nextItemId(bootstrapData.extras.flyer_places || []), ...payload };
-        bootstrapData.extras.flyer_places = [...(bootstrapData.extras.flyer_places || []), record];
-        return fulfillJson(route, record);
-      }
-    }
-
-    if (path.startsWith('/api/extra/flyer_places/') && method === 'PUT') {
-      const id = path.split('/').pop();
-      const payload = request.postDataJSON ? await request.postDataJSON() : {};
-      const items = bootstrapData.extras.flyer_places || [];
-      const index = items.findIndex((item) => String(item.id) === String(id));
-      if (index >= 0) {
-        items[index] = { ...items[index], ...payload, id: items[index].id };
-      }
-      return fulfillJson(route, items[index] || {});
-    }
-
-    if (path.startsWith('/api/extra/flyer_places/') && method === 'DELETE') {
-      const id = path.split('/').pop();
-      bootstrapData.extras.flyer_places = (bootstrapData.extras.flyer_places || []).filter((item) => String(item.id) !== String(id));
-      return fulfillJson(route, { ok: true });
-    }
-
-    if (path === '/api/extra/flyer_distributions') {
-      if (method === 'GET') return fulfillJson(route, bootstrapData.extras.flyer_distributions || []);
-      if (method === 'POST') {
-        const payload = request.postDataJSON ? await request.postDataJSON() : {};
-        const record = { id: nextItemId(bootstrapData.extras.flyer_distributions || []), ...payload };
-        bootstrapData.extras.flyer_distributions = [...(bootstrapData.extras.flyer_distributions || []), record];
-        return fulfillJson(route, record);
-      }
-    }
-
-    if (path.startsWith('/api/extra/flyer_distributions/') && method === 'PUT') {
-      const id = path.split('/').pop();
-      const payload = request.postDataJSON ? await request.postDataJSON() : {};
-      const items = bootstrapData.extras.flyer_distributions || [];
-      const index = items.findIndex((item) => String(item.id) === String(id));
-      if (index >= 0) {
-        items[index] = { ...items[index], ...payload, id: items[index].id };
-      }
-      return fulfillJson(route, items[index] || {});
-    }
-
-    if (path.startsWith('/api/extra/flyer_distributions/') && method === 'DELETE') {
-      const id = path.split('/').pop();
-      bootstrapData.extras.flyer_distributions = (bootstrapData.extras.flyer_distributions || []).filter((item) => String(item.id) !== String(id));
-      return fulfillJson(route, { ok: true });
     }
 
     if (path === '/api/auth/portal-login' && method === 'POST') {
