@@ -29,6 +29,13 @@ EXTRA_COLLECTIONS = {
     "promotions",
 }
 
+EXTRA_COLLECTION_ALIASES = {
+    # Backward-compatible names for ride-on/casting data. The canonical DB
+    # collection is castings, so aliases must not create separate empty stores.
+    "seating_assignments": "castings",
+    "performance_members": "castings",
+}
+
 ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "sheet_library",
     "payments",
@@ -45,6 +52,10 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "desired_pieces",
     "promotions",
 }
+
+
+def canonical_extra_collection_name(name: str) -> str:
+    return EXTRA_COLLECTION_ALIASES.get(name, name)
 
 
 def parse_extra_upsert_request(raw_body: dict[str, Any]) -> ExtraUpsertRequest:
@@ -143,6 +154,7 @@ async def read_json_body(request: Request) -> dict[str, Any]:
 
 
 def collection_items(name: str, load_json_data_func: Callable[[str], list[dict[str, Any]]]) -> list[dict[str, Any]]:
-    if name not in EXTRA_COLLECTIONS:
+    canonical_name = canonical_extra_collection_name(name)
+    if canonical_name not in EXTRA_COLLECTIONS:
         raise HTTPException(status_code=404, detail="Collection not found")
-    return load_json_data_func(name)
+    return load_json_data_func(canonical_name)

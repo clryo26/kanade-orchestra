@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from src.backend.repositories import db_json_repository, db_row_repository
+from src.backend.services import json_collection_service
 
 
 def test_db_row_repository_db_row_to_json_keeps_compat_aliases(backend_env, monkeypatch):
@@ -91,3 +92,45 @@ def test_db_json_repository_replace_collection_rejects_non_writable_collection(b
         db_json_repository.replace_collection("unknown_collection", [{"id": 1}])
 
     assert "DB write is not implemented" in str(exc_info.value.detail)
+
+
+def test_json_collection_service_uses_generic_db_store_for_non_table_extra():
+    stored: dict[str, list[dict]] = {"custom_extra": [{"id": 1, "name": "legacy"}]}
+    cache: dict[str, list[dict]] = {}
+
+    class Cache:
+        def get(self, name):
+            return cache.get(name)
+
+        def set(self, name, value):
+            cache[name] = value
+
+    loaded = json_collection_service.load_json_data(
+        "custom_extra",
+        cache=Cache(),
+        local_json_fallback_enabled=lambda: False,
+        ensure_db_expected_is_ready=lambda: None,
+        db_load_json_data=lambda name: [],
+        db_load_generic_json_collection=lambda name: stored.get(name, []),
+        json_collection_tables={},
+        json_data_names=(),
+        extra_collections={"custom_extra"},
+        data_dir=None,
+        logger=None,
+    )
+    assert loaded == [{"id": 1, "name": "legacy"}]
+
+    json_collection_service.save_json_data(
+        "custom_extra",
+        [{"id": 2, "name": "saved"}],
+        cache=Cache(),
+        local_json_fallback_enabled=lambda: False,
+        ensure_db_expected_is_ready=lambda: None,
+        db_replace_collection=lambda name, data: (_ for _ in ()).throw(AssertionError("structured DB should not be used")),
+        db_save_generic_json_collection=lambda name, data: stored.__setitem__(name, data),
+        db_writable_collections=set(),
+        json_data_names=(),
+        extra_collections={"custom_extra"},
+        data_dir=None,
+    )
+    assert stored["custom_extra"] == [{"id": 2, "name": "saved"}]
