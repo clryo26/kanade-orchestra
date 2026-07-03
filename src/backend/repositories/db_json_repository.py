@@ -28,6 +28,7 @@ from .db_row_repository import (
     db_fetch_all,
     db_fill_missing_ids,
     db_insert_rows,
+    db_prepare_timestamp_columns_for_upsert,
     db_upsert_rows,
     db_write_value,
     table_has_organization_id,
@@ -163,6 +164,7 @@ def replace_collection(name: str, data: list[dict[str, Any]]) -> None:
                 for row in rows:
                     row["organization_id"] = str(row.get("organization_id") or tenant_id)
             db_fill_missing_ids(cur, table_name, rows)
+            db_prepare_timestamp_columns_for_upsert(table_name, rows)
 
             kept_ids = [db_write_value(table_name, "id", item.get("id")) for item in rows if item.get("id") is not None]
             if kept_ids:

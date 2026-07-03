@@ -498,11 +498,13 @@ def test_performance_save_normalizes_blank_fee_times_and_mixed_pieces(client, se
             "start_time": "",
             "venue": "Hall",
             "conductor": "Cond",
+            "created_at": None,
             "performance_fee_amount": None,
             "pieces": [{"title": "Finale", "sort_order": 2}, "Encore"],
         },
     )
     assert updated.status_code == 200
+    assert updated.json()["created_at"]
     assert updated.json()["performance_fee_amount"] == 0
     assert updated.json()["date"] == ""
     assert updated.json()["open_time"] == ""
@@ -511,6 +513,7 @@ def test_performance_save_normalizes_blank_fee_times_and_mixed_pieces(client, se
     listed = client.get("/api/performances")
     assert listed.status_code == 200
     assert listed.json()[0]["title"] == "Concert Updated"
+    assert listed.json()[0]["created_at"]
     assert listed.json()[0]["pieces"] == [{"title": "Finale", "sort_order": 2}, "Encore"]
 
 

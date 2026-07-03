@@ -82,6 +82,7 @@ def create_performance(payload: dict[str, Any]) -> dict[str, Any]:
 
 def update_performance(performance_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     normalized_payload = _normalize_performance(payload)
+    normalized_payload.pop("created_at", None)
     try:
         return _normalize_performance(_repo.update(performance_id, lambda current: {**current, **normalized_payload}))
     except HTTPException:

@@ -19,12 +19,16 @@ Covered endpoints:
 - `performance_fee_amount` accepts number, numeric string, blank string, or `null`; blank and invalid values are saved as `0`.
 - `pieces` accepts both string items and object items.
 - Empty piece titles are ignored.
+- `created_at` is immutable after creation. Update payloads may include `created_at: null`, but the server keeps the existing value and never writes `created_at = null` to the DB.
+- `updated_at` is refreshed on update.
 
 ## DB Child Table Rule
 
 `performance_pieces` rows are fully rebuilt when the performances collection is saved.
 
 Incoming piece IDs are not reused for newly inserted child rows. The DB layer assigns fresh IDs to avoid primary-key collisions, especially after organization-scoped deletes.
+
+`created_at` is excluded from DB upsert update assignments. New rows receive a non-null timestamp before insert, while existing rows keep the DB value on conflict.
 
 ## Regression Coverage
 
@@ -37,3 +41,5 @@ Backend tests cover:
 - `GET /api/performances` after save
 - DB tuple conversion for blank numeric/date/time values
 - `performance_pieces` child rows ignoring incoming IDs
+- update payloads containing `created_at: null`
+- DB upsert preparation for non-null `created_at` / `updated_at`

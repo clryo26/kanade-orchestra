@@ -45,6 +45,15 @@ def test_db_row_repository_collection_rows_for_save_normalizes_drive_files(backe
     assert rows[0]["updated_at"]
 
 
+def test_db_row_repository_prepares_non_null_timestamps_for_upsert():
+    rows = [{"id": 1, "title": "Concert", "created_at": None, "updated_at": None}]
+
+    db_row_repository.db_prepare_timestamp_columns_for_upsert("performances", rows)
+
+    assert rows[0]["created_at"]
+    assert rows[0]["updated_at"]
+
+
 def test_db_row_repository_child_rows_for_collection_builds_payment_children(backend_env, monkeypatch):
     monkeypatch.setattr(db_row_repository, "_core", lambda: backend_env)
 
