@@ -32,6 +32,7 @@ function bindForms() {
     if ($('addPerformanceDayAssignmentRowBtn')) $('addPerformanceDayAssignmentRowBtn').addEventListener('click', addPerformanceDayAssignmentRow);
     if ($('performanceDayInfoPerformance')) $('performanceDayInfoPerformance').addEventListener('change', () => {
         $('performanceDayInfoId').value = '';
+        if (typeof renderPerformanceDayPartRehearsalRows === 'function') renderPerformanceDayPartRehearsalRows();
     });
     if ($('performanceDayAssignmentRows')) renderPerformanceDayAssignmentRows([]);
     if ($('savePracticeInstructionBtn')) $('savePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePracticeInstructionAdmin()));

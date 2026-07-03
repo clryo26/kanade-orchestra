@@ -394,6 +394,11 @@ def test_hidden_administrator_login_survives_auth_device_persistence_failure(cli
     assert device_response.status_code == 200
     assert device_response.json()["authenticated"] is True
 
+    devices_response = client.get("/api/auth/devices")
+    assert devices_response.status_code == 200
+    device_ids = {str(item.get("device_id") or "") for item in devices_response.json()}
+    assert "device-hidden-admin-fallback" in device_ids
+
     admin_response = client.post(
         "/api/performances",
         headers={"X-Device-Id": "device-hidden-admin-fallback"},

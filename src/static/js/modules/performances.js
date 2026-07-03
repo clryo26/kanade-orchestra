@@ -9,7 +9,7 @@ var performancePieceFormalLabel = window.performancePieceFormalLabel;
 var performancePieceLookupLabels = window.performancePieceLookupLabels;
 var findPieceScopedItem = window.findPieceScopedItem;
 var pieceScopedRows = window.pieceScopedRows;
-var uploadPieceOptions = function uploadPieceOptionsCompat(performance) {
+var uploadPieceOptionsCompat = function uploadPieceOptionsCompat(performance) {
     return window.uploadPieceOptions(performance, window.WHOLE_PRACTICE_RECORDING_PIECE);
 };
 
@@ -84,6 +84,7 @@ function clearPerformanceForm() {
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+    if ($('perfPiecePart')) $('perfPiecePart').value = '';
     if ($('perfPieceDuration')) $('perfPieceDuration').value = '';
     appState.performancePieces = [];
     appState.performancePieceEditIndex = null;
@@ -95,6 +96,7 @@ function addPerformancePiece() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
     const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
+    const part = $('perfPiecePart') ? $('perfPiecePart').value.trim() : '';
     const duration = $('perfPieceDuration') ? $('perfPieceDuration').value.trim() : '';
     const isEncore = $('perfPieceEncore') ? $('perfPieceEncore').checked : false;
     if (!title) {
@@ -102,7 +104,7 @@ function addPerformancePiece() {
         return;
     }
 
-    const piece = { composer, title, alias, duration, is_encore: isEncore };
+    const piece = { composer, title, alias, part, duration, is_encore: isEncore };
     if (appState.performancePieceEditIndex !== null) {
         appState.performancePieces[appState.performancePieceEditIndex] = piece;
         appState.performancePieceEditIndex = null;
@@ -113,6 +115,7 @@ function addPerformancePiece() {
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+    if ($('perfPiecePart')) $('perfPiecePart').value = '';
     if ($('perfPieceDuration')) $('perfPieceDuration').value = '';
     if ($('perfPieceEncore')) $('perfPieceEncore').checked = false;
     renderPerformancePieceList();
@@ -124,6 +127,7 @@ function editPerformancePiece(index) {
     $('perfPieceComposer').value = piece.composer || '';
     $('perfPieceTitle').value = piece.title || '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = piece.alias || '';
+    if ($('perfPiecePart')) $('perfPiecePart').value = piece.part || '';
     if ($('perfPieceDuration')) $('perfPieceDuration').value = piece.duration || '';
     if ($('perfPieceEncore')) $('perfPieceEncore').checked = Boolean(piece.is_encore || piece.encore);
     appState.performancePieceEditIndex = index;
@@ -139,6 +143,7 @@ function removePerformancePiece(index) {
         $('perfPieceComposer').value = '';
         $('perfPieceTitle').value = '';
         if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+        if ($('perfPiecePart')) $('perfPiecePart').value = '';
         if ($('perfPieceDuration')) $('perfPieceDuration').value = '';
         if ($('perfPieceEncore')) $('perfPieceEncore').checked = false;
     } else if (appState.performancePieceEditIndex !== null && appState.performancePieceEditIndex > index) {
@@ -164,10 +169,11 @@ function currentPerformancePieces() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
     const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
+    const part = $('perfPiecePart') ? $('perfPiecePart').value.trim() : '';
     const duration = $('perfPieceDuration') ? $('perfPieceDuration').value.trim() : '';
     const pieces = [...appState.performancePieces];
     if (title) {
-        pieces.push({ composer, title, alias, duration, is_encore: $('perfPieceEncore') ? $('perfPieceEncore').checked : false });
+        pieces.push({ composer, title, alias, part, duration, is_encore: $('perfPieceEncore') ? $('perfPieceEncore').checked : false });
     }
     return pieces;
 }
@@ -195,7 +201,7 @@ function renderUploadPieceOptions() {
     const select = $('uploadPiece');
     if (!select) return;
     const current = select.value;
-    const pieces = uploadPieceOptions(selectedUploadPerformance());
+    const pieces = uploadPieceOptionsCompat(selectedUploadPerformance());
     select.innerHTML = pieces.length
         ? '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece.value)}">${escapeHtml(piece.label)}</option>`).join('')
         : '<option value="">演奏会に登録済みの曲がありません</option>';

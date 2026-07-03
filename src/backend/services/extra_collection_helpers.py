@@ -13,6 +13,8 @@ EXTRA_COLLECTIONS = {
     "date_adjustment_responses",
     "sheet_library",
     "payments",
+    "flyer_places",
+    "flyer_distributions",
     "castings",
     "piece_infos",
     "practice_instructions",
@@ -30,6 +32,8 @@ EXTRA_COLLECTIONS = {
 ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "sheet_library",
     "payments",
+    "flyer_places",
+    "flyer_distributions",
     "castings",
     "performance_day_infos",
     "albums",

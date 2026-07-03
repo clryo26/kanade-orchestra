@@ -403,3 +403,47 @@
 10. Issue 10
 11. Issue 11
 12. Issue 12
+
+---
+
+## Cloud Run反映前チェック用メモ（2026-07-03 追記）
+
+### 1. 今回の重点修正（Phase9追加対応）
+
+- access_logs ルーター同梱不具合の再発防止
+	- 共有ZIP除外ルールを修正し、`src/backend/routers/access_logs.py` が除外されないように調整。
+- appState まわりの再帰・多重初期化対策
+	- 初期化処理に多重実行防止フラグを導入。
+	- runtime context 互換ローダー（`src/static/js/runtime_context.js`）を追加。
+- 画面遷移中のアクセスログ送信失敗耐性
+	- access log POST 失敗時に画面全体へ影響しない fail-safe 実装へ強化。
+- 運用Readyチェック UI 改善
+	- WARN理由を可読化。
+	- 「正式公開前に対応必須」と「要確認」を分類表示。
+	- 長文詳細を折りたたみ化。
+	- スマホ表示で表が崩れにくいスタイルを追加。
+
+### 2. 反映前に必ず確認するコマンド
+
+1. `python -m compileall -q src/backend tests`
+2. `pytest`
+3. `npm run check:frontend:syntax`
+4. `npm run check:frontend:load-order`
+5. `npm run check:release-safety`
+6. `python scripts/create-source-zip.py`
+7. `npm run zip:source`
+
+### 3. 期待結果（今回実績）
+
+- pytest: 全件成功（146 passed）
+- frontend syntax/load-order: 成功
+- release safety: PASS
+- source zip safety: PASS
+
+### 4. Cloud Run反映前の目視ポイント
+
+- `/api/system/access-logs` が 404 にならないこと
+- ログ送信失敗時に画面遷移・表示が継続すること
+- トップ表示直後・再読込時に `Maximum call stack size exceeded` が再発しないこと
+- 運用Readyチェック画面で WARN が理由付きで読めること
+

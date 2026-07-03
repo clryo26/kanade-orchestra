@@ -6,16 +6,21 @@
     function performancePieceLabel(piece) {
         if (typeof piece === 'string') return piece;
         const label = piece?.alias || piece?.short_name || (piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title);
-        return (piece?.is_encore || piece?.encore) ? `(${label})` : label;
+        const partPrefix = String(piece?.part || piece?.section || '').trim();
+        const prefixedLabel = partPrefix ? `${partPrefix} ${label}` : label;
+        return (piece?.is_encore || piece?.encore) ? `(${prefixedLabel})` : prefixedLabel;
     }
     function performancePieceFormalLabel(piece) {
         if (typeof piece === 'string') return piece;
         const label = piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title;
-        return (piece?.is_encore || piece?.encore) ? `(${label})` : label;
+        const partPrefix = String(piece?.part || piece?.section || '').trim();
+        const prefixedLabel = partPrefix ? `${partPrefix} ${label}` : label;
+        return (piece?.is_encore || piece?.encore) ? `(${prefixedLabel})` : prefixedLabel;
     }
     function performancePieceLookupLabels(piece) {
         if (typeof piece === 'string') return [piece].filter(Boolean);
-        return [performancePieceLabel(piece), performancePieceFormalLabel(piece), piece?.title, piece?.alias, piece?.short_name, piece?.composer && piece?.title ? `${piece.composer}: ${piece.title}` : ''].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
+        const partPrefix = String(piece?.part || piece?.section || '').trim();
+        return [performancePieceLabel(piece), performancePieceFormalLabel(piece), partPrefix, partPrefix && piece?.title ? `${partPrefix} ${piece.title}` : '', partPrefix && piece?.alias ? `${partPrefix} ${piece.alias}` : '', partPrefix && piece?.composer && piece?.title ? `${partPrefix} ${piece.composer}: ${piece.title}` : '', piece?.title, piece?.alias, piece?.short_name, piece?.composer && piece?.title ? `${piece.composer}: ${piece.title}` : ''].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
     }
     function findPieceScopedItem(items, performanceId, piece) {
         const labels = performancePieceLookupLabels(piece);
@@ -23,11 +28,12 @@
     }
     function normalizePerformancePieces(pieces) {
         return (pieces || []).map((piece) => {
-            if (typeof piece === 'string') return { composer: '', title: piece };
+            if (typeof piece === 'string') return { composer: '', title: piece, part: '' };
             return {
                 composer: piece?.composer || '',
                 title: piece?.title || piece?.name || '',
                 alias: piece?.alias || piece?.short_name || '',
+                part: piece?.part || piece?.section || '',
                 duration: piece?.duration || '',
                 is_encore: Boolean(piece?.is_encore || piece?.encore),
             };

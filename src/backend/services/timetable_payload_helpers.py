@@ -139,6 +139,119 @@ def add_minutes_to_clock_text(start: str, minutes: Any) -> str:
     return f"{normalized_total // 60:02d}:{normalized_total % 60:02d}"
 
 
+def clock_minutes(value: str) -> int | None:
+    normalized = normalize_clock_text(value)
+    if not normalized:
+        return None
+    hour, minute = [int(part) for part in normalized.split(":")]
+    return hour * 60 + minute
+
+
+def duration_minutes_between(start: str, end: str) -> int | None:
+    start_minutes = clock_minutes(start)
+    end_minutes = clock_minutes(end)
+    if start_minutes is None or end_minutes is None:
+        return None
+    diff = end_minutes - start_minutes
+    if diff < 0:
+        diff += 24 * 60
+    return diff
+
+
+def safe_duration_minutes(value: Any) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    try:
+        number = float(text)
+    except ValueError:
+        return 0
+    if number <= 0:
+        return 0
+    return int(round(number))
+
+
+def part_duration_minutes(performance: dict[str, Any], part_name: str) -> int:
+    raw_pieces = performance.get("pieces")
+    pieces: list[Any] = raw_pieces if isinstance(raw_pieces, list) else []
+    total = 0
+    for piece in pieces:
+        if not isinstance(piece, dict):
+            continue
+        if str(piece.get("part") or "").strip() != part_name:
+            continue
+        total += safe_duration_minutes(piece.get("duration") or piece.get("duration_minutes") or "")
+    return total
+
+
+def build_initial_rehearsal_rows(timeline_rows: list[dict[str, Any]], performance: dict[str, Any]) -> list[dict[str, Any]]:
+    if not timeline_rows:
+        return []
+
+    open_time = ""
+    rehearsal_start_time = ""
+    for row in timeline_rows:
+        kind = str(row.get("kind") or "").strip()
+        start_time = normalize_clock_text(row.get("start_time") or "")
+        if kind == "open_time" and start_time:
+            open_time = start_time
+        elif kind == "rehearsal_start_time" and start_time:
+            rehearsal_start_time = start_time
+
+    if not open_time or not rehearsal_start_time:
+        return []
+
+    first_part_duration = part_duration_minutes(performance, "第一部")
+    second_part_duration = part_duration_minutes(performance, "第二部")
+    if first_part_duration <= 0 or second_part_duration <= 0:
+        return []
+
+    stage_prep_end = add_minutes_to_clock_text(rehearsal_start_time, -10)
+    stage_prep_duration = duration_minutes_between(open_time, stage_prep_end) or 0
+
+    first_rehearsal_end = add_minutes_to_clock_text(rehearsal_start_time, first_part_duration)
+    break_start = first_rehearsal_end
+    break_duration = 20
+    break_end = add_minutes_to_clock_text(break_start, break_duration)
+    second_rehearsal_start = break_end
+    second_rehearsal_end = add_minutes_to_clock_text(second_rehearsal_start, second_part_duration)
+
+    return [
+        {
+            "sort_order": 1,
+            "start_time": open_time,
+            "end_time": stage_prep_end,
+            "duration_minutes": str(stage_prep_duration),
+            "section": "準備",
+            "content": "ステージ準備（反響版・雛壇設置等）・各自準備",
+        },
+        {
+            "sort_order": 2,
+            "start_time": rehearsal_start_time,
+            "end_time": first_rehearsal_end,
+            "duration_minutes": str(first_part_duration),
+            "section": "第一部",
+            "content": "第一部リハーサル(曲順は本番通り)",
+        },
+        {
+            "sort_order": 3,
+            "start_time": break_start,
+            "end_time": break_end,
+            "duration_minutes": str(break_duration),
+            "section": "休憩",
+            "content": "休憩",
+        },
+        {
+            "sort_order": 4,
+            "start_time": second_rehearsal_start,
+            "end_time": second_rehearsal_end,
+            "duration_minutes": str(second_part_duration),
+            "section": "第二部",
+            "content": "第二部リハーサル(曲順は本番通り)",
+        },
+    ]
+
+
 def performance_piece_labels(piece: Any) -> list[str]:
     if isinstance(piece, str):
         text = piece.strip()
@@ -233,21 +346,36 @@ def normalized_timeline_rows(info: dict[str, Any], performance: dict[str, Any]) 
         for index, row in enumerate(timeline_rows):
             if not isinstance(row, dict):
                 continue
+            kind = str(row.get("kind") or row.get("type") or "").strip()
+            part = str(row.get("part") or row.get("section") or "").strip()
+            label = str(row.get("label") or row.get("content") or row.get("title") or "").strip()
+            if not label:
+                if kind == "open_time":
+                    label = "開場時間"
+                elif kind == "rehearsal_start_time":
+                    label = "リハーサル開始時刻"
+                elif kind == "performance_start_time":
+                    label = "開演時間"
+                elif kind == "part_rehearsal" and part:
+                    label = f"{part}のリハ時間"
             rows.append(
                 {
                     "sort_order": int(row.get("sort_order") or index + 1),
                     "start_time": normalize_clock_text(row.get("start_time") or row.get("start") or ""),
                     "end_time": normalize_clock_text(row.get("end_time") or row.get("end") or ""),
                     "duration_minutes": str(row.get("duration_minutes") or row.get("duration") or "").strip(),
+                    "kind": kind,
+                    "part": part,
                     "section": str(row.get("section") or row.get("category") or "").strip(),
-                    "content": str(row.get("content") or row.get("title") or "").strip(),
+                    "label": label,
+                    "content": str(row.get("content") or row.get("label") or row.get("title") or label).strip(),
                     "mc": str(row.get("mc") or "").strip(),
                     "reception": str(row.get("reception") or row.get("desk") or "").strip(),
                     "setting": str(row.get("setting") or "").strip(),
                     "note": str(row.get("note") or "").strip(),
                 }
             )
-        return [row for row in rows if row.get("content") or row.get("start_time") or row.get("section")]
+        return [row for row in rows if row.get("content") or row.get("label") or row.get("start_time") or row.get("section") or row.get("part")]
     return parse_timeline_text_rows(str(info.get("timeline") or info.get("timetable") or ""), performance)
 
 
@@ -356,10 +484,22 @@ def build_timetable_workbook_bytes(
     except ValueError:
         sheet["B4"] = raw_date
 
-    timeline_rows = sorted(
+    base_timeline_rows = sorted(
         normalized_timeline_rows(info, performance),
         key=lambda row: int(row.get("sort_order") or 0),
     )
+    generated_initial_rows = build_initial_rehearsal_rows(base_timeline_rows, performance)
+    if generated_initial_rows:
+        tail_rows = [
+            row
+            for row in base_timeline_rows
+            if str(row.get("kind") or "").strip() not in {"open_time", "rehearsal_start_time", "performance_start_time", "part_rehearsal"}
+        ]
+        for index, row in enumerate(tail_rows, start=len(generated_initial_rows) + 1):
+            row["sort_order"] = index
+        timeline_rows = generated_initial_rows + tail_rows
+    else:
+        timeline_rows = base_timeline_rows
     assignment_rows = parse_assignment_rows(info)
     default_mc = choose_assignment_value(assignment_rows, ["mc", "蜿ｸ莨・"])
     default_reception = choose_assignment_value(assignment_rows, ["蜿嶺ｻ・", "繝√こ繝・ヨ"])

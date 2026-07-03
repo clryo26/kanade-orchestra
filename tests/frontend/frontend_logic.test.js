@@ -203,9 +203,19 @@ describe('FE-PURE', () => {
         ]);
 
         expect(normalized).toEqual([
-            { composer: '', title: 'String Piece' },
-            { composer: 'Mozart', title: 'Requiem', alias: 'Req', duration: '10', is_encore: true },
-            { composer: '', title: 'Legacy Name Piece', alias: '', duration: '', is_encore: false }
+            { composer: '', title: 'String Piece', part: '' },
+            { composer: 'Mozart', title: 'Requiem', alias: 'Req', part: '', duration: '10', is_encore: true },
+            { composer: '', title: 'Legacy Name Piece', alias: '', part: '', duration: '', is_encore: false }
+        ]);
+    });
+
+    test('FE-PURE-007b normalize performance pieces keeps part labels', () => {
+        const normalized = normalizePerformancePieces([
+            { composer: 'Brahms', title: 'Symphony No.1', part: '第一部' }
+        ]);
+
+        expect(normalized).toEqual([
+            { composer: 'Brahms', title: 'Symphony No.1', alias: '', part: '第一部', duration: '', is_encore: false }
         ]);
     });
 

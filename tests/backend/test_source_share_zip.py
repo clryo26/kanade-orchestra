@@ -18,3 +18,9 @@ def test_playwright_config_is_packaged() -> None:
     assert (MODULE.ROOT / "playwright.config.js") in included_paths
     assert (MODULE.ROOT / "tests") in included_paths
     assert (MODULE.ROOT / ".github") in included_paths
+
+
+def test_access_logs_router_file_is_not_excluded() -> None:
+    router_file = MODULE.ROOT / "src" / "backend" / "routers" / "access_logs.py"
+    assert router_file.exists()
+    assert not MODULE.should_exclude(router_file)

@@ -108,6 +108,8 @@ const BOOTSTRAP_DATA = {
     date_adjustment_responses: [],
     sheet_library: [],
     payments: [],
+    flyer_places: [],
+    flyer_distributions: [],
     castings: [],
     piece_infos: [],
     practice_instructions: [],

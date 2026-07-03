@@ -58,5 +58,19 @@ def fallback_auth_device(device_id: str) -> dict[str, Any] | None:
     return public_auth_device(device)
 
 
+def list_fallback_auth_devices() -> list[dict[str, Any]]:
+    now = _now()
+    active: list[dict[str, Any]] = []
+    expired_keys: list[str] = []
+    for device_id, device in _fallback_devices.items():
+        if _is_expired(device, now):
+            expired_keys.append(device_id)
+            continue
+        active.append(public_auth_device(device))
+    for key in expired_keys:
+        _fallback_devices.pop(key, None)
+    return active
+
+
 def forget_auth_device(device_id: str) -> None:
     _fallback_devices.pop(str(device_id or "").strip(), None)

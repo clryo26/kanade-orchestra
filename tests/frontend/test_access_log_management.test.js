@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const { systemAccessLogContract } = require('../../src/static/js/frontend_testable_logic.js');
 
 describe('system access log management', () => {
@@ -21,5 +22,38 @@ describe('system access log management', () => {
 
     test('access log list is loaded from system endpoint', () => {
         expect(contract.listEndpointPrefix).toContain('/api/system/access-logs?limit=200&_=');
+    });
+
+    test('access log send failure does not throw in navigation helper', () => {
+        const helperJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/navigation/helpers.js'),
+            'utf8'
+        );
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            localStorage: {
+                getItem: () => 'dev-1',
+            },
+            fetch: () => {
+                throw new Error('network down');
+            },
+            console,
+            document: {
+                getElementById: () => null,
+            },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.portalRuntimeContext = {
+            appState: { portalAuthVerified: true },
+            getById: () => null,
+            PORTAL_DEVICE_ID_KEY: 'kanadePortalDeviceId',
+            today: () => '2026-07-03',
+        };
+
+        vm.runInNewContext(helperJs, sandbox);
+
+        expect(() => sandbox.recordAccessLog('memberPanel', 'member-home')).not.toThrow();
     });
 });

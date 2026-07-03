@@ -11,12 +11,16 @@
     const validation = typeof module !== 'undefined' && module.exports
         ? require('./testable/validation.js')
         : (globalObj.FrontendTestableValidation || {});
+    const apiRuntime = typeof module !== 'undefined' && module.exports
+        ? require('./testable/api_runtime.js')
+        : {};
 
     const api = {
         ...dates,
         ...pieces,
         ...formatting,
         ...validation,
+        ...apiRuntime,
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

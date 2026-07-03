@@ -21,12 +21,14 @@ const ACCESS_LOG_MENU_LABELS = {
     member: '団員登録',
     'payment-admin': '支払管理',
     'payment-setting': '支払設定',
+    'flyer-admin': 'チラシ配布管理',
     'venue-admin': '会場管理',
     'casting-admin': '乗り番管理',
     'sheet-admin': '楽譜管理',
     'member-home': 'ポータルメニュー',
     'member-announce': 'お知らせ',
     'member-performance': '演奏会情報',
+    'member-flyer-distribution': 'チラシ配布',
     'member-performance-day': '本番情報',
     'member-schedule': '練習予定',
     'member-practice-instruction': '練習指示',
@@ -86,12 +88,14 @@ function toPascalTab(value) {
         member: 'member',
         'payment-admin': 'paymentAdmin',
         'payment-setting': 'paymentSetting',
+        'flyer-admin': 'flyerAdmin',
         'venue-admin': 'venueAdmin',
         'casting-admin': 'castingAdmin',
         'sheet-admin': 'sheetAdmin',
         'member-home': 'memberHome',
         'member-announce': 'memberAnnounce',
         'member-performance': 'memberPerformance',
+        'member-flyer-distribution': 'memberFlyerDistribution',
         'member-performance-day': 'memberPerformanceDay',
         'member-schedule': 'memberSchedule',
         'member-practice-instruction': 'memberPracticeInstruction',
@@ -133,14 +137,21 @@ function recordAccessLog(panelId, tabName) {
         menu_key: tabName,
         menu_label: ACCESS_LOG_MENU_LABELS[tabName] || tabName,
     };
-    fetch('/api/system/access-logs', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Device-Id': deviceId,
-        },
-        body: JSON.stringify(payload),
-    }).catch((error) => console.warn('Access log save failed:', error));
+    try {
+        if (typeof fetch !== 'function') {
+            return;
+        }
+        fetch('/api/system/access-logs', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Device-Id': deviceId,
+            },
+            body: JSON.stringify(payload),
+        }).catch((error) => console.warn('Access log save failed:', error));
+    } catch (error) {
+        console.warn('Access log save failed:', error);
+    }
 }
 
 function setupPortalHome() {

@@ -14,6 +14,7 @@ from .auth_helpers import (
 )
 from .models.schemas import MemberPasswordSetupRequest, PortalLoginRequest
 from .services.auth_session_fallback import fallback_auth_device, forget_auth_device, remember_auth_device
+from .services.auth_session_fallback import list_fallback_auth_devices
 from .services.auth_service import normalized_permission
 from .services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 
@@ -198,7 +199,21 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
 
 @router.get("/devices")
 async def get_auth_devices() -> list[dict[str, Any]]:
-    return await persistence_api().list_auth_devices()
+    persisted = await persistence_api().list_auth_devices()
+    merged: dict[str, dict[str, Any]] = {
+        str(item.get("device_id") or ""): dict(item)
+        for item in persisted
+        if str(item.get("device_id") or "").strip()
+    }
+    for fallback in list_fallback_auth_devices():
+        key = str(fallback.get("device_id") or "").strip()
+        if key:
+            merged[key] = fallback
+    return sorted(
+        merged.values(),
+        key=lambda item: str(item.get("authenticated_at") or item.get("last_seen_at") or ""),
+        reverse=True,
+    )
 
 
 @router.delete("/devices/{device_id}")

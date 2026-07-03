@@ -60,14 +60,18 @@ function renderAnnouncements() {
     if (!appState.suppressDerivedRender) renderPortalHome();
 }
 
-function announcementItem(ann, selectable) {
+function announcementItem(ann, selectable, options = {}) {
     const item = document.createElement(selectable ? 'button' : 'li');
     item.className = 'list-group-item list-group-item-action';
     if (selectable) item.type = 'button';
     else item.style.cursor = 'pointer';
+    if (options.portalHomeOneLine) item.classList.add('portal-home-announcement-mobile-line');
 
     if (!selectable) {
-        item.innerHTML = `<div><span class="small text-muted">${escapeHtml(formatDateWithWeekday(ann.date))}</span> <strong>${escapeHtml(ann.title || '')}</strong></div>`;
+        const dateText = escapeHtml(formatDateWithWeekday(ann.date));
+        const titleText = escapeHtml(ann.title || '');
+        const oneLineClass = options.portalHomeOneLine ? ' portal-announcement-one-line' : '';
+        item.innerHTML = `<div class="${oneLineClass.trim()}"><span class="small text-muted portal-announcement-date">${dateText}</span> <strong class="portal-announcement-title">${titleText}</strong></div>`;
         item.addEventListener('click', () => {
             appState.portalSelectedAnnouncementId = ann.id;
             showMemberTab('announcement-detail');

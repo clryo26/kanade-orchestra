@@ -3,6 +3,7 @@
 
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
+let showAlertInProgress = false;
 
 async function withButtonStatus(button, processingLabel, task) {
     if (!button || button.disabled) return;
@@ -28,11 +29,28 @@ function setOperationStatus(id, message, type = 'info') {
 }
 
 function showAlert(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${type} shadow-sm`;
-    toast.textContent = message;
-    $('toastArea').appendChild(toast);
-    setTimeout(() => toast.remove(), 4200);
+    if (showAlertInProgress) {
+        console.warn('showAlert re-entry suppressed:', message);
+        return;
+    }
+    showAlertInProgress = true;
+    try {
+        const toastArea = $('toastArea');
+        if (!toastArea) {
+            console.warn('toastArea is missing:', message);
+            return;
+        }
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} shadow-sm`;
+        toast.textContent = String(message || '');
+        toastArea.appendChild(toast);
+        setTimeout(() => toast.remove(), 4200);
+    } catch (error) {
+        // Never throw from alert rendering to avoid recursive error cascades.
+        console.error('showAlert failed:', error);
+    } finally {
+        showAlertInProgress = false;
+    }
 }
 
 function setLoadingBar(label = '') {

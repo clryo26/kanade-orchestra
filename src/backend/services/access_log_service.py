@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+
+
+def _access_log_sort_key(item: dict[str, Any]) -> tuple[float, str]:
+    value = str(item.get("accessed_at") or item.get("created_at") or "").strip()
+    if not value:
+        return (float("-inf"), "")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return (parsed.timestamp(), value)
+    except ValueError:
+        return (float("-inf"), value)
 
 
 def create_access_log_payload(
@@ -31,13 +43,9 @@ def create_access_log_payload(
 
 
 def trim_access_logs(items: list[dict[str, Any]], max_items: int = 2000) -> list[dict[str, Any]]:
-    return sorted(items, key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""))[-max_items:]
+    return sorted(items, key=_access_log_sort_key)[-max_items:]
 
 
 def list_access_logs(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     safe_limit = min(max(int(limit or 200), 1), 1000)
-    return sorted(
-        items,
-        key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""),
-        reverse=True,
-    )[:safe_limit]
+    return sorted(items, key=_access_log_sort_key, reverse=True)[:safe_limit]

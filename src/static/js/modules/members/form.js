@@ -4,6 +4,12 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+function joinedAtMonthInputValue(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/^(\d{4})[-\/\.](\d{2})/);
+    return match ? `${match[1]}-${match[2]}` : '';
+}
+
 function selectMember(id) {
     const item = appState.members.find((member) => member.id === id);
     if (!item) return;
@@ -22,7 +28,7 @@ function selectMember(id) {
     if ($('memberIsSheetManager')) $('memberIsSheetManager').checked = Boolean(item.is_sheet_manager);
     if ($('memberPassword')) $('memberPassword').value = '';
     if ($('memberPermission')) $('memberPermission').value = item.permission || '一般';
-    if ($('memberJoinedAt')) $('memberJoinedAt').value = item.joined_at || '';
+    if ($('memberJoinedAt')) $('memberJoinedAt').value = joinedAtMonthInputValue(item.joined_at);
     if ($('memberSystemAccessUntil')) $('memberSystemAccessUntil').value = item.system_access_until || '';
     if ($('memberIntroducer')) $('memberIntroducer').value = item.introducer || '';
     if ($('memberRole')) $('memberRole').value = item.role || '';

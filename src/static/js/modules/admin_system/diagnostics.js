@@ -6,9 +6,49 @@ var appState = (typeof window.getAppState === 'function')
     : window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+const READINESS_MANDATORY_KEYS = new Set([
+    'db_ready_when_expected',
+    'release_files',
+]);
+
+function readinessCategory(item) {
+    return READINESS_MANDATORY_KEYS.has(String(item?.key || '')) ? '正式公開前に対応必須' : '要確認';
+}
+
+function readinessStatusBadge(item) {
+    const passed = Boolean(item?.passed);
+    const category = readinessCategory(item);
+    if (passed) return '<span class="badge text-bg-success">OK</span>';
+    if (category === '正式公開前に対応必須') return '<span class="badge text-bg-danger">必須</span>';
+    return '<span class="badge text-bg-warning">要確認</span>';
+}
+
+function readinessDetailHtml(detailText, key) {
+    const text = String(detailText || '').trim();
+    if (!text) return '<span class="text-muted">-</span>';
+    const isLong = text.length > 120 || (text.match(/, /g) || []).length >= 3;
+    if (!isLong) {
+        return escapeHtml(text);
+    }
+    const detailsId = `readiness-detail-${escapeHtml(String(key || 'detail'))}`;
+    return `
+        <details class="readiness-detail-collapse" id="${detailsId}">
+            <summary>詳細を表示</summary>
+            <div class="small text-break mt-1">${escapeHtml(text)}</div>
+        </details>
+    `;
+}
+
 async function loadAccessLogs() {
     appState.accessLogs = await request(`/api/system/access-logs?limit=200&_=${Date.now()}`);
     return appState.accessLogs;
+}
+
+function accessLogSortValue(item) {
+    const value = String(item?.accessed_at || item?.created_at || '').trim();
+    if (!value) return Number.NEGATIVE_INFINITY;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 async function renderAccessLogView() {
@@ -20,7 +60,7 @@ async function renderAccessLogView() {
         status.textContent = '読み込み中...';
     }
     try {
-        const logs = await loadAccessLogs();
+        const logs = [...(await loadAccessLogs())].sort((a, b) => accessLogSortValue(b) - accessLogSortValue(a));
         if (status) {
             status.hidden = false;
             status.textContent = `${logs.length}件を表示しています`;
@@ -86,9 +126,20 @@ async function renderReadinessDashboard() {
         const data = await request('/api/system/readiness-summary');
         const runtime = data.runtime || {};
         const governance = data.governance || {};
-        const levelClass = data.overall_status === 'ok' ? 'text-success' : 'text-warning';
+        const rows = Array.isArray(data.checks) ? data.checks : [];
+        const failedMandatory = rows.filter((item) => !item.passed && readinessCategory(item) === '正式公開前に対応必須');
+        const failedReview = rows.filter((item) => !item.passed && readinessCategory(item) === '要確認');
+        const levelClass = failedMandatory.length ? 'text-danger' : (failedReview.length ? 'text-warning' : 'text-success');
         status.className = `${levelClass} small mb-2`;
-        status.textContent = data.overall_status === 'ok' ? 'Ready: 主要チェックは正常です' : 'Warning: 要確認項目があります';
+        if (failedMandatory.length) {
+            const labels = failedMandatory.map((item) => item.label || item.key).join(' / ');
+            status.textContent = `Warning: 正式公開前に対応必須項目があります（${labels}）`;
+        } else if (failedReview.length) {
+            const labels = failedReview.map((item) => item.label || item.key).join(' / ');
+            status.textContent = `Warning: 要確認項目があります（${labels}）`;
+        } else {
+            status.textContent = 'Ready: 主要チェックは正常です';
+        }
 
         summary.innerHTML = `
             <div class="row g-2 small">
@@ -99,14 +150,20 @@ async function renderReadinessDashboard() {
                 <div class="col-md-4"><strong>app_core:</strong> ${escapeHtml(String(governance.app_core_lines || 0))}/${escapeHtml(String(governance.app_core_budget || 520))}</div>
                 <div class="col-md-4"><strong>更新時刻:</strong> ${escapeHtml(formatDateTimeLabel(data.generated_at || ''))}</div>
             </div>
+            <div class="small mt-2">
+                <span class="badge text-bg-danger me-1">正式公開前に対応必須</span>${failedMandatory.length}件
+                <span class="badge text-bg-warning ms-3 me-1">要確認</span>${failedReview.length}件
+            </div>
         `;
 
-        const rows = Array.isArray(data.checks) ? data.checks : [];
         checks.innerHTML = rows.length ? rows.map((item) => `
             <tr>
-                <td>${item.passed ? '<span class="text-success">OK</span>' : '<span class="text-warning">WARN</span>'}</td>
+                <td>${readinessStatusBadge(item)}</td>
                 <td>${escapeHtml(String(item.label || item.key || ''))}</td>
-                <td class="small text-break">${escapeHtml(String(item.detail || ''))}</td>
+                <td class="small text-break">
+                    <div class="mb-1"><span class="badge text-bg-light">${escapeHtml(readinessCategory(item))}</span></div>
+                    ${readinessDetailHtml(item.detail || '', item.key || '')}
+                </td>
             </tr>
         `).join('') : '<tr><td colspan="3" class="text-muted">チェック項目がありません</td></tr>';
     } catch (error) {

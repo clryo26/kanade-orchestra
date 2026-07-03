@@ -25,7 +25,6 @@ function renderPieceInfoView() {
     }
     if (!appState.selectedPieceInfoContext) {
         container.innerHTML = `
-            <section class="info-block mb-3"><h5 class="mb-2">未開催演奏会の曲一覧</h5><p class="text-muted small mb-0">曲を選択すると、曲ごとの楽曲情報登録・編集画面に遷移します。<span class="badge text-bg-success ms-1">情報あり</span> が登録済みの目印です。</p></section>
             ${rows.map((row) => { const heading = `${formatDateWithWeekday(row.date, row.date)} ${row.title}`.trim(); if (!row.pieces.length) { return `<section class="mb-3"><h6 class="mb-2">${escapeHtml(heading)}</h6><p class="text-muted small mb-0">曲がまだ登録されていません</p></section>`; } return `<section class="mb-3"><h6 class="mb-2">${escapeHtml(heading)}</h6><div class="list-group">${row.pieces.map((piece) => { const pieceLabel = performancePieceFormalLabel(piece); const existing = findPieceScopedItem(appState.pieceInfos, row.performanceId, piece); const hasInfo = existing && String(existing.description || existing.notes || '').trim(); return `<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-piece-info-performance-id="${escapeHtml(row.performanceId)}" data-piece-info-piece="${escapeHtml(encodeURIComponent(pieceLabel))}"><span>${escapeHtml(pieceLabel)}</span>${hasInfo ? '<span class="badge text-bg-success">情報あり</span>' : ''}</button>`; }).join('')}</div></section>`; }).join('')}
         `;
         container.querySelectorAll('[data-piece-info-performance-id][data-piece-info-piece]').forEach((button) => {
