@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class Performance(BaseModel):
@@ -18,26 +18,6 @@ class Performance(BaseModel):
     pieces: list[Any] = Field(default_factory=list)
     created_at: str | None = None
     updated_at: str | None = None
-
-    @field_validator("title", "date", "open_time", "start_time", "venue", "conductor", "flyer_image", mode="before")
-    @classmethod
-    def _blankable_text(cls, value: Any) -> str:
-        return "" if value is None else str(value)
-
-    @field_validator("performance_fee_amount", mode="before")
-    @classmethod
-    def _blank_fee_amount(cls, value: Any) -> float:
-        if value in (None, ""):
-            return 0
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return 0
-
-    @field_validator("pieces", mode="before")
-    @classmethod
-    def _blank_pieces(cls, value: Any) -> list[Any]:
-        return value if isinstance(value, list) else []
 
 
 class Schedule(BaseModel):

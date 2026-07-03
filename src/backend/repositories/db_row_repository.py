@@ -177,11 +177,11 @@ def db_write_value(table_name: str, column: str, value: Any) -> Any:
         return None
     if column in DB_NUMERIC_COLUMNS.get(table_name, set()):
         if value in (None, ""):
-            return Decimal("0")
+            return None
         try:
             return Decimal(str(value))
         except Exception:
-            return Decimal("0")
+            return None
     if column in DB_DATE_COLUMNS.get(table_name, set()):
         return parse_db_date(value)
     if column in DB_TIME_COLUMNS.get(table_name, set()):
@@ -244,20 +244,6 @@ def db_row_tuple(table_name: str, columns: tuple[str, ...], item: dict[str, Any]
     return tuple(db_write_value(table_name, column, db_item_value(table_name, item, column)) for column in columns)
 
 
-def db_prepare_timestamp_columns_for_upsert(table_name: str, rows: list[dict[str, Any]]) -> None:
-    columns = DB_COLLECTION_COLUMNS.get(table_name) or DB_CHILD_COLUMNS.get(table_name, ())
-    if "created_at" not in columns and "updated_at" not in columns:
-        return
-    now = datetime.now().isoformat()
-    for row in rows:
-        # Inserts need a non-null created_at, while ON CONFLICT keeps the
-        # existing created_at because db_upsert_rows excludes it from updates.
-        if "created_at" in columns and not row.get("created_at"):
-            row["created_at"] = now
-        if "updated_at" in columns and not row.get("updated_at"):
-            row["updated_at"] = now
-
-
 def db_collection_rows_for_save(name: str, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if name != "drive_files":
         return data
@@ -283,7 +269,7 @@ def db_upsert_rows(cur: Any, table_name: str, columns: tuple[str, ...], rows: li
     assignments = psql.SQL(", ").join(
         psql.SQL("{} = EXCLUDED.{}").format(psql.Identifier(column), psql.Identifier(column))
         for column in columns
-        if column not in {"id", "created_at"}
+        if column != "id"
     )
     insert_query = psql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT (id) DO UPDATE SET {}").format(
         psql.Identifier(table_name),
@@ -347,9 +333,7 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
                     children["performance_pieces"].append(
                         {
                             "organization_id": piece.get("organization_id") or parent.get("organization_id") or tenant_id,
-                            # Child rows are fully replaced on save. Let the DB layer allocate
-                            # fresh IDs so updates cannot collide with another organization's rows.
-                            "id": None,
+                            "id": piece.get("id"),
                             "performance_id": parent_id,
                             "sort_order": piece.get("sort_order", index + 1),
                             "title": title,

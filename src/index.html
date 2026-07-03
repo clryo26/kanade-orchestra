@@ -66,6 +66,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="flyer-admin" type="button">チラシ配布管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-setting" type="button">支払設定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="casting-admin" type="button">乗り番管理</button>
@@ -631,6 +632,35 @@
                 </div>
             </div>
 
+            <!-- チラシ配布管理 -->
+            <div id="flyerAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">チラシ配布管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="flyerPlaceId">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="flyerPlaceName">施設名・店舗名</label>
+                                <input type="text" class="form-control" id="flyerPlaceName" placeholder="例: 市民文化センター / ○○書店">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="flyerPlaceArea">エリア・住所</label>
+                                <input type="text" class="form-control" id="flyerPlaceArea" placeholder="例: 天神・博多 / ○○区 1-2-3">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="flyerPlaceNote">備考</label>
+                                <textarea class="form-control" id="flyerPlaceNote" rows="3" placeholder="例: 受付横に設置 / 担当者へ手渡し"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="saveFlyerPlaceBtn" type="button">保存</button>
+                            <button class="btn btn-outline-secondary" id="clearFlyerPlaceBtn" type="button">選択解除</button>
+                        </div>
+                        <div id="flyerPlaceList"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 支払設定管理 -->
             <div id="paymentSettingTab" class="tab-content" hidden>
                 <div class="card">
@@ -1034,6 +1064,23 @@
                 </div>
             </div>
 
+            <!-- 団員向け: チラシ配布 -->
+            <div id="memberFlyerDistributionTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">チラシ配布</div>
+                    <div class="card-body">
+                        <input type="hidden" id="flyerDistributionSelectedPerformanceId">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label" for="flyerDistributionPerformanceId">演奏会</label>
+                                <select class="form-select" id="flyerDistributionPerformanceId"></select>
+                            </div>
+                        </div>
+                        <div id="flyerDistributionList"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 団員向け: 本番情報 -->
             <div id="memberPerformanceDayTab" class="tab-content" hidden>
                 <div class="card">
@@ -1175,6 +1222,7 @@
     <script src="/static/js/modules/date_piece_promotion.js?v=20260630-6"></script>
     <script src="/static/js/modules/announcements.js?v=20260630-6"></script>
     <script src="/static/js/modules/performances.js?v=20260703-2"></script>
+    <script src="/static/js/modules/flyer_distribution.js?v=20260703-2"></script>
     <script src="/static/js/modules/schedules.js?v=20260630-6"></script>
     <script src="/static/js/modules/recordings.js?v=20260630-6"></script>
     <script src="/static/js/recordings_feature.js?v=20260702-1"></script>
@@ -1186,6 +1234,7 @@
     <script src="/static/js/modules/members.js?v=20260701-1"></script>
     <script src="/static/js/modules/absences.js?v=20260630-6"></script>
     <script src="/static/js/modules/payments.js?v=20260703-1"></script>
+    <script src="/static/js/modules/flyer_places.js?v=20260703-1"></script>
     <script src="/static/js/modules/events.js?v=20260630-6"></script>
     <script src="/static/js/modules/scores/helpers.js?v=20260701-1"></script>
     <script src="/static/js/modules/scores/render.js?v=20260701-1"></script>

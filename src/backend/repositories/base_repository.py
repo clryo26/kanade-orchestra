@@ -42,13 +42,10 @@ class BaseRepository:
     def update(self, item_id: int, mutator: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
         items = self.list_all()
         index, current = find_item(items, item_id)
-        now = datetime.now().isoformat()
         updated = mutator(current)
         updated["id"] = item_id
-        # created_at is immutable. Request payloads may include null, so keep
-        # the stored value instead of letting null flow into DB NOT NULL columns.
-        updated["created_at"] = current.get("created_at") or now
-        updated["updated_at"] = now
+        updated.setdefault("created_at", current.get("created_at"))
+        updated["updated_at"] = datetime.now().isoformat()
         items[index] = updated
         self.save_all(items)
         return updated

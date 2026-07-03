@@ -37,7 +37,7 @@ async def bootstrap_lite_payload(
     public_member_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
-    extra_names = ("payments", "part_settings", "org_settings", "sns_settings", "connection_settings")
+    extra_names = ("payments", "flyer_places", "flyer_distributions", "part_settings", "org_settings", "sns_settings", "connection_settings")
     extras = {name: load_json_data(name) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
@@ -65,8 +65,10 @@ async def bootstrap_core_payload(
         "castings",
         "piece_infos",
         "practice_instructions",
+        "flyer_distributions",
         "performance_day_infos",
         "albums",
+        "flyer_places",
         "part_settings",
         "venue_settings",
         "org_settings",
@@ -107,8 +109,10 @@ async def bootstrap_payload(
         "castings",
         "piece_infos",
         "practice_instructions",
+        "flyer_distributions",
         "performance_day_infos",
         "albums",
+        "flyer_places",
         "part_settings",
         "venue_settings",
         "org_settings",
