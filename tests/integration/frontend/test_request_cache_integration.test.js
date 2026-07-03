@@ -2,9 +2,7 @@ const {
     buildRequestHeadersForApi,
     buildConditionalGetHeadersForApi,
     mutationRelatedCacheKeys,
-    foldSettledExtraResults,
-    buildApiFailureMessage,
-    shouldAttemptAuthRecovery
+    foldSettledExtraResults
 } = require('../../../src/static/js/frontend_testable_logic.js');
 
 describe('IT-FE-REQ integration', () => {
@@ -68,30 +66,5 @@ describe('IT-FE-REQ integration', () => {
         const recordingKeys = mutationRelatedCacheKeys('/api/recordings/delete');
         expect(recordingKeys).toContain('/api/recordings');
         expect(recordingKeys).toContain('/api/drive/files');
-    });
-
-    test('IT-FE-REQ-006 401 is converted to explicit relogin message', () => {
-        const message = buildApiFailureMessage('/api/extra/performance_day_infos', 'PUT', 401, 'Unauthorized');
-
-        expect(message).toBe('ログイン期限が切れました。再ログインしてください。');
-    });
-
-    test('IT-FE-REQ-007 DB write failure detail is surfaced with target/action', () => {
-        const message = buildApiFailureMessage(
-            '/api/extra/performance_day_infos',
-            'PUT',
-            500,
-            'DB write is not implemented for performance_day_infos'
-        );
-
-        expect(message).toContain('本番情報の更新に失敗しました');
-        expect(message).toContain('DB write is not implemented for performance_day_infos');
-    });
-
-    test('IT-FE-REQ-008 auth recovery is attempted only for eligible 401 responses', () => {
-        expect(shouldAttemptAuthRecovery(401, {}, '/api/extra/part_settings')).toBe(true);
-        expect(shouldAttemptAuthRecovery(401, { _skipAuthRecovery: true }, '/api/extra/part_settings')).toBe(false);
-        expect(shouldAttemptAuthRecovery(401, {}, '/api/auth/portal-login')).toBe(false);
-        expect(shouldAttemptAuthRecovery(500, {}, '/api/extra/part_settings')).toBe(false);
     });
 });

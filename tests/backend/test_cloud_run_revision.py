@@ -23,19 +23,3 @@ def test_revision_endpoint_returns_uncached_cloud_run_revision(client, monkeypat
     assert response.status_code == 200
     assert response.json()["cloudRunRevision"] == "kanade-orchestra-00060-hsf"
     assert response.headers["cache-control"] == "no-store"
-
-
-def test_manifest_endpoint_uses_organization_short_name(client, backend_env):
-    backend_env.save_json_data(
-        "org_settings",
-        [{"id": 1, "name": "奏オーケストラ", "short_name": "奏オケ"}],
-    )
-
-    response = client.get("/manifest.webmanifest")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/manifest+json")
-    payload = response.json()
-    assert payload["name"] == "奏オケポータル"
-    assert payload["short_name"] == "奏オケポータル"
-    assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"

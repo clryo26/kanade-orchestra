@@ -1,9 +1,6 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
-
 function bindUpload() {
     const fileInput = $('fileInput');
 
@@ -32,7 +29,6 @@ function bindForms() {
     if ($('addPerformanceDayAssignmentRowBtn')) $('addPerformanceDayAssignmentRowBtn').addEventListener('click', addPerformanceDayAssignmentRow);
     if ($('performanceDayInfoPerformance')) $('performanceDayInfoPerformance').addEventListener('change', () => {
         $('performanceDayInfoId').value = '';
-        if (typeof renderPerformanceDayPartRehearsalRows === 'function') renderPerformanceDayPartRehearsalRows();
     });
     if ($('performanceDayAssignmentRows')) renderPerformanceDayAssignmentRows([]);
     if ($('savePracticeInstructionBtn')) $('savePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePracticeInstructionAdmin()));
@@ -159,7 +155,7 @@ function clearUploadForm() {
     appState.selectedFiles = [];
     $('fileInput').value = '';
     $('selectedFileName').textContent = '未選択';
-    $('uploadDate').value = window.portalRuntimeContext.today();
+    $('uploadDate').value = today();
     if ($('uploadPerformance')) $('uploadPerformance').value = '';
     $('uploadPiece').value = '';
     renderUploadPieceOptions();

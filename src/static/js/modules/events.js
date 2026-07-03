@@ -1,8 +1,5 @@
 // Event adjustment module.
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
-
 async function saveEvent() {
     const payload = {
         title: $('eventTitle').value.trim(),

@@ -1,15 +1,6 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
-
-function joinedAtMonthInputValue(value) {
-    const text = String(value || '').trim();
-    const match = text.match(/^(\d{4})[-\/\.](\d{2})/);
-    return match ? `${match[1]}-${match[2]}` : '';
-}
-
 function renderConcertRecordView() {
     const container = $('memberConcertRecordInfo');
     if (!container) return;
@@ -28,7 +19,6 @@ function showOwnProfileEditForm(memberId) {
         showAlert('編集できるプロフィールが見つかりません', 'warning');
         return;
     }
-    const joinedAtMonth = joinedAtMonthInputValue(member.joined_at);
     container.innerHTML = `
         <div class="card">
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -43,7 +33,7 @@ function showOwnProfileEditForm(memberId) {
                     </div>
                     <div class="col-md-4">
                         <label class="form-label" for="profileJoinedAt">入団年月</label>
-                        <input type="month" class="form-control" id="profileJoinedAt" value="${escapeHtml(joinedAtMonth)}">
+                        <input type="month" class="form-control" id="profileJoinedAt" value="${escapeHtml(member.joined_at || '')}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label" for="profileIntroducer">紹介者</label>
@@ -124,7 +114,7 @@ function renderPortalHome() {
     const announcementList = $('portalHomeAnnouncementList');
     if (announcementList) {
         announcements.forEach((ann) => {
-            announcementList.appendChild(announcementItem(ann, false, { portalHomeOneLine: true }));
+            announcementList.appendChild(announcementItem(ann, false));
         });
     }
 
@@ -145,7 +135,7 @@ function renderPortalHome() {
 
 function nextPerformance() {
     const upcoming = [...(appState.performances || [])]
-        .filter((perf) => perf.date && perf.date >= window.portalRuntimeContext.today())
+        .filter((perf) => perf.date && perf.date >= today())
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return upcoming[0] || null;
 }

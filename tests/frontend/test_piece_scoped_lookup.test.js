@@ -11,20 +11,14 @@ describe('piece scoped lookup', () => {
         expect(performancePieceFormalLabel(piece)).toBe('Beethoven: Symphony No.5');
     });
 
-    test('formal label prefixes part when present', () => {
-        const piece = { composer: 'Beethoven', title: 'Symphony No.5', part: '第一部' };
-
-        expect(performancePieceFormalLabel(piece)).toBe('第一部 Beethoven: Symphony No.5');
-    });
-
     test('matches migrated rows saved with alias or formal piece labels', () => {
-        const piece = { composer: 'Beethoven', title: 'Symphony No.5', alias: '運命', part: '第一部' };
+        const piece = { composer: 'Beethoven', title: 'Symphony No.5', alias: '運命' };
         const rows = [
-            { id: 1, performance_id: 10, piece: '第一部 Beethoven: Symphony No.5', description: 'formal' },
-            { id: 2, performance_id: 10, piece: '第一部 運命', practice_notes: 'alias' }
+            { id: 1, performance_id: 10, piece: 'Beethoven: Symphony No.5', description: 'formal' },
+            { id: 2, performance_id: 10, piece: '運命', practice_notes: 'alias' }
         ];
 
-        expect(performancePieceLookupLabels(piece)).toEqual(['第一部 運命', '第一部 Beethoven: Symphony No.5', '第一部', '第一部 Symphony No.5', 'Symphony No.5', '運命', 'Beethoven: Symphony No.5']);
+        expect(performancePieceLookupLabels(piece)).toEqual(['運命', 'Beethoven: Symphony No.5', 'Symphony No.5']);
         expect(findPieceScopedItem(rows, 10, piece).id).toBe(1);
         expect(findPieceScopedItem(rows.slice(1), 10, piece).id).toBe(2);
     });

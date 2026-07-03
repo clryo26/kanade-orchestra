@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-from .schemas import Performance
+from ..app_core import Performance
 
 __all__ = ["Performance"]

@@ -322,16 +322,6 @@ body {
     color: #b02a37;
 }
 
-.recording-filter-row .form-label {
-    font-size: 0.85rem;
-}
-
-.recording-filter-row .form-control,
-.recording-filter-row .form-select,
-.recording-filter-row .btn {
-    min-height: 2.2rem;
-}
-
 /* 一覧表示・テキスト補助 */
 .clickable-row {
     cursor: pointer;
@@ -454,29 +444,90 @@ body {
     font-weight: 700;
 }
 
+.recording-date-group,
+.recording-piece-group {
+    margin-bottom: 0.65rem;
+}
+
+.recording-summary {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    gap: 0.5rem;
+    font-weight: 700;
+    justify-content: space-between;
+    list-style: none;
+    padding: 0.65rem 0.75rem;
+}
+
+.recording-summary::-webkit-details-marker {
+    display: none;
+}
+
+.recording-summary::after {
+    content: "開く";
+    color: #667085;
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.recording-summary > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .recording-bulk-delete-btn {
     flex: 0 0 auto;
 }
 
+details[open] > .recording-summary::after {
+    content: "閉じる";
+}
+
+.recording-piece-group.files-collapsed > .recording-summary::after {
+    content: "ファイルを開く";
+}
+
+details[open].recording-piece-group:not(.files-collapsed) > .recording-summary::after {
+    content: "ファイルを閉じる";
+}
+
+.recording-date-summary {
+    background: #eef6ff;
+    color: var(--brand-dark);
+}
+
+.recording-piece-summary {
+    margin-left: 0.75rem;
+}
+
+.recording-piece-group .list-group {
+    margin-left: 0.75rem;
+    margin-top: 0.5rem;
+}
+
 .recording-controls {
-    align-items: stretch;
+    align-items: center;
     background: #fff;
     border: 1px solid var(--line);
     border-radius: 8px;
-    display: grid;
-    gap: 0.65rem;
+    display: flex;
+    justify-content: flex-end;
     margin-bottom: 0.75rem;
     padding: 0.65rem 0.75rem;
 }
 
 .recording-continuous-check {
     align-items: center;
-    display: flex;
+    display: inline-flex;
     gap: 0.45rem;
-    justify-self: start;
     margin: 0;
-    min-height: 2.2rem;
-    padding: 0.15rem 0;
 }
 
 .recording-row {
@@ -563,18 +614,14 @@ body {
         padding-right: 0.55rem;
     }
 
-    .recording-controls {
-        padding: 0.75rem;
+    .recording-summary {
+        align-items: stretch;
+        flex-wrap: wrap;
     }
 
-    .recording-continuous-check {
-        background: #f8fafc;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 0.45rem 0.55rem;
-        width: 100%;
+    .recording-summary > span {
+        flex: 1 1 100%;
     }
-
 }
 
 .multiline-text {
@@ -828,59 +875,6 @@ body {
     border: 1px solid #dee2e6;
     background: #f8f9fa;
 }
-.album-photo-open-btn {
-    background: transparent;
-    border: 0;
-    display: block;
-    padding: 0;
-    width: 100%;
-}
-.album-photo-open-btn:focus-visible {
-    outline: 3px solid rgba(35, 87, 137, 0.35);
-    outline-offset: 3px;
-}
-.album-photo-viewer {
-    background: rgba(15, 23, 42, 0.94);
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    inset: 0;
-    position: fixed;
-    z-index: 1200;
-}
-.album-photo-viewer[hidden] {
-    display: none !important;
-}
-.album-photo-viewer-toolbar {
-    align-items: center;
-    color: #fff;
-    display: flex;
-    gap: 0.75rem;
-    padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem 0.75rem;
-}
-.album-photo-viewer-title {
-    flex: 1;
-    font-size: 0.9rem;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.album-photo-viewer-body {
-    align-items: center;
-    display: flex;
-    justify-content: center;
-    min-height: 0;
-    overflow: auto;
-    padding: 0 0.75rem max(0.75rem, env(safe-area-inset-bottom));
-}
-.album-photo-viewer-body img {
-    max-height: 100%;
-    max-width: 100%;
-    object-fit: contain;
-}
-body.album-photo-viewer-open {
-    overflow: hidden;
-}
 .payment-performance-list {
     display: grid;
     gap: 0.35rem;
@@ -996,41 +990,11 @@ body.album-photo-viewer-open {
     display: flex;
     flex-direction: column;
 }
-
-.readiness-detail-collapse > summary {
-    cursor: pointer;
-    color: #0d6efd;
-    user-select: none;
-}
-
-@media (max-width: 768px) {
-    .portal-home-announcement-mobile-line {
-        overflow: hidden;
-    }
-    .portal-home-announcement-mobile-line .portal-announcement-one-line {
-        display: block;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    #systemReadinessTab .table th,
-    #systemReadinessTab .table td {
-        white-space: normal;
-        word-break: break-word;
-        font-size: 0.82rem;
-        vertical-align: top;
-    }
-
-    #systemReadinessTab .table th:nth-child(1),
-    #systemReadinessTab .table td:nth-child(1) {
-        min-width: 90px;
-    }
-}
 .member-photo {
     width: 100%;
-    max-width: 320px;
+    max-width: 240px;
     height: auto;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 4 / 3;
     object-fit: cover;
     border-radius: 0;
     align-self: center;
@@ -1086,20 +1050,6 @@ body.album-photo-viewer-open {
 
 .payment-overdue {
     color: #dc3545;
-    font-weight: 700;
-}
-
-.payment-admin-item-warning {
-    background: #fff5f5;
-    border-left: 4px solid #dc3545;
-}
-
-.payment-admin-item-ok {
-    background: #fff;
-}
-
-.payment-unpaid-summary {
-    color: #b42318;
     font-weight: 700;
 }
 

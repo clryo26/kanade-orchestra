@@ -1,9 +1,6 @@
 // This file was split from main.js during frontend refactor.
 // It depends on shared globals declared in main.js (appState, $, request, helpers).
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
-
 function canManageRecordings() {
     return canAccessAdmin() || appState.currentUserIsRecordingManager;
 }

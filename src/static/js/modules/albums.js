@@ -1,8 +1,5 @@
 // Album module.
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
-
 function renderAlbumView() {
     const c = $('memberAlbumInfo');
     if (!c) return;
@@ -32,9 +29,9 @@ function renderAlbumView() {
                         : String(photo.url || '#');
                     const deleteBtn = isAdmin ? `<button class="btn btn-sm btn-outline-danger album-delete-photo-btn mt-1" type="button" data-album-id="${escapeHtml(String(album.id || ''))}" data-photo-id="${escapeHtml(String(photo.id || ''))}">削除</button>` : '';
                     return `<div class="col-6 col-md-4 col-lg-3 position-relative">
-                        <button class="album-photo-open-btn" type="button" data-album-photo-url="${escapeHtml(photoUrl)}" data-album-photo-title="${escapeHtml(photo.filename || '写真')}">
+                        <a href="${escapeHtml(photoUrl)}" target="_blank">
                             <img src="${escapeHtml(photoUrl)}" class="album-photo" alt="${escapeHtml(photo.filename || '写真')}" loading="lazy">
-                        </button>
+                        </a>
                         <div class="small mt-1 text-muted">${escapeHtml(photo.filename || '写真')}</div>
                         <div class="small text-muted">
                             <div>${escapeHtml(photo.uploaded_by_member_name || '不明')}</div>
@@ -119,56 +116,6 @@ function renderAlbumView() {
     c.querySelectorAll('.album-delete-photo-btn').forEach((button) => {
         button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteAlbumPhoto(button.dataset.albumId || '', button.dataset.photoId || '')));
     });
-
-    c.querySelectorAll('.album-photo-open-btn').forEach((button) => {
-        button.addEventListener('click', () => openAlbumPhotoViewer(
-            button.dataset.albumPhotoUrl || '',
-            button.dataset.albumPhotoTitle || '写真'
-        ));
-    });
-}
-
-function openAlbumPhotoViewer(photoUrl, title = '写真') {
-    if (!photoUrl) return;
-    let viewer = $('albumPhotoViewer');
-    if (!viewer) {
-        viewer = document.createElement('div');
-        viewer.id = 'albumPhotoViewer';
-        viewer.className = 'album-photo-viewer';
-        viewer.innerHTML = `
-            <div class="album-photo-viewer-toolbar">
-                <button class="btn btn-outline-light btn-sm" id="albumPhotoViewerCloseBtn" type="button">アルバムに戻る</button>
-                <span class="album-photo-viewer-title" id="albumPhotoViewerTitle"></span>
-            </div>
-            <div class="album-photo-viewer-body">
-                <img id="albumPhotoViewerImage" alt="">
-            </div>
-        `;
-        document.body.appendChild(viewer);
-        $('albumPhotoViewerCloseBtn')?.addEventListener('click', closeAlbumPhotoViewer);
-        viewer.addEventListener('click', (event) => {
-            if (event.target === viewer) closeAlbumPhotoViewer();
-        });
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && !viewer.hidden) closeAlbumPhotoViewer();
-        });
-    }
-    const image = $('albumPhotoViewerImage');
-    const titleElement = $('albumPhotoViewerTitle');
-    if (image) {
-        image.src = photoUrl;
-        image.alt = title;
-    }
-    if (titleElement) titleElement.textContent = title;
-    viewer.hidden = false;
-    document.body.classList.add('album-photo-viewer-open');
-}
-
-function closeAlbumPhotoViewer() {
-    const viewer = $('albumPhotoViewer');
-    if (!viewer) return;
-    viewer.hidden = true;
-    document.body.classList.remove('album-photo-viewer-open');
 }
 
 async function createAlbumEvent() {
@@ -246,3 +193,4 @@ async function deleteAlbumPhoto(albumId, photoId) {
     await loadExtraData();
     showAlert('写真を削除しました', 'success');
 }
+

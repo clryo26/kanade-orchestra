@@ -1,24 +1,5 @@
 const { BOOTSTRAP_DATA, PART_SETTINGS, ORG_SETTINGS, SNS_SETTINGS } = require('./mockData');
 
-function deepMerge(target, source) {
-  if (!source || typeof source !== 'object') {
-    return target;
-  }
-  for (const [key, value] of Object.entries(source)) {
-    if (Array.isArray(value)) {
-      target[key] = value;
-      continue;
-    }
-    if (value && typeof value === 'object') {
-      const base = target[key] && typeof target[key] === 'object' ? target[key] : {};
-      target[key] = deepMerge(base, value);
-      continue;
-    }
-    target[key] = value;
-  }
-  return target;
-}
-
 function authResponse(permission = '一般') {
   const isAdmin = permission === '管理者' || permission === 'システム管理者';
   return {
@@ -42,7 +23,6 @@ async function fulfillJson(route, payload, status = 200) {
 
 async function installPortalApiMocks(page, options = {}) {
   const permission = options.permission || '一般';
-  const bootstrapData = deepMerge(JSON.parse(JSON.stringify(BOOTSTRAP_DATA)), options.bootstrapOverrides || {});
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -83,7 +63,7 @@ async function installPortalApiMocks(page, options = {}) {
     }
 
     if (path === '/api/bootstrap-lite' || path === '/api/bootstrap-core' || path === '/api/bootstrap') {
-      return fulfillJson(route, bootstrapData);
+      return fulfillJson(route, BOOTSTRAP_DATA);
     }
 
     if (path === '/api/system/access-logs') {

@@ -7,12 +7,12 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
-    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#235789">
     <meta name="application-name" content="楽団ポータル">
     <meta name="apple-mobile-web-app-title" content="楽団ポータル">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260703-1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260617-15">
 </head>
 <body>
     <!-- グローバルヘッダー: ドロワー開閉とブランド表示 -->
@@ -66,7 +66,6 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="event" type="button">イベント調整</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="member" type="button">団員登録</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="flyer-admin" type="button">チラシ配布管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-setting" type="button">支払設定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="casting-admin" type="button">乗り番管理</button>
@@ -145,7 +144,7 @@
                                 <label class="form-label" for="perfConductor">指揮者</label>
                                 <input type="text" class="form-control" id="perfConductor">
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <label class="form-label" for="perfPieceTitle">曲名</label>
                                 <input type="text" class="form-control" id="perfPieceTitle" placeholder="例: 交響曲第5番">
                             </div>
@@ -158,15 +157,6 @@
                                 <input type="text" class="form-control" id="perfPieceComposer" placeholder="例: チャイコフスキー">
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label" for="perfPiecePart">部</label>
-                                <select class="form-select" id="perfPiecePart">
-                                    <option value="">選択してください</option>
-                                    <option value="第一部">第一部</option>
-                                    <option value="第二部">第二部</option>
-                                    <option value="第三部">第三部</option>
-                                </select>
-                            </div>
-                            <div class="col-md-1">
                                 <label class="form-label" for="perfPieceDuration">演奏時間(分)</label>
                                 <input type="text" class="form-control" id="perfPieceDuration" placeholder="例: 8">
                             </div>
@@ -211,28 +201,8 @@
                                 <select class="form-select" id="performanceDayInfoPerformance"></select>
                             </div>
                             <div class="col-12">
-                                <div class="border rounded p-3 bg-white">
-                                    <div class="fw-bold mb-3">本番タイムテーブル</div>
-                                    <div class="row g-3">
-                                        <div class="col-md-4">
-                                            <label class="form-label" for="performanceDayOpenTime">開場時間</label>
-                                            <input type="time" class="form-control" id="performanceDayOpenTime">
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label" for="performanceDayRehearsalStartTime">リハーサル開始時刻</label>
-                                            <input type="time" class="form-control" id="performanceDayRehearsalStartTime">
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label class="form-label" for="performanceDayStartTime">開演時間</label>
-                                            <input type="time" class="form-control" id="performanceDayStartTime">
-                                        </div>
-                                        <div class="col-12">
-                                            <div class="fw-bold mb-2">部ごとのリハ時間</div>
-                                            <div id="performanceDayPartRehearsalRows" class="row g-3"></div>
-                                            <div class="form-text mt-2">演奏会で登録されている曲の「部」に応じて、各部の開始時刻を登録してください。</div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <label class="form-label" for="performanceDayTimeline">当日タイムテーブル</label>
+                                <textarea class="form-control" id="performanceDayTimeline" rows="5" placeholder="例: 09:00 集合&#10;10:00 リハーサル&#10;14:00 開場"></textarea>
                             </div>
                             <div class="col-12">
                                 <label class="form-label">本番衣装（男女別）</label>
@@ -632,35 +602,6 @@
                 </div>
             </div>
 
-            <!-- チラシ配布管理 -->
-            <div id="flyerAdminTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">チラシ配布管理</div>
-                    <div class="card-body">
-                        <input type="hidden" id="flyerPlaceId">
-                        <div class="row g-3 align-items-end mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="flyerPlaceName">施設名・店舗名</label>
-                                <input type="text" class="form-control" id="flyerPlaceName" placeholder="例: 市民文化センター / ○○書店">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="flyerPlaceArea">エリア・住所</label>
-                                <input type="text" class="form-control" id="flyerPlaceArea" placeholder="例: 天神・博多 / ○○区 1-2-3">
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label" for="flyerPlaceNote">備考</label>
-                                <textarea class="form-control" id="flyerPlaceNote" rows="3" placeholder="例: 受付横に設置 / 担当者へ手渡し"></textarea>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 mb-3">
-                            <button class="btn btn-success" id="saveFlyerPlaceBtn" type="button">保存</button>
-                            <button class="btn btn-outline-secondary" id="clearFlyerPlaceBtn" type="button">選択解除</button>
-                        </div>
-                        <div id="flyerPlaceList"></div>
-                    </div>
-                </div>
-            </div>
-
             <!-- 支払設定管理 -->
             <div id="paymentSettingTab" class="tab-content" hidden>
                 <div class="card">
@@ -790,7 +731,6 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
-                <button class="btn btn-sm btn-outline-primary" data-tab="system-readiness" type="button">運用Readyチェック</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-access-log" type="button">アクセスログ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-database" type="button">データベース</button>
             </div>
@@ -927,29 +867,6 @@
                 </div>
             </div>
 
-            <div id="systemReadinessTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">運用Readyチェック</div>
-                    <div class="card-body">
-                        <p class="text-muted small mb-2">DB状態・リリース安全ファイル・app_core行数などの運用準備状況を表示します。</p>
-                        <div id="readinessStatus" class="text-muted small mb-2" hidden></div>
-                        <div id="readinessSummary" class="mb-3"></div>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width: 100px;">状態</th>
-                                        <th>チェック</th>
-                                        <th>詳細</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="readinessChecks"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div id="systemAccessLogTab" class="tab-content" hidden>
                 <div class="card">
                     <div class="card-header">アクセスログ</div>
@@ -1064,23 +981,6 @@
                 </div>
             </div>
 
-            <!-- 団員向け: チラシ配布 -->
-            <div id="memberFlyerDistributionTab" class="tab-content" hidden>
-                <div class="card">
-                    <div class="card-header">チラシ配布</div>
-                    <div class="card-body">
-                        <input type="hidden" id="flyerDistributionSelectedPerformanceId">
-                        <div class="row g-3 align-items-end mb-3">
-                            <div class="col-md-8">
-                                <label class="form-label" for="flyerDistributionPerformanceId">演奏会</label>
-                                <select class="form-select" id="flyerDistributionPerformanceId"></select>
-                            </div>
-                        </div>
-                        <div id="flyerDistributionList"></div>
-                    </div>
-                </div>
-            </div>
-
             <!-- 団員向け: 本番情報 -->
             <div id="memberPerformanceDayTab" class="tab-content" hidden>
                 <div class="card">
@@ -1171,7 +1071,7 @@
     </main>
 
     <div id="toastArea" class="toast-area"></div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/config.js?v=20260630-2"></script>
     <script src="/static/js/api.js?v=20260630-2"></script>
     <script src="/static/js/utils/api.js?v=20260630-2"></script>
@@ -1179,67 +1079,26 @@
     <script src="/static/js/utils/calendar.js?v=20260630-2"></script>
     <script src="/static/js/utils/cache.js?v=20260630-2"></script>
     <script src="/static/js/utils/dialog.js?v=20260630-2"></script>
-    <script src="/static/js/store/app_state.js?v=20260701-1"></script>
-    <script src="/static/js/utils/runtime_context.js?v=20260701-1"></script>
     <script src="/static/js/main.js?v=20260630-6"></script>
-    <script src="/static/js/modules/common_helpers/pure.js?v=20260703-2"></script>
-    <script src="/static/js/modules/common_helpers/ui.js?v=20260701-1"></script>
-    <script src="/static/js/modules/common_helpers/api_runtime.js?v=20260703-1"></script>
-    <script src="/static/js/modules/common_helpers/bootstrap_init.js?v=20260701-1"></script>
-    <script src="/static/js/modules/common_helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/bootstrap_loader.js?v=20260703-1"></script>
-    <script src="/static/js/modules/navigation/helpers.js?v=20260703-1"></script>
-    <script src="/static/js/modules/navigation/tabs.js?v=20260701-1"></script>
-    <script src="/static/js/modules/navigation/menu.js?v=20260701-1"></script>
-    <script src="/static/js/modules/navigation/routes.js?v=20260703-1"></script>
-    <script src="/static/js/modules/navigation/events.js?v=20260701-1"></script>
-    <script src="/static/js/modules/navigation.js?v=20260701-1"></script>
-    <script src="/static/js/modules/upload_forms.js?v=20260703-2"></script>
-    <script src="/static/js/modules/admin_system/helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/admin_system/render.js?v=20260701-2"></script>
-    <script src="/static/js/modules/admin_system/api.js?v=20260701-2"></script>
-    <script src="/static/js/modules/admin_system/database_viewer.js?v=20260701-2"></script>
-    <script src="/static/js/modules/admin_system/diagnostics.js?v=20260701-2"></script>
+    <script src="/static/js/modules/common_helpers.js?v=20260630-6"></script>
+    <script src="/static/js/modules/bootstrap_loader.js?v=20260630-6"></script>
+    <script src="/static/js/modules/navigation.js?v=20260630-6"></script>
+    <script src="/static/js/modules/upload_forms.js?v=20260630-6"></script>
     <script src="/static/js/modules/admin_system.js?v=20260630-6"></script>
     <script src="/static/js/modules/portal_views.js?v=20260630-6"></script>
-    <script src="/static/js/modules/performance_day/helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/performance_day/render.js?v=20260701-1"></script>
-    <script src="/static/js/modules/performance_day/events.js?v=20260701-1"></script>
-    <script src="/static/js/modules/performance_day.js?v=20260703-3"></script>
-    <script src="/static/js/modules/practice_casting/helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/practice_casting/api.js?v=20260701-1"></script>
-    <script src="/static/js/modules/practice_casting/render.js?v=20260701-1"></script>
-    <script src="/static/js/modules/practice_casting/events.js?v=20260701-1"></script>
-    <script src="/static/js/modules/practice_casting.js?v=20260701-1"></script>
-    <script src="/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/date_piece_promotion/validation.js?v=20260701-3"></script>
-    <script src="/static/js/modules/date_piece_promotion/events.js?v=20260701-3"></script>
-    <script src="/static/js/modules/date_piece_promotion/state.js?v=20260701-2"></script>
-    <script src="/static/js/modules/date_piece_promotion/api.js?v=20260701-2"></script>
-    <script src="/static/js/modules/date_piece_promotion/render_piece_practice.js?v=20260701-1"></script>
-    <script src="/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20260701-1"></script>
-    <script src="/static/js/modules/date_piece_promotion/render.js?v=20260701-3"></script>
+    <script src="/static/js/modules/performance_day.js?v=20260630-6"></script>
+    <script src="/static/js/modules/practice_casting.js?v=20260630-6"></script>
     <script src="/static/js/modules/date_piece_promotion.js?v=20260630-6"></script>
     <script src="/static/js/modules/announcements.js?v=20260630-6"></script>
-    <script src="/static/js/modules/performances.js?v=20260703-2"></script>
-    <script src="/static/js/modules/flyer_distribution.js?v=20260703-2"></script>
+    <script src="/static/js/modules/performances.js?v=20260630-6"></script>
     <script src="/static/js/modules/schedules.js?v=20260630-6"></script>
     <script src="/static/js/modules/recordings.js?v=20260630-6"></script>
-    <script src="/static/js/recordings_feature.js?v=20260702-1"></script>
-    <script src="/static/js/modules/members/helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/members/form.js?v=20260701-1"></script>
-    <script src="/static/js/modules/members/api.js?v=20260701-1"></script>
-    <script src="/static/js/modules/members/render.js?v=20260701-1"></script>
-    <script src="/static/js/modules/members/events.js?v=20260701-1"></script>
-    <script src="/static/js/modules/members.js?v=20260701-1"></script>
+    <script src="/static/js/recordings_feature.js?v=20260630-6"></script>
+    <script src="/static/js/modules/members.js?v=20260630-6"></script>
     <script src="/static/js/modules/absences.js?v=20260630-6"></script>
-    <script src="/static/js/modules/payments.js?v=20260703-1"></script>
-    <script src="/static/js/modules/flyer_places.js?v=20260703-1"></script>
+    <script src="/static/js/modules/payments.js?v=20260630-6"></script>
     <script src="/static/js/modules/events.js?v=20260630-6"></script>
-    <script src="/static/js/modules/scores/helpers.js?v=20260701-1"></script>
-    <script src="/static/js/modules/scores/render.js?v=20260701-1"></script>
-    <script src="/static/js/modules/scores/events.js?v=20260701-1"></script>
-    <script src="/static/js/modules/scores.js?v=20260701-1"></script>
+    <script src="/static/js/modules/scores.js?v=20260630-6"></script>
     <script src="/static/js/modules/albums.js?v=20260630-6"></script>
     <script src="/static/js/modules/sns.js?v=20260630-6"></script>
     <script src="/static/js/auth_feature.js?v=20260630-6"></script>

@@ -1,8 +1,9 @@
 // This file was split from main.js during frontend refactor.
-// scores.js now stays as a thin compatibility loader.
+// It depends on shared globals declared in main.js (appState, $, request, helpers).
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
+function canManageSheets() {
+    return canAccessAdmin() || appState.currentUserIsSheetManager;
+}
 
 // ポータル入場後の初期表示シーケンス。
 // 先に画面骨格を見せ、データは段階的に読み込む。
@@ -487,4 +488,17 @@ function sheetZipUrl(performanceId, piece = '', part = '') {
 
 // 楽譜管理画面の入口。
 // 演奏会・曲目選択の状態を保ちながら一覧と操作部品を組み直す。
+// renderSheetAdmin moved to feature module.
+
+// updateSheetPieceOptions moved to feature module.
+
+// uploadSheets moved to feature module.
+
+// renderSheetAdminList moved to feature module.
+
+// deleteSheets moved to feature module.
+
+// saveSheetPart moved to feature module.
+
+// bulkSaveSheetParts moved to feature module.
 

@@ -1,15 +1,28 @@
-const { loginRevisionUiContract } = require('../../src/static/js/frontend_testable_logic.js');
+const fs = require('node:fs');
+const path = require('node:path');
 
 describe('login revision refresh controls', () => {
-    const contract = loginRevisionUiContract();
+    const appJs = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/app.js'), 'utf8');
 
     test('login screen renders refresh button and revision label', () => {
-        expect(contract.reloadButtonId).toBe('portalLoginReloadBtn');
-        expect(contract.revisionAttribute).toBe('data-revision-number');
+        const showPortalLogin = appJs.slice(
+            appJs.indexOf('function showPortalLogin()'),
+            appJs.indexOf('async function handlePortalLogin()')
+        );
+
+        expect(showPortalLogin).toContain('id="portalLoginReloadBtn"');
+        expect(showPortalLogin).toContain('data-revision-number');
+        expect(showPortalLogin).toContain('updateCloudRunRevision()');
     });
 
     test('login refresh button reloads the page', () => {
-        expect(contract.loadingLabel).toBe('更新中...');
-        expect(contract.refreshAction).toBe('window.location.reload()');
+        const showPortalLogin = appJs.slice(
+            appJs.indexOf('function showPortalLogin()'),
+            appJs.indexOf('async function handlePortalLogin()')
+        );
+
+        expect(showPortalLogin).toContain('portalLoginReloadBtn');
+        expect(showPortalLogin).toContain("setLoadingBar('更新中...')");
+        expect(showPortalLogin).toContain('window.location.reload()');
     });
 });

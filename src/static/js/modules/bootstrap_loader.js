@@ -1,9 +1,6 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
-var appState = window.portalRuntimeContext.appState;
-var $ = window.portalRuntimeContext.getById;
-
 async function loadPartSettingsForLogin() {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
@@ -42,9 +39,9 @@ function bindDownloadConfirmations() {
 
 function setDefaultDates() {
     ['uploadDate', 'schedDate', 'annDate', 'paymentLatestDate'].forEach((id) => {
-        if ($(id)) $(id).value = window.portalRuntimeContext.today();
+        if ($(id)) $(id).value = today();
     });
-    $('perfDate').value = window.portalRuntimeContext.today();
+    $('perfDate').value = today();
 }
 
 // 団員トップ画面と楽譜ビューワー枠を初期化する。
@@ -82,7 +79,6 @@ function renderEssentialViews() {
     renderEvents();
     renderMembers();
     renderPaymentAdmin();
-    renderFlyerPlacesAdmin();
     renderVenueManagement();
     renderOrgManagement();
     renderSnsManagement();
@@ -180,7 +176,6 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         request('/api/extra/date_adjustment_responses'),
         request('/api/extra/sheet_library'),
         request('/api/extra/payments'),
-        request('/api/extra/flyer_places'),
         request('/api/extra/castings'),
         request('/api/extra/piece_infos'),
         request('/api/extra/practice_instructions'),
@@ -233,17 +228,12 @@ async function legacyBootstrapData(includeHeavyLists = true) {
 
 function applyBootstrapData(data) {
     const extras = data.extras || {};
-    const collectionOrCurrent = (name) => (
-        Object.prototype.hasOwnProperty.call(data, name)
-            ? (data[name] || [])
-            : (appState[name] || [])
-    );
     Object.assign(appState, {
-        performances: collectionOrCurrent('performances'),
-        schedules: collectionOrCurrent('schedules'),
-        announcements: collectionOrCurrent('announcements'),
-        events: collectionOrCurrent('events'),
-        members: collectionOrCurrent('members'),
+        performances: data.performances || [],
+        schedules: data.schedules || [],
+        announcements: data.announcements || [],
+        events: data.events || [],
+        members: data.members || [],
         recordings: data.recordings?.files || appState.recordings || [],
         absences: extras.absences || [],
         eventResponses: extras.event_responses || [],
@@ -251,7 +241,6 @@ function applyBootstrapData(data) {
         dateAdjustmentResponses: extras.date_adjustment_responses || [],
         sheetLibrary: data.sheets?.files || extras.sheet_library || appState.sheetLibrary || [],
         payments: extras.payments || [],
-        flyerPlaces: extras.flyer_places || [],
         castings: extras.castings || [],
         pieceInfos: extras.piece_infos || [],
         practiceInstructions: extras.practice_instructions || [],
@@ -317,7 +306,6 @@ function renderInitialViews(options = {}) {
     if (includeHeavyLists) renderRecordings();
     if (includeHeavyLists) renderSheetAdmin();
     renderPaymentAdmin();
-    renderFlyerPlacesAdmin();
     renderVenueManagement();
     renderCastingAdmin();
     renderPracticeInstructionAdmin();
@@ -339,13 +327,8 @@ function renderInitialViews(options = {}) {
 
 function renderBackgroundViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
-    renderSchedules();
-    renderEvents();
-    renderMembers();
     renderMemberExtraViews({ includeHeavyLists });
     renderSheetAdmin();
-    renderPaymentAdmin();
-    renderFlyerPlacesAdmin();
     renderCastingAdmin();
     renderPracticeInstructionAdmin();
     renderPerformanceDayInfoAdmin();
@@ -373,8 +356,6 @@ async function loadExtraData() {
         ['dateAdjustmentResponses', request('/api/extra/date_adjustment_responses')],
         ['sheets', request('/api/sheets')],
         ['payments', request('/api/extra/payments')],
-        ['flyerPlaces', request('/api/extra/flyer_places')],
-        ['flyerDistributions', request('/api/extra/flyer_distributions')],
         ['castings', request('/api/extra/castings')],
         ['pieceInfos', request('/api/extra/piece_infos')],
         ['practiceInstructions', request('/api/extra/practice_instructions')],
@@ -410,8 +391,6 @@ async function loadExtraData() {
     const dateAdjustmentResponses = resultMap.get('dateAdjustmentResponses') || appState.dateAdjustmentResponses || [];
     const sheets = resultMap.get('sheets') || { files: appState.sheetLibrary || [] };
     const payments = resultMap.get('payments') || appState.payments || [];
-    const flyerPlaces = resultMap.get('flyerPlaces') || appState.flyerPlaces || [];
-    const flyerDistributions = resultMap.get('flyerDistributions') || appState.flyerDistributions || [];
     const castings = resultMap.get('castings') || appState.castings || [];
     const pieceInfos = resultMap.get('pieceInfos') || appState.pieceInfos || [];
     const practiceInstructions = resultMap.get('practiceInstructions') || appState.practiceInstructions || [];
@@ -424,14 +403,13 @@ async function loadExtraData() {
     const orgSettings = resultMap.get('orgSettings') || appState.orgSettings || [];
     const snsSettings = resultMap.get('snsSettings') || appState.snsSettings || [];
     const connectionSettings = resultMap.get('connectionSettings') || appState.connectionSettings || [];
-    Object.assign(appState, { absences, eventResponses, dateAdjustments, dateAdjustmentResponses, sheetLibrary: sheets.files || [], payments, flyerPlaces, flyerDistributions, castings, pieceInfos, practiceInstructions, performanceDayInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings });
+    Object.assign(appState, { absences, eventResponses, dateAdjustments, dateAdjustmentResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, practiceInstructions, performanceDayInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings });
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
     renderMemberExtraViews();
     renderSheetAdmin();
     renderPaymentAdmin();
-    renderFlyerPlacesAdmin();
     renderPartManagement();
     renderVenueManagement();
     renderCastingAdmin();

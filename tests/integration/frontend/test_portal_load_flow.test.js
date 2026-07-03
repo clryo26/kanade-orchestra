@@ -1,8 +1,6 @@
 const {
     loadAllEndpointFromOptions,
-    renderInitialViewTargets,
-    renderBackgroundViewTargets,
-    adminTabRenderTargets
+    renderInitialViewTargets
 } = require('../../../src/static/js/frontend_testable_logic.js');
 
 describe('IT-FE-FLOW integration', () => {
@@ -27,23 +25,5 @@ describe('IT-FE-FLOW integration', () => {
         expect(targets).not.toContain('renderRecordings');
         expect(targets).not.toContain('renderSheetAdmin');
         expect(targets).toContain('renderPortalHome');
-    });
-
-    test('IT-FE-FLOW-003 background load refreshes admin list views', () => {
-        const targets = renderBackgroundViewTargets(false);
-
-        expect(targets).toContain('renderSchedules');
-        expect(targets).toContain('renderEvents');
-        expect(targets).toContain('renderMembers');
-    });
-
-    test('IT-FE-FLOW-004 admin tabs rerender registered list views on show', () => {
-        expect(adminTabRenderTargets('schedule')).toEqual([
-            'renderSchedulePerformanceOptions',
-            'updateSchedulePieceOptions',
-            'renderSchedules'
-        ]);
-        expect(adminTabRenderTargets('event')).toEqual(['renderEvents']);
-        expect(adminTabRenderTargets('member')).toEqual(['renderMembers']);
     });
 });

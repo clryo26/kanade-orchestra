@@ -7,9 +7,6 @@
 
 本書は現行実装の API と JSON コレクション仕様を定義する。
 
-Version 5.1 では、運用データの正を PostgreSQL に統一する（DB Only）。
-`src/data/*.json` は本番データソースとして扱わない。
-
 ## 2. 共通ルール
 
 ### 2.1 データ形式
@@ -17,7 +14,6 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - API の基本レスポンスは JSON
 - 一覧は配列、単体はオブジェクト
 - 更新系は created_at / updated_at を保持
-- app_core は互換ファサードとして維持し、実処理は services/core/repositories へ配置する
 
 ### 2.2 ID
 

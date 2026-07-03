@@ -1,5 +1,4 @@
 from __future__ import annotations
-# mypy: disable-error-code="no-redef,misc"
 
 import io  # noqa: F401
 import os
@@ -114,7 +113,6 @@ try:
         DB_CHILD_COLUMNS as DB_CHILD_COLUMNS,  # noqa: F401
         DB_COLLECTION_COLUMNS as DB_COLLECTION_COLUMNS,  # noqa: F401
         DB_INT_COLUMNS as DB_INT_COLUMNS,  # noqa: F401
-        DB_JSON_COLUMNS as DB_JSON_COLUMNS,  # noqa: F401
         DB_TIMESTAMP_COLUMNS as DB_TIMESTAMP_COLUMNS,  # noqa: F401
         DB_WRITABLE_COLLECTIONS,
         JSON_COLLECTION_TABLES,
@@ -125,7 +123,6 @@ except ImportError:  # pragma: no cover - allows running main.py directly.
         DB_CHILD_COLUMNS as DB_CHILD_COLUMNS,  # noqa: F401
         DB_COLLECTION_COLUMNS as DB_COLLECTION_COLUMNS,  # noqa: F401
         DB_INT_COLUMNS as DB_INT_COLUMNS,  # noqa: F401
-        DB_JSON_COLUMNS as DB_JSON_COLUMNS,  # noqa: F401
         DB_TIMESTAMP_COLUMNS as DB_TIMESTAMP_COLUMNS,  # noqa: F401
         DB_WRITABLE_COLLECTIONS,
         JSON_COLLECTION_TABLES,
