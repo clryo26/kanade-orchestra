@@ -8,6 +8,8 @@ from src.backend.core.db_schema import DB_COLLECTION_COLUMNS, DB_WRITABLE_COLLEC
 
 PHASE9_TARGET_COLLECTIONS = {
     "performance_day_infos",
+    "flyer_places",
+    "flyer_distributions",
     "piece_infos",
     "practice_instructions",
     "part_settings",

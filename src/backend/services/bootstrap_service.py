@@ -2,11 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import Response
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_load_extra(name: str, load_json_data: Callable[[str], list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    try:
+        return load_json_data(name)
+    except Exception:
+        logger.exception("Failed to load bootstrap extra collection: %s", name)
+        return []
 
 
 def combined_collection_etag(
@@ -16,8 +27,12 @@ def combined_collection_etag(
 ) -> str:
     parts: list[str] = []
     for name in dict.fromkeys(names):
-        load_json_data(name)
-        parts.append(f"{name}:{cache_etag(name) or ''}")
+        try:
+            load_json_data(name)
+            parts.append(f"{name}:{cache_etag(name) or ''}")
+        except Exception as exc:
+            logger.exception("Failed to include collection in bootstrap ETag: %s", name)
+            parts.append(f"{name}:error:{type(exc).__name__}")
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
@@ -38,7 +53,7 @@ async def bootstrap_lite_payload(
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
     extra_names = ("payments", "flyer_places", "flyer_distributions", "part_settings", "org_settings", "sns_settings", "connection_settings")
-    extras = {name: load_json_data(name) for name in extra_names}
+    extras = {name: _safe_load_extra(name, load_json_data) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
@@ -77,7 +92,7 @@ async def bootstrap_core_payload(
         "desired_pieces",
         "promotions",
     )
-    extras = {name: load_json_data(name) for name in extra_names}
+    extras = {name: _safe_load_extra(name, load_json_data) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
@@ -121,7 +136,7 @@ async def bootstrap_payload(
         "desired_pieces",
         "promotions",
     )
-    extras = {name: load_json_data(name) for name in extra_names}
+    extras = {name: _safe_load_extra(name, load_json_data) for name in extra_names}
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),

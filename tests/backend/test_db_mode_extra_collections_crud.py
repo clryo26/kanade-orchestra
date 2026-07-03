@@ -10,6 +10,8 @@ TARGET_COLLECTIONS = (
     "performance_day_infos",
     "piece_infos",
     "practice_instructions",
+    "flyer_places",
+    "flyer_distributions",
     "part_settings",
     "venue_settings",
     "org_settings",
@@ -80,6 +82,18 @@ def _create_payload(collection_name: str) -> dict:
         return {"performance_id": 1, "piece": "Symphony", "description": "desc"}
     if collection_name == "practice_instructions":
         return {"performance_id": 1, "piece": "Symphony", "practice_notes": "notes"}
+    if collection_name == "flyer_places":
+        return {"place_name": "Tenjin Shop", "area": "Tenjin", "note": "front desk"}
+    if collection_name == "flyer_distributions":
+        return {
+            "performance_id": 1,
+            "performance_title": "Concert",
+            "flyer_place_id": 1,
+            "flyer_place_name": "Tenjin Shop",
+            "planned_member_id": 1,
+            "planned_member_name": "Admin",
+            "planned_date": "2026-07-10",
+        }
     if collection_name == "part_settings":
         return {"name": "Violin", "display_order": 1, "is_active": True}
     if collection_name == "venue_settings":
@@ -143,6 +157,10 @@ def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatc
         updated_payload["description"] = "updated desc"
     elif collection_name == "practice_instructions":
         updated_payload["practice_notes"] = "updated notes"
+    elif collection_name == "flyer_places":
+        updated_payload["note"] = "updated note"
+    elif collection_name == "flyer_distributions":
+        updated_payload["executed_date"] = "2026-07-11"
     elif collection_name == "part_settings":
         updated_payload["name"] = "Viola"
     elif collection_name == "venue_settings":
