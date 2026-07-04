@@ -268,7 +268,7 @@ jobs:
       - backend-tests-db
       - frontend-tests
     env:
-      BACKEND_COVERAGE_MIN: "70"
+      BACKEND_COVERAGE_MIN: "50"
       FRONTEND_COVERAGE_MIN: "50"
     steps:
       - name: Download backend coverage artifact

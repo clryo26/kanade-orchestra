@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from src.backend import main as backend
-
 
 def _login_system_admin(client: TestClient, device_id: str = "dev-system") -> dict[str, str]:
     login = client.post(

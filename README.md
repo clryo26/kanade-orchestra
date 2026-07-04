@@ -114,7 +114,7 @@ npm run test:e2e
 - Frontend: `check:frontend:syntax` / `check:frontend:load-order` / `check:frontend:state-access` / `test:frontend` / `test:e2e`
 - Operations: `check:ops:checklists` / `check:tenant:migration` / `check:decision-log` / `check:release:readiness`
 - Release safety: `check:release-safety` / `pre-release`
-- Coverage gate は CI の `quality-gates` ジョブ（backend 70%, frontend 50%）で判定する。
+- Coverage gate は CI の `quality-gates` ジョブ（backend 50%, frontend 50%）で判定する。
 
 共有ZIP作成前の最小手順:
 

@@ -191,6 +191,7 @@ def db_write_value(table_name: str, column: str, value: Any) -> Any:
     if column in DB_MONTH_COLUMNS.get(table_name, set()):
         return parse_db_month(value)
     if column in DB_JSON_COLUMNS.get(table_name, set()):
+        json_value: Any
         if table_name == "performance_day_infos" and column == "costume_detail":
             json_value = value if isinstance(value, dict) else {}
         else:
