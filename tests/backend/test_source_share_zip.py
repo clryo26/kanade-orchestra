@@ -24,3 +24,12 @@ def test_access_logs_router_file_is_not_excluded() -> None:
     router_file = MODULE.ROOT / "src" / "backend" / "routers" / "access_logs.py"
     assert router_file.exists()
     assert not MODULE.should_exclude(router_file)
+
+
+def test_playwright_artifact_directories_are_excluded() -> None:
+    expected = {"test-results", "playwright-report", "blob-report"}
+    assert expected <= MODULE.EXCLUDE_DIR_NAMES
+    for directory_name in expected:
+        generated_file = MODULE.ROOT / "tests" / directory_name / "artifact.txt"
+        assert MODULE.should_exclude(generated_file)
+

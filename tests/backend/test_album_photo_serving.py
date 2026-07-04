@@ -29,6 +29,8 @@ def test_album_photo_local_serving_endpoint_returns_file(client, backend_env, se
     get_photo = client.get(f"/api/albums/1/photos/{photo['id']}")
     assert get_photo.status_code == 200
     assert get_photo.content == b"fake-image-bytes"
+    # Regression guard: the test fixture must redirect writes away from src/uploads.
+    assert (backend_env.UPLOAD_DIR / photo["path"]).is_file()
 
 
 def test_album_photo_url_is_api_route_on_upload(client, backend_env, seed_device_fn):

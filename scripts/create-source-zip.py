@@ -23,16 +23,30 @@ INCLUDE_DIRS = [
     "scripts",
     "docs",
     "infra",
+    "db",
+    "sample",
     ".github",
 ]
 
 INCLUDE_FILES = [
     "README.md",
     "AGENTS.md",
+    # Root-level test specifications are required by the operation test suite.
+    # Keep them in shared source archives so a fresh extraction can run the same QA.
+    "UNIT_TEST_SPEC.md",
+    "INTEGRATION_TEST_SPEC.md",
+    "INTEGRATION_TEST_SPEC_BACKEND.md",
+    "INTEGRATION_TEST_SPEC_FRONTEND.md",
+    "INTEGRATION_TEST_SPEC_CI.md",
+    "OPERATION_TEST_SPEC.md",
+    "DESIGN_DOCS_NAVIGATION.md",
     "playwright.config.js",
+    "vitest.config.js",
     "package.json",
     "package-lock.json",
     "pyproject.toml",
+    "uv.lock",
+    ".python-version",
     ".env.example",
     ".gitignore",
     ".dockerignore",
@@ -59,6 +73,11 @@ EXCLUDE_DIR_NAMES = {
     ".cache",
     "coverage",
     "htmlcov",
+    # Playwright creates these at the repository root after browser tests.
+    # Exclude them even if a future include root changes.
+    "test-results",
+    "playwright-report",
+    "blob-report",
 }
 
 EXCLUDE_DIR_PREFIXES = [
@@ -236,6 +255,14 @@ def included_top_level_paths() -> list[Path]:
         target = ROOT / file_name
         if target.exists():
             paths.append(target)
+
+    # Root-level Markdown files are the development design baseline. Include
+    # them all so a fresh source-share extraction cannot break documentation
+    # links recorded in DESIGN_DOCS_NAVIGATION.md.
+    for target in sorted(ROOT.glob("*.md")):
+        if target.is_file() and target not in paths:
+            paths.append(target)
+
     for pattern in INCLUDE_GLOBS:
         for target in ROOT.glob(pattern):
             if target.exists() and target not in paths:

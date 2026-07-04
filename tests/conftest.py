@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backend import main as backend  # noqa: E402
+from src.backend.services import album_service  # noqa: E402
 
 
 @pytest.fixture
@@ -29,6 +30,9 @@ def backend_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(backend, "CONVERTED_DIR", converted_dir)
     monkeypatch.setattr(backend, "SHEET_DIR", sheet_dir)
     monkeypatch.setattr(backend, "DRIVE_STAGING_DIR", staging_dir)
+    # album_service imports UPLOAD_DIR directly; patch its module binding too so
+    # album upload tests remain fully isolated under pytest's temporary directory.
+    monkeypatch.setattr(album_service, "UPLOAD_DIR", upload_dir)
     monkeypatch.setattr(backend, "storage_enabled", lambda: False)
     # Test fixtures operate on isolated JSON files and should not depend on the
     # caller shell's DB backend environment.

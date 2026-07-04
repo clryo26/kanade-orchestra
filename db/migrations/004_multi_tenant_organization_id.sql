@@ -14,8 +14,6 @@ BEGIN
         'event_responses',
         'payments',
         'payment_performance_fees',
-        'flyer_places',
-        'flyer_distributions',
         'castings',
         'casting_members',
         'casting_extras',

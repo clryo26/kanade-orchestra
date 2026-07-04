@@ -37,6 +37,23 @@ ALLOWED_CANDIDATE_EXCEPTIONS = {
 APP_JS_MAX_LINES = 140
 APP_JS_MARKER = "Deprecated compatibility entrypoint."
 
+# The unfinished flyer distribution feature was deliberately removed during the
+# recovery. Keep this narrow guard so a partial frontend/backend reintroduction
+# cannot leave menu/state/API references without a complete implementation.
+INCOMPLETE_FLYER_FEATURE_MARKERS = (
+    "renderFlyerPlacesAdmin",
+    "flyerDistributionSelectedPerformanceId",
+    "flyer_places",
+    "flyer_distribution",
+    "flyerPlaces",
+    "flyerDistributions",
+)
+INCOMPLETE_FLYER_SCAN_ROOTS = (
+    ROOT / "src" / "static" / "js",
+    ROOT / "src" / "backend",
+    ROOT / "src" / "index.html",
+)
+
 
 def _load_zip_module():
     script_path = ROOT / "scripts" / "create-source-zip.py"
@@ -158,6 +175,30 @@ def _check_frontend_policy() -> bool:
     return ok
 
 
+def _check_no_incomplete_flyer_feature_residue() -> bool:
+    """Reject partial remnants of the intentionally removed flyer distribution feature."""
+    offenders: list[str] = []
+
+    for scan_root in INCOMPLETE_FLYER_SCAN_ROOTS:
+        candidates = [scan_root] if scan_root.is_file() else scan_root.rglob("*")
+        for path in candidates:
+            if not path.is_file():
+                continue
+            if path.suffix not in {".js", ".mjs", ".py", ".html"}:
+                continue
+            text = path.read_text(encoding="utf-8-sig")
+            for marker in INCOMPLETE_FLYER_FEATURE_MARKERS:
+                if marker in text:
+                    offenders.append(f"{path.relative_to(ROOT).as_posix()} ({marker})")
+
+    if offenders:
+        _print_step(False, "Incomplete flyer distribution feature residue detected")
+        for item in sorted(set(offenders)):
+            print(f"  - {item}")
+        return False
+    return True
+
+
 def _check_app_core_size() -> bool:
     app_core_path = ROOT / "src" / "backend" / "app_core.py"
     line_count = len(app_core_path.read_text(encoding="utf-8").splitlines())
@@ -186,6 +227,10 @@ def main() -> int:
     frontend_ok = _check_frontend_policy()
     _print_step(frontend_ok, "Frontend safety policy")
     ok = ok and frontend_ok
+
+    flyer_residue_ok = _check_no_incomplete_flyer_feature_residue()
+    _print_step(flyer_residue_ok, "Incomplete flyer feature residue")
+    ok = ok and flyer_residue_ok
 
     app_core_size_ok = _check_app_core_size()
     _print_step(app_core_size_ok, "app_core line budget")

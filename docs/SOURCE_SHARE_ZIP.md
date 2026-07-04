@@ -98,8 +98,16 @@ oke-portal-source-YYYYMMDD-HHMMSS.zip
 - `tests/e2e/`
 - `docs/MANUAL_DEVICE_QA_CHECKLIST.md`
 - `docs/CLOUD_RUN_GCS_DB_CHECK.md`
+- ルート直下のすべての Markdown 文書（設計書・仕様書・運用書を含む）
 - `README.md`
 - `AGENTS.md`
+- `UNIT_TEST_SPEC.md`
+- `INTEGRATION_TEST_SPEC.md`
+- `INTEGRATION_TEST_SPEC_BACKEND.md`
+- `INTEGRATION_TEST_SPEC_FRONTEND.md`
+- `INTEGRATION_TEST_SPEC_CI.md`
+- `OPERATION_TEST_SPEC.md`
+- `DESIGN_DOCS_NAVIGATION.md`
 - `playwright.config.js`
 - `package.json`
 - `package-lock.json`

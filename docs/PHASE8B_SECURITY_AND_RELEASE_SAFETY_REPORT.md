@@ -55,6 +55,15 @@ Phase8-B では、S評価到達を目的として以下を強化する。
 7. QA証跡出力
 - `npm run qa:local` の結果を `dist/qa/qa-local-result-*.json` として保存
 
+7.1 Playwright生成物の除外
+- `test-results/` / `playwright-report/` / `blob-report/` を `.gitignore` / `.dockerignore` / 共有ZIP除外対象へ追加
+- E2Eの失敗時スクリーンショット・トレースをソース共有物やDocker build contextへ混入させない
+
+8. 回復時の未完チラシ配布機能の残骸防止
+- 未完成の「チラシ配布管理」は本番機能として扱わず、状態・画面・API参照を削除
+- `check_release_safety.py` は `renderFlyerPlacesAdmin` / `flyerDistributionSelectedPerformanceId` / `flyer_places` 等の残骸を検出してリリースを停止
+- 既存の `flyer_image`（演奏会チラシ画像）機能は対象外として維持
+
 ## 更新ファイル
 
 - `scripts/create-source-zip.py`

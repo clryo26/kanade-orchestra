@@ -17,6 +17,12 @@ REQUIRED_DOCS = [
     ROOT / "docs" / "DECISION_LOG_GUIDE.md",
 ]
 
+REQUIRED_ROOT_DOCUMENT_ENTRIES = {
+    path.name
+    for path in ROOT.glob("*.md")
+    if path.is_file()
+}
+
 REQUIRED_ZIP_ENTRIES = {
     "playwright.config.js",
     "docs/MANUAL_DEVICE_QA_CHECKLIST.md",
@@ -24,8 +30,17 @@ REQUIRED_ZIP_ENTRIES = {
     "docs/ARCHITECTURE_DECISIONS.md",
     "docs/DECISION_LOG_GUIDE.md",
     "tests/e2e/ui_css_reliability.spec.js",
-}
+    "UNIT_TEST_SPEC.md",
+    "INTEGRATION_TEST_SPEC.md",
+    "INTEGRATION_TEST_SPEC_BACKEND.md",
+    "INTEGRATION_TEST_SPEC_FRONTEND.md",
+    "INTEGRATION_TEST_SPEC_CI.md",
+    "OPERATION_TEST_SPEC.md",
+    "DESIGN_DOCS_NAVIGATION.md",
+} | REQUIRED_ROOT_DOCUMENT_ENTRIES
 
+# Only persisted runtime data must be excluded. Source modules such as
+# src/backend/routers/access_logs.py are safe and required in a source archive.
 DANGER_PATTERNS = [
     re.compile(r"(^|/)\.env($|\.)", re.IGNORECASE),
     re.compile(r"(^|/)\.git/", re.IGNORECASE),
@@ -33,9 +48,9 @@ DANGER_PATTERNS = [
     re.compile(r"(^|/)\.venv/", re.IGNORECASE),
     re.compile(r"(^|/)src/data/.*\.json$", re.IGNORECASE),
     re.compile(r"(^|/)data/.*\.json$", re.IGNORECASE),
-    re.compile(r"(^|/)access_logs(\.[^/]+)?$", re.IGNORECASE),
-    re.compile(r"(^|/)auth_devices(\.[^/]+)?$", re.IGNORECASE),
-    re.compile(r"(^|/)connection_settings(\.[^/]+)?$", re.IGNORECASE),
+    re.compile(r"(^|/)(?:src/)?data/access_logs[^/]*$", re.IGNORECASE),
+    re.compile(r"(^|/)(?:src/)?data/auth_devices[^/]*$", re.IGNORECASE),
+    re.compile(r"(^|/)(?:src/)?data/connection_settings[^/]*$", re.IGNORECASE),
     re.compile(r"\.(wav|mp3|m4a|flac)$", re.IGNORECASE),
     re.compile(r"\.(db|sqlite|sqlite3)$", re.IGNORECASE),
     re.compile(r"credentials", re.IGNORECASE),
@@ -48,6 +63,15 @@ ALLOWED_DANGER_EXCEPTIONS = {
     "auth_devices.example.json",
     "connection_settings.example.json",
 }
+
+
+def is_dangerous_entry(name: str) -> bool:
+    """Return whether an archive member is a prohibited runtime/private artifact."""
+    normalized = name.replace("\\", "/").strip("/")
+    base_name = normalized.rsplit("/", 1)[-1]
+    if base_name in ALLOWED_DANGER_EXCEPTIONS:
+        return False
+    return any(pattern.search(normalized) for pattern in DANGER_PATTERNS)
 
 
 def fail(msg: str) -> None:
@@ -80,13 +104,8 @@ def main() -> int:
 
         danger_hits: list[str] = []
         for name in names:
-            base_name = name.split("/")[-1]
-            if base_name in ALLOWED_DANGER_EXCEPTIONS:
-                continue
-            for pattern in DANGER_PATTERNS:
-                if pattern.search(name):
-                    danger_hits.append(name)
-                    break
+            if is_dangerous_entry(name):
+                danger_hits.append(name)
 
         if danger_hits:
             fail(f"Dangerous entries found: {', '.join(sorted(set(danger_hits))[:10])}")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from src.backend.main import app
+from src.backend import main as backend
 
 
 def _login_system_admin(client: TestClient, device_id: str = "dev-system") -> dict[str, str]:
@@ -27,16 +27,16 @@ def _force_local_backend(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
-def test_readiness_summary_requires_system_admin_auth(monkeypatch) -> None:
+def test_readiness_summary_requires_system_admin_auth(monkeypatch, backend_env) -> None:
     _force_local_backend(monkeypatch)
-    with TestClient(app) as client:
+    with TestClient(backend_env.app) as client:
         response = client.get("/api/system/readiness-summary")
         assert response.status_code in {401, 403}
 
 
-def test_readiness_summary_returns_expected_shape(monkeypatch) -> None:
+def test_readiness_summary_returns_expected_shape(monkeypatch, backend_env) -> None:
     _force_local_backend(monkeypatch)
-    with TestClient(app) as client:
+    with TestClient(backend_env.app) as client:
         headers = _login_system_admin(client)
         response = client.get("/api/system/readiness-summary", headers=headers)
         assert response.status_code == 200

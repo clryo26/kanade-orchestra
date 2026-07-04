@@ -60,3 +60,9 @@ disallow_untyped_defs = false
 dev = [
     "httpx==0.24.1",
 ]
+
+
+[tool.pytest.ini_options]
+markers = [
+    "db_profile: tests that validate the database-mode repository and API contracts",
+]

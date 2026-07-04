@@ -24,6 +24,7 @@
 - INTEGRATION_TEST_SPEC_FRONTEND.md: 結合テスト仕様（フロント担当）
 - INTEGRATION_TEST_SPEC_CI.md: 結合テスト仕様（CI/運用担当）
 - OPERATION_TEST_SPEC.md: 運用テスト仕様（運用スモーク/CI運用）
+- docs/TEST_RUNNER_STABILITY.md: フロントテスト実行の安定化方針
 
 ## 3. 読み順
 
