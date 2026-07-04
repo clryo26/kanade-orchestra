@@ -116,8 +116,9 @@ def get_storage_client() -> storage.Client:
 
 def storage_enabled() -> bool:
     # バケット名の未設定や、指定された秘密鍵ファイルの不存在をここで早期検知する。
-    if storage is None or service_account is None:
-        return False
+    # ローカルテスト環境では google-cloud-storage が未インストールでも、
+    # 設定値の有効性だけを判定できるようにする。実接続時のライブラリ不足は
+    # get_storage_client() 側で RuntimeError として扱う。
     bucket_name = storage_bucket_name()
     if not bucket_name or bucket_name in {"your_bucket_name_here", "あなたのGCSバケット名"}:
         return False

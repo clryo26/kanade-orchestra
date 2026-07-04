@@ -5,6 +5,10 @@ import asyncio
 from fastapi import HTTPException
 import pytest
 
+from src.backend.core import db_runtime
+
+pytestmark = pytest.mark.db_profile
+
 
 def test_part_settings_db_rows_keep_frontend_display_order(backend_env):
     row = backend_env.db_row_to_json({"id": 1, "name": "Violin", "sort_order": 20, "is_active": True})
@@ -113,6 +117,83 @@ def test_access_logs_are_db_backed_collection(backend_env):
     assert backend_env.JSON_COLLECTION_TABLES["access_logs"] == "access_logs"
     assert "accessed_at" in backend_env.DB_TIMESTAMP_COLUMNS["access_logs"]
     assert "member_id" in backend_env.DB_INT_COLUMNS["access_logs"]
+
+
+def test_schema_compatibility_creates_admin_save_tables():
+    executed: list[str] = []
+
+    class Cursor:
+        def execute(self, sql, params=None):
+            executed.append(str(sql))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+    db_runtime.ensure_db_schema_compatibility(Conn())
+    sql_text = "\n".join(executed)
+
+    for table_name in (
+        "performances",
+        "schedules",
+        "events",
+        "members",
+        "payments",
+        "castings",
+        "piece_infos",
+        "practice_instructions",
+        "performance_day_infos",
+        "part_settings",
+        "venue_settings",
+        "org_settings",
+        "sns_settings",
+        "connection_settings",
+        "desired_pieces",
+        "promotions",
+        "albums",
+    ):
+        assert f'CREATE TABLE IF NOT EXISTS "{table_name}"' in sql_text
+        assert f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS organization_id' in sql_text
+
+    assert '"timeline_rows" JSONB NOT NULL DEFAULT' in sql_text
+    assert '"costume_detail" JSONB NOT NULL DEFAULT' in sql_text
+
+
+def test_performance_day_infos_are_db_writable_collection(backend_env):
+    assert "performance_day_infos" in backend_env.PORTAL_DB_TABLES
+    assert backend_env.JSON_COLLECTION_TABLES["performance_day_infos"] == "performance_day_infos"
+    assert "performance_day_infos" in backend_env.DB_WRITABLE_COLLECTIONS
+    assert {"timeline_rows", "costume_detail", "assignments_rows"} <= backend_env.DB_JSON_COLUMNS["performance_day_infos"]
+    assert {"id", "performance_id"} <= backend_env.DB_INT_COLUMNS["performance_day_infos"]
+
+    row = backend_env.db_row_tuple(
+        "performance_day_infos",
+        backend_env.DB_COLLECTION_COLUMNS["performance_day_infos"],
+        {
+            "id": "1",
+            "performance_id": "2",
+            "timeline": "09:00 集合",
+            "timeline_rows": [{"start_time": "09:00", "content": "集合"}],
+            "costume_detail": {"male": {"upper": "黒"}},
+            "costume": "黒衣装",
+            "assignments_rows": [{"role": "受付", "members": "田中"}],
+            "assignments": "受付: 田中",
+            "timetable": "09:00 集合",
+            "duties": "受付: 田中",
+        },
+    )
+
+    assert row[0] == 1
+    assert row[1] == 2
+    assert row[2] == "09:00 集合"
+    assert row[5] == "黒衣装"
+    assert row[7] == "受付: 田中"
 
 
 def test_remember_drive_file_deduplicates_by_object_name(backend_env):

@@ -3,17 +3,33 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "setup:local": "powershell -ExecutionPolicy Bypass -File scripts/setup-local-dev.ps1",
+    "qa:local": "powershell -ExecutionPolicy Bypass -File scripts/run-local-qa.ps1",
     "zip:source": "python scripts/create-source-zip.py",
+    "check:release-safety": "python scripts/check_release_safety.py",
+    "pre-release": "npm run check:release-safety && npm run check:frontend:load-order && npm run check:frontend:state-access && npm run check:frontend:syntax && python -m compileall -q src/backend tests && npm run zip:source",
+    "check:security:python": "uvx pip-audit",
+    "check:types:backend:package": "uv run mypy --ignore-missing-imports --follow-imports=skip -p src.backend",
+    "check:types:backend:scripts": "uv run mypy --ignore-missing-imports --follow-imports=skip scripts/check_tenant_migration.py scripts/check_decision_log.py scripts/check_operational_checklists.py scripts/check_deployment_readiness.py",
+    "check:types:backend": "npm run check:types:backend:package && npm run check:types:backend:scripts",
     "check:frontend:syntax": "node scripts/check_frontend_syntax.mjs",
+    "check:frontend:load-order": "node scripts/check_frontend_load_order.mjs",
+    "check:frontend:state-access": "node scripts/check_frontend_state_access.mjs",
+    "check:ops:checklists": "python scripts/check_operational_checklists.py",
+    "check:tenant:migration": "uv run python scripts/check_tenant_migration.py",
+    "check:decision-log": "python scripts/check_decision_log.py",
+    "check:release:readiness": "uv run python scripts/check_deployment_readiness.py",
+    "check:app-core:size": "python scripts/check_app_core_slimming.py",
     "test:frontend": "vitest run",
     "test:frontend:integration": "vitest run tests/integration/frontend",
     "test:frontend:coverage": "vitest run --coverage tests/frontend",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e": "node scripts/run-playwright-test.mjs",
+    "test:e2e:ui": "node scripts/run-playwright-test.mjs --ui"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",
-    "@vitest/coverage-v8": "^2.1.9",
-    "vitest": "^2.1.9"
+    "@vitest/coverage-v8": "^4.1.9",
+    "glob": "^10.4.5",
+    "vitest": "^4.1.9"
   }
 }

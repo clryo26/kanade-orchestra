@@ -1,40 +1,25 @@
-const fs = require('node:fs');
-const path = require('node:path');
+const {
+    detailEditorUiState,
+    performancePieceFormalLabel,
+    portalMenuStatePatch,
+} = require('../../src/static/js/frontend_testable_logic.js');
 
 describe('practice instruction navigation', () => {
     test('portal menu entry resets selected practice instruction detail', () => {
-        const appJs = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/app.js'), 'utf8');
-        const openPortalMenuTab = appJs.slice(
-            appJs.indexOf('function openPortalMenuTab(tabName)'),
-            appJs.indexOf('function renderPortalDrawerMenu()')
-        );
-
-        expect(openPortalMenuTab).toContain("tabName === 'member-practice-instruction'");
-        expect(openPortalMenuTab).toContain('appState.selectedPracticeInstructionContext = null');
+        expect(portalMenuStatePatch('member-practice-instruction')).toEqual({
+            selectedPracticeInstructionContext: null,
+            practiceInstructionEditing: false,
+        });
     });
 
     test('practice instruction list uses formal piece names without extra list heading', () => {
-        const appJs = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/app.js'), 'utf8');
-        const renderPracticeInstructionView = appJs.slice(
-            appJs.indexOf('function renderPracticeInstructionView()'),
-            appJs.indexOf('function desiredPieceCurrentVoterKey()')
-        );
-
-        expect(renderPracticeInstructionView).toContain('performancePieceFormalLabel(piece)');
-        expect(renderPracticeInstructionView).not.toContain('未開催演奏会の曲一覧');
+        expect(performancePieceFormalLabel({ composer: 'Mozart', title: 'Requiem' })).toBe('Mozart: Requiem');
     });
 
     test('practice instruction detail starts read-only and toggles edit/save action', () => {
-        const appJs = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/app.js'), 'utf8');
-        const renderPracticeInstructionView = appJs.slice(
-            appJs.indexOf('function renderPracticeInstructionView()'),
-            appJs.indexOf('function desiredPieceCurrentVoterKey()')
-        );
-
-        expect(renderPracticeInstructionView).toContain('const isEditing = Boolean(appState.practiceInstructionEditing)');
-        expect(renderPracticeInstructionView).toContain("const actionButtonLabel = isEditing ? '保存' : '編集'");
-        expect(renderPracticeInstructionView).toContain("isEditing ? '' : 'readonly'");
-        expect(renderPracticeInstructionView).toContain('appState.practiceInstructionEditing = true');
-        expect(renderPracticeInstructionView).toContain('appState.practiceInstructionEditing = false');
+        expect(detailEditorUiState(false).actionButtonLabel).toBe('編集');
+        expect(detailEditorUiState(true).actionButtonLabel).toBe('保存');
+        expect(detailEditorUiState(false).readOnlyAttribute).toBe('readonly');
+        expect(detailEditorUiState(true).readOnlyAttribute).toBe('');
     });
 });

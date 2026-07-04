@@ -103,6 +103,14 @@ GitHub Actions の `playwright-smoke` ジョブでは、以下の流れで成功
 - `python scripts/create-source-zip.py` または `npm run zip:source`
 - `.env` / `.venv` / `.git` / `node_modules` / 録音実体 / DB 実体 / credentials 系の除外を維持
 
+## 補正ログ（2026-07-02）
+
+- `playwright.config.js` を共有 ZIP の含有対象へ追加した。
+- `scripts/create-source-zip.py` で `playwright.config.js` / `tests/e2e/` / `.github/workflows/e2e.yml` が含まれることを確認できるようにした。
+- E2E の標準ポートを `8000` に統一し、`E2E_BASE_URL` を明示的に扱うようにした。
+- CI の Playwright artifact 保存対象に `test-results` を追加した。
+- ローカル手順書を `npm ci` / `npx playwright install --with-deps chromium` / `uvicorn 8000` ベースへ更新した。
+
 ## 再検証ログ（2026-07-01 夜）
 
 運用手順の再現性を確認するため、以下を再実行した。
@@ -131,3 +139,10 @@ GitHub Actions の `playwright-smoke` ジョブでは、以下の流れで成功
 - `uv run python -c` + `TestClient` による `GET /`: `200`
 
 最終的な E2E 判定は `workflow_dispatch` の `E2E` workflow 実行結果を正とする。
+
+## Phase8-A 引き継ぎメモ（2026-07-02）
+
+- `setup:local` / `qa:local` の自動化スクリプトを追加し、ローカル QA の手順漏れを防止した。
+- E2E は `member_flow.spec.js` / `admin_flow.spec.js` / `recordings_scores.spec.js` を追加し、実機前 smoke 範囲を拡張した。
+- 本番前確認を実チェック表へ更新し、手動確認項目を `MANUAL_DEVICE_QA_CHECKLIST.md` に分離した。
+- Cloud Run / GCS / DB 設定確認を `CLOUD_RUN_GCS_DB_CHECK.md` に集約した。

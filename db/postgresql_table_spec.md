@@ -1,6 +1,6 @@
 ﻿# PostgreSQL テーブル仕様書
 
-最終更新: 2026-06-29
+最終更新: 2026-07-02
 参照DDL: PostgreSQL schema（本番DBへ適用済み）
 
 ## 1. 共通仕様
@@ -52,6 +52,31 @@
   - alias TEXT DEFAULT '' （任意）
   - composer TEXT DEFAULT '' （任意）
   - is_encore BOOLEAN NOT NULL DEFAULT FALSE （必須）
+  - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
+### 2.2.1 performance_day_infos
+- 用途: 本番情報（当日タイムテーブル、衣装、係り割り）
+- PK: id
+- FK: performance_id -> performances.id (ON DELETE CASCADE)
+- UNIQUE/CHECK: なし
+- INDEX:
+  - idx_performance_day_infos_org_id (organization_id)
+  - idx_performance_day_infos_org_id_id (organization_id, id)
+  - idx_performance_day_infos_performance_id (performance_id)
+- 備考: `timeline_rows`, `costume_detail`, `assignments_rows` はJSON互換の構造化データとしてJSONBで保存する。`timeline`, `costume`, `assignments`, `timetable`, `duties` は既存API/旧表示互換の文字列キーとして保持する。
+- 列レイアウト:
+  - id BIGINT IDENTITY PK （必須）
+  - organization_id TEXT NOT NULL DEFAULT 'default' （必須）
+  - performance_id BIGINT （任意）
+  - timeline TEXT DEFAULT '' （任意）
+  - timeline_rows JSONB NOT NULL DEFAULT '[]'::JSONB （必須）
+  - costume_detail JSONB NOT NULL DEFAULT '{}'::JSONB （必須）
+  - costume TEXT DEFAULT '' （任意）
+  - assignments_rows JSONB NOT NULL DEFAULT '[]'::JSONB （必須）
+  - assignments TEXT DEFAULT '' （任意）
+  - timetable TEXT DEFAULT '' （任意）
+  - duties TEXT DEFAULT '' （任意）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 

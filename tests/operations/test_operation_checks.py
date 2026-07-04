@@ -161,3 +161,24 @@ def test_op_doc_002_navigation_has_operation_spec_reference():
     nav_path = Path("DESIGN_DOCS_NAVIGATION.md")
     text = nav_path.read_text(encoding="utf-8")
     assert "OPERATION_TEST_SPEC.md" in text
+
+
+def test_op_release_001_incomplete_flyer_distribution_residue_is_rejected(monkeypatch):
+    import importlib.util
+    import sys
+
+    script_path = Path("scripts/check_release_safety.py")
+    spec = importlib.util.spec_from_file_location("release_safety_for_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    # The released source must have no remnants of the removed feature.
+    assert module._check_no_incomplete_flyer_feature_residue() is True
+    state_text = Path("src/static/js/store/app_state.js").read_text(encoding="utf-8")
+    assert "flyerDistributionSelectedPerformanceId" not in state_text
+
+    # Also prove that the guard fails when a prohibited runtime marker is present.
+    monkeypatch.setattr(module, "INCOMPLETE_FLYER_FEATURE_MARKERS", ("Deprecated compatibility entrypoint.",))
+    assert module._check_no_incomplete_flyer_feature_residue() is False

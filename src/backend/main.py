@@ -6,8 +6,9 @@ import types
 import uvicorn
 
 from . import app_core as _core
+from .core.app_factory import create_app
 
-app = _core.app
+app = create_app()
 
 
 class _BackendMainModule(types.ModuleType):

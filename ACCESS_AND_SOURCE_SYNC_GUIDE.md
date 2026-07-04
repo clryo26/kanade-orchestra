@@ -144,6 +144,16 @@ git diff
 
 別PCで作業を続ける前には、前のPCで必ずpushまで終える。
 
+## 7.1 ChatGPT情報源向け共有ZIP
+
+個人PCと会社PCの間で、Git以外に ChatGPT 情報源を使って安全にソース受け渡しする場合は、共有用ZIPを使用する。
+
+```powershell
+.\scripts\create-source-zip.ps1
+```
+
+詳細は [docs/SOURCE_SHARE_ZIP.md](docs/SOURCE_SHARE_ZIP.md) を参照する。
+
 ## 8. ソース変更からGitHub pushまで
 
 ```powershell

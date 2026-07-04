@@ -1,6 +1,9 @@
 // This file was split from main.js during frontend refactor.
 // It depends on shared globals declared in main.js (appState, $, request, helpers).
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 async function saveSchedule() {
     const startTime = $('schedStartTime').value;
     const endTime = $('schedEndTime').value;
@@ -40,7 +43,7 @@ function selectSchedule(id) {
     const item = appState.schedules.find((sched) => sched.id === id);
     if (!item) return;
     $('schedId').value = item.id;
-    $('schedDate').value = item.date || today();
+    $('schedDate').value = item.date || window.portalRuntimeContext.today();
     const practiceRange = splitTimeRange(item.time);
     const availableRange = splitTimeRange(item.available_hours);
     $('schedStartTime').value = formatClockTime(item.start_time || practiceRange.start || '13:00');
@@ -74,7 +77,7 @@ async function deleteSchedule() {
 
 function clearScheduleForm() {
     $('schedId').value = '';
-    $('schedDate').value = today();
+    $('schedDate').value = window.portalRuntimeContext.today();
     $('schedStartTime').value = '13:00';
     $('schedEndTime').value = '16:30';
     if ($('schedVenue')) $('schedVenue').innerHTML = venueSelectOptionsHtml('practice', '');
@@ -146,8 +149,8 @@ function updateSchedulePieceOptions(preferredValue = null) {
 
 
 function googleCalendarUrlForSchedule(sched) {
-    const startTime = sched.start_time || splitTimeRange(sched.time).start;
-    const endTime = sched.end_time || splitTimeRange(sched.time).end || addHoursToTime(startTime, 2);
+    const startTime = scheduleCalendarStartTime(sched);
+    const endTime = scheduleCalendarEndTime(sched, startTime);
     const dates = startTime
         ? `${compactCalendarDate(sched.date, startTime)}/${compactCalendarDate(sched.date, endTime || startTime)}`
         : `${compactCalendarDate(sched.date)}/${compactCalendarDate(nextAllDayDate(sched.date))}`;
@@ -206,8 +209,19 @@ function scheduleAvailableLabel(sched) {
 
 
 function scheduleCalendarTitle(sched) {
-    const pieces = sched.pieces ? ` / ${sched.pieces}` : '';
-    return `奏オケ 練習${pieces}`;
+    const kind = scheduleIsMainPerformance(sched) ? '本番' : '練習';
+    return `${orgShortName()}　${kind}`;
+}
+
+
+function scheduleCalendarStartTime(sched) {
+    return formatClockTime(sched.start_time || splitTimeRange(sched.time).start);
+}
+
+
+function scheduleCalendarEndTime(sched, startTime = scheduleCalendarStartTime(sched)) {
+    const explicitEndTime = formatClockTime(sched.end_time || splitTimeRange(sched.time).end);
+    return explicitEndTime || addHoursToTime(startTime, 2);
 }
 
 
@@ -222,8 +236,8 @@ function scheduleCalendarDetails(sched) {
 
 
 function scheduleToIcsEvent(sched) {
-    const startTime = sched.start_time || splitTimeRange(sched.time).start;
-    const endTime = sched.end_time || splitTimeRange(sched.time).end || addHoursToTime(startTime, 2);
+    const startTime = scheduleCalendarStartTime(sched);
+    const endTime = scheduleCalendarEndTime(sched, startTime);
     const allDay = !startTime;
     const startKey = allDay ? 'DTSTART;VALUE=DATE' : 'DTSTART;TZID=Asia/Tokyo';
     const endKey = allDay ? 'DTEND;VALUE=DATE' : 'DTEND;TZID=Asia/Tokyo';
@@ -247,6 +261,7 @@ function scheduleToIcsEvent(sched) {
 
 function renderSchedules() {
     const container = $('schedListItems');
+    if (!container) return;
     if (!appState.schedules.length) {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
         if (!appState.suppressDerivedRender) renderMemberSchedules();
@@ -283,7 +298,7 @@ function renderSchedules() {
 
 function renderMemberSchedules() {
     const container = $('memberSchedInfo');
-    const upcoming = sortedSchedules(appState.schedules).filter((sched) => !sched.date || sched.date >= today());
+    const upcoming = sortedSchedules(appState.schedules).filter((sched) => !sched.date || sched.date >= window.portalRuntimeContext.today());
     if (!upcoming.length) {
         container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
         return;

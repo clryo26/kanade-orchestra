@@ -173,7 +173,7 @@ def verify_password(password: str, stored: str) -> bool:
             return True
         # Legacy plain-text passwords from early data are accepted once.  The
         # login endpoint migrates plain text to a hashed value after success.
-        if hmac.compare_digest(candidate, stored_value):
+        if hmac.compare_digest(candidate.encode("utf-8"), stored_value.encode("utf-8")):
             return True
     return False
 
