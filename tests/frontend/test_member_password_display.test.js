@@ -1,27 +1,34 @@
-const fs = require('node:fs');
-const path = require('node:path');
+const {
+    memberPasswordBadgeState,
+    memberSelectionFormPatch,
+} = require('../../src/static/js/frontend_testable_logic.js');
 
 describe('member password display', () => {
-    const appJs = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/app.js'), 'utf8');
-
     test('member list shows password status instead of cached password value', () => {
-        const renderMembers = appJs.slice(
-            appJs.indexOf('function renderMembers()'),
-            appJs.indexOf('function renderAuthDevices()')
-        );
-
-        expect(renderMembers).toContain('member.password_set');
-        expect(renderMembers).toContain('設定済み');
-        expect(renderMembers).not.toContain('escapeHtml(member.password');
+        expect(memberPasswordBadgeState(true)).toEqual({
+            label: '設定済み',
+            className: 'text-bg-success'
+        });
+        expect(memberPasswordBadgeState(false)).toEqual({
+            label: '未設定',
+            className: 'text-bg-warning'
+        });
     });
 
     test('selecting a member keeps password reset field empty', () => {
-        const selectMember = appJs.slice(
-            appJs.indexOf('function selectMember(id)'),
-            appJs.indexOf('async function deleteMember()')
-        );
-
-        expect(selectMember).toContain("$('memberPassword').value = ''");
-        expect(selectMember).not.toContain('item.password ||');
+        expect(memberSelectionFormPatch({
+            id: 10,
+            name: '山田花子',
+            last_name: '',
+            first_name: '',
+            part: 'Vl',
+            permission: '一般'
+        })).toEqual(expect.objectContaining({
+            memberId: 10,
+            memberLastName: '山田花子',
+            memberPassword: '',
+            memberPart: 'Vl',
+            memberPermission: '一般'
+        }));
     });
 });

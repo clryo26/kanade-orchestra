@@ -74,6 +74,7 @@ npm run check:frontend:syntax
 
 - Cloud Run への本番デプロイは「CI 成功コミットのみデプロイ可」とする
 - 例外運用は行わない（緊急時も先に最小修正で CI を通してからデプロイする）
+- 運用データは DB Only（PostgreSQL）を前提とし、`src/data/*.json` を本番データソースにしない
 
 ### 1. Docker イメージをビルド・プッシュ
 
@@ -105,19 +106,9 @@ gcloud run deploy kanade-orchestra \
 
 ### ポータル名が「楽団ポータル」のまま、メニューが表示されない
 
-1. CloudSQL コンソール または Cloud Storage の `app-data` フォルダで以下ファイルが存在するか確認：
-   - `org_settings.json`
-   - `connection_settings.json`
-   - `members.json`
-
-2. 存在しない場合は、ローカルの対応ファイルを GCS へ手動でアップロード：
-
-```bash
-gsutil cp src/data/org_settings.json gs://kanade-storage/app-data/
-gsutil cp src/data/members.json gs://kanade-storage/app-data/
-```
-
-3. Cloud Run のサービスアカウント権限を確認：
+1. Cloud SQL の `org_settings` / `members` テーブルに初期データが存在するか確認する。
+2. `connection_settings` テーブルが空の場合は管理画面の「接続先情報」から登録する。
+3. Cloud Run のサービスアカウント権限を確認する。
 
 ```bash
 gcloud projects get-iam-policy kanade-orchestra \
@@ -133,11 +124,11 @@ gcloud projects get-iam-policy kanade-orchestra \
 ## 接続設定の API 管理
 
 管理画面から「システム管理 > 接続先情報」で動的に変更可能です。
-変更後、自動的に `connection_settings.json` が GCS に保存されます。
+変更後、接続先情報は DB に保存されます。
 
-## PostgreSQL 移行版（Cloud Run + Cloud SQL）
+## PostgreSQL 運用版（Cloud Run + Cloud SQL）
 
-JSON を正としていた現行構成に加えて、Cloud SQL for PostgreSQL を併用する移行手順です。
+Version 5.1 以降は Cloud SQL for PostgreSQL を正として運用します。
 
 初回構築時の確認項目は `CLOUD_RUN_INITIAL_CHECKLIST.md` を参照してください。
 

@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from typing import Any, Callable
 
 
 class MemoryCache:
     """In-memory cache for JSON collections and frequently used indexes."""
 
-    def __init__(self, member_login_names: Callable[[dict[str, Any]], list[str]] | None = None):
+    def __init__(self, member_login_names: Callable[[dict[str, Any]], Iterable[str]] | None = None):
         self._cache: dict[str, list[dict[str, Any]]] = {}
         self._etags: dict[str, str] = {}
-        self._indexes: dict[str, dict[str, dict[str, Any]]] = {}
+        self._indexes: dict[str, dict[str, dict[Any, Any]]] = {}
         self._member_login_names = member_login_names
+
+    def invalidate(self, name: str | None = None) -> None:
+        self.clear(name)
 
     def get(self, name: str) -> list[dict[str, Any]] | None:
         """Return cached collection data."""

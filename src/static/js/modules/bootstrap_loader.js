@@ -1,6 +1,9 @@
 // Frontend split: extracted from main.js.
 // Loaded after main.js; functions intentionally remain global for legacy handlers.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 async function loadPartSettingsForLogin() {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
@@ -39,9 +42,9 @@ function bindDownloadConfirmations() {
 
 function setDefaultDates() {
     ['uploadDate', 'schedDate', 'annDate', 'paymentLatestDate'].forEach((id) => {
-        if ($(id)) $(id).value = today();
+        if ($(id)) $(id).value = window.portalRuntimeContext.today();
     });
-    $('perfDate').value = today();
+    $('perfDate').value = window.portalRuntimeContext.today();
 }
 
 // 団員トップ画面と楽譜ビューワー枠を初期化する。
@@ -228,12 +231,17 @@ async function legacyBootstrapData(includeHeavyLists = true) {
 
 function applyBootstrapData(data) {
     const extras = data.extras || {};
+    const collectionOrCurrent = (name) => (
+        Object.prototype.hasOwnProperty.call(data, name)
+            ? (data[name] || [])
+            : (appState[name] || [])
+    );
     Object.assign(appState, {
-        performances: data.performances || [],
-        schedules: data.schedules || [],
-        announcements: data.announcements || [],
-        events: data.events || [],
-        members: data.members || [],
+        performances: collectionOrCurrent('performances'),
+        schedules: collectionOrCurrent('schedules'),
+        announcements: collectionOrCurrent('announcements'),
+        events: collectionOrCurrent('events'),
+        members: collectionOrCurrent('members'),
         recordings: data.recordings?.files || appState.recordings || [],
         absences: extras.absences || [],
         eventResponses: extras.event_responses || [],
@@ -327,6 +335,9 @@ function renderInitialViews(options = {}) {
 
 function renderBackgroundViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
+    renderSchedules();
+    renderEvents();
+    renderMembers();
     renderMemberExtraViews({ includeHeavyLists });
     renderSheetAdmin();
     renderCastingAdmin();

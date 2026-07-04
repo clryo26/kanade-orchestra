@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-from ..app_core import Member
+from .schemas import Member
 
 __all__ = ["Member"]

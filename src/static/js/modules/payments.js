@@ -1,5 +1,8 @@
 // Payment module.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+
 function renderPaymentView() {
     const c = $('memberPaymentInfo');
     if (!c) return;
@@ -46,13 +49,33 @@ function performanceFeeAmountMap(payment) {
 }
 
 function orgMembershipFeeAmountLabel() {
-    const amount = Number(currentOrgSetting().membership_fee_amount || 0);
-    return amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
+    return yenAmountLabel(currentOrgSetting().membership_fee_amount);
 }
 
 function performanceFeeAmountLabel(performance) {
-    const amount = Number(performance?.performance_fee_amount || 0);
-    return amount > 0 ? `${amount.toLocaleString('ja-JP')}円` : '未設定';
+    return yenAmountLabel(performance?.performance_fee_amount);
+}
+
+function paymentPerformanceUnpaidTitles(payment = null) {
+    const targetPayment = payment || findPaymentForMember(appState.currentUserMemberId, currentUserMemberName());
+    const feeMap = performanceFeeMap(targetPayment);
+    return appState.performances
+        .filter((perf) => !Boolean(feeMap[String(perf.id)]))
+        .map((perf) => perf.title)
+        .filter(Boolean);
+}
+
+function paymentStatusSummary(payment = null) {
+    const targetPayment = payment || findPaymentForMember(appState.currentUserMemberId, currentUserMemberName());
+    const duesRemaining = paymentRemainingMonthCount(targetPayment);
+    const unpaidPerformanceTitles = paymentPerformanceUnpaidTitles(targetPayment);
+    return {
+        duesRemaining,
+        duesLabel: paymentPaymentRangeLabel(targetPayment),
+        unpaidPerformanceTitles,
+        latestPaymentDate: targetPayment?.latest_payment_date || '未登録',
+        hasWarning: !targetPayment || duesRemaining === null || duesRemaining > 0 || unpaidPerformanceTitles.length > 0,
+    };
 }
 
 function monthValue(monthText) {
@@ -62,7 +85,7 @@ function monthValue(monthText) {
 }
 
 function currentMonthValue() {
-    return monthValue(today().slice(0, 7));
+    return monthValue(window.portalRuntimeContext.today().slice(0, 7));
 }
 
 function addMonths(dateText, months) {
@@ -83,7 +106,7 @@ function paymentAlertInfo(payment = null) {
         info.duesOverdue = true;
     }
     const feeMap = performanceFeeMap(targetPayment);
-    const now = new Date(`${today()}T00:00:00`);
+    const now = new Date(`${window.portalRuntimeContext.today()}T00:00:00`);
     appState.performances.forEach((perf) => {
         const dueDate = addMonths(perf.date, 6);
         const paid = Boolean(feeMap[String(perf.id)]);
@@ -98,16 +121,21 @@ function paymentAlertInfo(payment = null) {
 function paymentStatusHtml(payment) {
     const feeMap = performanceFeeMap(payment);
     const alertInfo = paymentAlertInfo(payment);
+    const summary = paymentStatusSummary(payment);
     const performanceFees = appState.performances.map((perf) => {
         const paid = Boolean(feeMap[String(perf.id)]);
         const overdue = alertInfo.overduePerformanceIds.has(String(perf.id));
-        return `<div><span class="${overdue ? 'payment-overdue' : ''}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-success' : 'text-bg-secondary'}">${paid ? '支払済み' : '未払い'}</span>${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
+        return `<div><span class="${overdue || !paid ? 'payment-overdue' : 'text-muted'}">${escapeHtml(perf.title)}</span>: <span class="badge ${paid ? 'text-bg-secondary' : 'text-bg-danger'}">${paid ? '支払済み' : '未払い'}</span>${overdue ? '<span class="payment-overdue ms-2">滞納</span>' : ''}</div>`;
     }).join('');
+    const unpaidPerformanceText = summary.unpaidPerformanceTitles.length
+        ? `<div class="payment-unpaid-summary mt-2">未払いの演奏会費: ${escapeHtml(summary.unpaidPerformanceTitles.join('、'))}</div>`
+        : '<div class="text-muted mt-2">演奏会費は未払いなし</div>';
     return `
         <div class="info-block">
-            <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
-            <div>最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+            <div class="${summary.duesRemaining !== null && summary.duesRemaining > 0 ? 'payment-overdue' : ''}">団費: ${escapeHtml(summary.duesLabel)}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
+            <div>最新支払日: ${escapeHtml(summary.latestPaymentDate)}</div>
             <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
+            ${unpaidPerformanceText}
         </div>
     `;
 }
@@ -146,21 +174,47 @@ function renderPaymentAdmin() {
         `).join('')
         : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
 
-    list.innerHTML = appState.payments.length
-        ? `<div class="list-group">${appState.payments.map((payment) => {
-            const member = appState.members.find((item) => String(item.id || '') === String(payment.member_id || ''));
-            const name = member ? memberDisplayName(member) : (payment.name || '未設定');
+    const allMembers = sortedMembersByPartAndKana(appState.members || [])
+        .map((member) => ({
+            member,
+            payment: findPaymentForMember(member.id, memberDisplayName(member)),
+        }))
+        .map((entry) => ({
+            ...entry,
+            summary: paymentStatusSummary(entry.payment),
+        }))
+        .sort((a, b) => Number(b.summary.hasWarning) - Number(a.summary.hasWarning)
+            || String(a.member.part || '').localeCompare(String(b.member.part || ''))
+            || String(memberKanaName(a.member) || memberDisplayName(a.member)).localeCompare(String(memberKanaName(b.member) || memberDisplayName(b.member))));
+    list.innerHTML = allMembers.length
+        ? `<div class="list-group">${allMembers.map(({ member, payment, summary }) => {
+            const part = member.part ? `（${member.part}）` : '';
+            const unpaidTitles = summary.unpaidPerformanceTitles.length ? summary.unpaidPerformanceTitles.join('、') : '未払いなし';
+            const latestDate = summary.latestPaymentDate || '未登録';
             return `
-                <button class="list-group-item list-group-item-action payment-admin-item" type="button" data-payment-id="${escapeHtml(String(payment.id || ''))}">
-                    <strong>${escapeHtml(name)}</strong>
-                    <div class="small text-muted">団費: ${escapeHtml(paymentPaymentRangeLabel(payment))} / 月額団費: ${escapeHtml(orgMembershipFeeAmountLabel())} / 最新支払日: ${escapeHtml(payment.latest_payment_date || '未登録')}</div>
+                <button class="list-group-item list-group-item-action payment-admin-item ${summary.hasWarning ? 'payment-admin-item-warning' : 'payment-admin-item-ok'}" type="button" data-payment-id="${escapeHtml(String(payment?.id || ''))}" data-member-id="${escapeHtml(String(member.id || ''))}">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                        <div>
+                            <strong>${escapeHtml(memberDisplayName(member))}</strong>${part ? `<span class="ms-1 text-muted">${escapeHtml(part)}</span>` : ''}
+                            <div class="small ${summary.hasWarning ? 'payment-overdue' : 'text-muted'}">団費: ${escapeHtml(summary.duesLabel)} / 演奏会費: ${escapeHtml(unpaidTitles)} / 最新支払日: ${escapeHtml(latestDate)}</div>
+                        </div>
+                        <span class="badge ${summary.hasWarning ? 'text-bg-danger' : 'text-bg-secondary'}">${summary.hasWarning ? '未払い確認' : '支払済み'}</span>
+                    </div>
                 </button>
             `;
         }).join('')}</div>`
-        : '<p class="text-muted mb-0">支払状況はまだ登録されていません</p>';
+        : '<p class="text-muted mb-0">団員情報はまだありません</p>';
 
     list.querySelectorAll('.payment-admin-item').forEach((button) => {
-        button.addEventListener('click', () => selectPaymentRecord(button.dataset.paymentId || ''));
+        button.addEventListener('click', () => {
+            const paymentId = button.dataset.paymentId || '';
+            const memberId = button.dataset.memberId || '';
+            if (paymentId) {
+                selectPaymentRecord(paymentId);
+                return;
+            }
+            fillPaymentForm(null, memberId);
+        });
     });
 
     renderPaymentFeeSettings();
@@ -184,7 +238,7 @@ function fillPaymentForm(payment, memberId = '') {
     $('paymentMemberId').value = memberId || payment?.member_id || '';
     if ($('paymentPaidFromMonth')) $('paymentPaidFromMonth').value = payment?.paid_from_month || '';
     $('paymentPaidUntilMonth').value = payment?.paid_until_month || '';
-    $('paymentLatestDate').value = payment?.latest_payment_date || today();
+    $('paymentLatestDate').value = payment?.latest_payment_date || window.portalRuntimeContext.today();
     const feeMap = performanceFeeMap(payment);
     document.querySelectorAll('.payment-performance-checkbox').forEach((checkbox) => {
         checkbox.checked = Boolean(feeMap[String(checkbox.value)]);

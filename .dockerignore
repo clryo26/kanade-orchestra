@@ -9,6 +9,10 @@ venv
 
 # Node / Python caches
 node_modules
+# Browser test artefacts
+test-results
+playwright-report
+blob-report
 __pycache__
 *.py[cod]
 .pytest_cache

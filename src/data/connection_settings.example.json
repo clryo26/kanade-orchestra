@@ -1,0 +1,11 @@
+[
+  {
+    "id": 1,
+    "provider": "postgres",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "database": "orchestra",
+    "enabled": false,
+    "note": "template only"
+  }
+]

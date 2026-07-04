@@ -1,19 +1,8 @@
 // Frontend split: extracted from main.js.
-// Loaded after main.js; functions intentionally remain global for legacy handlers.
+// performance_day.js now stays as a thin compatibility loader.
 
-function sortedPerformanceDayInfoRows() {
-    return [...(appState.performanceDayInfos || [])]
-        .map((item) => {
-            const performance = appState.performances.find((perf) => String(perf.id || '') === String(item.performance_id || ''));
-            return {
-                ...item,
-                performance,
-                performanceDate: String(performance?.date || ''),
-                performanceTitle: String(performance?.title || item.performance_title || '未設定の演奏会')
-            };
-        })
-        .sort((a, b) => String(b.performanceDate || '').localeCompare(String(a.performanceDate || '')) || String(a.performanceTitle).localeCompare(String(b.performanceTitle), 'ja'));
-}
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
 
 function inferDurationFromTimelineContent(content, performance) {
     const normalizedContent = String(content || '').trim();
@@ -92,27 +81,104 @@ function normalizedPerformanceDayTimelineRows(item) {
             start_time: normalizeClockText(row?.start_time || row?.start || ''),
             end_time: normalizeClockText(row?.end_time || row?.end || ''),
             duration_minutes: String(row?.duration_minutes || row?.duration || '').trim(),
+            kind: String(row?.kind || row?.type || '').trim(),
+            part: String(row?.part || row?.section || '').trim(),
             section: String(row?.section || row?.category || '').trim(),
-            content: String(row?.content || row?.title || '').trim(),
+            label: String(row?.label || row?.content || row?.title || '').trim(),
+            content: String(row?.content || row?.label || row?.title || '').trim(),
             mc: String(row?.mc || '').trim(),
             reception: String(row?.reception || row?.desk || '').trim(),
             setting: String(row?.setting || '').trim(),
             note: String(row?.note || '').trim(),
             source_line: String(row?.source_line || '').trim()
-        })).filter((row) => row.content || row.start_time || row.section);
+        })).filter((row) => row.content || row.label || row.start_time || row.section || row.part);
     }
     const performance = appState.performances.find((perf) => String(perf.id || '') === String(item?.performance_id || ''));
     return parseTimelineTextRows(item?.timeline || item?.timetable || '', performance);
+}
+
+function performanceDayPartNames(performance) {
+    const seen = new Set();
+    return normalizePerformancePieces(performance?.pieces || [])
+        .map((piece) => String(piece?.part || '').trim())
+        .filter((part) => part && !seen.has(part) && seen.add(part));
+}
+
+function performanceDayTimelineLabel(row) {
+    const kind = String(row?.kind || row?.type || '').trim();
+    const part = String(row?.part || row?.section || '').trim();
+    const label = String(row?.label || row?.content || row?.title || '').trim();
+    if (label) return label;
+    if (kind === 'open_time') return '開場時間';
+    if (kind === 'rehearsal_start_time') return 'リハーサル開始時刻';
+    if (kind === 'performance_start_time') return '開演時間';
+    if (kind === 'part_rehearsal' && part) return `${part}のリハ時間`;
+    return part;
+}
+
+function performanceDayTimelineRowEntries(performance, timelineRows = []) {
+    const existing = new Map();
+    (Array.isArray(timelineRows) ? timelineRows : []).forEach((row) => {
+        const kind = String(row?.kind || row?.type || '').trim();
+        const part = String(row?.part || row?.section || '').trim();
+        const label = performanceDayTimelineLabel(row);
+        const key = kind === 'part_rehearsal' && part ? `part:${part}` : kind || label;
+        if (key) existing.set(key, String(row?.start_time || row?.start || '').trim());
+    });
+    return [
+        { key: 'open_time', kind: 'open_time', label: '開場時間', section: '基本' },
+        { key: 'rehearsal_start_time', kind: 'rehearsal_start_time', label: 'リハーサル開始時刻', section: '基本' },
+        ...performanceDayPartNames(performance).map((part) => ({ key: `part:${part}`, kind: 'part_rehearsal', part, label: `${part}のリハ時間`, section: part })),
+        { key: 'performance_start_time', kind: 'performance_start_time', label: '開演時間', section: '基本' },
+    ].map((row) => ({ ...row, start_time: existing.get(row.key) || '' }));
+}
+
+function renderPerformanceDayPartRehearsalRows(performance, timelineRows = []) {
+    const container = $('performanceDayPartRehearsalRows');
+    if (!container) return;
+    const targetPerformance = performance || appState.performances.find((perf) => String(perf.id || '') === String($('performanceDayInfoPerformance')?.value || '')) || null;
+    const rows = performanceDayTimelineRowEntries(targetPerformance, timelineRows);
+    const partRows = rows.filter((row) => row.kind === 'part_rehearsal');
+    if (!partRows.length) {
+        container.innerHTML = '<div class="col-12"><div class="small text-muted">この演奏会には部が登録されていません</div></div>';
+        return;
+    }
+    container.innerHTML = partRows.map((row) => `
+        <div class="col-md-6 col-lg-4">
+            <label class="form-label" for="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}">${escapeHtml(row.label || '')}</label>
+            <input type="time" class="form-control performance-day-part-rehearsal-time" id="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}" data-performance-day-part="${escapeHtml(row.part || '')}" value="${escapeHtml(row.start_time || '')}">
+        </div>
+    `).join('');
+}
+
+function collectPerformanceDayPartRehearsalRows() {
+    const container = $('performanceDayPartRehearsalRows');
+    if (!container) return [];
+    return [...container.querySelectorAll('.performance-day-part-rehearsal-time')].map((input) => {
+        const part = String(input.dataset.performanceDayPart || '').trim();
+        return {
+            kind: 'part_rehearsal',
+            part,
+            section: part,
+            label: `${part}のリハ時間`,
+            content: `${part}のリハ時間`,
+            start_time: normalizeClockText(input.value || ''),
+            end_time: '',
+            duration_minutes: '',
+        };
+    }).filter((row) => row.part);
 }
 
 function timelineRowsToLegacyText(rows) {
     return (rows || []).map((row) => {
         const start = normalizeClockText(row?.start_time || '');
         const end = normalizeClockText(row?.end_time || '');
-        const content = String(row?.content || '').trim();
-        if (start && end && content) return `${start}-${end} ${content}`;
-        if (start && content) return `${start} ${content}`;
-        if (content) return content;
+        const kind = String(row?.kind || '').trim();
+        const label = String(row?.label || row?.content || row?.section || '').trim();
+        if (!kind && String(row?.source_line || '').trim()) return String(row?.source_line || '').trim();
+        if (start && end && label) return `${label}: ${start}-${end}`;
+        if (start && label) return `${label}: ${start}`;
+        if (label) return label;
         return String(row?.source_line || '').trim();
     }).filter(Boolean).join('\n');
 }
@@ -260,8 +326,8 @@ function setCostumeDetailForm(detail) {
 function renderPerformanceDayAssignmentRows(rows = []) {
     const container = $('performanceDayAssignmentRows');
     if (!container) return;
-    const normalizedRows = (rows || []).filter((row) => String(row?.role || '').trim() || String(row?.members || '').trim());
-    const renderRows = normalizedRows.length ? normalizedRows : [{ role: '', members: '' }];
+    // Editing state must keep blank rows; the save payload is filtered separately.
+    const renderRows = Array.isArray(rows) && rows.length ? rows : [{ role: '', members: '' }];
     container.innerHTML = renderRows.map((row, index) => `
         <tr>
             <td><input type="text" class="form-control form-control-sm performance-day-assignment-role" value="${escapeHtml(String(row.role || ''))}" placeholder="例: 受付"></td>
@@ -271,7 +337,7 @@ function renderPerformanceDayAssignmentRows(rows = []) {
     `).join('');
     container.querySelectorAll('.performance-day-assignment-delete-btn').forEach((button) => {
         button.addEventListener('click', () => {
-            const currentRows = collectPerformanceDayAssignmentRows();
+            const currentRows = collectPerformanceDayAssignmentRows({ includeBlankRows: true });
             const targetIndex = Number(button.dataset.rowIndex || '-1');
             if (targetIndex >= 0) currentRows.splice(targetIndex, 1);
             renderPerformanceDayAssignmentRows(currentRows);
@@ -280,18 +346,20 @@ function renderPerformanceDayAssignmentRows(rows = []) {
 }
 
 function addPerformanceDayAssignmentRow() {
-    const currentRows = collectPerformanceDayAssignmentRows();
+    const currentRows = collectPerformanceDayAssignmentRows({ includeBlankRows: true });
     currentRows.push({ role: '', members: '' });
     renderPerformanceDayAssignmentRows(currentRows);
 }
 
-function collectPerformanceDayAssignmentRows() {
+function collectPerformanceDayAssignmentRows(options = {}) {
     const container = $('performanceDayAssignmentRows');
     if (!container) return [];
-    return [...container.querySelectorAll('tr')].map((row) => ({
+    const rows = [...container.querySelectorAll('tr')].map((row) => ({
         role: String(row.querySelector('.performance-day-assignment-role')?.value || '').trim(),
         members: String(row.querySelector('.performance-day-assignment-members')?.value || '').trim()
-    })).filter((item) => item.role || item.members);
+    }));
+    if (options.includeBlankRows) return rows;
+    return rows.filter((item) => item.role || item.members);
 }
 
 function assignmentRowsHtml(rows) {
@@ -304,13 +372,15 @@ function timelineRowsHtml(rows) {
     return `
         <div class="table-responsive mt-1">
             <table class="table table-sm table-bordered mb-0">
-                <thead class="table-light"><tr><th style="width:20%;">時間</th><th>内容</th><th style="width:16%;">所要(分)</th></tr></thead>
+                <thead class="table-light"><tr><th style="width:35%;">項目</th><th style="width:25%;">時刻</th><th>備考</th></tr></thead>
                 <tbody>
                     ${rows.map((row) => {
         const start = normalizeClockText(row?.start_time || '');
         const end = normalizeClockText(row?.end_time || '');
         const timeText = start && end ? `${start}-${end}` : (start || end || '');
-        return `<tr><td>${escapeHtml(timeText)}</td><td>${escapeHtml(String(row?.content || '').trim())}</td><td>${escapeHtml(String(row?.duration_minutes || '').trim())}</td></tr>`;
+        const label = String(row?.label || row?.content || row?.section || '').trim();
+        const note = String(row?.note || '').trim();
+        return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(timeText)}</td><td>${escapeHtml(note)}</td></tr>`;
     }).join('')}
                 </tbody>
             </table>
@@ -331,7 +401,7 @@ function renderPerformanceDayInfoView() {
             <h5>${escapeHtml(item.performanceTitle)}</h5>
             <div class="small text-muted mb-2">${escapeHtml(formatDateWithWeekday(item.performanceDate || ''))}</div>
             <div class="mb-3">
-                <strong>当日タイムテーブル</strong>
+                <strong>本番タイムテーブル</strong>
                 ${timelineRowsHtml(normalizedPerformanceDayTimelineRows(item))}
             </div>
             <div class="mb-3">
@@ -378,9 +448,14 @@ function renderPerformanceDayInfoAdmin() {
 function selectPerformanceDayInfo(infoId) {
     const item = (appState.performanceDayInfos || []).find((row) => String(row.id || '') === String(infoId));
     if (!item) return;
+    const performance = appState.performances.find((perf) => String(perf.id || '') === String(item.performance_id || '')) || null;
+    const timelineRows = normalizedPerformanceDayTimelineRows(item);
     $('performanceDayInfoId').value = item.id || '';
     $('performanceDayInfoPerformance').value = String(item.performance_id || '');
-    $('performanceDayTimeline').value = timelineRowsToLegacyText(normalizedPerformanceDayTimelineRows(item)) || item.timeline || item.timetable || '';
+    if ($('performanceDayOpenTime')) $('performanceDayOpenTime').value = timelineRows.find((row) => row.kind === 'open_time')?.start_time || '';
+    if ($('performanceDayRehearsalStartTime')) $('performanceDayRehearsalStartTime').value = timelineRows.find((row) => row.kind === 'rehearsal_start_time')?.start_time || '';
+    if ($('performanceDayStartTime')) $('performanceDayStartTime').value = timelineRows.find((row) => row.kind === 'performance_start_time')?.start_time || '';
+    renderPerformanceDayPartRehearsalRows(performance, timelineRows);
     setCostumeDetailForm(normalizedCostumeDetail(item));
     renderPerformanceDayAssignmentRows(normalizedPerformanceDayAssignments(item));
 }
@@ -388,16 +463,22 @@ function selectPerformanceDayInfo(infoId) {
 function clearPerformanceDayInfoForm() {
     if ($('performanceDayInfoId')) $('performanceDayInfoId').value = '';
     if ($('performanceDayInfoPerformance')) $('performanceDayInfoPerformance').value = '';
-    if ($('performanceDayTimeline')) $('performanceDayTimeline').value = '';
+    if ($('performanceDayOpenTime')) $('performanceDayOpenTime').value = '';
+    if ($('performanceDayRehearsalStartTime')) $('performanceDayRehearsalStartTime').value = '';
+    if ($('performanceDayStartTime')) $('performanceDayStartTime').value = '';
+    renderPerformanceDayPartRehearsalRows(null, []);
     setCostumeDetailForm(emptyCostumeDetail());
     renderPerformanceDayAssignmentRows([]);
 }
 
 async function savePerformanceDayInfo() {
     const performanceId = $('performanceDayInfoPerformance')?.value || '';
-    const timeline = $('performanceDayTimeline')?.value.trim() || '';
     const performance = appState.performances.find((perf) => String(perf.id || '') === String(performanceId));
-    const timelineRows = parseTimelineTextRows(timeline, performance);
+    const openTime = normalizeClockText($('performanceDayOpenTime')?.value || '');
+    const rehearsalStartTime = normalizeClockText($('performanceDayRehearsalStartTime')?.value || '');
+    const performanceStartTime = normalizeClockText($('performanceDayStartTime')?.value || '');
+    const partRows = collectPerformanceDayPartRehearsalRows();
+    const missingPartRow = partRows.find((row) => !row.start_time);
     const costumeDetail = costumeDetailFromForm();
     const costume = costumeDetailToLegacyText(costumeDetail);
     const assignmentRows = collectPerformanceDayAssignmentRows();
@@ -406,21 +487,31 @@ async function savePerformanceDayInfo() {
         showAlert('演奏会を選択してください', 'warning');
         return;
     }
-    if (!timelineRows.length && !hasCostumeDetail(costumeDetail) && !assignments) {
-        showAlert('タイムテーブル、本番衣装、係り割のいずれかを入力してください', 'warning');
+    if (!openTime || !rehearsalStartTime || !performanceStartTime) {
+        showAlert('開場時間、リハーサル開始時刻、開演時間を入力してください', 'warning');
+        return;
+    }
+    if (missingPartRow) {
+        showAlert(`${missingPartRow.part}のリハ時間を入力してください`, 'warning');
         return;
     }
 
+    const timelineRows = [
+        { sort_order: 1, kind: 'open_time', section: '基本', label: '開場時間', content: '開場時間', start_time: openTime, end_time: '', duration_minutes: '' },
+        { sort_order: 2, kind: 'rehearsal_start_time', section: '基本', label: 'リハーサル開始時刻', content: 'リハーサル開始時刻', start_time: rehearsalStartTime, end_time: '', duration_minutes: '' },
+        ...partRows.map((row, index) => ({ sort_order: index + 3, ...row })),
+        { sort_order: partRows.length + 3, kind: 'performance_start_time', section: '基本', label: '開演時間', content: '開演時間', start_time: performanceStartTime, end_time: '', duration_minutes: '' },
+    ];
+
     const payload = {
         performance_id: performanceId,
-        timeline: timeline || timelineRowsToLegacyText(timelineRows),
+        timeline: timelineRowsToLegacyText(timelineRows),
         timeline_rows: timelineRows,
         costume_detail: costumeDetail,
         costume,
         assignments_rows: assignmentRows,
         assignments,
-        // 互換キーも保存し、既存データとの表記揺れを吸収する。
-        timetable: timeline,
+        timetable: timelineRowsToLegacyText(timelineRows),
         duties: assignments
     };
 
@@ -450,7 +541,7 @@ async function exportPerformanceDayInfoExcel() {
         return;
     }
 
-    const deviceId = localStorage.getItem(PORTAL_DEVICE_ID_KEY) || '';
+    const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const response = await fetch(`/api/reports/performance-timetable/${encodeURIComponent(performanceId)}/xlsx`, {
         method: 'GET',
         headers: deviceId ? { 'X-Device-Id': deviceId } : {}

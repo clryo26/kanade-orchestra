@@ -1,0 +1,5 @@
+Bundle construction:
+- Runtime source, tests, configs: oke-portal-recovery-reaudited-20260704.zip
+- Retained root design/operation documents: 33 missing root Markdown files from legacy_snapshot.zip
+Excluded: .git, .env, node_modules, .venv, caches, test outputs, logs.
+This bundle is source-only. Do not push it directly to an existing Git branch without a deliberate review/commit.

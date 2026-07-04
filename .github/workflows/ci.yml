@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -28,11 +29,28 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: npm audit (high)
+        run: npm audit --audit-level=high
+
+      - name: Run release safety check
+        run: npm run check:release-safety
+
       - name: Build source share zip
         run: uv run python scripts/create-source-zip.py
+
+      - name: Build source share zip via npm
+        run: npm run zip:source
 
       - name: Upload source share zip artifact
         uses: actions/upload-artifact@v4
@@ -62,11 +80,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Python dependency vulnerability scan
+        run: uvx pip-audit
+
       - name: Python syntax check
-        run: uv run python -m compileall -q src tests
+        run: uv run python -m compileall -q src/backend tests
 
       - name: Ruff check
         run: uv run ruff check .
+
+      - name: Staged backend type check
+        run: npm run check:types:backend
 
       - name: Enforce app_core public surface
         run: uv run pytest -q tests/backend/test_app_core_public_surface.py
@@ -76,6 +100,42 @@ jobs:
 
       - name: Run full backend tests
         run: uv run pytest
+
+      - name: Run local/db response contract parity test
+        run: uv run pytest -q tests/backend/test_json_db_response_parity.py
+
+      - name: Run diagnostic config auth hardening tests
+        run: uv run pytest -q tests/backend/test_diagnostic_config_status.py
+
+  pre-release-gate:
+    runs-on: ubuntu-latest
+    env:
+      UV_SYSTEM_CERTS: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run pre-release gate
+        run: npm run pre-release
 
   backend-tests-db:
     runs-on: ubuntu-latest
@@ -99,10 +159,13 @@ jobs:
         run: uv sync --extra dev
 
       - name: Python syntax check
-        run: uv run python -m compileall -q src tests
+        run: uv run python -m compileall -q src/backend tests
 
       - name: Ruff check
         run: uv run ruff check .
+
+      - name: Validate tenant migration targets
+        run: uv run python scripts/check_tenant_migration.py
 
       - name: Prepare backend coverage directory
         run: mkdir -p coverage/backend
@@ -133,6 +196,7 @@ jobs:
       - backend-tests-local
       - backend-tests-db
       - frontend-tests
+      - pre-release-gate
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -159,8 +223,29 @@ jobs:
       - name: Install frontend test dependencies
         run: npm ci
 
+      - name: npm audit (high)
+        run: npm audit --audit-level=high
+
+      - name: Run release safety check
+        run: npm run check:release-safety
+
       - name: Run frontend syntax check
         run: npm run check:frontend:syntax
+
+      - name: Run frontend load-order check
+        run: npm run check:frontend:load-order
+
+      - name: Run frontend state-access check
+        run: npm run check:frontend:state-access
+
+      - name: Run operational checklist consistency check
+        run: npm run check:ops:checklists
+
+      - name: Run decision log consistency check
+        run: npm run check:decision-log
+
+      - name: Run frontend tests
+        run: npm run test:frontend
 
       - name: Run frontend integration tests
         run: npm run test:frontend:integration
@@ -177,12 +262,70 @@ jobs:
             coverage/frontend/coverage-summary.json
           if-no-files-found: error
 
+  quality-gates:
+    runs-on: ubuntu-latest
+    needs:
+      - backend-tests-db
+      - frontend-tests
+    env:
+      BACKEND_COVERAGE_MIN: "70"
+      FRONTEND_COVERAGE_MIN: "50"
+    steps:
+      - name: Download backend coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/backend
+
+      - name: Download frontend coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/frontend
+
+      - name: Enforce coverage thresholds
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          backend_xml = Path('coverage/backend/coverage.xml')
+          frontend_json = Path('coverage/frontend/coverage-summary.json')
+
+          if not backend_xml.exists():
+              raise SystemExit('backend coverage.xml not found')
+          if not frontend_json.exists():
+              raise SystemExit('frontend coverage-summary.json not found')
+
+          backend_rate = float(ET.parse(backend_xml).getroot().attrib.get('line-rate', 0.0)) * 100
+          frontend_rate = float(json.loads(frontend_json.read_text(encoding='utf-8')).get('total', {}).get('lines', {}).get('pct', 0.0))
+
+          backend_min = float(os.getenv('BACKEND_COVERAGE_MIN', '70'))
+          frontend_min = float(os.getenv('FRONTEND_COVERAGE_MIN', '50'))
+
+          print(f'Backend coverage: {backend_rate:.2f}% (min {backend_min:.2f}%)')
+          print(f'Frontend coverage: {frontend_rate:.2f}% (min {frontend_min:.2f}%)')
+
+          errors = []
+          if backend_rate < backend_min:
+              errors.append(f'Backend coverage below threshold: {backend_rate:.2f}% < {backend_min:.2f}%')
+          if frontend_rate < frontend_min:
+              errors.append(f'Frontend coverage below threshold: {frontend_rate:.2f}% < {frontend_min:.2f}%')
+
+          if errors:
+              raise SystemExit('\n'.join(errors))
+          PY
+
   coverage-summary:
     runs-on: ubuntu-latest
     needs:
       - backend-tests-local
       - backend-tests-db
       - frontend-tests
+      - quality-gates
       - docker-cloudrun-smoke
     if: github.event_name == 'pull_request'
     steps:

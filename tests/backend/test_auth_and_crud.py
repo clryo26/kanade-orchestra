@@ -464,6 +464,59 @@ def test_update_performance_saves_performance_fee_amount(client, seed_device_fn,
     assert updated.json()["pieces"] == [{"title": "Symphony", "duration": "8"}]
 
 
+def test_performance_save_normalizes_blank_fee_times_and_mixed_pieces(client, seed_device_fn, admin_headers_fixture):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+
+    created = client.post(
+        "/api/performances",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert",
+            "date": "",
+            "open_time": "",
+            "start_time": "",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "performance_fee_amount": "",
+            "pieces": ["Opening", {"title": "Symphony", "duration": "8"}, ""],
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["performance_fee_amount"] == 0
+    assert created.json()["date"] == ""
+    assert created.json()["open_time"] == ""
+    assert created.json()["start_time"] == ""
+    assert created.json()["pieces"] == ["Opening", {"title": "Symphony", "duration": "8"}]
+
+    updated = client.put(
+        "/api/performances/1",
+        headers=admin_headers_fixture,
+        json={
+            "title": "Concert Updated",
+            "date": None,
+            "open_time": None,
+            "start_time": "",
+            "venue": "Hall",
+            "conductor": "Cond",
+            "created_at": None,
+            "performance_fee_amount": None,
+            "pieces": [{"title": "Finale", "sort_order": 2}, "Encore"],
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["created_at"]
+    assert updated.json()["performance_fee_amount"] == 0
+    assert updated.json()["date"] == ""
+    assert updated.json()["open_time"] == ""
+    assert updated.json()["pieces"] == [{"title": "Finale", "sort_order": 2}, "Encore"]
+
+    listed = client.get("/api/performances")
+    assert listed.status_code == 200
+    assert listed.json()[0]["title"] == "Concert Updated"
+    assert listed.json()[0]["created_at"]
+    assert listed.json()[0]["pieces"] == [{"title": "Finale", "sort_order": 2}, "Encore"]
+
+
 def test_member_password_is_hashed_and_hidden_in_admin_api(client, backend_env, seed_device_fn, admin_headers_fixture):
     seed_device_fn(device_id="dev-admin", permission="管理者")
     created = client.post(
@@ -575,6 +628,28 @@ def test_recording_list_deduplicates_cloud_mirrored_local_file(client, backend_e
     files = response.json()["files"]
     assert len(files) == 1
     assert files[0]["source"] == "google_cloud_storage"
+
+
+def test_recording_list_infers_date_and_piece_from_cloud_object_name(client, backend_env):
+    backend_env.save_json_data(
+        "drive_files",
+        [
+            {
+                "id": "2026-06-18/Symphony/take1.mp3",
+                "name": "take1.mp3",
+                "object_name": "2026-06-18/Symphony/take1.mp3",
+                "source": "google_cloud_storage",
+            }
+        ],
+    )
+
+    response = client.get("/api/recordings")
+
+    assert response.status_code == 200
+    files = response.json()["files"]
+    assert len(files) == 1
+    assert files[0]["date"] == "2026-06-18"
+    assert files[0]["piece"] == "Symphony"
 
 
 def test_piece_info_crud_allowed_for_authenticated_member(client, seed_device_fn):

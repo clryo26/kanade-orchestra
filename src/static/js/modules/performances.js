@@ -1,5 +1,18 @@
 // Performance module.
 
+var appState = window.portalRuntimeContext.appState;
+var $ = window.portalRuntimeContext.getById;
+var normalizePerformancePieces = window.normalizePerformancePieces;
+var performancePieceDurationText = window.performancePieceDurationText;
+var performancePieceLabel = window.performancePieceLabel;
+var performancePieceFormalLabel = window.performancePieceFormalLabel;
+var performancePieceLookupLabels = window.performancePieceLookupLabels;
+var findPieceScopedItem = window.findPieceScopedItem;
+var pieceScopedRows = window.pieceScopedRows;
+var uploadPieceOptionsCompat = function uploadPieceOptionsCompat(performance) {
+    return window.uploadPieceOptions(performance, window.WHOLE_PRACTICE_RECORDING_PIECE);
+};
+
 async function savePerformance() {
     const flyerFile = $('perfFlyerFile')?.files?.[0];
     const flyerImage = flyerFile ? await fileToDataUrl(flyerFile) : ($('perfFlyerImage')?.value || '');
@@ -30,7 +43,7 @@ function selectPerformance(id) {
     if (!item) return;
     $('perfId').value = item.id;
     $('perfTitle').value = item.title || '';
-    $('perfDate').value = item.date || today();
+    $('perfDate').value = item.date || window.portalRuntimeContext.today();
     $('perfOpenTime').value = item.open_time || '18:00';
     $('perfStartTime').value = item.start_time || '19:00';
     if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', item.venue || '');
@@ -59,7 +72,7 @@ async function deletePerformance() {
 function clearPerformanceForm() {
     $('perfId').value = '';
     $('perfTitle').value = '';
-    $('perfDate').value = today();
+    $('perfDate').value = window.portalRuntimeContext.today();
     $('perfOpenTime').value = '18:00';
     $('perfStartTime').value = '19:00';
     if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', '');
@@ -71,6 +84,7 @@ function clearPerformanceForm() {
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+    if ($('perfPiecePart')) $('perfPiecePart').value = '';
     if ($('perfPieceDuration')) $('perfPieceDuration').value = '';
     appState.performancePieces = [];
     appState.performancePieceEditIndex = null;
@@ -82,6 +96,7 @@ function addPerformancePiece() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
     const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
+    const part = $('perfPiecePart') ? $('perfPiecePart').value.trim() : '';
     const duration = $('perfPieceDuration') ? $('perfPieceDuration').value.trim() : '';
     const isEncore = $('perfPieceEncore') ? $('perfPieceEncore').checked : false;
     if (!title) {
@@ -89,7 +104,7 @@ function addPerformancePiece() {
         return;
     }
 
-    const piece = { composer, title, alias, duration, is_encore: isEncore };
+    const piece = { composer, title, alias, part, duration, is_encore: isEncore };
     if (appState.performancePieceEditIndex !== null) {
         appState.performancePieces[appState.performancePieceEditIndex] = piece;
         appState.performancePieceEditIndex = null;
@@ -100,6 +115,7 @@ function addPerformancePiece() {
     $('perfPieceComposer').value = '';
     $('perfPieceTitle').value = '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+    if ($('perfPiecePart')) $('perfPiecePart').value = '';
     if ($('perfPieceDuration')) $('perfPieceDuration').value = '';
     if ($('perfPieceEncore')) $('perfPieceEncore').checked = false;
     renderPerformancePieceList();
@@ -111,6 +127,7 @@ function editPerformancePiece(index) {
     $('perfPieceComposer').value = piece.composer || '';
     $('perfPieceTitle').value = piece.title || '';
     if ($('perfPieceAlias')) $('perfPieceAlias').value = piece.alias || '';
+    if ($('perfPiecePart')) $('perfPiecePart').value = piece.part || '';
     if ($('perfPieceDuration')) $('perfPieceDuration').value = piece.duration || '';
     if ($('perfPieceEncore')) $('perfPieceEncore').checked = Boolean(piece.is_encore || piece.encore);
     appState.performancePieceEditIndex = index;
@@ -126,6 +143,7 @@ function removePerformancePiece(index) {
         $('perfPieceComposer').value = '';
         $('perfPieceTitle').value = '';
         if ($('perfPieceAlias')) $('perfPieceAlias').value = '';
+        if ($('perfPiecePart')) $('perfPiecePart').value = '';
         if ($('perfPieceDuration')) $('perfPieceDuration').value = '';
         if ($('perfPieceEncore')) $('perfPieceEncore').checked = false;
     } else if (appState.performancePieceEditIndex !== null && appState.performancePieceEditIndex > index) {
@@ -151,115 +169,19 @@ function currentPerformancePieces() {
     const composer = $('perfPieceComposer').value.trim();
     const title = $('perfPieceTitle').value.trim();
     const alias = $('perfPieceAlias') ? $('perfPieceAlias').value.trim() : '';
+    const part = $('perfPiecePart') ? $('perfPiecePart').value.trim() : '';
     const duration = $('perfPieceDuration') ? $('perfPieceDuration').value.trim() : '';
     const pieces = [...appState.performancePieces];
     if (title) {
-        pieces.push({ composer, title, alias, duration, is_encore: $('perfPieceEncore') ? $('perfPieceEncore').checked : false });
+        pieces.push({ composer, title, alias, part, duration, is_encore: $('perfPieceEncore') ? $('perfPieceEncore').checked : false });
     }
     return pieces;
-}
-
-function normalizePerformancePieces(pieces) {
-    return (pieces || []).map((piece) => {
-        if (typeof piece === 'string') {
-            return { composer: '', title: piece };
-        }
-        return {
-            composer: piece.composer || '',
-            title: piece.title || piece.name || '',
-            alias: piece.alias || piece.short_name || '',
-            duration: piece.duration || '',
-            is_encore: Boolean(piece.is_encore || piece.encore)
-        };
-    }).filter((piece) => piece.title);
-}
-
-function performancePieceDurationText(piece) {
-    const value = String(piece?.duration || '').trim();
-    return value ? `演奏時間: ${value}分` : '';
-}
-
-function performancePieceLabel(piece) {
-    if (typeof piece === 'string') return piece;
-    // 曲名表示や保存フォルダ名は、登録済みの略称を優先して短く揃える。
-    const label = piece.alias || piece.short_name || (piece.composer ? `${piece.composer}: ${piece.title}` : piece.title);
-    return (piece.is_encore || piece.encore) ? `(${label})` : label;
-}
-
-function performancePieceFormalLabel(piece) {
-    if (typeof piece === 'string') return piece;
-    // 録音アップロードの選択肢では、略称ではなく登録された正式な曲名を見せる。
-    const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
-    return (piece.is_encore || piece.encore) ? `(${label})` : label;
-}
-
-function performancePieceLookupLabels(piece) {
-    // DB移行前の紹介/指示データは、曲名・略称・「作曲者: 曲名」のいずれかで保存されていることがある。
-    if (typeof piece === 'string') return [piece].filter(Boolean);
-    return [
-        performancePieceLabel(piece),
-        performancePieceFormalLabel(piece),
-        piece.title,
-        piece.alias,
-        piece.short_name,
-        piece.composer && piece.title ? `${piece.composer}: ${piece.title}` : ''
-    ].map((value) => String(value || '').trim()).filter((value, index, array) => value && array.indexOf(value) === index);
-}
-
-function findPieceScopedItem(items, performanceId, piece) {
-    const labels = performancePieceLookupLabels(piece);
-    return (items || []).find((item) =>
-        String(item.performance_id || '') === String(performanceId || '')
-        && labels.includes(String(item.piece || item.title || '').trim())
-    );
-}
-
-function pieceScopedRows(performances, scopedItems) {
-    return (performances || []).map((perf) => {
-        const normalizedPieces = normalizePerformancePieces(perf.pieces || []);
-        const labels = new Set(normalizedPieces.flatMap(performancePieceLookupLabels));
-        (scopedItems || []).forEach((item) => {
-            if (String(item.performance_id || '') !== String(perf.id || '')) return;
-            const itemPiece = String(item.piece || item.title || '').trim();
-            if (!itemPiece || labels.has(itemPiece)) return;
-            normalizedPieces.push({ composer: '', title: itemPiece, alias: '' });
-            labels.add(itemPiece);
-        });
-        return {
-            performanceId: String(perf.id || ''),
-            title: String(perf.title || ''),
-            date: String(perf.date || ''),
-            pieces: normalizedPieces
-        };
-    });
 }
 
 function selectedUploadPerformance() {
     const value = $('uploadPerformance')?.value || '';
     if (!value) return null;
     return appState.performances.find((perf) => String(perf.id) === value) || null;
-}
-
-function uploadPieceOptions(performance) {
-    if (!performance) return [];
-
-    const options = normalizePerformancePieces(performance?.pieces || [])
-        .map((piece) => ({
-            value: performancePieceLabel(piece),
-            label: performancePieceFormalLabel(piece)
-        }))
-        .filter((option) => option.value);
-    options.push({
-        value: WHOLE_PRACTICE_RECORDING_PIECE,
-        label: WHOLE_PRACTICE_RECORDING_PIECE
-    });
-
-    const seen = new Set();
-    return options.filter((option) => {
-        if (seen.has(option.value)) return false;
-        seen.add(option.value);
-        return true;
-    });
 }
 
 function renderUploadPerformanceOptions() {
@@ -279,7 +201,7 @@ function renderUploadPieceOptions() {
     const select = $('uploadPiece');
     if (!select) return;
     const current = select.value;
-    const pieces = uploadPieceOptions(selectedUploadPerformance());
+    const pieces = uploadPieceOptionsCompat(selectedUploadPerformance());
     select.innerHTML = pieces.length
         ? '<option value="">曲を選択</option>' + pieces.map((piece) => `<option value="${escapeHtml(piece.value)}">${escapeHtml(piece.label)}</option>`).join('')
         : '<option value="">演奏会に登録済みの曲がありません</option>';

@@ -1,4 +1,5 @@
 from __future__ import annotations
+# mypy: disable-error-code="no-redef,misc"
 
 import io  # noqa: F401
 import os
@@ -113,6 +114,7 @@ try:
         DB_CHILD_COLUMNS as DB_CHILD_COLUMNS,  # noqa: F401
         DB_COLLECTION_COLUMNS as DB_COLLECTION_COLUMNS,  # noqa: F401
         DB_INT_COLUMNS as DB_INT_COLUMNS,  # noqa: F401
+        DB_JSON_COLUMNS as DB_JSON_COLUMNS,  # noqa: F401
         DB_TIMESTAMP_COLUMNS as DB_TIMESTAMP_COLUMNS,  # noqa: F401
         DB_WRITABLE_COLLECTIONS,
         JSON_COLLECTION_TABLES,
@@ -123,6 +125,7 @@ except ImportError:  # pragma: no cover - allows running main.py directly.
         DB_CHILD_COLUMNS as DB_CHILD_COLUMNS,  # noqa: F401
         DB_COLLECTION_COLUMNS as DB_COLLECTION_COLUMNS,  # noqa: F401
         DB_INT_COLUMNS as DB_INT_COLUMNS,  # noqa: F401
+        DB_JSON_COLUMNS as DB_JSON_COLUMNS,  # noqa: F401
         DB_TIMESTAMP_COLUMNS as DB_TIMESTAMP_COLUMNS,  # noqa: F401
         DB_WRITABLE_COLLECTIONS,
         JSON_COLLECTION_TABLES,
@@ -353,6 +356,7 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
         local_json_fallback_enabled=local_json_fallback_enabled,
         ensure_db_expected_is_ready=ensure_db_expected_is_ready,
         db_load_json_data=db_load_json_data,
+        db_load_generic_json_collection=db_load_generic_json_collection,
         json_collection_tables=JSON_COLLECTION_TABLES,
         json_data_names=JSON_DATA_NAMES,
         extra_collections=EXTRA_COLLECTIONS,
@@ -373,6 +377,7 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
         local_json_fallback_enabled=local_json_fallback_enabled,
         ensure_db_expected_is_ready=ensure_db_expected_is_ready,
         db_replace_collection=db_replace_collection,
+        db_save_generic_json_collection=db_save_generic_json_collection,
         db_writable_collections=DB_WRITABLE_COLLECTIONS,
         json_data_names=JSON_DATA_NAMES,
         extra_collections=EXTRA_COLLECTIONS,
