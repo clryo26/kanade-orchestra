@@ -40,8 +40,41 @@ def prepare_member_payload(member: Any, current: dict[str, Any] | None = None) -
 
 def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
     payload = dict(member)
+
+    for key in [
+        "name",
+        "last_name",
+        "first_name",
+        "maiden_name",
+        "last_name_kana",
+        "first_name_kana",
+        "maiden_name_kana",
+        "part",
+        "photo_url",
+        "password",
+        "permission",
+        "joined_at",
+        "system_access_until",
+        "introducer",
+        "role",
+        "instrument_history",
+        "past_orchestras",
+        "comment",
+    ]:
+        if payload.get(key) is None:
+            payload[key] = ""
+
+    for key in [
+        "is_founder",
+        "is_recording_manager",
+        "is_sheet_manager",
+        "password_set",
+    ]:
+        payload[key] = bool(payload.get(key))
+
     payload["password_set"] = bool(payload.get("password"))
     payload["password"] = ""
+
     return payload
 
 
