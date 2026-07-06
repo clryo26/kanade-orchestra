@@ -219,14 +219,18 @@ function renderPerformancePieceList() {
         item.className = 'list-group-item d-flex flex-wrap justify-content-between align-items-center gap-3';
         const formalLabel = performancePieceFormalLabel(piece);
         const alias = piece.alias || piece.short_name || '';
-        const aliasHtml = alias ? `<div class="small text-muted">略称: ${escapeHtml(alias)}</div>` : '';
         const durationText = performancePieceDurationText(piece);
-        const durationHtml = durationText ? `<div class="small text-muted">${escapeHtml(durationText)}</div>` : '';
+        const part = piece.part || piece.section || '';
+        const detailParts = [
+            alias ? `略称: ${alias}` : '',
+            part ? `部: ${part}` : '',
+            durationText
+        ].filter(Boolean);
+        const detailHtml = detailParts.length ? `<div class="small text-muted">${escapeHtml(detailParts.join(' / '))}</div>` : '';
         item.innerHTML = `
             <span>
                 <span>${escapeHtml(formalLabel)}</span>
-                ${aliasHtml}
-                ${durationHtml}
+                ${detailHtml}
             </span>
             <span class="d-flex flex-wrap gap-2">
                 <button class="btn btn-sm btn-outline-secondary move-piece-up-btn" type="button" ${index === 0 ? 'disabled' : ''}>↑</button>

@@ -249,6 +249,54 @@ def test_payment_child_rows_are_built_for_db_foreign_keys(backend_env):
     assert db_row[:4] == (1, 10, True, backend_env.Decimal("1500"))
 
 
+def test_performance_piece_child_rows_keep_part(backend_env):
+    rows = backend_env.db_child_rows_for_collection(
+        "performances",
+        [
+            {
+                "id": 1,
+                "pieces": [
+                    {
+                        "title": "Symphony",
+                        "alias": "Sym",
+                        "part": "第一部",
+                        "composer": "Composer",
+                        "duration": "8",
+                    }
+                ],
+            }
+        ],
+    )
+    child = rows["performance_pieces"][0]
+    db_row = backend_env.db_row_tuple(
+        "performance_pieces",
+        backend_env.DB_CHILD_COLUMNS["performance_pieces"],
+        child,
+    )
+    part_index = backend_env.DB_CHILD_COLUMNS["performance_pieces"].index("part")
+
+    assert child["part"] == "第一部"
+    assert db_row[part_index] == "第一部"
+
+
+def test_absence_db_row_keeps_planned_time(backend_env):
+    columns = backend_env.DB_COLLECTION_COLUMNS["absences"]
+    row = backend_env.db_row_tuple(
+        "absences",
+        columns,
+        {
+            "id": "1",
+            "schedule_id": "2",
+            "member_id": "3",
+            "name": "Member",
+            "status": "late",
+            "planned_time": "19:05",
+        },
+    )
+
+    assert row[columns.index("planned_time")] == "19:05"
+
+
 def test_org_settings_accept_frontend_payload_without_membership_fee(backend_env):
     row = backend_env.db_row_tuple(
         "org_settings",

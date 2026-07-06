@@ -169,7 +169,7 @@ DB_COLLECTION_COLUMNS = {
         "created_at",
         "updated_at",
     ),
-    "absences": ("id", "schedule_id", "member_id", "name", "status", "note", "created_at", "updated_at"),
+    "absences": ("id", "schedule_id", "member_id", "name", "status", "planned_time", "note", "created_at", "updated_at"),
     "event_responses": ("id", "event_id", "member_id", "name", "status", "note", "created_at", "updated_at"),
     "date_adjustments": ("id", "title", "deadline", "notes", "delete_phrase", "created_by", "member_id", "created_at", "updated_at"),
     "date_adjustment_responses": ("id", "adjustment_id", "candidate_key", "member_id", "name", "status", "note", "created_at", "updated_at"),
@@ -309,6 +309,7 @@ DB_TIME_COLUMNS = {
     "performances": {"open_time", "start_time"},
     "schedules": {"start_time", "end_time", "available_start_time", "available_end_time"},
     "events": {"start_time"},
+    "absences": {"planned_time"},
     "date_adjustment_candidates": {"start_time", "end_time"},
 }
 
@@ -413,7 +414,7 @@ DB_CHILD_PARENT_KEYS = {
 }
 
 DB_CHILD_COLUMNS = {
-    "performance_pieces": ("id", "performance_id", "sort_order", "title", "alias", "composer", "duration", "is_encore", "created_at", "updated_at"),
+    "performance_pieces": ("id", "performance_id", "sort_order", "title", "alias", "part", "composer", "duration", "is_encore", "created_at", "updated_at"),
     "date_adjustment_candidates": ("id", "adjustment_id", "candidate_key", "date", "start_time", "end_time", "note", "sort_order", "created_at", "updated_at"),
     "payment_performance_fees": ("payment_id", "performance_id", "is_paid", "fee_amount", "created_at", "updated_at"),
     "casting_members": ("id", "casting_id", "member_id", "part", "sort_order", "created_at", "updated_at"),
