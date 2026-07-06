@@ -441,6 +441,65 @@ MIT License
 
 質問や提案がある場合は、プロジェクトマネージャーまでお問い合わせください。
 
+
+VSCode / GitHub Copilot / チャット型AIで、AI生成コードの品質を安定させるための Markdown 一式です。
+
+## 配置方法
+
+リポジトリ直下に、この一式を展開してください。
+
+```text
+.
+├─ AGENTS.md
+├─ .github/
+│  ├─ copilot-instructions.md
+│  ├─ instructions/
+│  │  ├─ csharp.instructions.md
+│  │  ├─ oracle-sql.instructions.md
+│  │  └─ ai-generated-code-review.instructions.md
+│  └─ prompts/
+│     ├─ fix-bug.prompt.md
+│     ├─ review-ai-code.prompt.md
+│     ├─ create-testcases.prompt.md
+│     └─ self-audit.prompt.md
+└─ docs/
+   ├─ ai-chat-quality-gate-checklist.md
+   ├─ ai-generated-code-acceptance-criteria.md
+   └─ ai-workflow.md
+```
+
+## 使い分け
+
+- `.github/copilot-instructions.md`  
+  プロジェクト全体に常時適用したい基本ルール
+
+- `AGENTS.md`  
+  AIエージェントに対する作業契約、禁止事項、品質ゲート
+
+- `.github/instructions/*.instructions.md`  
+  C#、Oracle SQL、AI生成コードレビューなど、対象ファイルや用途別のルール
+
+- `.github/prompts/*.prompt.md`  
+  不具合修正、AIコードレビュー、テストケース作成、自己監査など、作業ごとの呼び出し用テンプレート
+
+- `docs/*.md`  
+  人間側が運用・レビュー・採用判定に使うチェックリスト
+
+## 基本思想
+
+AIに「正しくやって」と依頼するのではなく、以下を必須化します。
+
+1. 変更許可範囲を明示する
+2. 変更禁止範囲を明示する
+3. 作業前ゲートを出させる
+4. 差分だけ出させる
+5. 受入条件チェック表を出させる
+6. 未確認事項を必ず書かせる
+7. 守れていない成果物は採用しない
+
+AIの自己申告は品質保証ではありません。  
+採用可否は、差分・根拠・テスト結果・人間の受入確認で判断してください。
+
 ---
 
 **最終更新**: 2026-06-12

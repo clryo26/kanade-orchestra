@@ -117,6 +117,8 @@ const BOOTSTRAP_DATA = {
     albums: [],
     part_settings: PART_SETTINGS,
     venue_settings: [{ id: 1, name: '市民センター', type: 'practice' }],
+    flyer_distributions: [],
+    flyer_distribution_assignments: [],
     org_settings: ORG_SETTINGS,
     sns_settings: SNS_SETTINGS,
     connection_settings: [],

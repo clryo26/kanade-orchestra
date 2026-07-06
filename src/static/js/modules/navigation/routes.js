@@ -102,6 +102,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (button) button.classList.add('active');
     recordAccessLog(panelId, tabName);
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
+    if (renderOnShow && tabName === 'member-flyer-distribution') renderFlyerDistributionView();
     if (renderOnShow && tabName === 'member-performance-day') renderPerformanceDayInfoView();
     if (renderOnShow && tabName === 'member-manual') renderManualView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
@@ -120,6 +121,7 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'payment-admin') renderPaymentAdmin();
     if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();
     if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
+    if (renderOnShow && tabName === 'flyer-distribution-admin') renderFlyerDistributionManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'performance-day-admin') renderPerformanceDayInfoAdmin();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();

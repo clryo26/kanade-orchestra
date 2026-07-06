@@ -67,6 +67,9 @@ function bindForms() {
     if ($('clearPartSettingBtn')) $('clearPartSettingBtn').addEventListener('click', clearPartSettingForm);
     document.querySelectorAll('.venue-save-by-type-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveVenueSetting(button.dataset.venueType || 'practice'))));
     document.querySelectorAll('.venue-clear-by-type-btn').forEach((button) => button.addEventListener('click', () => clearVenueSettingForm(button.dataset.venueType || 'practice')));
+    if ($('saveFlyerDistributionBtn')) $('saveFlyerDistributionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveFlyerDistributionSetting()));
+    if ($('deleteFlyerDistributionBtn')) $('deleteFlyerDistributionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteSelectedFlyerDistributionSetting()));
+    if ($('clearFlyerDistributionBtn')) $('clearFlyerDistributionBtn').addEventListener('click', clearFlyerDistributionForm);
     if ($('saveVenueSettingBtn')) $('saveVenueSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveVenueSetting($('venueUsageType')?.value || 'practice')));
     if ($('clearVenueSettingBtn')) $('clearVenueSettingBtn').addEventListener('click', () => clearVenueSettingForm());
     if ($('saveOrgSettingBtn')) $('saveOrgSettingBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveOrgSetting()));

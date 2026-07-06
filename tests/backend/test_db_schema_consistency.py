@@ -12,6 +12,8 @@ PHASE9_TARGET_COLLECTIONS = {
     "practice_instructions",
     "part_settings",
     "venue_settings",
+    "flyer_distributions",
+    "flyer_distribution_assignments",
     "org_settings",
     "sns_settings",
     "connection_settings",

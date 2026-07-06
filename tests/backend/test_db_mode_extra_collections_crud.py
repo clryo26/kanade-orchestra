@@ -12,6 +12,8 @@ TARGET_COLLECTIONS = (
     "practice_instructions",
     "part_settings",
     "venue_settings",
+    "flyer_distributions",
+    "flyer_distribution_assignments",
     "org_settings",
     "sns_settings",
     "connection_settings",
@@ -84,6 +86,19 @@ def _create_payload(collection_name: str) -> dict:
         return {"name": "Violin", "display_order": 1, "is_active": True}
     if collection_name == "venue_settings":
         return {"name": "Hall A", "for_practice": True, "for_performance": False, "notes": "memo", "display_order": 1}
+    if collection_name == "flyer_distributions":
+        return {"facility_name": "Store A", "area_address": "Fukuoka", "note": "memo"}
+    if collection_name == "flyer_distribution_assignments":
+        return {
+            "performance_id": 1,
+            "flyer_distribution_id": 1,
+            "planned_member_id": 1,
+            "planned_member_name": "Admin",
+            "planned_date": "2026-07-06",
+            "distributed_member_id": 1,
+            "distributed_member_name": "Admin",
+            "distributed_date": "2026-07-07",
+        }
     if collection_name == "org_settings":
         return {"name": "Kanade", "short_name": "K", "organization_name": "Kanade", "organization_abbreviation": "K"}
     if collection_name == "sns_settings":
@@ -147,6 +162,10 @@ def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatc
         updated_payload["name"] = "Viola"
     elif collection_name == "venue_settings":
         updated_payload["name"] = "Hall B"
+    elif collection_name == "flyer_distributions":
+        updated_payload["facility_name"] = "Store B"
+    elif collection_name == "flyer_distribution_assignments":
+        updated_payload["planned_date"] = "2026-07-08"
     elif collection_name == "org_settings":
         updated_payload["name"] = "Kanade Updated"
         updated_payload["organization_name"] = "Kanade Updated"

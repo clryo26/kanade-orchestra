@@ -29,7 +29,19 @@ def _sheet_payload() -> list[dict[str, object]]:
 @router.get("/api/bootstrap-lite", response_model=None)
 async def get_bootstrap_lite_data(request: Request):
     etag = bootstrap_service.combined_collection_etag(
-        ("performances", "schedules", "announcements", "members", "payments", "part_settings", "org_settings", "sns_settings", "connection_settings"),
+        (
+            "performances",
+            "schedules",
+            "announcements",
+            "members",
+            "payments",
+            "part_settings",
+            "flyer_distributions",
+            "flyer_distribution_assignments",
+            "org_settings",
+            "sns_settings",
+            "connection_settings",
+        ),
         load_json_data,
         lambda name: get_memory_cache_instance().etag(name) or "",
     )
@@ -63,6 +75,8 @@ async def get_bootstrap_core_data(request: Request):
             "albums",
             "part_settings",
             "venue_settings",
+            "flyer_distributions",
+            "flyer_distribution_assignments",
             "org_settings",
             "sns_settings",
             "connection_settings",
@@ -106,6 +120,8 @@ async def get_bootstrap_data(request: Request):
             "albums",
             "part_settings",
             "venue_settings",
+            "flyer_distributions",
+            "flyer_distribution_assignments",
             "org_settings",
             "sns_settings",
             "connection_settings",

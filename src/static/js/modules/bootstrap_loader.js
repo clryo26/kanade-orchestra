@@ -161,6 +161,8 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         albums,
         partSettings,
         venueSettings,
+        flyerDistributions,
+        flyerDistributionAssignments,
         orgSettings,
         snsSettings,
         connectionSettings,
@@ -188,6 +190,8 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         request('/api/extra/albums'),
         request('/api/extra/part_settings'),
         request('/api/extra/venue_settings'),
+        request('/api/extra/flyer_distributions'),
+        request('/api/extra/flyer_distribution_assignments'),
         request('/api/extra/org_settings'),
         request('/api/extra/sns_settings'),
         request('/api/extra/connection_settings'),
@@ -216,6 +220,8 @@ async function legacyBootstrapData(includeHeavyLists = true) {
             albums,
             part_settings: partSettings,
             venue_settings: venueSettings,
+            flyer_distributions: flyerDistributions,
+            flyer_distribution_assignments: flyerDistributionAssignments,
             org_settings: orgSettings,
             sns_settings: snsSettings,
             connection_settings: connectionSettings,
@@ -258,6 +264,8 @@ function applyBootstrapData(data) {
         albums: extras.albums || [],
         partSettings: extras.part_settings || [],
         venueSettings: extras.venue_settings || [],
+        flyerDistributions: extras.flyer_distributions || [],
+        flyerDistributionAssignments: extras.flyer_distribution_assignments || [],
         orgSettings: extras.org_settings || [],
         snsSettings: extras.sns_settings || [],
         connectionSettings: extras.connection_settings || [],
@@ -376,6 +384,8 @@ async function loadExtraData() {
         ['albums', request('/api/extra/albums')],
         ['partSettings', request('/api/extra/part_settings')],
         ['venueSettings', request('/api/extra/venue_settings')],
+        ['flyerDistributions', request('/api/extra/flyer_distributions')],
+        ['flyerDistributionAssignments', request('/api/extra/flyer_distribution_assignments')],
         ['orgSettings', request('/api/extra/org_settings')],
         ['snsSettings', request('/api/extra/sns_settings')],
         ['connectionSettings', request('/api/extra/connection_settings')]
@@ -411,10 +421,12 @@ async function loadExtraData() {
     const albums = resultMap.get('albums') || appState.albums || [];
     const partSettings = resultMap.get('partSettings') || appState.partSettings || [];
     const venueSettings = resultMap.get('venueSettings') || appState.venueSettings || [];
+    const flyerDistributions = resultMap.get('flyerDistributions') || appState.flyerDistributions || [];
+    const flyerDistributionAssignments = resultMap.get('flyerDistributionAssignments') || appState.flyerDistributionAssignments || [];
     const orgSettings = resultMap.get('orgSettings') || appState.orgSettings || [];
     const snsSettings = resultMap.get('snsSettings') || appState.snsSettings || [];
     const connectionSettings = resultMap.get('connectionSettings') || appState.connectionSettings || [];
-    Object.assign(appState, { absences, eventResponses, dateAdjustments, dateAdjustmentResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, practiceInstructions, performanceDayInfos, desiredPieces, promotions, albums, partSettings, venueSettings, orgSettings, snsSettings, connectionSettings });
+    Object.assign(appState, { absences, eventResponses, dateAdjustments, dateAdjustmentResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, practiceInstructions, performanceDayInfos, desiredPieces, promotions, albums, partSettings, venueSettings, flyerDistributions, flyerDistributionAssignments, orgSettings, snsSettings, connectionSettings });
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
@@ -423,6 +435,7 @@ async function loadExtraData() {
     renderPaymentAdmin();
     renderPartManagement();
     renderVenueManagement();
+    renderFlyerDistributionManagement();
     renderCastingAdmin();
     renderPracticeInstructionAdmin();
     renderPerformanceDayInfoAdmin();

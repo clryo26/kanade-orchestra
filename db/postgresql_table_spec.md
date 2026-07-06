@@ -1,6 +1,6 @@
 ﻿# PostgreSQL テーブル仕様書
 
-最終更新: 2026-07-02
+最終更新: 2026-07-06
 参照DDL: PostgreSQL schema（本番DBへ適用済み）
 
 ## 1. 共通仕様
@@ -558,6 +558,49 @@
   - for_performance BOOLEAN NOT NULL DEFAULT TRUE （必須）
   - notes TEXT DEFAULT '' （任意）
   - sort_order INTEGER NOT NULL DEFAULT 0 （必須）
+  - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
+### 2.26.1 flyer_distributions
+- 用途: チラシ配布場所管理
+- PK: id
+- FK: なし
+- UNIQUE/CHECK: なし
+- INDEX:
+  - idx_flyer_distributions_org_id (organization_id)
+  - idx_flyer_distributions_org_id_id (organization_id, id)
+  - idx_flyer_distributions_facility_name (facility_name)
+- 列レイアウト:
+  - id BIGINT IDENTITY PK （必須）
+  - organization_id TEXT NOT NULL DEFAULT 'default' （必須）
+  - facility_name TEXT DEFAULT '' （任意）
+  - area_address TEXT DEFAULT '' （任意）
+  - note TEXT DEFAULT '' （任意）
+  - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
+### 2.26.2 flyer_distribution_assignments
+- 用途: 演奏会×チラシ配布場所ごとの配布計画/実績管理
+- PK: id
+- FK: なし
+- UNIQUE/CHECK: なし
+- INDEX:
+  - idx_flyer_distribution_assignments_org_id (organization_id)
+  - idx_flyer_distribution_assignments_org_id_id (organization_id, id)
+  - idx_flyer_distribution_assignments_perf (performance_id)
+  - idx_flyer_distribution_assignments_dist (flyer_distribution_id)
+  - uq_flyer_distribution_assignments_org_perf_dist (organization_id, performance_id, flyer_distribution_id) ※ performance_id / flyer_distribution_id がともに非NULLの行で一意
+- 列レイアウト:
+  - id BIGINT IDENTITY PK （必須）
+  - organization_id TEXT NOT NULL DEFAULT 'default' （必須）
+  - performance_id BIGINT （任意）
+  - flyer_distribution_id BIGINT （任意）
+  - planned_member_id BIGINT （任意）
+  - planned_member_name TEXT DEFAULT '' （任意）
+  - planned_date DATE （任意）
+  - distributed_member_id BIGINT （任意）
+  - distributed_member_name TEXT DEFAULT '' （任意）
+  - distributed_date DATE （任意）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 

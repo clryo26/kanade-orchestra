@@ -143,6 +143,176 @@ function renderPortalHome() {
     renderMenuGroups(menuContainer);
 }
 
+function sortedFlyerDistributionFacilities() {
+    return [...(appState.flyerDistributions || [])].sort((a, b) =>
+        String(a.facility_name || '').localeCompare(String(b.facility_name || ''), 'ja')
+        || String(a.area_address || '').localeCompare(String(b.area_address || ''), 'ja')
+    );
+}
+
+function sortedPerformancesForFlyerDistribution() {
+    return [...(appState.performances || [])].sort((a, b) =>
+        String(a.date || '').localeCompare(String(b.date || ''))
+        || String(a.title || '').localeCompare(String(b.title || ''), 'ja')
+    );
+}
+
+function flyerDistributionMemberOptionsHtml(selected = '') {
+    const current = String(selected || '');
+    return ['<option value="">選択してください</option>']
+        .concat(sortedMembersByPartAndKana(appState.members || []).map((member) => {
+            const id = String(member.id || '');
+            const part = member.part ? `（${member.part}）` : '';
+            return `<option value="${escapeHtml(id)}" ${id === current ? 'selected' : ''}>${escapeHtml(memberDisplayName(member) + part)}</option>`;
+        }))
+        .join('');
+}
+
+function flyerDistributionMemberName(memberId) {
+    const member = (appState.members || []).find((item) => String(item.id || '') === String(memberId || ''));
+    return member ? memberDisplayName(member) : '';
+}
+
+function findFlyerDistributionAssignment(performanceId, facilityId) {
+    return (appState.flyerDistributionAssignments || []).find((item) =>
+        String(item.performance_id || '') === String(performanceId || '')
+        && String(item.flyer_distribution_id || '') === String(facilityId || '')
+    ) || null;
+}
+
+function hasDuplicateFlyerDistributionAssignment(performanceId, facilityId, currentAssignmentId = '') {
+    const currentId = String(currentAssignmentId || '');
+    return (appState.flyerDistributionAssignments || []).some((item) =>
+        String(item.performance_id || '') === String(performanceId || '')
+        && String(item.flyer_distribution_id || '') === String(facilityId || '')
+        && String(item.id || '') !== currentId
+    );
+}
+
+function renderFlyerDistributionView() {
+    const container = $('memberFlyerDistributionInfo');
+    if (!container) return;
+
+    const performances = sortedPerformancesForFlyerDistribution();
+    const facilities = sortedFlyerDistributionFacilities();
+
+    if (!performances.length) {
+        container.innerHTML = '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
+        return;
+    }
+    if (!facilities.length) {
+        container.innerHTML = '<p class="text-muted mb-0">チラシ配布先はまだ登録されていません</p>';
+        return;
+    }
+
+    container.innerHTML = performances.map((performance) => {
+        const performanceId = String(performance.id || '');
+        return `
+            <section class="info-block mb-3">
+                <h5 class="mb-2">${escapeHtml(performance.title || '演奏会')}</h5>
+                <div class="small text-muted mb-3">${escapeHtml(formatDateWithWeekday(performance.date || '', '日付未設定'))}</div>
+                <div class="list-group">${facilities.map((facility) => {
+                    const assignment = findFlyerDistributionAssignment(performance.id, facility.id);
+                    const facilityId = String(facility.id || '');
+                    const plannedMemberId = String(assignment?.planned_member_id || '');
+                    const distributedMemberId = String(assignment?.distributed_member_id || '');
+                    return `
+                        <div class="list-group-item" data-flyer-assignment-row data-performance-id="${escapeHtml(performanceId)}" data-facility-id="${escapeHtml(facilityId)}">
+                            <input type="hidden" class="flyer-assignment-id" value="${escapeHtml(String(assignment?.id || ''))}">
+                            <div class="fw-bold mb-1">${escapeHtml(facility.facility_name || '')}</div>
+                            <div class="small text-muted mb-2">${escapeHtml(facility.area_address || '')}</div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1">配布予定者</label>
+                                    <select class="form-select flyer-planned-member-id">${flyerDistributionMemberOptionsHtml(plannedMemberId)}</select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1">配布予定日</label>
+                                    <input type="date" class="form-control flyer-planned-date" value="${escapeHtml(String(assignment?.planned_date || ''))}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1">配布者</label>
+                                    <select class="form-select flyer-distributed-member-id">${flyerDistributionMemberOptionsHtml(distributedMemberId)}</select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1">配布日</label>
+                                    <input type="date" class="form-control flyer-distributed-date" value="${escapeHtml(String(assignment?.distributed_date || ''))}">
+                                </div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <button class="btn btn-sm btn-success flyer-assignment-save-btn" type="button">保存</button>
+                                <button class="btn btn-sm btn-outline-danger flyer-assignment-delete-btn" type="button" ${assignment?.id ? '' : 'disabled'}>削除</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}</div>
+            </section>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.flyer-assignment-save-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveFlyerDistributionAssignment(event.currentTarget)));
+    });
+    container.querySelectorAll('.flyer-assignment-delete-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteFlyerDistributionAssignment(event.currentTarget)));
+    });
+}
+
+async function saveFlyerDistributionAssignment(button) {
+    const row = button?.closest('[data-flyer-assignment-row]');
+    if (!row) return;
+
+    const performanceId = String(row.dataset.performanceId || '');
+    const facilityId = String(row.dataset.facilityId || '');
+    if (!performanceId || !facilityId) {
+        showAlert('配布情報の識別子が不正です', 'warning');
+        return;
+    }
+
+    const assignmentId = row.querySelector('.flyer-assignment-id')?.value || '';
+    const plannedMemberId = row.querySelector('.flyer-planned-member-id')?.value || '';
+    const plannedDate = row.querySelector('.flyer-planned-date')?.value || '';
+    const distributedMemberId = row.querySelector('.flyer-distributed-member-id')?.value || '';
+    const distributedDate = row.querySelector('.flyer-distributed-date')?.value || '';
+
+    const payload = {
+        performance_id: Number(performanceId),
+        flyer_distribution_id: Number(facilityId),
+        planned_member_id: plannedMemberId || '',
+        planned_member_name: flyerDistributionMemberName(plannedMemberId),
+        planned_date: plannedDate,
+        distributed_member_id: distributedMemberId || '',
+        distributed_member_name: flyerDistributionMemberName(distributedMemberId),
+        distributed_date: distributedDate,
+    };
+
+    if (hasDuplicateFlyerDistributionAssignment(performanceId, facilityId, assignmentId)) {
+        showAlert('同じ演奏会・配布先の配布情報は1件のみ登録できます。画面を更新して再度お試しください。', 'warning');
+        return;
+    }
+
+    if (assignmentId) {
+        await request(`/api/extra/flyer_distribution_assignments/${encodeURIComponent(assignmentId)}`, jsonOptions('PUT', payload));
+    } else {
+        await saveExtra('flyer_distribution_assignments', payload);
+    }
+    await loadExtraData();
+    renderFlyerDistributionView();
+    showAlert('チラシ配布情報を保存しました', 'success');
+}
+
+async function deleteFlyerDistributionAssignment(button) {
+    const row = button?.closest('[data-flyer-assignment-row]');
+    if (!row) return;
+    const assignmentId = row.querySelector('.flyer-assignment-id')?.value || '';
+    if (!assignmentId) return;
+    if (!confirmDelete()) return;
+    await request(`/api/extra/flyer_distribution_assignments/${encodeURIComponent(assignmentId)}`, { method: 'DELETE' });
+    await loadExtraData();
+    renderFlyerDistributionView();
+    showAlert('チラシ配布情報を削除しました', 'success');
+}
+
 function nextPerformance() {
     const upcoming = [...(appState.performances || [])]
         .filter((perf) => perf.date && perf.date >= window.portalRuntimeContext.today())

@@ -141,11 +141,22 @@ function paymentStatusHtml(payment) {
 }
 
 function paymentMemberOptionsById(selected = '') {
-    return ['<option value="">選択してください</option>'].concat(sortedMembersByPartAndKana(appState.members).map((member) => {
+    return ['<option value="">選択してください</option>'].concat(paymentAdminVisibleMembersSortedByPartAndName().map((member) => {
         const id = String(member.id || '');
         const part = member.part ? `（${member.part}）` : '';
         return `<option value="${escapeHtml(id)}" ${id === String(selected) ? 'selected' : ''}>${escapeHtml(memberDisplayName(member) + part)}</option>`;
     })).join('');
+}
+
+function paymentAdminVisibleMembers() {
+    return (appState.members || []).filter((member) => String(member.permission || '一般') !== 'エキストラ');
+}
+
+function paymentAdminVisibleMembersSortedByPartAndName() {
+    return [...paymentAdminVisibleMembers()].sort((a, b) =>
+        String(a.part || '').localeCompare(String(b.part || ''), 'ja')
+        || String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)), 'ja')
+    );
 }
 
 // 乗り番管理は保存済みレコードを編集フォーム用の配列へコピーして扱う。
@@ -174,7 +185,7 @@ function renderPaymentAdmin() {
         `).join('')
         : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
 
-    const allMembers = sortedMembersByPartAndKana(appState.members || [])
+    const allMembers = paymentAdminVisibleMembers()
         .map((member) => ({
             member,
             payment: findPaymentForMember(member.id, memberDisplayName(member)),
@@ -183,9 +194,9 @@ function renderPaymentAdmin() {
             ...entry,
             summary: paymentStatusSummary(entry.payment),
         }))
-        .sort((a, b) => Number(b.summary.hasWarning) - Number(a.summary.hasWarning)
+        .sort((a, b) => (b.summary.duesRemaining ?? -1) - (a.summary.duesRemaining ?? -1)
             || String(a.member.part || '').localeCompare(String(b.member.part || ''))
-            || String(memberKanaName(a.member) || memberDisplayName(a.member)).localeCompare(String(memberKanaName(b.member) || memberDisplayName(b.member))));
+            || String(memberDisplayName(a.member)).localeCompare(String(memberDisplayName(b.member))));
     list.innerHTML = allMembers.length
         ? `<div class="list-group">${allMembers.map(({ member, payment, summary }) => {
             const part = member.part ? `（${member.part}）` : '';

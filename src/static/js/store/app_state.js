@@ -25,6 +25,8 @@ const initialPortalAppState = {
     albums: [],
     partSettings: [],
     venueSettings: [],
+    flyerDistributions: [],
+    flyerDistributionAssignments: [],
     orgSettings: [],
     snsSettings: [],
     connectionSettings: [],

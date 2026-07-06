@@ -21,6 +21,8 @@ function apiTargetLabel(url) {
             practice_instructions: '練習指示',
             part_settings: 'パート設定',
             venue_settings: '会場設定',
+            flyer_distributions: 'チラシ配布管理',
+            flyer_distribution_assignments: 'チラシ配布情報',
             org_settings: '団体設定',
             sns_settings: 'SNS設定',
             connection_settings: '接続設定',

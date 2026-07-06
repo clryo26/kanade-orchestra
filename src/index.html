@@ -68,6 +68,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-admin" type="button">支払状況</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="payment-setting" type="button">支払設定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="venue-admin" type="button">会場管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="flyer-distribution-admin" type="button">チラシ配布管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="casting-admin" type="button">乗り番管理</button>
             </div>
 
@@ -702,6 +703,36 @@
                 </div>
             </div>
 
+            <!-- チラシ配布管理 -->
+            <div id="flyerDistributionAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">チラシ配布管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="flyerDistributionId">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="flyerDistributionFacility">施設・店舗</label>
+                                <input type="text" class="form-control" id="flyerDistributionFacility" placeholder="例: 〇〇楽器店">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="flyerDistributionArea">エリア・住所</label>
+                                <input type="text" class="form-control" id="flyerDistributionArea" placeholder="例: 福岡市中央区...">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="flyerDistributionNote">備考</label>
+                                <input type="text" class="form-control" id="flyerDistributionNote" placeholder="例: 店長承諾済み / 枚数10枚">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="saveFlyerDistributionBtn" type="button">保存</button>
+                            <button class="btn btn-outline-danger" id="deleteFlyerDistributionBtn" type="button" disabled>削除</button>
+                            <button class="btn btn-outline-secondary" id="clearFlyerDistributionBtn" type="button">選択解除</button>
+                        </div>
+                        <div id="flyerDistributionAdminList"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 乗り番管理 -->
             <div id="castingAdminTab" class="tab-content" hidden>
                 <div class="card">
@@ -991,6 +1022,7 @@
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-secondary active" data-tab="member-announce" type="button">お知らせ</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-secondary" data-tab="member-flyer-distribution" type="button">チラシ配布</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-performance-day" type="button">本番情報</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-secondary" data-tab="member-practice-instruction" type="button">練習指示</button>
@@ -1031,6 +1063,14 @@
                 <div class="card">
                     <div class="card-header">演奏会情報</div>
                     <div class="card-body" id="memberPerfInfo"></div>
+                </div>
+            </div>
+
+            <!-- 団員向け: チラシ配布 -->
+            <div id="memberFlyerDistributionTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">チラシ配布</div>
+                    <div class="card-body" id="memberFlyerDistributionInfo"></div>
                 </div>
             </div>
 

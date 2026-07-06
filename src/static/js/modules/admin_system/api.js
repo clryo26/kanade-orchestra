@@ -107,6 +107,55 @@ async function deleteVenueSetting(venueId) {
     showAlert('会場を削除しました', 'success');
 }
 
+async function saveFlyerDistributionSetting() {
+    const facility = $('flyerDistributionFacility')?.value.trim() || '';
+    const area = $('flyerDistributionArea')?.value.trim() || '';
+    const note = $('flyerDistributionNote')?.value.trim() || '';
+    if (!facility) {
+        showAlert('施設・店舗を入力してください', 'warning');
+        return;
+    }
+    const id = $('flyerDistributionId')?.value || '';
+    const duplicate = flyerDistributionSettings().find((item) =>
+        String(item.facility_name || '').trim() === facility
+        && String(item.area_address || '').trim() === area
+        && String(item.id || '') !== String(id)
+    );
+    if (duplicate) {
+        showAlert('同じ配布先が既に登録されています', 'warning');
+        return;
+    }
+    const payload = {
+        facility_name: facility,
+        area_address: area,
+        note,
+    };
+    if (id) await request(`/api/extra/flyer_distributions/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+    else await saveExtra('flyer_distributions', payload);
+    clearFlyerDistributionForm();
+    await loadExtraData();
+    renderFlyerDistributionManagement();
+    showAlert('チラシ配布先を保存しました', 'success');
+}
+
+async function deleteFlyerDistributionSetting(itemId) {
+    if (!itemId || !confirmDelete()) return;
+    await request(`/api/extra/flyer_distributions/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+    clearFlyerDistributionForm();
+    await loadExtraData();
+    renderFlyerDistributionManagement();
+    showAlert('チラシ配布先を削除しました', 'success');
+}
+
+async function deleteSelectedFlyerDistributionSetting() {
+    const selectedId = $('flyerDistributionId')?.value || '';
+    if (!selectedId) {
+        showAlert('削除する配布先を選択してください', 'warning');
+        return;
+    }
+    await deleteFlyerDistributionSetting(selectedId);
+}
+
 async function saveOrgSetting() {
     const current = currentOrgSetting();
     const name = $('orgName')?.value.trim() || '';

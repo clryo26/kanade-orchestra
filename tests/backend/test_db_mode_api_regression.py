@@ -41,6 +41,8 @@ def test_db_mode_bootstrap_core_and_full_read_from_db(client, backend_env, monke
         "albums": [],
         "part_settings": [{"id": 1, "name": "Vn", "sort_order": 1, "is_active": True}],
         "venue_settings": [],
+        "flyer_distributions": [],
+        "flyer_distribution_assignments": [],
         "org_settings": [{"id": 1, "name": "Kanade"}],
         "sns_settings": [],
         "connection_settings": [],

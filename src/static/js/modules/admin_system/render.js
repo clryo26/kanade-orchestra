@@ -73,6 +73,41 @@ function renderVenueManagement() {
     renderVenueListByType('practice', 'venuePracticeList');
 }
 
+function flyerDistributionSettings() {
+    return [...(appState.flyerDistributions || [])].sort((a, b) =>
+        String(a.facility_name || '').localeCompare(String(b.facility_name || ''), 'ja')
+        || String(a.area_address || '').localeCompare(String(b.area_address || ''), 'ja')
+    );
+}
+
+function renderFlyerDistributionManagement() {
+    const list = $('flyerDistributionAdminList');
+    if (!list) return;
+    const distributions = flyerDistributionSettings();
+    list.innerHTML = distributions.length
+        ? `<div class="list-group">${distributions.map((item) => `
+            <div class="list-group-item d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div>
+                    <strong>${escapeHtml(item.facility_name || '')}</strong>
+                    <div class="small text-muted">${escapeHtml(item.area_address || '')}</div>
+                    ${String(item.note || '').trim() ? `<div class="small">備考: ${escapeHtml(String(item.note || '').trim())}</div>` : ''}
+                </div>
+                <span class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary flyer-distribution-edit-btn" type="button" data-id="${escapeHtml(String(item.id || ''))}">編集</button>
+                    <button class="btn btn-sm btn-outline-danger flyer-distribution-delete-btn" type="button" data-id="${escapeHtml(String(item.id || ''))}">削除</button>
+                </span>
+            </div>
+        `).join('')}</div>`
+        : '<p class="text-muted mb-0">配布先はまだ登録されていません</p>';
+
+    list.querySelectorAll('.flyer-distribution-edit-btn').forEach((button) => {
+        button.addEventListener('click', () => selectFlyerDistributionSetting(button.dataset.id || ''));
+    });
+    list.querySelectorAll('.flyer-distribution-delete-btn').forEach((button) => {
+        button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteFlyerDistributionSetting(button.dataset.id || '')));
+    });
+}
+
 function renderVenueListByType(kind, listId) {
     const list = $(listId);
     if (!list) return;
@@ -215,6 +250,31 @@ function clearVenueSettingForm(kind = '') {
     if ($('venuePerformanceName')) $('venuePerformanceName').value = '';
     if ($('venuePracticeName')) $('venuePracticeName').value = '';
     if ($('venueUsageType')) $('venueUsageType').value = 'performance';
+}
+
+function selectFlyerDistributionSetting(itemId) {
+    const item = flyerDistributionSettings().find((entry) => String(entry.id || '') === String(itemId));
+    if (!item) return;
+    if ($('flyerDistributionId')) $('flyerDistributionId').value = item.id || '';
+    if ($('flyerDistributionFacility')) $('flyerDistributionFacility').value = item.facility_name || '';
+    if ($('flyerDistributionArea')) $('flyerDistributionArea').value = item.area_address || '';
+    if ($('flyerDistributionNote')) $('flyerDistributionNote').value = item.note || '';
+    updateFlyerDistributionDeleteButtonState();
+}
+
+function clearFlyerDistributionForm() {
+    if ($('flyerDistributionId')) $('flyerDistributionId').value = '';
+    if ($('flyerDistributionFacility')) $('flyerDistributionFacility').value = '';
+    if ($('flyerDistributionArea')) $('flyerDistributionArea').value = '';
+    if ($('flyerDistributionNote')) $('flyerDistributionNote').value = '';
+    updateFlyerDistributionDeleteButtonState();
+}
+
+function updateFlyerDistributionDeleteButtonState() {
+    const deleteBtn = $('deleteFlyerDistributionBtn');
+    if (!deleteBtn) return;
+    const selectedId = $('flyerDistributionId')?.value || '';
+    deleteBtn.disabled = !selectedId;
 }
 
 function clearConnectionSettingForm() {

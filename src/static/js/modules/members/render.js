@@ -107,6 +107,7 @@ function renderMemberExtraViews(options = {}) {
     renderAbsenceView();
     if (includeHeavyLists) renderSheetLibraryView();
     renderPracticeInstructionView();
+    renderFlyerDistributionView();
     renderPaymentView();
     renderCastingView();
     renderMemberEventView();
