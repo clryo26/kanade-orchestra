@@ -6,16 +6,12 @@
     function performancePieceLabel(piece) {
         if (typeof piece === 'string') return piece;
         const label = piece?.alias || piece?.short_name || (piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title);
-        const partPrefix = String(piece?.part || piece?.section || '').trim();
-        const prefixedLabel = partPrefix ? `${partPrefix} ${label}` : label;
-        return (piece?.is_encore || piece?.encore) ? `(${prefixedLabel})` : prefixedLabel;
+        return (piece?.is_encore || piece?.encore) ? `(${label})` : label;
     }
     function performancePieceFormalLabel(piece) {
         if (typeof piece === 'string') return piece;
         const label = piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title;
-        const partPrefix = String(piece?.part || piece?.section || '').trim();
-        const prefixedLabel = partPrefix ? `${partPrefix} ${label}` : label;
-        return (piece?.is_encore || piece?.encore) ? `(${prefixedLabel})` : prefixedLabel;
+        return (piece?.is_encore || piece?.encore) ? `(${label})` : label;
     }
     function performancePieceLookupLabels(piece) {
         if (typeof piece === 'string') return [piece].filter(Boolean);

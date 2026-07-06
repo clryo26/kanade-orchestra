@@ -78,7 +78,7 @@ function normalizedPerformanceDayTimelineRows(item) {
     if (timelineRows.length) {
         return timelineRows.map((row, index) => ({
             sort_order: Number(row?.sort_order || index + 1),
-            start_time: normalizeClockText(row?.start_time || row?.start || ''),
+            start_time: performanceDayTimelineStartValue(row),
             end_time: normalizeClockText(row?.end_time || row?.end || ''),
             duration_minutes: String(row?.duration_minutes || row?.duration || '').trim(),
             kind: String(row?.kind || row?.type || '').trim(),
@@ -104,6 +104,20 @@ function performanceDayPartNames(performance) {
         .filter((part) => part && !seen.has(part) && seen.add(part));
 }
 
+function normalizePartRehearsalMinutes(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{1,3}$/.test(text)) return '';
+    return text.padStart(3, '0');
+}
+
+function performanceDayTimelineStartValue(row) {
+    const kind = String(row?.kind || row?.type || '').trim();
+    const rawStart = row?.start_time || row?.start || '';
+    // Part rehearsal rows store minutes, not clock text.
+    if (kind === 'part_rehearsal') return normalizePartRehearsalMinutes(rawStart);
+    return normalizeClockText(rawStart);
+}
+
 function performanceDayTimelineLabel(row) {
     const kind = String(row?.kind || row?.type || '').trim();
     const part = String(row?.part || row?.section || '').trim();
@@ -123,7 +137,7 @@ function performanceDayTimelineRowEntries(performance, timelineRows = []) {
         const part = String(row?.part || row?.section || '').trim();
         const label = performanceDayTimelineLabel(row);
         const key = kind === 'part_rehearsal' && part ? `part:${part}` : kind || label;
-        if (key) existing.set(key, String(row?.start_time || row?.start || '').trim());
+        if (key) existing.set(key, performanceDayTimelineStartValue(row));
     });
     return [
         { key: 'open_time', kind: 'open_time', label: '開場時間', section: '基本' },
@@ -146,9 +160,14 @@ function renderPerformanceDayPartRehearsalRows(performance, timelineRows = []) {
     container.innerHTML = partRows.map((row) => `
         <div class="col-md-6 col-lg-4">
             <label class="form-label" for="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}">${escapeHtml(row.label || '')}</label>
-            <input type="time" class="form-control performance-day-part-rehearsal-time" id="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}" data-performance-day-part="${escapeHtml(row.part || '')}" value="${escapeHtml(row.start_time || '')}">
+            <input type="text" inputmode="numeric" pattern="\\d{1,3}" maxlength="3" class="form-control performance-day-part-rehearsal-time" id="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}" data-performance-day-part="${escapeHtml(row.part || '')}" value="${escapeHtml(normalizePartRehearsalMinutes(row.start_time || ''))}" placeholder="000">
         </div>
     `).join('');
+    container.querySelectorAll('.performance-day-part-rehearsal-time').forEach((input) => {
+        input.addEventListener('blur', () => {
+            input.value = normalizePartRehearsalMinutes(input.value || '');
+        });
+    });
 }
 
 function collectPerformanceDayPartRehearsalRows() {
@@ -162,7 +181,7 @@ function collectPerformanceDayPartRehearsalRows() {
             section: part,
             label: `${part}のリハ時間`,
             content: `${part}のリハ時間`,
-            start_time: normalizeClockText(input.value || ''),
+            start_time: normalizePartRehearsalMinutes(input.value || ''),
             end_time: '',
             duration_minutes: '',
         };
@@ -176,6 +195,7 @@ function timelineRowsToLegacyText(rows) {
         const kind = String(row?.kind || '').trim();
         const label = String(row?.label || row?.content || row?.section || '').trim();
         if (!kind && String(row?.source_line || '').trim()) return String(row?.source_line || '').trim();
+        if (kind === 'part_rehearsal' && label) return `${label}: ${normalizePartRehearsalMinutes(row?.start_time || '')}`;
         if (start && end && label) return `${label}: ${start}-${end}`;
         if (start && label) return `${label}: ${start}`;
         if (label) return label;
