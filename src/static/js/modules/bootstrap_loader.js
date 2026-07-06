@@ -52,12 +52,7 @@ function setDefaultDates() {
 
 async function loadEssentialData() {
     setLoadingBar('データを読み込んでいます...');
-    let data;
-    try {
-        data = await requestJson('/api/bootstrap-lite');
-    } catch {
-        data = await requestJson('/api/bootstrap');
-    }
+    const data = await requestBootstrapData('/api/bootstrap-lite');
     applyBootstrapData(data);
     clearLoadingBar();
     renderEssentialViews();
@@ -69,6 +64,34 @@ function renderLoadingPlaceholders() {
         const element = $(id);
         if (element && !element.innerHTML.trim()) element.innerHTML = loadingText;
     });
+}
+
+async function refreshPortalData(options = {}) {
+    const includeBackground = options.includeBackground !== false;
+    if (appState.portalRefreshInProgress) return appState.portalRefreshInProgress;
+    appState.portalRefreshInProgress = (async () => {
+        setLoadingBar('更新中...');
+        try {
+            await loadEssentialData();
+            appState.essentialDataLoaded = true;
+            if (includeBackground) {
+                // Explicit refreshes should revalidate the broader bootstrap payload too.
+                appState.dataLoaded = false;
+                loadFullDataInBackground();
+            }
+        } catch (error) {
+            console.warn('Portal refresh failed', error);
+            if (typeof showAlert === 'function') {
+                showAlert(error.message || '更新に失敗しました', 'danger');
+            }
+        }
+    })();
+    try {
+        return await appState.portalRefreshInProgress;
+    } finally {
+        appState.portalRefreshInProgress = null;
+        clearLoadingBar();
+    }
 }
 
 function renderEssentialViews() {
@@ -124,12 +147,17 @@ async function loadAll(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
     let data;
     try {
-        data = await requestJson(includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core');
+        data = await requestBootstrapData(includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core');
     } catch {
         data = await legacyBootstrapData(includeHeavyLists);
     }
     applyBootstrapData(data);
     renderInitialViews({ includeHeavyLists });
+}
+
+async function requestBootstrapData(url) {
+    if (typeof request === 'function') return request(url);
+    return requestJson(url);
 }
 
 async function requestJson(url, options = {}) {
@@ -242,6 +270,11 @@ function applyBootstrapData(data) {
             ? (data[name] || [])
             : (appState[name] || [])
     );
+    const extraOrCurrent = (extraName, stateName) => (
+        Object.prototype.hasOwnProperty.call(extras, extraName)
+            ? (extras[extraName] || [])
+            : (appState[stateName] || [])
+    );
     Object.assign(appState, {
         performances: collectionOrCurrent('performances'),
         schedules: collectionOrCurrent('schedules'),
@@ -249,27 +282,27 @@ function applyBootstrapData(data) {
         events: collectionOrCurrent('events'),
         members: collectionOrCurrent('members'),
         recordings: data.recordings?.files || appState.recordings || [],
-        absences: extras.absences || [],
-        eventResponses: extras.event_responses || [],
-        dateAdjustments: extras.date_adjustments || [],
-        dateAdjustmentResponses: extras.date_adjustment_responses || [],
+        absences: extraOrCurrent('absences', 'absences'),
+        eventResponses: extraOrCurrent('event_responses', 'eventResponses'),
+        dateAdjustments: extraOrCurrent('date_adjustments', 'dateAdjustments'),
+        dateAdjustmentResponses: extraOrCurrent('date_adjustment_responses', 'dateAdjustmentResponses'),
         sheetLibrary: data.sheets?.files || extras.sheet_library || appState.sheetLibrary || [],
-        payments: extras.payments || [],
-        castings: extras.castings || [],
-        pieceInfos: extras.piece_infos || [],
-        practiceInstructions: extras.practice_instructions || [],
-        performanceDayInfos: extras.performance_day_infos || [],
-        desiredPieces: extras.desired_pieces || [],
-        promotions: extras.promotions || [],
-        albums: extras.albums || [],
-        partSettings: extras.part_settings || [],
-        venueSettings: extras.venue_settings || [],
-        flyerDistributions: extras.flyer_distributions || [],
-        flyerDistributionAssignments: extras.flyer_distribution_assignments || [],
-        orgSettings: extras.org_settings || [],
-        snsSettings: extras.sns_settings || [],
-        connectionSettings: extras.connection_settings || [],
-        authDevices: data.auth_devices || [],
+        payments: extraOrCurrent('payments', 'payments'),
+        castings: extraOrCurrent('castings', 'castings'),
+        pieceInfos: extraOrCurrent('piece_infos', 'pieceInfos'),
+        practiceInstructions: extraOrCurrent('practice_instructions', 'practiceInstructions'),
+        performanceDayInfos: extraOrCurrent('performance_day_infos', 'performanceDayInfos'),
+        desiredPieces: extraOrCurrent('desired_pieces', 'desiredPieces'),
+        promotions: extraOrCurrent('promotions', 'promotions'),
+        albums: extraOrCurrent('albums', 'albums'),
+        partSettings: extraOrCurrent('part_settings', 'partSettings'),
+        venueSettings: extraOrCurrent('venue_settings', 'venueSettings'),
+        flyerDistributions: extraOrCurrent('flyer_distributions', 'flyerDistributions'),
+        flyerDistributionAssignments: extraOrCurrent('flyer_distribution_assignments', 'flyerDistributionAssignments'),
+        orgSettings: extraOrCurrent('org_settings', 'orgSettings'),
+        snsSettings: extraOrCurrent('sns_settings', 'snsSettings'),
+        connectionSettings: extraOrCurrent('connection_settings', 'connectionSettings'),
+        authDevices: Object.prototype.hasOwnProperty.call(data, 'auth_devices') ? (data.auth_devices || []) : (appState.authDevices || []),
         cloudRunRevision: appState.cloudRunRevision || data.cloudRunRevision || ''
     });
     refreshPartSelectOptions();

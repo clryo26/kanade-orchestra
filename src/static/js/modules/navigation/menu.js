@@ -131,9 +131,10 @@ function renderMenuGroups(container) {
     if (logoutButton) logoutButton.addEventListener('click', logoutPortal);
 
     const reloadButton = container.querySelector('[data-drawer-action="reload"]');
-    if (reloadButton) reloadButton.addEventListener('click', () => {
+    if (reloadButton) reloadButton.addEventListener('click', (event) => {
+        event.stopPropagation();
         setLoadingBar('更新中...');
-        window.location.reload();
+        refreshPortalData();
     });
 
     updateCloudRunRevision();

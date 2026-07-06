@@ -71,7 +71,7 @@ function bindNavigation() {
     if ($('portalLogoutBtn')) $('portalLogoutBtn').addEventListener('click', logoutPortal);
     if ($('portalReloadBtn')) $('portalReloadBtn').addEventListener('click', () => {
         setLoadingBar('更新中...');
-        window.location.reload();
+        refreshPortalData();
     });
 
     const drawerMenu = $('portalDrawerMenu');
@@ -91,7 +91,7 @@ function bindNavigation() {
             }
             if (action === 'reload') {
                 setLoadingBar('更新中...');
-                window.location.reload();
+                refreshPortalData();
             }
         });
     }
