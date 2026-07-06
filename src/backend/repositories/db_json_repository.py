@@ -27,6 +27,7 @@ from .db_row_repository import (
     db_delete_collection_children,
     db_fetch_all,
     db_fill_missing_ids,
+    db_prepare_timestamp_columns_for_upsert,
     db_insert_rows,
     db_upsert_rows,
     db_write_value,
@@ -135,6 +136,72 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
             for item in items:
                 item["photos"] = by_album.get(item.get("id"), [])
         return items
+
+
+def upsert_auth_device(device: dict[str, Any]) -> dict[str, Any]:
+    table_name = "auth_devices"
+    tenant_id = get_current_tenant_id()
+    row = dict(device)
+    device_id = str(row.get("device_id") or "").strip()
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id is required")
+
+    with psycopg.connect(db_connection_string(), autocommit=False) as conn:
+        has_org_column = table_has_organization_id(conn, table_name)
+        with conn.cursor() as cur:
+            if has_org_column:
+                cur.execute(
+                    psql.SQL(
+                        "SELECT id, created_at FROM {} WHERE organization_id = %s AND device_id = %s ORDER BY id LIMIT 1"
+                    ).format(psql.Identifier(table_name)),
+                    (tenant_id, device_id),
+                )
+            else:
+                cur.execute(
+                    psql.SQL("SELECT id, created_at FROM {} WHERE device_id = %s ORDER BY id LIMIT 1").format(
+                        psql.Identifier(table_name)
+                    ),
+                    (device_id,),
+                )
+            existing = cur.fetchone()
+            if existing:
+                row["id"] = existing[0]
+                row["created_at"] = row.get("created_at") or existing[1]
+            if has_org_column:
+                row["organization_id"] = str(row.get("organization_id") or tenant_id)
+            columns = DB_COLLECTION_COLUMNS[table_name]
+            if has_org_column and "organization_id" not in columns:
+                columns = (*columns, "organization_id")
+            rows = [row]
+            db_fill_missing_ids(cur, table_name, rows)
+            db_prepare_timestamp_columns_for_upsert(table_name, rows)
+            db_upsert_rows(cur, table_name, columns, rows)
+        conn.commit()
+
+    return row
+
+
+def delete_auth_device(device_id: str) -> None:
+    table_name = "auth_devices"
+    normalized_id = str(device_id or "").strip()
+    if not normalized_id:
+        return
+    tenant_id = get_current_tenant_id()
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        has_org_column = table_has_organization_id(conn, table_name)
+        with conn.cursor() as cur:
+            if has_org_column:
+                cur.execute(
+                    psql.SQL("DELETE FROM {} WHERE organization_id = %s AND device_id = %s").format(
+                        psql.Identifier(table_name)
+                    ),
+                    (tenant_id, normalized_id),
+                )
+            else:
+                cur.execute(
+                    psql.SQL("DELETE FROM {} WHERE device_id = %s").format(psql.Identifier(table_name)),
+                    (normalized_id,),
+                )
 
 
 def replace_collection(name: str, data: list[dict[str, Any]]) -> None:

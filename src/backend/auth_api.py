@@ -28,6 +28,10 @@ class AuthPersistenceGateway(Protocol):
 
     def db_replace_collection(self, name: str, data: list[dict[str, Any]]) -> None: ...
 
+    def db_upsert_auth_device(self, device: dict[str, Any]) -> dict[str, Any]: ...
+
+    def db_delete_auth_device(self, device_id: str) -> None: ...
+
     def load_json_data(self, name: str) -> list[dict[str, Any]]: ...
 
     def save_json_data(self, name: str, data: list[dict[str, Any]]) -> None: ...
@@ -64,6 +68,36 @@ def save_collection(name: str, data: list[dict[str, Any]]) -> None:
     # refreshed immediately after login. Direct DB writes leave later device
     # checks reading a stale empty cache.
     api.save_json_data(name, data)
+
+
+def save_auth_device(device: dict[str, Any]) -> dict[str, Any]:
+    api = persistence_api()
+    if api.db_data_enabled():
+        return api.db_upsert_auth_device(device)
+
+    devices = api.load_json_data("auth_devices")
+    device_id = str(device.get("device_id") or "").strip()
+    existing = next((item for item in devices if item.get("device_id") == device_id), None)
+    payload = dict(device)
+    if existing:
+        existing.update(payload)
+        saved = existing
+    else:
+        payload["id"] = api.next_id(devices)
+        devices.append(payload)
+        saved = payload
+    api.save_json_data("auth_devices", devices)
+    return saved
+
+
+def delete_auth_device_record(device_id: str) -> None:
+    api = persistence_api()
+    if api.db_data_enabled():
+        api.db_delete_auth_device(device_id)
+        return
+
+    devices = api.load_json_data("auth_devices")
+    api.save_json_data("auth_devices", [item for item in devices if item.get("device_id") != device_id])
 
 
 @router.post("/portal-login")
@@ -105,9 +139,7 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
     if not device_id:
         raise HTTPException(status_code=400, detail="device_id is required")
 
-    devices = load_collection("auth_devices")
     now = datetime.now().isoformat()
-    existing = next((item for item in devices if item.get("device_id") == device_id), None)
     payload = {
         "device_id": device_id,
         "device_name": login.device_name or "Unknown device",
@@ -123,14 +155,9 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         "authenticated_at": now,
         "last_seen_at": now,
     }
-    if existing:
-        existing.update(payload)
-    else:
-        payload["id"] = persistence_api().next_id(devices)
-        devices.append(payload)
     used_fallback_session = False
     try:
-        save_collection("auth_devices", devices)
+        payload = save_auth_device(payload)
     except Exception:
         remember_auth_device(payload)
         used_fallback_session = True
@@ -186,12 +213,12 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
         members = load_collection("members")
         member = next((value for value in members if value.get("id") == member_id), None)
         if member and member_access_expired(member):
-            save_collection("auth_devices", [device for device in devices if device.get("device_id") != device_id])
+            delete_auth_device_record(device_id)
             return {"authenticated": False}
 
     item["last_seen_at"] = datetime.now().isoformat()
     try:
-        save_collection("auth_devices", devices)
+        save_auth_device(item)
     except Exception:
         remember_auth_device(item)
     return {"authenticated": True, "device": item}
@@ -199,7 +226,7 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
 
 @router.get("/devices")
 async def get_auth_devices() -> list[dict[str, Any]]:
-    persisted = await persistence_api().list_auth_devices()
+    persisted = load_collection("auth_devices")
     merged: dict[str, dict[str, Any]] = {
         str(item.get("device_id") or ""): dict(item)
         for item in persisted
@@ -219,7 +246,6 @@ async def get_auth_devices() -> list[dict[str, Any]]:
 @router.delete("/devices/{device_id}")
 async def delete_auth_device(device_id: str, x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, str]:
     persistence_api().require_admin_device(x_device_id)
-    devices = load_collection("auth_devices")
     forget_auth_device(device_id)
-    save_collection("auth_devices", [item for item in devices if item.get("device_id") != device_id])
+    delete_auth_device_record(device_id)
     return {"message": "Deleted"}

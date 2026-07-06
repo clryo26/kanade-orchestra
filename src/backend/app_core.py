@@ -232,6 +232,8 @@ from .services.json_collection_service import load_local_json_data as _load_loca
 from .services.meta_service import cloud_run_revision as cloud_run_revision
 from .repositories.db_json_repository import load_json_data as db_load_json_data
 from .repositories.db_json_repository import replace_collection as db_replace_collection
+from .repositories.db_json_repository import upsert_auth_device as db_upsert_auth_device  # noqa: F401
+from .repositories.db_json_repository import delete_auth_device as db_delete_auth_device  # noqa: F401
 from .repositories.db_json_repository import load_generic_json_collection as db_load_generic_json_collection  # noqa: F401
 from .repositories.db_json_repository import save_generic_json_collection as db_save_generic_json_collection  # noqa: F401
 from .repositories.db_row_repository import db_child_rows_for_collection as db_child_rows_for_collection

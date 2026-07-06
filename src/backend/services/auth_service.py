@@ -8,6 +8,8 @@ from ..auth_helpers import find_member_by_login_name, member_access_expired, mem
 from ..services.auth_session_fallback import fallback_auth_device
 from ..services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 from .storage_service import load_json_data
+from ..db.database import db_data_enabled
+from ..repositories.db_json_repository import load_json_data as db_load_json_data
 from ..utils.serialization import model_dump
 
 
@@ -86,7 +88,10 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
     if not device_id:
         raise HTTPException(status_code=401, detail="X-Device-Id is required")
     try:
-        devices = load_json_data("auth_devices")
+        # Auth devices are session-critical. In DB mode, bypass the per-process
+        # collection cache so Cloud Run instance switching cannot read stale
+        # authentication state and force a relogin.
+        devices = db_load_json_data("auth_devices") if db_data_enabled() else load_json_data("auth_devices")
     except Exception:
         fallback = fallback_auth_device(device_id)
         if fallback:

@@ -17,6 +17,7 @@ Covered endpoints:
 - `date`, `open_time`, and `start_time` may be blank and are stored as database `NULL` for typed columns.
 - API responses normalize blank `date`, `open_time`, and `start_time` back to empty strings for frontend compatibility.
 - `performance_fee_amount` accepts number, numeric string, blank string, or `null`; blank and invalid values are saved as `0`.
+- The main performance form preserves the existing `performance_fee_amount` because the fee is edited from the payment settings screen.
 - `pieces` accepts both string items and object items.
 - Empty piece titles are ignored.
 - `created_at` is immutable after creation. Update payloads may include `created_at: null`, but the server keeps the existing value and never writes `created_at = null` to the DB.

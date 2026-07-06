@@ -16,6 +16,10 @@ var uploadPieceOptionsCompat = function uploadPieceOptionsCompat(performance) {
 async function savePerformance() {
     const flyerFile = $('perfFlyerFile')?.files?.[0];
     const flyerImage = flyerFile ? await fileToDataUrl(flyerFile) : ($('perfFlyerImage')?.value || '');
+    const id = $('perfId').value;
+    const currentPerformance = id
+        ? appState.performances.find((perf) => String(perf.id || '') === String(id))
+        : null;
     const payload = {
         title: $('perfTitle').value.trim(),
         date: $('perfDate').value,
@@ -24,6 +28,9 @@ async function savePerformance() {
         venue: $('perfVenue').value.trim(),
         conductor: $('perfConductor').value.trim(),
         flyer_image: flyerImage,
+        // The fee is edited on the payment settings screen, so keep it when
+        // saving the main performance form.
+        performance_fee_amount: currentPerformance?.performance_fee_amount || 0,
         pieces: currentPerformancePieces()
     };
     if (!payload.title || !payload.date) {
@@ -31,7 +38,6 @@ async function savePerformance() {
         return;
     }
 
-    const id = $('perfId').value;
     await request(id ? `/api/performances/${id}` : '/api/performances', jsonOptions(id ? 'PUT' : 'POST', payload));
     clearPerformanceForm();
     await loadPerformances();

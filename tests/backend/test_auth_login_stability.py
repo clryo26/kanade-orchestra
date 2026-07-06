@@ -2,11 +2,30 @@ from __future__ import annotations
 
 import hashlib
 
+from src.backend.services import auth_service
+
 
 def _setup_db_only_auth_env(backend_env, monkeypatch, db_store):
     monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
     monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
     monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, data: db_store.__setitem__(name, [dict(item) for item in data]))
+    monkeypatch.setattr(backend_env, "db_delete_auth_device", lambda device_id: db_store.__setitem__(
+        "auth_devices",
+        [dict(item) for item in db_store.get("auth_devices", []) if item.get("device_id") != device_id],
+    ))
+
+    def fake_upsert_auth_device(device):
+        devices = db_store.setdefault("auth_devices", [])
+        payload = dict(device)
+        existing = next((item for item in devices if item.get("device_id") == payload.get("device_id")), None)
+        if existing:
+            existing.update(payload)
+            return dict(existing)
+        payload["id"] = max([int(item.get("id") or 0) for item in devices] + [0]) + 1
+        devices.append(payload)
+        return dict(payload)
+
+    monkeypatch.setattr(backend_env, "db_upsert_auth_device", fake_upsert_auth_device)
     backend_env._memory_cache.clear()
 
 
@@ -367,14 +386,10 @@ def test_hidden_administrator_login_survives_auth_device_persistence_failure(cli
     }
     _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
 
-    original_save_json_data = backend_env.save_json_data
+    def failing_auth_device_upsert(device):
+        raise RuntimeError("auth_devices write failed")
 
-    def failing_auth_device_save(name, data):
-        if name == "auth_devices":
-            raise RuntimeError("auth_devices write failed")
-        original_save_json_data(name, data)
-
-    monkeypatch.setattr(backend_env, "save_json_data", failing_auth_device_save)
+    monkeypatch.setattr(backend_env, "db_upsert_auth_device", failing_auth_device_upsert)
 
     response = _login(
         client,
@@ -413,3 +428,53 @@ def test_hidden_administrator_login_survives_auth_device_persistence_failure(cli
         },
     )
     assert admin_response.status_code == 200
+
+
+def test_device_auth_record_reads_auth_devices_from_db_when_cache_is_stale(backend_env, monkeypatch):
+    db_devices = [
+        {
+            "id": 1,
+            "device_id": "device-db-live",
+            "member_id": None,
+            "member_name": "DB Live",
+            "permission": "管理者",
+            "authenticated_at": "2026-07-06T00:00:00",
+            "last_seen_at": "2026-07-06T00:00:00",
+        }
+    ]
+    backend_env._memory_cache.set("auth_devices", [])
+    monkeypatch.setattr(auth_service, "db_data_enabled", lambda: True)
+    monkeypatch.setattr(auth_service, "db_load_json_data", lambda name: [dict(item) for item in db_devices])
+
+    device = auth_service.device_auth_record("device-db-live")
+
+    assert device["device_id"] == "device-db-live"
+
+
+def test_auth_device_management_list_reads_db_instead_of_stale_cache(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [],
+        "auth_devices": [
+            {
+                "id": 1,
+                "device_id": "device-db-visible",
+                "member_id": None,
+                "member_name": "DB Visible",
+                "permission": "管理者",
+                "authenticated_at": "2026-07-06T00:00:00",
+                "last_seen_at": "2026-07-06T00:00:00",
+            }
+        ],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+    backend_env._memory_cache.set(
+        "auth_devices",
+        [{"device_id": "stale-cache-device", "authenticated_at": "2026-01-01T00:00:00"}],
+    )
+
+    response = client.get("/api/auth/devices")
+
+    assert response.status_code == 200
+    device_ids = {item["device_id"] for item in response.json()}
+    assert "device-db-visible" in device_ids
+    assert "stale-cache-device" not in device_ids

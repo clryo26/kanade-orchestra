@@ -42,7 +42,14 @@ def test_portal_login_reads_members_from_database_after_json_migration(client, b
     def fake_replace(name, data):
         db_store[name] = [dict(item) for item in data]
 
+    def fake_upsert_auth_device(device):
+        payload = dict(device)
+        payload["id"] = 1
+        db_store["auth_devices"] = [payload]
+        return payload
+
     monkeypatch.setattr(backend_env, "db_replace_collection", fake_replace)
+    monkeypatch.setattr(backend_env, "db_upsert_auth_device", fake_upsert_auth_device)
     backend_env._memory_cache.clear()
 
     response = client.post(
