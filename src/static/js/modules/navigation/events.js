@@ -115,6 +115,7 @@ function logoutPortal() {
     appState.currentUserName = '';
     appState.currentUserPermission = '';
     appState.currentUserPart = '';
+    appState.currentUserHiddenUser = false;
     appState.currentUserIsRecordingManager = false;
     appState.currentUserIsSheetManager = false;
     closePortalDrawer();

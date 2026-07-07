@@ -1,0 +1,70 @@
+name: Sync Prod to Test (Template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Source Git SHA for sync metadata"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sync-prod-to-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Validate required Variables/Secrets
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          DB_NAME_PROD: ${{ vars.DB_NAME_PROD }}
+          DB_NAME_TEST: ${{ vars.DB_NAME_TEST }}
+          GCS_BUCKET_PROD: ${{ vars.GCS_BUCKET_PROD }}
+          GCS_BUCKET_TEST: ${{ vars.GCS_BUCKET_TEST }}
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in GCP_PROJECT_ID GCP_REGION CLOUD_SQL_INSTANCE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::Missing GitHub Variable/Secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Sync direction policy note
+        shell: bash
+        run: |
+          echo "Allowed direction only: production -> test"
+          echo "Reverse sync (test -> production) must not be implemented."
+
+      - name: Template guard (no real sync in this phase)
+        shell: bash
+        run: |
+          echo "This workflow is a template for prod-to-test sync preparation."
+          echo "Real Cloud SQL/GCS sync command is intentionally disabled in this phase."
+          exit 1

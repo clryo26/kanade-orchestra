@@ -1,7 +1,7 @@
 # 奏オケポータル 結合テスト仕様書
 
-版: 1.1
-最終更新: 2026-06-18
+版: 1.2
+最終更新: 2026-07-07
 
 ## 1. 目的
 
@@ -48,6 +48,8 @@
 | 日程調整UI連鎖 | フロントエンド | INTEGRATION_TEST_SPEC_FRONTEND.md |
 | 競合検知409 | バックエンド | INTEGRATION_TEST_SPEC_BACKEND.md |
 | PR上の品質可視化 | CI/運用 | INTEGRATION_TEST_SPEC_CI.md |
+| 本番->テスト同期API契約（not_configured/権限制御） | バックエンド | INTEGRATION_TEST_SPEC_BACKEND.md |
+| Workflow静的検査（設定名統一・方向ガード） | CI/運用 | INTEGRATION_TEST_SPEC_CI.md |
 
 ## 6. 完了判定
 
@@ -60,4 +62,5 @@
 - API変更時はバックエンド仕様を更新する
 - 画面/通信変更時はフロント仕様を更新する
 - workflow変更時はCI仕様を更新する
+- 同期ルールや同期Workflowの静的検査ルール変更時は、バックエンド仕様とCI仕様を同時更新する
 - 仕様改訂時は親仕様と担当仕様の版・更新日を同時更新する

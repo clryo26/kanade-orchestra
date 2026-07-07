@@ -1,13 +1,14 @@
 # 奏オケポータル 結合テスト仕様書（バックエンド担当）
 
-版: 1.0
-最終更新: 2026-06-18
+版: 1.1
+最終更新: 2026-07-07
 
 ## 1. 対象
 
 - API連鎖の整合
 - 認証・認可・競合検知
 - CRUD連鎖とレスポンス整合
+- システム管理の環境管理/同期API契約（権限制御・失敗契約・履歴）
 
 ## 2. 実施責任
 
@@ -59,12 +60,25 @@
 | IT-BE-BS-003 | P1 | なし | GET /api/bootstrap | 200 + filesあり |
 | IT-BE-BS-004 | P1 | IT-BE-BS-001でETag取得済み | If-None-Match付きGET /api/bootstrap-lite | 304 |
 
+### 3.5 環境管理 + 本番->テスト同期API契約
+
+| ID | 優先 | 事前条件 | 手順 | 期待結果 |
+|---|---|---|---|---|
+| IT-BE-SYNC-001 | P0 | APP_ENV=test + 通常システム管理者端末認証済み | GET /api/system/environment/status | 200 + can_manage_operations=true + sync_rules.direction=production_to_test_only |
+| IT-BE-SYNC-002 | P0 | APP_ENV=test + 隠しシステム管理者端末認証済み | GET /api/system/environment/status | 403 |
+| IT-BE-SYNC-003 | P0 | APP_ENV=production または APP_ENV未設定 + 通常システム管理者端末認証済み | GET /api/system/environment/status | 403 |
+| IT-BE-SYNC-004 | P0 | APP_ENV=test + 通常システム管理者端末認証済み | POST /api/system/sync/prod-to-test | accepted=false + execution_status=not_configured |
+| IT-BE-SYNC-005 | P0 | APP_ENV=test + 通常システム管理者端末認証済み | POST /api/system/release/promote | accepted=false + execution_status=not_configured |
+| IT-BE-SYNC-006 | P1 | IT-BE-SYNC-004実行後 | GET /api/system/sync/history | total>=1 + 最新履歴にoperation_type=prod_to_test_sync |
+| IT-BE-SYNC-007 | P1 | IT-BE-SYNC-004実行後 | GET /api/system/environment/status | db_sync_excludedにauth_devices/access_logs/audit_logs/production_operation_historiesを含む |
+
 ## 4. 実装推奨
 
 - tests/integration/backend/test_auth_flow.py
 - tests/integration/backend/test_crud_flow.py
 - tests/integration/backend/test_extra_lock_flow.py
 - tests/integration/backend/test_bootstrap_cache_flow.py
+- tests/backend/test_system_production_ops.py
 
 ## 5. 完了判定
 

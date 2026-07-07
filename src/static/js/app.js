@@ -36,6 +36,7 @@
         '/static/js/modules/admin_system/api.js',
         '/static/js/modules/admin_system/database_viewer.js',
         '/static/js/modules/admin_system/diagnostics.js',
+        '/static/js/modules/admin_system/environment_management.js',
         '/static/js/modules/admin_system.js',
         '/static/js/modules/portal_views.js',
         '/static/js/modules/performance_day/helpers.js',

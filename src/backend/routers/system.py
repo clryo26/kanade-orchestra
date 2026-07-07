@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 try:
@@ -13,8 +13,9 @@ except Exception:  # pragma: no cover - optional dependency guard
     psql = None
 
 from ..core import assert_db_ready
-from ..core.auth_dependencies import get_system_admin_device_auth
+from ..core.auth_dependencies import get_production_operation_auth, get_system_admin_device_auth
 from ..services import system_service
+from ..services import production_ops_service
 
 router = APIRouter()
 
@@ -23,6 +24,14 @@ class RolePermissionUpdate(BaseModel):
     role_name: str
     permission_key: str
     enabled: bool = True
+
+
+class PromoteRequest(BaseModel):
+    target_git_sha: str
+
+
+class ProdToTestSyncRequest(BaseModel):
+    target_git_sha: str = ""
 
 
 @router.get("/api/system/database/tables")
@@ -87,3 +96,46 @@ async def clear_system_cache(_system_admin_device: dict[str, Any] = Depends(get_
 @router.get("/api/system/readiness-summary")
 async def get_readiness_summary(_system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth)) -> dict[str, Any]:
     return system_service.get_readiness_summary()
+
+
+@router.get("/api/system/environment/status")
+async def get_environment_status(_authorized_device: dict[str, Any] = Depends(get_production_operation_auth)) -> dict[str, Any]:
+    return production_ops_service.environment_status()
+
+
+@router.get("/api/system/release/history")
+async def get_release_history(_authorized_device: dict[str, Any] = Depends(get_production_operation_auth)) -> dict[str, Any]:
+    return production_ops_service.list_release_history()
+
+
+@router.post("/api/system/release/promote")
+async def promote_release(
+    payload: PromoteRequest,
+    authorized_device: dict[str, Any] = Depends(get_production_operation_auth),
+) -> dict[str, Any]:
+    result = production_ops_service.request_release_promote(
+        device=authorized_device,
+        target_git_sha=payload.target_git_sha,
+    )
+    if not result.get("accepted"):
+        raise HTTPException(status_code=503, detail=str(result.get("message") or "本番リリース実行に失敗しました"))
+    return result
+
+
+@router.get("/api/system/sync/history")
+async def get_sync_history(_authorized_device: dict[str, Any] = Depends(get_production_operation_auth)) -> dict[str, Any]:
+    return production_ops_service.list_sync_history()
+
+
+@router.post("/api/system/sync/prod-to-test")
+async def sync_prod_to_test(
+    payload: ProdToTestSyncRequest,
+    authorized_device: dict[str, Any] = Depends(get_production_operation_auth),
+) -> dict[str, Any]:
+    result = production_ops_service.request_sync_prod_to_test(
+        device=authorized_device,
+        target_git_sha=payload.target_git_sha,
+    )
+    if not result.get("accepted"):
+        raise HTTPException(status_code=503, detail=str(result.get("message") or "本番データ同期実行に失敗しました"))
+    return result
