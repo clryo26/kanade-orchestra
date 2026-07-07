@@ -53,7 +53,7 @@ jobs:
         run: npm run zip:source
 
       - name: Upload source share zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: source-share-zip
           path: dist/source-share/*.zip
@@ -174,7 +174,7 @@ jobs:
         run: uv run pytest -q tests/backend/test_db_json_layer.py tests/backend/test_db_mode_api_regression.py tests/backend/test_json_db_response_parity.py --cov=src/backend --cov-report=term-missing --cov-report=xml:coverage/backend/coverage.xml
 
       - name: Upload backend coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: coverage/backend/coverage.xml
@@ -257,7 +257,7 @@ jobs:
         run: npm run test:frontend:coverage
 
       - name: Upload frontend coverage artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: |
