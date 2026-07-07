@@ -229,6 +229,9 @@ jobs:
       - name: Run release safety check
         run: npm run check:release-safety
 
+      - name: Run workflow static check
+        run: npm run check:workflow:static
+
       - name: Run frontend syntax check
         run: npm run check:frontend:syntax
 

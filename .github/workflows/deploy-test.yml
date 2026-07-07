@@ -1,0 +1,74 @@
+name: Deploy Test (Template)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Deploy target Git SHA (same SHA must be promoted to production later)"
+        required: true
+        type: string
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-test:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.event.workflow_run.head_sha }}
+
+      - name: Validate required Variables/Secrets
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
+          ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE ARTIFACT_REGISTRY_REPOSITORY WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::Missing required GitHub Variable/Secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Test deploy template stopped because required settings are missing."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Template guard (no real deploy in this phase)
+        shell: bash
+        run: |
+          echo "This workflow is a template for test deployment preparation."
+          echo "Real deploy command is intentionally disabled because GCP runtime wiring is not confirmed yet."
+          echo "Promotion policy: production must use the same tested Git SHA or the same tested image digest."
+          echo "Do not promote using latest tag only."
+          echo "Stopped intentionally: test deploy backend is not connected in this phase."
+          exit 1

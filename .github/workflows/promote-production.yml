@@ -1,0 +1,67 @@
+name: Promote Production (Template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tested_sha:
+        description: "Tested Git SHA to promote to production (do not use latest tag only)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  promote-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tested SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tested_sha }}
+
+      - name: Validate required Variables/Secrets
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+          PROD_CLOUD_RUN_SERVICE: ${{ vars.PROD_CLOUD_RUN_SERVICE }}
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in GCP_PROJECT_ID GCP_REGION ARTIFACT_REGISTRY_REPOSITORY PROD_CLOUD_RUN_SERVICE WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::Missing GitHub Variable/Secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Promotion policy note
+        shell: bash
+        run: |
+          echo "Promotion must use the same tested Git SHA or same tested container image digest."
+          echo "Do not promote by latest tag only."
+
+      - name: Template guard (no real production promotion in this phase)
+        shell: bash
+        run: |
+          echo "This workflow is a template for production promotion preparation."
+          echo "Real promotion command is intentionally disabled in this phase."
+          exit 1

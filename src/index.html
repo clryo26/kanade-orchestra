@@ -791,6 +791,7 @@
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-part" type="button">パート管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-environment" type="button" id="systemEnvironmentMenuBtn" hidden>環境管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-readiness" type="button">運用Readyチェック</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-access-log" type="button">アクセスログ</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-database" type="button">データベース</button>
@@ -924,6 +925,55 @@
                             </div>
                         </div>
                         <div id="partSettingList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemEnvironmentTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">環境管理（テスト環境専用）</div>
+                    <div class="card-body">
+                        <div id="systemEnvironmentStatus" class="text-muted small mb-3">読み込み待ちです</div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label">現在の環境</label>
+                                <input class="form-control" id="environmentCurrentEnvironment" type="text" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">APP_ENV</label>
+                                <input class="form-control" id="environmentAppEnv" type="text" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Git SHA</label>
+                                <input class="form-control" id="environmentGitSha" type="text" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">ビルド日時</label>
+                                <input class="form-control" id="environmentBuildTime" type="text" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Cloud Run Revision</label>
+                                <input class="form-control" id="environmentCloudRunRevision" type="text" readonly>
+                            </div>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2 mb-3" id="environmentOperationActions" hidden>
+                            <button class="btn btn-warning" id="environmentReleasePromoteBtn" type="button">本番リリース</button>
+                            <button class="btn btn-outline-warning" id="environmentProdToTestSyncBtn" type="button">本番データをテスト環境へ同期</button>
+                        </div>
+
+                        <div id="environmentOperationResult" class="text-muted small mb-3"></div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <h6 class="mb-2">本番リリース履歴</h6>
+                                <div id="environmentReleaseHistory" class="small text-break text-muted">履歴なし</div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="mb-2">本番→テスト同期履歴</h6>
+                                <div id="environmentSyncHistory" class="small text-break text-muted">履歴なし</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1193,6 +1243,7 @@
     <script src="/static/js/modules/admin_system/api.js?v=20260701-2"></script>
     <script src="/static/js/modules/admin_system/database_viewer.js?v=20260701-2"></script>
     <script src="/static/js/modules/admin_system/diagnostics.js?v=20260701-2"></script>
+    <script src="/static/js/modules/admin_system/environment_management.js?v=20260707-1"></script>
     <script src="/static/js/modules/admin_system.js?v=20260630-6"></script>
     <script src="/static/js/modules/portal_views.js?v=20260630-6"></script>
     <script src="/static/js/modules/performance_day/helpers.js?v=20260701-1"></script>

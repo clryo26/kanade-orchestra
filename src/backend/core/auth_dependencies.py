@@ -6,7 +6,12 @@ from typing import Any, cast
 
 from fastapi import Header, HTTPException
 
-from .authorization import require_admin_device, require_device, require_system_admin_device
+from .authorization import (
+    require_admin_device,
+    require_device,
+    require_production_operation_authority,
+    require_system_admin_device,
+)
 from ..services.auth_service import (
     device_auth_record,
     require_recording_manager_device,
@@ -24,6 +29,10 @@ def get_admin_device_auth(x_device_id: str = Header(default="", alias="X-Device-
 
 def get_system_admin_device_auth(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
     return require_system_admin_device(x_device_id, device_auth_record=device_auth_record)
+
+
+def get_production_operation_auth(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:
+    return require_production_operation_authority(x_device_id, device_auth_record=device_auth_record)
 
 
 def get_recording_manager_device_auth(x_device_id: str = Header(default="", alias="X-Device-Id")) -> dict[str, Any]:

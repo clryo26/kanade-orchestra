@@ -7,6 +7,7 @@
     "qa:local": "powershell -ExecutionPolicy Bypass -File scripts/run-local-qa.ps1",
     "zip:source": "python scripts/create-source-zip.py",
     "check:release-safety": "python scripts/check_release_safety.py",
+    "check:workflow:static": "python scripts/check_workflow_static.py",
     "pre-release": "npm run check:release-safety && npm run check:frontend:load-order && npm run check:frontend:state-access && npm run check:frontend:syntax && python -m compileall -q src/backend tests && npm run zip:source",
     "check:security:python": "uvx pip-audit",
     "check:types:backend:package": "uv run mypy --ignore-missing-imports --follow-imports=skip -p src.backend",

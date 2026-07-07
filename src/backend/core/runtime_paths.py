@@ -43,6 +43,7 @@ JSON_DATA_NAMES = (
     "recording_metadata",
     "desired_pieces",
     "promotions",
+    "production_operation_histories",
 )
 
 DEFAULT_STARTUP_PRELOAD_COLLECTIONS = (

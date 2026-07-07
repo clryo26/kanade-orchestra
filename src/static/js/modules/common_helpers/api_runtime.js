@@ -48,6 +48,7 @@ function clearPortalAuthState() {
     appState.currentUserName = '';
     appState.currentUserPermission = '';
     appState.currentUserPart = '';
+    appState.currentUserHiddenUser = false;
     appState.currentUserIsRecordingManager = false;
     appState.currentUserIsSheetManager = false;
 }
@@ -59,6 +60,7 @@ function applyPortalAuthDevice(device) {
     appState.currentUserName = device.member_name || '';
     appState.currentUserPermission = device.permission || '';
     appState.currentUserPart = device.member_part || '';
+    appState.currentUserHiddenUser = Boolean(device.hidden_user);
     appState.currentUserIsRecordingManager = Boolean(device.is_recording_manager);
     appState.currentUserIsSheetManager = Boolean(device.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
