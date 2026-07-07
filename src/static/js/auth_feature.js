@@ -50,6 +50,7 @@ async function isPortalAuthenticated() {
         appState.currentUserName = result.device?.member_name || '';
         appState.currentUserPermission = result.device?.permission || '';
         appState.currentUserPart = result.device?.member_part || '';
+        appState.currentUserHiddenUser = Boolean(result.device?.hidden_user);
         appState.currentUserIsRecordingManager = Boolean(result.device?.is_recording_manager);
         appState.currentUserIsSheetManager = Boolean(result.device?.is_sheet_manager);
         return appState.portalAuthVerified;
@@ -167,6 +168,7 @@ async function handlePortalLogin() {
     appState.currentUserMemberId = result.member_id ?? null;
     appState.currentUserName = result.member_name || '';
     appState.currentUserPart = result.member_part || part || '';
+    appState.currentUserHiddenUser = Boolean(result.hidden_user);
     appState.currentUserIsRecordingManager = Boolean(result.is_recording_manager);
     appState.currentUserIsSheetManager = Boolean(result.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
@@ -218,6 +220,7 @@ function logoutPortal() {
     appState.currentUserName = '';
     appState.currentUserPermission = '';
     appState.currentUserPart = '';
+    appState.currentUserHiddenUser = false;
     appState.currentUserIsRecordingManager = false;
     appState.currentUserIsSheetManager = false;
     closePortalDrawer();
