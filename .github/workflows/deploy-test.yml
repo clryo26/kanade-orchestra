@@ -122,7 +122,6 @@ jobs:
           TEST_DB_HOST: ${{ secrets.TEST_DB_HOST }}
           TEST_DB_NAME: ${{ vars.TEST_DB_NAME }}
           TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
-          TEST_DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
         run: |
           set -euo pipefail
           ENV_VARS="APP_ENV=test,DATA_BACKEND=db,LOCAL_JSON_FALLBACK_ENABLED=false,GIT_SHA=${TARGET_SHA},BUILD_TIMESTAMP=${BUILD_TIMESTAMP},IMAGE_URI=${IMAGE_URI},IMAGE_DIGEST=${IMAGE_DIGEST},GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=${TEST_GCS_BUCKET}"
@@ -131,13 +130,13 @@ jobs:
           if [ -n "${TEST_DB_URL:-}" ]; then
             ENV_VARS="${ENV_VARS},DB_URL=${TEST_DB_URL}"
           else
-            for name in TEST_DB_HOST TEST_DB_NAME TEST_DB_USER TEST_DB_PASSWORD; do
+            for name in TEST_DB_HOST TEST_DB_NAME TEST_DB_USER; do
               if [ -z "${!name:-}" ]; then
-                echo "::error::Set TEST_DB_URL or TEST_DB_HOST/TEST_DB_NAME/TEST_DB_USER/TEST_DB_PASSWORD."
+                echo "::error::Set TEST_DB_URL or TEST_DB_HOST/TEST_DB_NAME/TEST_DB_USER."
                 exit 1
               fi
             done
-            ENV_VARS="${ENV_VARS},DB_HOST=${TEST_DB_HOST},DB_NAME=${TEST_DB_NAME},DB_USER=${TEST_DB_USER},DB_PASSWORD=${TEST_DB_PASSWORD}"
+            ENV_VARS="${ENV_VARS},DB_HOST=${TEST_DB_HOST},DB_NAME=${TEST_DB_NAME},DB_USER=${TEST_DB_USER}"
           fi
 
           gcloud run deploy "${TEST_CLOUD_RUN_SERVICE}" \
@@ -145,4 +144,5 @@ jobs:
             --region "${GCP_REGION}" \
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
+            --update-secrets "DB_PASSWORD=kanade-portal-db-password:latest" \
             --quiet
