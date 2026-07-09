@@ -1,6 +1,6 @@
-# テスト系 / 本番系 二系統化 事前実装メモ
+# テスト系 / 本番系 二系統化 実装メモ
 
-このドキュメントは、Cloud Run をテスト系 / 本番系で将来分離運用するための「事前実装」範囲を記録する。
+このドキュメントは、Cloud Run をテスト系 / 本番系で分離運用するための実装範囲を記録する。
 
 ## 今回の実装範囲
 
@@ -14,7 +14,7 @@
   - システム管理配下に「環境管理」タブを追加
   - 通常システム管理者のみ表示
   - 隠しシステム管理者には非表示
-- 本番操作 API 契約（実行基盤未接続）
+- 本番操作 API 契約
   - GET /api/system/environment/status
   - GET /api/system/release/history
   - POST /api/system/release/promote
@@ -22,26 +22,26 @@
   - POST /api/system/sync/prod-to-test
 - 同期ルールの明文化
   - DB/GCS の対象・除外・同期前後要件を status API で返却
-- GitHub Actions 雛形追加
+- GitHub Actions 実行経路
   - .github/workflows/deploy-test.yml
   - .github/workflows/promote-production.yml
   - .github/workflows/sync-prod-to-test.yml
   - すべて OIDC/WIF 前提、実値は Variables/Secrets 参照
-  - deploy-test は main push を起点にしつつ、CI 成功後の workflow_run で実処理へ接続する構造
+  - deploy-test は CI 成功後の workflow_run でテスト Cloud Run へ自動デプロイする
+  - promote-production はテスト Cloud Run の現在 image digest と要求 digest を照合して本番 Cloud Run へ反映する
 
 ## 未実装（今回の意図的な非対応）
 
-- Cloud Run 実デプロイ
+- GCP IAM の実設定
 - Cloud SQL 実バックアップ/実復元
 - GCS 実同期
-- GCP IAM の実設定
 - GitHub Secrets / Variables の実登録
 
 ## 実行基盤未実装時の扱い
 
-- POST /api/system/release/promote は 503 を返す
+- `PRODUCTION_OPERATION_EXECUTOR=github-actions` と GitHub dispatch 設定が不足している場合、POST /api/system/release/promote は 503 を返す
 - POST /api/system/sync/prod-to-test は 503 を返す
-- execution_status は not_configured を記録し、success/queued を返さない
+- 本番リリース workflow を起動できた場合のみ execution_status は queued を返す
 - 失敗履歴は API 履歴に残し、成功扱いにしない
 
 ## 履歴永続化

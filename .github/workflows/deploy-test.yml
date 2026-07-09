@@ -1,9 +1,6 @@
-name: Deploy Test (Template)
+name: Deploy Test
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       target_sha:
@@ -35,14 +32,17 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_REGION: ${{ vars.GCP_REGION }}
+          ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
           TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
           ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+          ARTIFACT_REGISTRY_IMAGE: ${{ vars.ARTIFACT_REGISTRY_IMAGE }}
           WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
           DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+          TEST_GCS_BUCKET: ${{ vars.TEST_GCS_BUCKET }}
         run: |
           set -euo pipefail
           missing=0
-          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE ARTIFACT_REGISTRY_REPOSITORY WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE ARTIFACT_REGISTRY_REPOSITORY ARTIFACT_REGISTRY_IMAGE WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT TEST_GCS_BUCKET; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing required GitHub Variable/Secret: $name"
@@ -63,12 +63,86 @@ jobs:
       - name: Setup gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Template guard (no real deploy in this phase)
+      - name: Configure Docker for Artifact Registry
         shell: bash
+        env:
+          ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
         run: |
-          echo "This workflow is a template for test deployment preparation."
-          echo "Real deploy command is intentionally disabled because GCP runtime wiring is not confirmed yet."
-          echo "Promotion policy: production must use the same tested Git SHA or the same tested image digest."
-          echo "Do not promote using latest tag only."
-          echo "Stopped intentionally: test deploy backend is not connected in this phase."
-          exit 1
+          set -euo pipefail
+          GAR_LOCATION="${ARTIFACT_REGISTRY_LOCATION:-$GCP_REGION}"
+          gcloud auth configure-docker "${GAR_LOCATION}-docker.pkg.dev" --quiet
+
+      - name: Build and push tested image
+        id: image
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.event.workflow_run.head_sha }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
+          ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+          ARTIFACT_REGISTRY_IMAGE: ${{ vars.ARTIFACT_REGISTRY_IMAGE }}
+        run: |
+          set -euo pipefail
+          GAR_LOCATION="${ARTIFACT_REGISTRY_LOCATION:-$GCP_REGION}"
+          BUILD_TIMESTAMP="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          IMAGE_URI="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${ARTIFACT_REGISTRY_IMAGE}:${TARGET_SHA}"
+
+          docker build \
+            --label "org.opencontainers.image.revision=${TARGET_SHA}" \
+            --label "org.opencontainers.image.created=${BUILD_TIMESTAMP}" \
+            -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+
+          IMAGE_DIGEST="$(gcloud artifacts docker images describe "${IMAGE_URI}" --format='value(image_summary.digest)')"
+          if [ -z "${IMAGE_DIGEST}" ]; then
+            echo "::error::Failed to resolve pushed image digest."
+            exit 1
+          fi
+          IMAGE_WITH_DIGEST="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${ARTIFACT_REGISTRY_IMAGE}@${IMAGE_DIGEST}"
+
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "image_digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image_with_digest=${IMAGE_WITH_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "build_timestamp=${BUILD_TIMESTAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy tested image to test Cloud Run
+        shell: bash
+        env:
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
+          TEST_GCS_BUCKET: ${{ vars.TEST_GCS_BUCKET }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.event.workflow_run.head_sha }}
+          IMAGE_URI: ${{ steps.image.outputs.image_uri }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.image_digest }}
+          IMAGE_WITH_DIGEST: ${{ steps.image.outputs.image_with_digest }}
+          BUILD_TIMESTAMP: ${{ steps.image.outputs.build_timestamp }}
+          TEST_DB_URL: ${{ secrets.TEST_DB_URL }}
+          TEST_DB_HOST: ${{ secrets.TEST_DB_HOST }}
+          TEST_DB_NAME: ${{ vars.TEST_DB_NAME }}
+          TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
+          TEST_DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ENV_VARS="APP_ENV=test,DATA_BACKEND=db,LOCAL_JSON_FALLBACK_ENABLED=false,GIT_SHA=${TARGET_SHA},BUILD_TIMESTAMP=${BUILD_TIMESTAMP},IMAGE_URI=${IMAGE_URI},IMAGE_DIGEST=${IMAGE_DIGEST},GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=${TEST_GCS_BUCKET}"
+          ENV_VARS="${ENV_VARS},CLOUD_RUN_SERVICE=${TEST_CLOUD_RUN_SERVICE}"
+
+          if [ -n "${TEST_DB_URL:-}" ]; then
+            ENV_VARS="${ENV_VARS},DB_URL=${TEST_DB_URL}"
+          else
+            for name in TEST_DB_HOST TEST_DB_NAME TEST_DB_USER TEST_DB_PASSWORD; do
+              if [ -z "${!name:-}" ]; then
+                echo "::error::Set TEST_DB_URL or TEST_DB_HOST/TEST_DB_NAME/TEST_DB_USER/TEST_DB_PASSWORD."
+                exit 1
+              fi
+            done
+            ENV_VARS="${ENV_VARS},DB_HOST=${TEST_DB_HOST},DB_NAME=${TEST_DB_NAME},DB_USER=${TEST_DB_USER},DB_PASSWORD=${TEST_DB_PASSWORD}"
+          fi
+
+          gcloud run deploy "${TEST_CLOUD_RUN_SERVICE}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${GCP_REGION}" \
+            --image "${IMAGE_WITH_DIGEST}" \
+            --set-env-vars "${ENV_VARS}" \
+            --quiet

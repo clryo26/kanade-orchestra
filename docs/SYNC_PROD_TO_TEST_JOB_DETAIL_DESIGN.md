@@ -170,7 +170,7 @@
 - .github/workflows/promote-production.yml
 - .github/workflows/sync-prod-to-test.yml
 
-テンプレート段階では `Template guard` により実行を停止し、誤実行を防止する。
+`deploy-test.yml` と `promote-production.yml` はアプリ本体の案Aリリース経路として実処理を行う。`sync-prod-to-test.yml` は DB/GCS 同期の別機能であり、実同期接続が確定するまで `Template guard` により停止する。
 
 ## 25. Variables / Secrets 方針
 実値は未確定のため、本書ではキー名のみ管理する。

@@ -1,10 +1,14 @@
-name: Promote Production (Template)
+name: Promote Production
 
 on:
   workflow_dispatch:
     inputs:
       tested_sha:
         description: "Tested Git SHA to promote to production (do not use latest tag only)"
+        required: true
+        type: string
+      tested_image_digest:
+        description: "Digest currently confirmed in the test Cloud Run service"
         required: true
         type: string
 
@@ -26,14 +30,18 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_REGION: ${{ vars.GCP_REGION }}
+          ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
           ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+          ARTIFACT_REGISTRY_IMAGE: ${{ vars.ARTIFACT_REGISTRY_IMAGE }}
+          TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
           PROD_CLOUD_RUN_SERVICE: ${{ vars.PROD_CLOUD_RUN_SERVICE }}
           WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
           DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+          PROD_GCS_BUCKET: ${{ vars.PROD_GCS_BUCKET }}
         run: |
           set -euo pipefail
           missing=0
-          for name in GCP_PROJECT_ID GCP_REGION ARTIFACT_REGISTRY_REPOSITORY PROD_CLOUD_RUN_SERVICE WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+          for name in GCP_PROJECT_ID GCP_REGION ARTIFACT_REGISTRY_REPOSITORY ARTIFACT_REGISTRY_IMAGE TEST_CLOUD_RUN_SERVICE PROD_CLOUD_RUN_SERVICE WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT PROD_GCS_BUCKET; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing GitHub Variable/Secret: $name"
@@ -53,15 +61,63 @@ jobs:
       - name: Setup gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Promotion policy note
+      - name: Resolve currently deployed test image
+        id: test_image
         shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
+          TESTED_IMAGE_DIGEST: ${{ inputs.tested_image_digest }}
         run: |
-          echo "Promotion must use the same tested Git SHA or same tested container image digest."
-          echo "Do not promote by latest tag only."
+          set -euo pipefail
+          CURRENT_IMAGE="$(gcloud run services describe "${TEST_CLOUD_RUN_SERVICE}" --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --format='value(spec.template.spec.containers[0].image)')"
+          if [ -z "${CURRENT_IMAGE}" ]; then
+            echo "::error::Could not resolve current test Cloud Run image."
+            exit 1
+          fi
+          CURRENT_DIGEST="${CURRENT_IMAGE##*@}"
+          if [ "${CURRENT_DIGEST}" != "${TESTED_IMAGE_DIGEST}" ]; then
+            echo "::error::Requested digest does not match current test Cloud Run image digest."
+            exit 1
+          fi
+          echo "image_with_digest=${CURRENT_IMAGE}" >> "$GITHUB_OUTPUT"
 
-      - name: Template guard (no real production promotion in this phase)
+      - name: Promote same digest to production Cloud Run
         shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          PROD_CLOUD_RUN_SERVICE: ${{ vars.PROD_CLOUD_RUN_SERVICE }}
+          PROD_GCS_BUCKET: ${{ vars.PROD_GCS_BUCKET }}
+          TESTED_SHA: ${{ inputs.tested_sha }}
+          TESTED_IMAGE_DIGEST: ${{ inputs.tested_image_digest }}
+          IMAGE_WITH_DIGEST: ${{ steps.test_image.outputs.image_with_digest }}
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          PROD_DB_HOST: ${{ secrets.PROD_DB_HOST }}
+          PROD_DB_NAME: ${{ vars.PROD_DB_NAME }}
+          PROD_DB_USER: ${{ secrets.PROD_DB_USER }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
         run: |
-          echo "This workflow is a template for production promotion preparation."
-          echo "Real promotion command is intentionally disabled in this phase."
-          exit 1
+          set -euo pipefail
+          BUILD_TIMESTAMP="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          ENV_VARS="APP_ENV=production,DATA_BACKEND=db,LOCAL_JSON_FALLBACK_ENABLED=false,GIT_SHA=${TESTED_SHA},BUILD_TIMESTAMP=${BUILD_TIMESTAMP},IMAGE_URI=${IMAGE_WITH_DIGEST},IMAGE_DIGEST=${TESTED_IMAGE_DIGEST},GOOGLE_CLOUD_PROJECT=${GCP_PROJECT_ID},GOOGLE_CLOUD_STORAGE_BUCKET=${PROD_GCS_BUCKET},CLOUD_RUN_SERVICE=${PROD_CLOUD_RUN_SERVICE}"
+
+          if [ -n "${PROD_DB_URL:-}" ]; then
+            ENV_VARS="${ENV_VARS},DB_URL=${PROD_DB_URL}"
+          else
+            for name in PROD_DB_HOST PROD_DB_NAME PROD_DB_USER PROD_DB_PASSWORD; do
+              if [ -z "${!name:-}" ]; then
+                echo "::error::Set PROD_DB_URL or PROD_DB_HOST/PROD_DB_NAME/PROD_DB_USER/PROD_DB_PASSWORD."
+                exit 1
+              fi
+            done
+            ENV_VARS="${ENV_VARS},DB_HOST=${PROD_DB_HOST},DB_NAME=${PROD_DB_NAME},DB_USER=${PROD_DB_USER},DB_PASSWORD=${PROD_DB_PASSWORD}"
+          fi
+
+          gcloud run deploy "${PROD_CLOUD_RUN_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --image "${IMAGE_WITH_DIGEST}" \
+            --set-env-vars "${ENV_VARS}" \
+            --quiet

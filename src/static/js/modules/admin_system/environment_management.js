@@ -12,6 +12,11 @@ function _setEnvironmentField(id, value) {
     input.value = String(value || '未設定');
 }
 
+function _missingDeployValue(value) {
+    const normalized = String(value || '').trim();
+    return !normalized || normalized === '未設定';
+}
+
 function _formatOperationHistory(items) {
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) return '履歴なし';
@@ -20,9 +25,10 @@ function _formatOperationHistory(items) {
         const requestedAt = formatDateTimeLabel(item.requested_at || '');
         const target = String(item.target_environment || '');
         const gitSha = String(item.target_git_sha || '');
+        const imageDigest = String(item.image_digest || '');
         const requestedBy = String(item.requested_by || '');
         const reason = String(item.failure_reason || '');
-        return `${requestedAt} | ${state} | target=${target} | sha=${gitSha || '未設定'} | by=${requestedBy || '不明'}${reason ? ` | reason=${reason}` : ''}`;
+        return `${requestedAt} | ${state} | target=${target} | sha=${gitSha || '未設定'} | digest=${imageDigest || '未設定'} | by=${requestedBy || '不明'}${reason ? ` | reason=${reason}` : ''}`;
     }).join('\n');
 }
 
@@ -71,8 +77,18 @@ function _bindEnvironmentButtons() {
             const status = $('environmentOperationResult');
             if (status) status.textContent = '本番リリースを要求しています...';
             const targetGitSha = String(appState.systemEnvironmentStatus?.deploy_info?.git_sha || '').trim();
+            const targetImageDigest = String(appState.systemEnvironmentStatus?.deploy_info?.image_digest || '').trim();
+            if (_missingDeployValue(targetGitSha)) {
+                if (status) status.textContent = 'Git SHA が未設定のため、本番リリース要求を送信しませんでした。';
+                return;
+            }
+            if (_missingDeployValue(targetImageDigest)) {
+                if (status) status.textContent = 'Image Digest が未設定のため、本番リリース要求を送信しませんでした。';
+                return;
+            }
             await request('/api/system/release/promote', jsonOptions('POST', {
-                target_git_sha: targetGitSha || '未設定',
+                target_git_sha: targetGitSha,
+                target_image_digest: targetImageDigest,
             }));
             await renderSystemEnvironmentManagement();
         });
@@ -118,6 +134,9 @@ async function renderSystemEnvironmentManagement() {
         _setEnvironmentField('environmentGitSha', status.deploy_info?.git_sha || '未設定');
         _setEnvironmentField('environmentBuildTime', status.deploy_info?.build_time || '未設定');
         _setEnvironmentField('environmentCloudRunRevision', status.deploy_info?.cloud_run_revision || '未設定');
+        _setEnvironmentField('environmentCloudRunService', status.deploy_info?.cloud_run_service || '未設定');
+        _setEnvironmentField('environmentImageUri', status.deploy_info?.image_uri || '未設定');
+        _setEnvironmentField('environmentImageDigest', status.deploy_info?.image_digest || '未設定');
 
         releaseHistory.textContent = _formatOperationHistory(release.items);
         syncHistory.textContent = _formatOperationHistory(sync.items);
@@ -126,14 +145,14 @@ async function renderSystemEnvironmentManagement() {
         actionArea.hidden = !canManage;
         if (canManage) {
             statusEl.className = 'text-success small mb-3';
-            statusEl.textContent = 'テスト環境として本番操作API契約を利用できます（実行基盤設定は別途必要です）。';
+            statusEl.textContent = 'テスト環境として本番操作API契約を利用できます。';
         } else {
             statusEl.className = 'text-warning small mb-3';
             statusEl.textContent = 'この環境では本番操作は利用できません。';
         }
 
-        if (!status.execution_backend_implemented) {
-            resultEl.textContent = '本番リリース実行基盤は未実装です / 本番データ同期実行基盤は未実装です';
+        if (!status.execution_backend_implemented || !status.promotion_dispatch?.configured) {
+            resultEl.textContent = '本番リリース実行基盤の設定が不足しています。PRODUCTION_OPERATION_EXECUTOR と GitHub Actions 起動設定を確認してください。';
         } else if (!status.execution_backend_configured) {
             resultEl.textContent = '本番リリース実行基盤の設定が不足しています / 本番データ同期実行基盤の設定が不足しています';
         }

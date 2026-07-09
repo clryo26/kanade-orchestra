@@ -28,6 +28,7 @@ class RolePermissionUpdate(BaseModel):
 
 class PromoteRequest(BaseModel):
     target_git_sha: str
+    target_image_digest: str = ""
 
 
 class ProdToTestSyncRequest(BaseModel):
@@ -116,6 +117,7 @@ async def promote_release(
     result = production_ops_service.request_release_promote(
         device=authorized_device,
         target_git_sha=payload.target_git_sha,
+        target_image_digest=payload.target_image_digest,
     )
     if not result.get("accepted"):
         raise HTTPException(status_code=503, detail=str(result.get("message") or "本番リリース実行に失敗しました"))

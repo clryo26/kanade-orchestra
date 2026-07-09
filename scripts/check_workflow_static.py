@@ -13,24 +13,32 @@ TARGET_WORKFLOWS = {
         "required_tokens": [
             "TEST_CLOUD_RUN_SERVICE",
             "ARTIFACT_REGISTRY_REPOSITORY",
+            "ARTIFACT_REGISTRY_IMAGE",
+            "TEST_GCS_BUCKET",
             "DEPLOY_SERVICE_ACCOUNT",
             "WIF_PROVIDER",
         ],
         "required_phrases": [
-            "Template guard",
-            "latest tag only",
+            "docker build",
+            "docker push",
+            "gcloud run deploy",
+            "IMAGE_DIGEST",
         ],
     },
     "promote-production.yml": {
         "required_tokens": [
             "PROD_CLOUD_RUN_SERVICE",
+            "TEST_CLOUD_RUN_SERVICE",
             "ARTIFACT_REGISTRY_REPOSITORY",
+            "ARTIFACT_REGISTRY_IMAGE",
+            "PROD_GCS_BUCKET",
             "DEPLOY_SERVICE_ACCOUNT",
             "WIF_PROVIDER",
         ],
         "required_phrases": [
-            "Template guard",
-            "latest tag only",
+            "tested_image_digest",
+            "does not match current test Cloud Run image digest",
+            "gcloud run deploy",
         ],
     },
     "sync-prod-to-test.yml": {
@@ -101,6 +109,8 @@ def validate_required_phrases(content: str, file_name: str, errors: list[str]) -
 def validate_template_guard(content: str, file_name: str, errors: list[str]) -> None:
     if "Template guard" in content and "exit 1" not in content:
         errors.append(f"{file_name}: template guard exists but exit 1 is missing")
+    if file_name in {"deploy-test.yml", "promote-production.yml"} and "Template guard" in content:
+        errors.append(f"{file_name}: template guard must be removed for active App Release Plan A")
 
 
 def validate_no_secret_echo(content: str, file_name: str, errors: list[str]) -> None:

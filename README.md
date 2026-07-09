@@ -141,6 +141,7 @@ npm run test:e2e
 - 共有用ソースZIP作成手順: [docs/SOURCE_SHARE_ZIP.md](docs/SOURCE_SHARE_ZIP.md)
 - 実機確認チェックリスト: [docs/MANUAL_DEVICE_QA_CHECKLIST.md](docs/MANUAL_DEVICE_QA_CHECKLIST.md)
 - Cloud Run/GCS/DB 設定確認: [docs/CLOUD_RUN_GCS_DB_CHECK.md](docs/CLOUD_RUN_GCS_DB_CHECK.md)
+- CI/CD 案A リリースフロー: [docs/CI_CD_PLAN_A_RELEASE_FLOW.md](docs/CI_CD_PLAN_A_RELEASE_FLOW.md)
 - 設計判断ログ: [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md)
 - 判断ログ運用ガイド: [docs/DECISION_LOG_GUIDE.md](docs/DECISION_LOG_GUIDE.md)
 - app_core互換ポリシー: [docs/APP_CORE_COMPAT_POLICY.md](docs/APP_CORE_COMPAT_POLICY.md)

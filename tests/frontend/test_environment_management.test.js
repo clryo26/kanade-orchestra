@@ -15,6 +15,9 @@ describe('system environment management', () => {
             environmentOperationResult: { textContent: '' },
             environmentReleaseHistory: { textContent: '' },
             environmentSyncHistory: { textContent: '' },
+            environmentCloudRunService: { value: '' },
+            environmentImageUri: { value: '' },
+            environmentImageDigest: { value: '' },
         };
         const sandbox = {
             window: null,
@@ -31,6 +34,7 @@ describe('system environment management', () => {
                 can_manage_operations: true,
                 execution_backend_configured: false,
                 execution_backend_implemented: false,
+                promotion_dispatch: { configured: false },
                 deploy_info: {},
                 current_environment: 'test',
                 app_env: 'test',
@@ -48,6 +52,19 @@ describe('system environment management', () => {
         };
         vm.runInNewContext(envJs, sandbox);
         return { sandbox, elements };
+    }
+
+    function clickPromoteButton(sandbox, elements) {
+        const button = {
+            dataset: {},
+            addEventListener: (_event, handler) => {
+                button.handler = handler;
+            },
+        };
+        elements.environmentReleasePromoteBtn = button;
+        elements.environmentProdToTestSyncBtn = null;
+        sandbox._bindEnvironmentButtons();
+        return button.handler();
     }
 
     test('system panel includes test-only environment management tab and hidden menu button', () => {
@@ -68,8 +85,8 @@ describe('system environment management', () => {
         expect(envJs).toContain('/api/system/environment/status');
         expect(envJs).toContain('/api/system/release/promote');
         expect(envJs).toContain('/api/system/sync/prod-to-test');
-        expect(envJs).toContain('本番リリース実行基盤は未実装です');
-        expect(envJs).toContain('本番データ同期実行基盤は未実装です');
+        expect(envJs).toContain('target_image_digest');
+        expect(envJs).toContain('GitHub Actions 起動設定');
     });
 
     test('hidden system admin does not see environment menu', async () => {
@@ -120,6 +137,7 @@ describe('system environment management', () => {
                     can_manage_operations: true,
                     execution_backend_configured: false,
                     execution_backend_implemented: false,
+                    promotion_dispatch: { configured: false },
                     deploy_info: {},
                     current_environment: 'test',
                     app_env: 'test',
@@ -128,6 +146,87 @@ describe('system environment management', () => {
             return { items: [] };
         };
         await sandbox.renderSystemEnvironmentManagement();
-        expect(elements.environmentOperationResult.textContent).toContain('未実装');
+        expect(elements.environmentOperationResult.textContent).toContain('設定が不足');
+    });
+
+    test('release promote is not requested when git sha is unset', async () => {
+        const appState = {
+            currentUserPermission: 'システム管理者',
+            currentUserHiddenUser: false,
+            systemEnvironmentStatus: {
+                deploy_info: {
+                    git_sha: '未設定',
+                    image_digest: 'sha256:real-digest',
+                },
+            },
+        };
+        const { sandbox, elements } = buildSandbox(appState, async () => ({ ok: true, json: async () => ({}) }));
+        const calls = [];
+        sandbox.request = async (url, options) => {
+            calls.push({ url, options });
+            return {};
+        };
+
+        await clickPromoteButton(sandbox, elements);
+
+        expect(calls).toEqual([]);
+        expect(elements.environmentOperationResult.textContent).toContain('Git SHA が未設定');
+    });
+
+    test('release promote is not requested when image digest is unset', async () => {
+        const appState = {
+            currentUserPermission: 'システム管理者',
+            currentUserHiddenUser: false,
+            systemEnvironmentStatus: {
+                deploy_info: {
+                    git_sha: 'abc123',
+                    image_digest: '',
+                },
+            },
+        };
+        const { sandbox, elements } = buildSandbox(appState, async () => ({ ok: true, json: async () => ({}) }));
+        const calls = [];
+        sandbox.request = async (url, options) => {
+            calls.push({ url, options });
+            return {};
+        };
+
+        await clickPromoteButton(sandbox, elements);
+
+        expect(calls).toEqual([]);
+        expect(elements.environmentOperationResult.textContent).toContain('Image Digest が未設定');
+    });
+
+    test('release promote sends only real git sha and image digest', async () => {
+        const appState = {
+            currentUserPermission: 'システム管理者',
+            currentUserHiddenUser: false,
+            systemEnvironmentStatus: {
+                deploy_info: {
+                    git_sha: 'abc123',
+                    image_digest: 'sha256:real-digest',
+                },
+            },
+        };
+        const { sandbox, elements } = buildSandbox(appState, async () => ({ ok: true, json: async () => ({}) }));
+        const calls = [];
+        sandbox.jsonOptions = (_method, payload) => payload;
+        sandbox.request = async (url, options) => {
+            calls.push({ url, options });
+            return {};
+        };
+        sandbox.renderSystemEnvironmentManagement = async () => {};
+
+        await clickPromoteButton(sandbox, elements);
+
+        expect(calls).toEqual([
+            {
+                url: '/api/system/release/promote',
+                options: {
+                    target_git_sha: 'abc123',
+                    target_image_digest: 'sha256:real-digest',
+                },
+            },
+        ]);
     });
 });

@@ -23,11 +23,16 @@ def _seed(client, *, device_id: str, permission: str, hidden_user: bool = False)
     backend.save_json_data("auth_devices", devices)
 
 
-def _promote(client, headers: dict[str, str], target_sha: str = "abc123def456"):
+def _promote(
+    client,
+    headers: dict[str, str],
+    target_sha: str = "abc123def456",
+    image_digest: str = "sha256:testdigest",
+):
     return client.post(
         "/api/system/release/promote",
         headers=headers,
-        json={"target_git_sha": target_sha},
+        json={"target_git_sha": target_sha, "target_image_digest": image_digest},
     )
 
 
@@ -127,7 +132,7 @@ def test_environment_status_accepts_app_env_with_spaces(client, monkeypatch):
     assert response.status_code == 200
     assert response.json().get("app_env") == "test"
 
-    # test env allowed, but executor is intentionally unimplemented in this phase.
+    # test env is allowed, but the executor must still be configured explicitly.
     assert _promote(client, headers).status_code == 503
 
 
@@ -158,7 +163,7 @@ def test_promote_and_sync_fail_without_executor_and_record_history(client, monke
     assert sync_items[0].get("execution_status") == "not_configured"
 
 
-def test_promote_and_sync_do_not_queue_with_executor_env_only(client, monkeypatch):
+def test_promote_and_sync_do_not_queue_without_github_dispatch_config(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
     _seed(client, device_id="dev-system", permission="システム管理者")
@@ -169,14 +174,56 @@ def test_promote_and_sync_do_not_queue_with_executor_env_only(client, monkeypatc
     assert promote.status_code == 503
     assert sync.status_code == 503
 
-    release_items = client.get("/api/system/release/history", headers=headers).json().get("items") or []
+    release_items = client.get("/api/system/release/history", headers=headers).json().get(
+        "items"
+    ) or []
     sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
-    assert release_items[0].get("execution_status") == "not_configured"
+    assert release_items[0].get("execution_status") == "dispatch_failed"
     assert sync_items[0].get("execution_status") == "not_configured"
+
+
+def test_promote_queues_github_actions_dispatch(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    monkeypatch.setenv("PROMOTE_PRODUCTION_WORKFLOW", "promote-production.yml")
+    monkeypatch.setenv("PROMOTE_PRODUCTION_REF", "main")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    dispatched: dict[str, str] = {}
+
+    def fake_dispatch(*, git_sha: str, image_digest: str) -> str:
+        dispatched["git_sha"] = git_sha
+        dispatched["image_digest"] = image_digest
+        return "promote-production.yml"
+
+    monkeypatch.setattr(service, "_dispatch_github_workflow", fake_dispatch)
+    response = _promote(client, headers, "queued-sha", "sha256:queued")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload.get("accepted") is True
+    assert payload.get("execution_status") == "queued"
+    assert dispatched == {"git_sha": "queued-sha", "image_digest": "sha256:queued"}
+
+
+def test_promote_rejects_empty_image_digest(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    response = _promote(client, headers, "sha-without-digest", "")
+
+    assert response.status_code == 503
 
 
 def test_history_persists_after_service_reload(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("IMAGE_DIGEST", "sha256:persisted")
     _seed(client, device_id="dev-system", permission="システム管理者")
     headers = {"X-Device-Id": "dev-system"}
     assert _promote(client, headers, "persist-release-sha").status_code == 503
@@ -187,7 +234,9 @@ def test_history_persists_after_service_reload(client, monkeypatch):
     reloaded = reload(service)
     release = reloaded.list_release_history()
     sync = reloaded.list_sync_history()
-    assert any(item.get("target_git_sha") == "persist-release-sha" for item in release.get("items") or [])
+    assert any(
+        item.get("target_git_sha") == "persist-release-sha" for item in release.get("items") or []
+    )
     assert any(item.get("target_git_sha") == "persist-sync-sha" for item in sync.get("items") or [])
 
 

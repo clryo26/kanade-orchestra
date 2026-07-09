@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any
+from urllib import error, request
 from uuid import uuid4
 
 from ..core.config import app_env_for_production_operations, production_operations_allowed_env
@@ -41,8 +43,60 @@ def _execution_backend_configured() -> bool:
 
 
 def _execution_backend_implemented() -> bool:
-    # This phase intentionally does not implement a real executor.
-    return False
+    return _env_value("PRODUCTION_OPERATION_EXECUTOR").lower() == "github-actions"
+
+
+def _github_dispatch_config() -> dict[str, str]:
+    return {
+        "repository": _env_value("GITHUB_REPOSITORY"),
+        "token": _env_value("GITHUB_ACTIONS_TOKEN") or _env_value("GITHUB_TOKEN"),
+        "workflow": _env_value("PROMOTE_PRODUCTION_WORKFLOW") or "promote-production.yml",
+        "ref": _env_value("PROMOTE_PRODUCTION_REF") or "main",
+    }
+
+
+def _github_dispatch_config_missing(config: dict[str, str]) -> list[str]:
+    return [name for name, value in config.items() if not value]
+
+
+def _dispatch_github_workflow(*, git_sha: str, image_digest: str) -> str:
+    config = _github_dispatch_config()
+    missing = _github_dispatch_config_missing(config)
+    if missing:
+        raise RuntimeError(f"GitHub Actions dispatch settings are missing: {', '.join(missing)}")
+
+    payload = {
+        "ref": config["ref"],
+        "inputs": {
+            "tested_sha": git_sha,
+            "tested_image_digest": image_digest,
+        },
+    }
+    body = json.dumps(payload).encode("utf-8")
+    url = (
+        "https://api.github.com/repos/"
+        f"{config['repository']}/actions/workflows/{config['workflow']}/dispatches"
+    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {config['token']}",
+        "Content-Type": "application/json",
+        "User-Agent": "kanade-orchestra-portal-release",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    req = request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with request.urlopen(req, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError(f"GitHub workflow dispatch returned HTTP {response.status}")
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"GitHub workflow dispatch failed with HTTP {exc.code}: {detail}"
+        ) from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"GitHub workflow dispatch failed: {exc.reason}") from exc
+    return config["workflow"]
 
 
 def _load_histories() -> list[dict[str, Any]]:
@@ -78,6 +132,9 @@ def _history_item(
     execution_status: str,
     failure_reason: str,
     execution_backend: str,
+    image_uri: str = "",
+    image_digest: str = "",
+    workflow_run_id: str = "",
 ) -> dict[str, Any]:
     now = _now_iso()
     requested_by_member_id = str(device.get("member_id") or "")
@@ -92,13 +149,15 @@ def _history_item(
         "requested_by_permission": requested_by_permission,
         "requested_by": _build_requested_by(device),
         "target_git_sha": target_git_sha,
+        "image_uri": image_uri,
+        "image_digest": image_digest,
         "target_environment": target_environment,
         "execution_status": execution_status,
         "failure_reason": failure_reason,
         "execution_backend": execution_backend,
         "hidden_user": bool(device.get("hidden_user")),
         "request_source": "system_environment_management",
-        "workflow_run_id": "",
+        "workflow_run_id": workflow_run_id,
         "cloud_run_job_execution_id": "",
         "created_at": now,
         "updated_at": now,
@@ -113,11 +172,25 @@ def environment_status() -> dict[str, Any]:
         "deploy_info": {
             "git_sha": _display_value(_env_value("GIT_SHA")),
             "build_time": _display_value(_env_value("BUILD_TIMESTAMP")),
-            "cloud_run_revision": _display_value(_env_value("K_REVISION") or _env_value("CLOUD_RUN_REVISION")),
+            "image_uri": _display_value(_env_value("IMAGE_URI")),
+            "image_digest": _display_value(_env_value("IMAGE_DIGEST")),
+            "cloud_run_service": _display_value(
+                _env_value("K_SERVICE") or _env_value("CLOUD_RUN_SERVICE")
+            ),
+            "cloud_run_revision": _display_value(
+                _env_value("K_REVISION") or _env_value("CLOUD_RUN_REVISION")
+            ),
         },
         "can_manage_operations": app_env == production_operations_allowed_env(),
         "execution_backend_configured": _execution_backend_configured(),
         "execution_backend_implemented": _execution_backend_implemented(),
+        "promotion_dispatch": {
+            "mode": "github-actions",
+            "configured": not _github_dispatch_config_missing(_github_dispatch_config()),
+            "workflow": _github_dispatch_config().get("workflow", ""),
+            "repository_configured": bool(_github_dispatch_config().get("repository")),
+            "ref": _github_dispatch_config().get("ref", ""),
+        },
         "history_storage": {
             "mode": "json_collection",
             "collection": HISTORY_COLLECTION,
@@ -207,8 +280,15 @@ def list_sync_history() -> dict[str, Any]:
     }
 
 
-def request_release_promote(*, device: dict[str, Any], target_git_sha: str) -> dict[str, Any]:
+def request_release_promote(
+    *,
+    device: dict[str, Any],
+    target_git_sha: str,
+    target_image_digest: str = "",
+) -> dict[str, Any]:
     git_sha = str(target_git_sha or "").strip()
+    image_digest = str(target_image_digest or "").strip() or _env_value("IMAGE_DIGEST")
+    image_uri = _env_value("IMAGE_URI")
     if not git_sha:
         return {
             "accepted": False,
@@ -216,22 +296,76 @@ def request_release_promote(*, device: dict[str, Any], target_git_sha: str) -> d
             "execution_status": "rejected",
             "history": None,
         }
+    if not image_digest or image_digest == "未設定":
+        return {
+            "accepted": False,
+            "message": "target_image_digest is required",
+            "execution_status": "rejected",
+            "history": None,
+        }
 
-    failure = "本番リリース実行基盤は未実装です（設定値のみでは実行できません）"
+    execution_backend = _env_value("PRODUCTION_OPERATION_EXECUTOR") or "unimplemented"
+    if not _execution_backend_implemented():
+        failure = "本番リリース実行基盤は未実装です（PRODUCTION_OPERATION_EXECUTOR=github-actions が必要です）"
+        item = _history_item(
+            operation_type="promote",
+            device=device,
+            target_git_sha=git_sha,
+            target_environment="production",
+            execution_status="not_configured",
+            failure_reason=failure,
+            execution_backend=execution_backend,
+            image_uri=image_uri,
+            image_digest=image_digest,
+        )
+        _append_history(item)
+        return {
+            "accepted": False,
+            "message": failure,
+            "execution_status": "not_configured",
+            "history": item,
+        }
+
+    try:
+        workflow = _dispatch_github_workflow(git_sha=git_sha, image_digest=image_digest)
+    except Exception as exc:
+        failure = str(exc)
+        item = _history_item(
+            operation_type="promote",
+            device=device,
+            target_git_sha=git_sha,
+            target_environment="production",
+            execution_status="dispatch_failed",
+            failure_reason=failure,
+            execution_backend=execution_backend,
+            image_uri=image_uri,
+            image_digest=image_digest,
+        )
+        _append_history(item)
+        return {
+            "accepted": False,
+            "message": "本番リリース workflow の起動に失敗しました",
+            "execution_status": "dispatch_failed",
+            "history": item,
+        }
+
     item = _history_item(
         operation_type="promote",
         device=device,
         target_git_sha=git_sha,
         target_environment="production",
-        execution_status="not_configured",
-        failure_reason=failure,
-        execution_backend=_env_value("PRODUCTION_OPERATION_EXECUTOR") or "unimplemented",
+        execution_status="queued",
+        failure_reason="",
+        execution_backend=execution_backend,
+        image_uri=image_uri,
+        image_digest=image_digest,
+        workflow_run_id=workflow,
     )
     _append_history(item)
     return {
-        "accepted": False,
-        "message": failure,
-        "execution_status": "not_configured",
+        "accepted": True,
+        "message": "本番リリース workflow を起動しました",
+        "execution_status": "queued",
         "history": item,
     }
 
