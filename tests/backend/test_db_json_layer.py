@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import pytest
 
 from src.backend.core import db_runtime
+from src.backend.services import production_ops_service
 
 pytestmark = pytest.mark.db_profile
 
@@ -444,3 +445,78 @@ def test_run_db_startup_self_check_raises_when_connection_fails(backend_env, mon
 
     with pytest.raises(RuntimeError, match="DB startup self-check failed"):
         backend_env.run_db_startup_self_check()
+
+
+def test_production_ops_environment_status_reports_deploy_metadata(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    monkeypatch.setenv("PROMOTE_PRODUCTION_WORKFLOW", "promote-production.yml")
+    monkeypatch.setenv("PROMOTE_PRODUCTION_REF", "main")
+    monkeypatch.setenv("GIT_SHA", "abc123")
+    monkeypatch.setenv("BUILD_TIMESTAMP", "2026-07-10T00:00:00Z")
+    monkeypatch.setenv("IMAGE_URI", "asia-docker.pkg.dev/project/repo/app:abc123")
+    monkeypatch.setenv("IMAGE_DIGEST", "sha256:abc")
+    monkeypatch.setenv("CLOUD_RUN_SERVICE", "kanade-orchestra-test")
+    monkeypatch.setenv("CLOUD_RUN_REVISION", "kanade-orchestra-test-00001")
+
+    status = production_ops_service.environment_status()
+
+    assert status["app_env"] == "test"
+    assert status["can_manage_operations"] is True
+    assert status["execution_backend_implemented"] is True
+    assert status["promotion_dispatch"]["configured"] is True
+    assert status["deploy_info"] == {
+        "git_sha": "abc123",
+        "build_time": "2026-07-10T00:00:00Z",
+        "image_uri": "asia-docker.pkg.dev/project/repo/app:abc123",
+        "image_digest": "sha256:abc",
+        "cloud_run_service": "kanade-orchestra-test",
+        "cloud_run_revision": "kanade-orchestra-test-00001",
+    }
+
+
+def test_production_ops_promote_rejects_missing_image_digest(monkeypatch):
+    monkeypatch.delenv("IMAGE_DIGEST", raising=False)
+
+    result = production_ops_service.request_release_promote(
+        device={"device_id": "dev-system", "permission": "システム管理者"},
+        target_git_sha="abc123",
+        target_image_digest="",
+    )
+
+    assert result == {
+        "accepted": False,
+        "message": "target_image_digest is required",
+        "execution_status": "rejected",
+        "history": None,
+    }
+
+
+def test_production_ops_promote_records_dispatch_failure(monkeypatch):
+    saved_histories: list[dict] = []
+
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(production_ops_service, "load_json_data", lambda name: list(saved_histories))
+    monkeypatch.setattr(
+        production_ops_service,
+        "save_json_data",
+        lambda name, rows: saved_histories.clear() or saved_histories.extend(rows),
+    )
+
+    result = production_ops_service.request_release_promote(
+        device={"device_id": "dev-system", "member_id": 1, "member_name": "System"},
+        target_git_sha="abc123",
+        target_image_digest="sha256:abc",
+    )
+
+    assert result["accepted"] is False
+    assert result["execution_status"] == "dispatch_failed"
+    assert result["history"]["target_git_sha"] == "abc123"
+    assert result["history"]["image_digest"] == "sha256:abc"
+    assert result["history"]["execution_status"] == "dispatch_failed"
+    assert saved_histories == [result["history"]]
