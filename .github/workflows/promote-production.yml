@@ -97,7 +97,6 @@ jobs:
           PROD_DB_HOST: ${{ secrets.PROD_DB_HOST }}
           PROD_DB_NAME: ${{ vars.PROD_DB_NAME }}
           PROD_DB_USER: ${{ secrets.PROD_DB_USER }}
-          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
         run: |
           set -euo pipefail
           BUILD_TIMESTAMP="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -106,13 +105,13 @@ jobs:
           if [ -n "${PROD_DB_URL:-}" ]; then
             ENV_VARS="${ENV_VARS},DB_URL=${PROD_DB_URL}"
           else
-            for name in PROD_DB_HOST PROD_DB_NAME PROD_DB_USER PROD_DB_PASSWORD; do
+            for name in PROD_DB_HOST PROD_DB_NAME PROD_DB_USER; do
               if [ -z "${!name:-}" ]; then
-                echo "::error::Set PROD_DB_URL or PROD_DB_HOST/PROD_DB_NAME/PROD_DB_USER/PROD_DB_PASSWORD."
+                echo "::error::Set PROD_DB_URL or PROD_DB_HOST/PROD_DB_NAME/PROD_DB_USER."
                 exit 1
               fi
             done
-            ENV_VARS="${ENV_VARS},DB_HOST=${PROD_DB_HOST},DB_NAME=${PROD_DB_NAME},DB_USER=${PROD_DB_USER},DB_PASSWORD=${PROD_DB_PASSWORD}"
+            ENV_VARS="${ENV_VARS},DB_HOST=${PROD_DB_HOST},DB_NAME=${PROD_DB_NAME},DB_USER=${PROD_DB_USER}"
           fi
 
           gcloud run deploy "${PROD_CLOUD_RUN_SERVICE}" \
@@ -120,4 +119,5 @@ jobs:
             --region "${GCP_REGION}" \
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
+            --update-secrets "DB_PASSWORD=kanade-portal-db-password:latest" \
             --quiet
