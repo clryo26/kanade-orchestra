@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timezone
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
 from uuid import uuid4
 
 from ..core.config import app_env_for_production_operations, production_operations_allowed_env
@@ -130,6 +130,117 @@ def _dispatch_sync_prod_to_test_workflow(
     )
 
 
+def _github_api_headers(config: dict[str, str]) -> dict[str, str]:
+    return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {config['token']}",
+        "User-Agent": "kanade-orchestra-portal-release",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def _fetch_github_workflow_runs(config: dict[str, str]) -> list[dict[str, Any]]:
+    missing = _github_dispatch_config_missing(config)
+    if missing:
+        raise RuntimeError(f"GitHub Actions settings are missing: {', '.join(missing)}")
+
+    workflow = parse.quote(config["workflow"], safe="")
+    url = (
+        "https://api.github.com/repos/"
+        f"{config['repository']}/actions/workflows/{workflow}/runs"
+        "?event=workflow_dispatch&per_page=50"
+    )
+    req = request.Request(url, headers=_github_api_headers(config), method="GET")
+    try:
+        with request.urlopen(req, timeout=10) as response:
+            if response.status != 200:
+                raise RuntimeError(f"GitHub workflow runs returned HTTP {response.status}")
+            payload = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"GitHub workflow runs failed with HTTP {exc.code}: {detail}"
+        ) from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"GitHub workflow runs failed: {exc.reason}") from exc
+
+    runs = payload.get("workflow_runs") if isinstance(payload, dict) else None
+    return runs if isinstance(runs, list) else []
+
+
+def _workflow_run_matches_operation(run: dict[str, Any], operation_id: str) -> bool:
+    if not operation_id:
+        return False
+    for key in ("display_title", "name", "run_number", "html_url"):
+        value = str(run.get(key) or "")
+        if operation_id in value:
+            return True
+    return False
+
+
+def _execution_status_from_github_run(run: dict[str, Any]) -> str:
+    status = str(run.get("status") or "").lower()
+    conclusion = str(run.get("conclusion") or "").lower()
+    if status == "completed":
+        return "success" if conclusion == "success" else "failed"
+    if status == "in_progress":
+        return "running"
+    if status == "queued":
+        return "queued"
+    return "running" if status else "queued"
+
+
+def _apply_github_run_to_history(item: dict[str, Any], run: dict[str, Any]) -> bool:
+    previous = dict(item)
+    execution_status = _execution_status_from_github_run(run)
+    conclusion = str(run.get("conclusion") or "").lower()
+
+    item["execution_status"] = execution_status
+    item["workflow_run_id"] = str(run.get("id") or "")
+    item["workflow_run_url"] = str(run.get("html_url") or "")
+    item["updated_at"] = str(
+        run.get("updated_at") or run.get("run_started_at") or run.get("created_at") or _now_iso()
+    )
+
+    if execution_status == "failed":
+        item["failure_reason"] = f"GitHub Actions concluded: {conclusion or 'unknown'}"
+    elif execution_status == "success":
+        item["failure_reason"] = ""
+        item["completed_at"] = str(run.get("updated_at") or _now_iso())
+
+    return item != previous
+
+
+def _refresh_sync_histories_from_github() -> None:
+    histories = _load_histories()
+    pending = [
+        item
+        for item in histories
+        if str(item.get("operation_type") or "") == "prod_to_test_sync"
+        and str(item.get("execution_status") or "") in {"queued", "running"}
+    ]
+    if not pending:
+        return
+
+    try:
+        runs = _fetch_github_workflow_runs(_sync_github_dispatch_config())
+    except Exception:
+        return
+
+    changed = False
+    for item in pending:
+        operation_id = str(item.get("operation_id") or "")
+        matched = next(
+            (run for run in runs if isinstance(run, dict) and _workflow_run_matches_operation(run, operation_id)),
+            None,
+        )
+        if matched and _apply_github_run_to_history(item, matched):
+            changed = True
+
+    if changed:
+        _save_histories(histories)
+
+
 def _load_histories() -> list[dict[str, Any]]:
     loaded = load_json_data(HISTORY_COLLECTION)
     return loaded if isinstance(loaded, list) else []
@@ -167,6 +278,9 @@ def _history_item(
     image_digest: str = "",
     workflow_run_id: str = "",
     operation_id: str = "",
+    workflow_run_url: str = "",
+    completed_at: str = "",
+    backup_path: str = "",
 ) -> dict[str, Any]:
     now = _now_iso()
     requested_by_member_id = str(device.get("member_id") or "")
@@ -190,7 +304,10 @@ def _history_item(
         "hidden_user": bool(device.get("hidden_user")),
         "request_source": "system_environment_management",
         "workflow_run_id": workflow_run_id,
+        "workflow_run_url": workflow_run_url,
         "cloud_run_job_execution_id": "",
+        "completed_at": completed_at,
+        "backup_path": backup_path,
         "created_at": now,
         "updated_at": now,
     }
@@ -305,6 +422,7 @@ def list_release_history() -> dict[str, Any]:
 
 
 def list_sync_history() -> dict[str, Any]:
+    _refresh_sync_histories_from_github()
     items = _list_histories("prod_to_test_sync")
     return {
         "items": items,

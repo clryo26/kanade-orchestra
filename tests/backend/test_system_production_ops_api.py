@@ -237,6 +237,7 @@ def test_sync_queues_github_actions_dispatch_with_operation_inputs(client, monke
         return "sync-prod-to-test.yml"
 
     monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    monkeypatch.setattr(service, "_fetch_github_workflow_runs", lambda config: [])
     response = _sync(client, headers, "sync-queued-sha")
 
     assert response.status_code == 200
@@ -260,6 +261,154 @@ def test_sync_queues_github_actions_dispatch_with_operation_inputs(client, monke
     assert sync_items[0].get("operation_id") == history.get("operation_id")
     assert sync_items[0].get("execution_status") == "queued"
     assert sync_items[0].get("workflow_run_id") == ""
+
+
+def test_sync_history_refreshes_queued_run_to_running(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    dispatched: dict[str, str] = {}
+
+    def fake_dispatch(*, operation_id: str, target_git_sha: str, dry_run: bool) -> str:
+        dispatched["operation_id"] = operation_id
+        return "sync-prod-to-test.yml"
+
+    def fake_runs(config):
+        return [
+            {
+                "id": 123,
+                "html_url": "https://github.example/runs/123",
+                "display_title": f"prod-to-test-sync-{dispatched['operation_id']}",
+                "status": "in_progress",
+                "conclusion": None,
+                "run_started_at": "2026-07-11T01:00:00Z",
+                "created_at": "2026-07-11T00:59:00Z",
+                "updated_at": "2026-07-11T01:01:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    monkeypatch.setattr(service, "_fetch_github_workflow_runs", fake_runs)
+    assert _sync(client, headers, "sync-running-sha").status_code == 200
+
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items[0].get("execution_status") == "running"
+    assert sync_items[0].get("workflow_run_id") == "123"
+    assert sync_items[0].get("workflow_run_url") == "https://github.example/runs/123"
+
+
+def test_sync_history_refreshes_completed_success(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    dispatched: dict[str, str] = {}
+
+    def fake_dispatch(*, operation_id: str, target_git_sha: str, dry_run: bool) -> str:
+        dispatched["operation_id"] = operation_id
+        return "sync-prod-to-test.yml"
+
+    def fake_runs(config):
+        return [
+            {
+                "id": 124,
+                "html_url": "https://github.example/runs/124",
+                "display_title": f"prod-to-test-sync-{dispatched['operation_id']}",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": "2026-07-11T00:59:00Z",
+                "updated_at": "2026-07-11T01:02:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    monkeypatch.setattr(service, "_fetch_github_workflow_runs", fake_runs)
+    assert _sync(client, headers, "sync-success-sha").status_code == 200
+
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items[0].get("execution_status") == "success"
+    assert sync_items[0].get("completed_at") == "2026-07-11T01:02:00Z"
+    assert sync_items[0].get("workflow_run_id") == "124"
+    assert sync_items[0].get("workflow_run_url") == "https://github.example/runs/124"
+    assert sync_items[0].get("failure_reason") == ""
+
+
+def test_sync_history_refreshes_completed_failure(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    dispatched: dict[str, str] = {}
+
+    def fake_dispatch(*, operation_id: str, target_git_sha: str, dry_run: bool) -> str:
+        dispatched["operation_id"] = operation_id
+        return "sync-prod-to-test.yml"
+
+    def fake_runs(config):
+        return [
+            {
+                "id": 125,
+                "html_url": "https://github.example/runs/125",
+                "display_title": f"prod-to-test-sync-{dispatched['operation_id']}",
+                "status": "completed",
+                "conclusion": "failure",
+                "created_at": "2026-07-11T00:59:00Z",
+                "updated_at": "2026-07-11T01:03:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    monkeypatch.setattr(service, "_fetch_github_workflow_runs", fake_runs)
+    assert _sync(client, headers, "sync-failed-run-sha").status_code == 200
+
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items[0].get("execution_status") == "failed"
+    assert sync_items[0].get("failure_reason") == "GitHub Actions concluded: failure"
+    assert sync_items[0].get("workflow_run_id") == "125"
+    assert sync_items[0].get("workflow_run_url") == "https://github.example/runs/125"
+
+
+def test_sync_history_refresh_failure_keeps_queued_history(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    def fake_dispatch(*, operation_id: str, target_git_sha: str, dry_run: bool) -> str:
+        return "sync-prod-to-test.yml"
+
+    def fake_runs(config):
+        raise RuntimeError("GitHub API unavailable")
+
+    monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    monkeypatch.setattr(service, "_fetch_github_workflow_runs", fake_runs)
+    assert _sync(client, headers, "sync-api-failure-sha").status_code == 200
+
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items[0].get("execution_status") == "queued"
+    assert sync_items[0].get("failure_reason") == ""
+    assert sync_items[0].get("workflow_run_id") == ""
+    assert sync_items[0].get("workflow_run_url") == ""
 
 
 def test_sync_dispatch_failure_records_failed_history(client, monkeypatch):

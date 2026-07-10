@@ -1,4 +1,5 @@
 name: Sync Prod to Test (Template)
+run-name: prod-to-test-sync-${{ inputs.operation_id }}
 
 on:
   workflow_dispatch:
