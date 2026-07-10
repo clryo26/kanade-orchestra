@@ -34,6 +34,7 @@ jobs:
           ref: ${{ inputs.target_git_sha }}
 
       - name: Validate required Variables/Secrets
+        if: ${{ inputs.dry_run != 'true' }}
         shell: bash
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -60,12 +61,14 @@ jobs:
           fi
 
       - name: Authenticate to Google Cloud via OIDC/WIF
+        if: ${{ inputs.dry_run != 'true' }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud SDK
+        if: ${{ inputs.dry_run != 'true' }}
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Sync direction policy note
