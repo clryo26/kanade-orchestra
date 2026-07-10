@@ -3,10 +3,22 @@ name: Sync Prod to Test (Template)
 on:
   workflow_dispatch:
     inputs:
-      source_sha:
+      operation_id:
+        description: "Production operation history id"
+        required: true
+        type: string
+      target_git_sha:
         description: "Source Git SHA for sync metadata"
         required: true
         type: string
+      dry_run:
+        description: "Validate only without DB/GCS writes"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 permissions:
   contents: read
@@ -19,7 +31,7 @@ jobs:
       - name: Checkout source SHA
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ inputs.target_git_sha }}
 
       - name: Validate required Variables/Secrets
         shell: bash
@@ -59,6 +71,9 @@ jobs:
       - name: Sync direction policy note
         shell: bash
         run: |
+          echo "operation_id=${{ inputs.operation_id }}"
+          echo "target_git_sha=${{ inputs.target_git_sha }}"
+          echo "dry_run=${{ inputs.dry_run }}"
           echo "Allowed direction only: production -> test"
           echo "Reverse sync (test -> production) must not be implemented."
 
@@ -66,5 +81,6 @@ jobs:
         shell: bash
         run: |
           echo "This workflow is a template for prod-to-test sync preparation."
+          echo "workflow_dispatch wiring is enabled, but DB/GCS sync remains disabled."
           echo "Real Cloud SQL/GCS sync command is intentionally disabled in this phase."
           exit 1

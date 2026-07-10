@@ -85,7 +85,10 @@ def test_environment_status_rejects_hidden_admin(client, monkeypatch):
 
     response = client.get("/api/system/environment/status", headers={"X-Device-Id": "dev-hidden"})
     assert response.status_code == 403
-    assert response.json().get("detail") == "隠しシステム管理者では本番リリース・本番同期を実行できません"
+    assert (
+        response.json().get("detail")
+        == "隠しシステム管理者では本番リリース・本番同期を実行できません"
+    )
 
 
 def test_environment_status_accepts_normal_system_admin_in_test(client, monkeypatch):
@@ -160,7 +163,8 @@ def test_promote_and_sync_fail_without_executor_and_record_history(client, monke
     assert sync_history.status_code == 200
     sync_items = sync_history.json().get("items") or []
     assert sync_items
-    assert sync_items[0].get("execution_status") == "not_configured"
+    assert sync_items[0].get("execution_status") == "failed"
+    assert sync_items[0].get("failure_reason")
 
 
 def test_promote_and_sync_do_not_queue_without_github_dispatch_config(client, monkeypatch):
@@ -174,12 +178,13 @@ def test_promote_and_sync_do_not_queue_without_github_dispatch_config(client, mo
     assert promote.status_code == 503
     assert sync.status_code == 503
 
-    release_items = client.get("/api/system/release/history", headers=headers).json().get(
-        "items"
-    ) or []
+    release_items = (
+        client.get("/api/system/release/history", headers=headers).json().get("items") or []
+    )
     sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
     assert release_items[0].get("execution_status") == "dispatch_failed"
-    assert sync_items[0].get("execution_status") == "not_configured"
+    assert sync_items[0].get("execution_status") == "failed"
+    assert sync_items[0].get("failure_reason")
 
 
 def test_promote_queues_github_actions_dispatch(client, monkeypatch):
@@ -209,6 +214,76 @@ def test_promote_queues_github_actions_dispatch(client, monkeypatch):
     assert payload.get("accepted") is True
     assert payload.get("execution_status") == "queued"
     assert dispatched == {"git_sha": "queued-sha", "image_digest": "sha256:queued"}
+
+
+def test_sync_queues_github_actions_dispatch_with_operation_inputs(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    monkeypatch.setenv("SYNC_PROD_TO_TEST_WORKFLOW", "sync-prod-to-test.yml")
+    monkeypatch.setenv("SYNC_PROD_TO_TEST_REF", "main")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    dispatched: dict[str, object] = {}
+
+    def fake_dispatch(*, operation_id: str, target_git_sha: str, dry_run: bool) -> str:
+        dispatched["operation_id"] = operation_id
+        dispatched["target_git_sha"] = target_git_sha
+        dispatched["dry_run"] = dry_run
+        return "sync-prod-to-test.yml"
+
+    monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    response = _sync(client, headers, "sync-queued-sha")
+
+    assert response.status_code == 200
+    payload = response.json()
+    history = payload.get("history") or {}
+    assert payload.get("accepted") is True
+    assert payload.get("execution_status") == "queued"
+    assert history.get("operation_type") == "prod_to_test_sync"
+    assert history.get("execution_status") == "queued"
+    assert history.get("execution_backend") == "github-actions"
+    assert history.get("target_git_sha") == "sync-queued-sha"
+    assert history.get("operation_id")
+    assert history.get("workflow_run_id") == ""
+    assert dispatched == {
+        "operation_id": history.get("operation_id"),
+        "target_git_sha": "sync-queued-sha",
+        "dry_run": True,
+    }
+
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items[0].get("operation_id") == history.get("operation_id")
+    assert sync_items[0].get("execution_status") == "queued"
+    assert sync_items[0].get("workflow_run_id") == ""
+
+
+def test_sync_dispatch_failure_records_failed_history(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    from src.backend.services import production_ops_service as service
+
+    def fake_dispatch(*, operation_id: str, target_git_sha: str, dry_run: bool) -> str:
+        raise RuntimeError("dispatch failed for test")
+
+    monkeypatch.setattr(service, "_dispatch_sync_prod_to_test_workflow", fake_dispatch)
+    response = _sync(client, headers, "sync-failed-sha")
+
+    assert response.status_code == 503
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items[0].get("operation_type") == "prod_to_test_sync"
+    assert sync_items[0].get("execution_status") == "failed"
+    assert sync_items[0].get("target_git_sha") == "sync-failed-sha"
+    assert sync_items[0].get("failure_reason") == "dispatch failed for test"
 
 
 def test_promote_rejects_empty_image_digest(client, monkeypatch):

@@ -55,22 +55,27 @@ def _github_dispatch_config() -> dict[str, str]:
     }
 
 
+def _sync_github_dispatch_config() -> dict[str, str]:
+    return {
+        "repository": _env_value("GITHUB_REPOSITORY"),
+        "token": _env_value("GITHUB_ACTIONS_TOKEN") or _env_value("GITHUB_TOKEN"),
+        "workflow": _env_value("SYNC_PROD_TO_TEST_WORKFLOW") or "sync-prod-to-test.yml",
+        "ref": _env_value("SYNC_PROD_TO_TEST_REF") or "main",
+    }
+
+
 def _github_dispatch_config_missing(config: dict[str, str]) -> list[str]:
     return [name for name, value in config.items() if not value]
 
 
-def _dispatch_github_workflow(*, git_sha: str, image_digest: str) -> str:
-    config = _github_dispatch_config()
+def _dispatch_github_workflow_inputs(*, config: dict[str, str], inputs: dict[str, str]) -> str:
     missing = _github_dispatch_config_missing(config)
     if missing:
         raise RuntimeError(f"GitHub Actions dispatch settings are missing: {', '.join(missing)}")
 
     payload = {
         "ref": config["ref"],
-        "inputs": {
-            "tested_sha": git_sha,
-            "tested_image_digest": image_digest,
-        },
+        "inputs": inputs,
     }
     body = json.dumps(payload).encode("utf-8")
     url = (
@@ -97,6 +102,32 @@ def _dispatch_github_workflow(*, git_sha: str, image_digest: str) -> str:
     except error.URLError as exc:
         raise RuntimeError(f"GitHub workflow dispatch failed: {exc.reason}") from exc
     return config["workflow"]
+
+
+def _dispatch_github_workflow(*, git_sha: str, image_digest: str) -> str:
+    return _dispatch_github_workflow_inputs(
+        config=_github_dispatch_config(),
+        inputs={
+            "tested_sha": git_sha,
+            "tested_image_digest": image_digest,
+        },
+    )
+
+
+def _dispatch_sync_prod_to_test_workflow(
+    *,
+    operation_id: str,
+    target_git_sha: str,
+    dry_run: bool,
+) -> str:
+    return _dispatch_github_workflow_inputs(
+        config=_sync_github_dispatch_config(),
+        inputs={
+            "operation_id": operation_id,
+            "target_git_sha": target_git_sha,
+            "dry_run": "true" if dry_run else "false",
+        },
+    )
 
 
 def _load_histories() -> list[dict[str, Any]]:
@@ -135,13 +166,14 @@ def _history_item(
     image_uri: str = "",
     image_digest: str = "",
     workflow_run_id: str = "",
+    operation_id: str = "",
 ) -> dict[str, Any]:
     now = _now_iso()
     requested_by_member_id = str(device.get("member_id") or "")
     requested_by_member_name = str(device.get("member_name") or "")
     requested_by_permission = str(device.get("permission") or "")
     return {
-        "operation_id": str(uuid4()),
+        "operation_id": operation_id or str(uuid4()),
         "operation_type": operation_type,
         "requested_at": now,
         "requested_by_member_id": requested_by_member_id,
@@ -369,23 +401,79 @@ def request_release_promote(
         "history": item,
     }
 
-
 def request_sync_prod_to_test(*, device: dict[str, Any], target_git_sha: str) -> dict[str, Any]:
     git_sha = str(target_git_sha or "").strip() or _env_value("GIT_SHA")
-    failure = "本番データ同期実行基盤は未実装です（設定値のみでは実行できません）"
+    if not git_sha:
+        return {
+            "accepted": False,
+            "message": "target_git_sha is required",
+            "execution_status": "rejected",
+            "history": None,
+        }
+
+    operation_id = str(uuid4())
+    dry_run = True
+    execution_backend = _env_value("PRODUCTION_OPERATION_EXECUTOR") or "unimplemented"
+    if not _execution_backend_implemented():
+        failure = "PRODUCTION_OPERATION_EXECUTOR=github-actions is required"
+        item = _history_item(
+            operation_id=operation_id,
+            operation_type="prod_to_test_sync",
+            device=device,
+            target_git_sha=git_sha,
+            target_environment="test",
+            execution_status="failed",
+            failure_reason=failure,
+            execution_backend=execution_backend,
+        )
+        _append_history(item)
+        return {
+            "accepted": False,
+            "message": failure,
+            "execution_status": "failed",
+            "history": item,
+        }
+
+    try:
+        _dispatch_sync_prod_to_test_workflow(
+            operation_id=operation_id,
+            target_git_sha=git_sha,
+            dry_run=dry_run,
+        )
+    except Exception as exc:
+        failure = str(exc)
+        item = _history_item(
+            operation_id=operation_id,
+            operation_type="prod_to_test_sync",
+            device=device,
+            target_git_sha=git_sha,
+            target_environment="test",
+            execution_status="failed",
+            failure_reason=failure,
+            execution_backend=execution_backend,
+        )
+        _append_history(item)
+        return {
+            "accepted": False,
+            "message": "production-to-test sync workflow dispatch failed",
+            "execution_status": "failed",
+            "history": item,
+        }
+
     item = _history_item(
+        operation_id=operation_id,
         operation_type="prod_to_test_sync",
         device=device,
         target_git_sha=git_sha,
         target_environment="test",
-        execution_status="not_configured",
-        failure_reason=failure,
-        execution_backend=_env_value("PRODUCTION_OPERATION_EXECUTOR") or "unimplemented",
+        execution_status="queued",
+        failure_reason="",
+        execution_backend=execution_backend,
     )
     _append_history(item)
     return {
-        "accepted": False,
-        "message": failure,
-        "execution_status": "not_configured",
+        "accepted": True,
+        "message": "production-to-test sync workflow queued",
+        "execution_status": "queued",
         "history": item,
     }
