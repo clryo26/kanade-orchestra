@@ -52,10 +52,13 @@ TARGET_WORKFLOWS = {
             "GCS_BUCKET_TEST",
             "DEPLOY_SERVICE_ACCOUNT",
             "WIF_PROVIDER",
+            "sync_prod_to_test_preflight.py",
         ],
         "required_phrases": [
             "Allowed direction only: production -> test",
             "Reverse sync (test -> production) must not be implemented.",
+            "gcloud sql instances describe",
+            "gcloud storage buckets describe",
             "Template guard",
         ],
     },

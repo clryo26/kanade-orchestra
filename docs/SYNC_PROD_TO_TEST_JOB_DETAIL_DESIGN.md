@@ -196,3 +196,14 @@
 - GCS バケット実名称
 - GitHub Variables / Secrets の実登録値
 - GitHub Actions の実行結果
+
+## 29. Stage 3-1 Preflight Policy
+
+Stage 3-1 adds a preflight step before real prod-to-test DB/GCS sync.
+
+- The preflight runs only when `dry_run=false`.
+- The preflight validates required settings, prod/test DB separation, prod/test GCS bucket separation, fixed DB exclusion tables, fixed GCS target/exclusion prefixes, and the deterministic backup path.
+- The deterministic backup path is `gs://<GCS_BUCKET_TEST>/backups/prod-to-test/<operation_id>/`.
+- The workflow may run read-only checks with `gcloud sql instances describe` and `gcloud storage buckets describe`.
+- The preflight must not run DB sync, GCS sync, test DB backup creation, test GCS backup creation, delete operations, restore operations, or any write operation.
+- `Template guard` remains enabled after preflight, so real sync is still intentionally blocked.

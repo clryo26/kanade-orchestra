@@ -72,6 +72,36 @@ jobs:
         if: ${{ inputs.dry_run != 'true' }}
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Run prod-to-test preflight
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        env:
+          OPERATION_ID: ${{ inputs.operation_id }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          DB_NAME_PROD: ${{ vars.DB_NAME_PROD }}
+          DB_NAME_TEST: ${{ vars.DB_NAME_TEST }}
+          GCS_BUCKET_PROD: ${{ vars.GCS_BUCKET_PROD }}
+          GCS_BUCKET_TEST: ${{ vars.GCS_BUCKET_TEST }}
+        run: |
+          set -euo pipefail
+          python scripts/sync_prod_to_test_preflight.py
+
+      - name: Verify GCP resources for prod-to-test sync
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          GCS_BUCKET_PROD: ${{ vars.GCS_BUCKET_PROD }}
+          GCS_BUCKET_TEST: ${{ vars.GCS_BUCKET_TEST }}
+        run: |
+          set -euo pipefail
+          gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" --project "${GCP_PROJECT_ID}"
+          gcloud storage buckets describe "gs://${GCS_BUCKET_PROD}"
+          gcloud storage buckets describe "gs://${GCS_BUCKET_TEST}"
+
       - name: Sync direction policy note
         shell: bash
         run: |
