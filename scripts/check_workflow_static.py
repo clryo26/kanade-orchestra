@@ -17,6 +17,8 @@ TARGET_WORKFLOWS = {
             "TEST_GCS_BUCKET",
             "DEPLOY_SERVICE_ACCOUNT",
             "WIF_PROVIDER",
+            "PRODUCTION_OPERATION_EXECUTOR",
+            "GITHUB_REPOSITORY",
         ],
         "required_phrases": [
             "docker build",
