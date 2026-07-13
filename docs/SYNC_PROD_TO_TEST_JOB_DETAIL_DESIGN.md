@@ -175,7 +175,8 @@
 ## 25. Variables / Secrets 方針
 実値は未確定のため、本書ではキー名のみ管理する。
 - Variables: GCP_PROJECT_ID, GCP_REGION, ARTIFACT_REGISTRY_REPOSITORY, TEST_CLOUD_RUN_SERVICE, PROD_CLOUD_RUN_SERVICE, WIF_PROVIDER, CLOUD_SQL_INSTANCE, PROD_DB_NAME, TEST_DB_NAME, PROD_GCS_BUCKET, TEST_GCS_BUCKET
-- Secrets: DEPLOY_SERVICE_ACCOUNT
+- Secrets: DEPLOY_SERVICE_ACCOUNT, PROD_DB_USER, TEST_DB_USER
+- Secret Manager: kanade-portal-db-password (database password; not stored as a GitHub Secret)
 
 ## 26. 運用チェックリスト
 - 実行者が許可権限か
@@ -207,3 +208,25 @@ Stage 3-1 adds a preflight step before real prod-to-test DB/GCS sync.
 - The workflow may run read-only checks with `gcloud sql instances describe` and `gcloud storage buckets describe`.
 - The preflight must not run DB sync, GCS sync, test DB backup creation, test GCS backup creation, delete operations, restore operations, or any write operation.
 - `Template guard` remains enabled after preflight, so real sync is still intentionally blocked.
+
+## 30. Stage 3-2 Read-only Database Connection Verification
+
+Stage 3-2 verifies connectivity to the production and test logical databases without changing
+either environment.
+
+- GitHub Actions connects through a pinned Cloud SQL Auth Proxy v2 binary to the production and
+  test databases in the same Cloud SQL instance.
+- The database password is obtained from Secret Manager as `kanade-portal-db-password`. Production
+  and test database user names are supplied by the `PROD_DB_USER` and `TEST_DB_USER` GitHub Secrets.
+- The password is registered with the GitHub Actions log masker before use and is not written to
+  `$GITHUB_ENV` or printed as a connection string.
+- Every connection starts with `options=-c default_transaction_read_only=on`.
+- The only SQL statements executed are `SHOW transaction_read_only`,
+  `SELECT current_database()`, and `SELECT 1`.
+- Connections are explicitly rolled back and closed. No commit is performed.
+- Proxy startup, finite readiness checking, secret retrieval, verification, and proxy cleanup run
+  in one shell step so the cleanup trap always stops the proxy.
+- DB/GCS sync, backup, restore, DDL, DML, table enumeration, and row-count queries remain
+  unimplemented.
+- `Template guard` and the final `exit 1` remain enabled, so synchronization is still blocked.
+- Stage 3-2 does not change GitHub, GCP, DB, or GCS resources; it only performs read-only checks.

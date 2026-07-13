@@ -12,7 +12,48 @@ EXCLUDED_DB_TABLES = (
     "auth_devices",
     "access_logs",
     "audit_logs",
+    "portal_json_collections",
+)
+
+EXCLUDED_DB_COLLECTIONS = (
     "production_operation_histories",
+)
+
+TARGET_DB_TABLES = (
+    "performances",
+    "performance_pieces",
+    "schedules",
+    "announcements",
+    "events",
+    "members",
+    "absences",
+    "event_responses",
+    "date_adjustments",
+    "date_adjustment_candidates",
+    "date_adjustment_responses",
+    "piece_infos",
+    "practice_instructions",
+    "performance_day_infos",
+    "payments",
+    "payment_performance_fees",
+    "castings",
+    "casting_members",
+    "casting_extras",
+    "desired_pieces",
+    "desired_piece_votes",
+    "promotions",
+    "albums",
+    "album_photos",
+    "part_settings",
+    "venue_settings",
+    "flyer_distributions",
+    "flyer_distribution_assignments",
+    "org_settings",
+    "sns_settings",
+    "connection_settings",
+    "drive_files",
+    "recording_metadata",
+    "sheet_library",
 )
 
 GCS_TARGET_PREFIXES = (
@@ -59,7 +100,9 @@ class SyncPreflightConfig:
 class SyncPreflightResult:
     operation_id: str
     backup_path: str
+    target_db_tables: tuple[str, ...]
     excluded_db_tables: tuple[str, ...]
+    excluded_db_collections: tuple[str, ...]
     gcs_target_prefixes: tuple[str, ...]
     gcs_excluded_prefixes: tuple[str, ...]
 
@@ -109,7 +152,9 @@ def run_preflight(config: SyncPreflightConfig) -> SyncPreflightResult:
     return SyncPreflightResult(
         operation_id=config.operation_id,
         backup_path=build_backup_path(test_bucket, config.operation_id),
+        target_db_tables=TARGET_DB_TABLES,
         excluded_db_tables=EXCLUDED_DB_TABLES,
+        excluded_db_collections=EXCLUDED_DB_COLLECTIONS,
         gcs_target_prefixes=GCS_TARGET_PREFIXES,
         gcs_excluded_prefixes=GCS_EXCLUDED_PREFIXES,
     )

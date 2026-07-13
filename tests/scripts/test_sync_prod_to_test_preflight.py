@@ -49,12 +49,49 @@ def test_preflight_generates_fixed_backup_path_and_policy_lists():
     result = module.run_preflight(_valid_config(module))
 
     assert result.backup_path == "gs://kanade-test/backups/prod-to-test/sync-20260712-001/"
+    assert result.target_db_tables == (
+        "performances",
+        "performance_pieces",
+        "schedules",
+        "announcements",
+        "events",
+        "members",
+        "absences",
+        "event_responses",
+        "date_adjustments",
+        "date_adjustment_candidates",
+        "date_adjustment_responses",
+        "piece_infos",
+        "practice_instructions",
+        "performance_day_infos",
+        "payments",
+        "payment_performance_fees",
+        "castings",
+        "casting_members",
+        "casting_extras",
+        "desired_pieces",
+        "desired_piece_votes",
+        "promotions",
+        "albums",
+        "album_photos",
+        "part_settings",
+        "venue_settings",
+        "flyer_distributions",
+        "flyer_distribution_assignments",
+        "org_settings",
+        "sns_settings",
+        "connection_settings",
+        "drive_files",
+        "recording_metadata",
+        "sheet_library",
+    )
     assert result.excluded_db_tables == (
         "auth_devices",
         "access_logs",
         "audit_logs",
-        "production_operation_histories",
+        "portal_json_collections",
     )
+    assert result.excluded_db_collections == ("production_operation_histories",)
     assert result.gcs_target_prefixes == ("recordings/", "sheets/", "albums/", "promotion/")
     assert result.gcs_excluded_prefixes == ("auth/", "audit/", "sync-history/", "backups/")
 

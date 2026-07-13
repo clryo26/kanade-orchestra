@@ -47,10 +47,12 @@ jobs:
           GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
           WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
           DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+          PROD_DB_USER: ${{ secrets.PROD_DB_USER }}
+          TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
         run: |
           set -euo pipefail
           missing=0
-          for name in GCP_PROJECT_ID GCP_REGION CLOUD_SQL_INSTANCE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+          for name in GCP_PROJECT_ID GCP_REGION CLOUD_SQL_INSTANCE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT PROD_DB_USER TEST_DB_USER; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing GitHub Variable/Secret: $name"
@@ -101,6 +103,83 @@ jobs:
           gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" --project "${GCP_PROJECT_ID}"
           gcloud storage buckets describe "gs://${GCS_BUCKET_PROD}"
           gcloud storage buckets describe "gs://${GCS_BUCKET_TEST}"
+
+      - name: Setup Python for database connection verification
+        if: ${{ inputs.dry_run != 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install database verification dependency
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        run: python -m pip install "psycopg[binary]==3.2.9"
+
+      - name: Download Cloud SQL Auth Proxy
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --output cloud-sql-proxy \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.2/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+
+      - name: Verify prod and test database read-only connections
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
+          DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
+          DB_USER_PROD: ${{ secrets.PROD_DB_USER }}
+          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
+          DB_CONNECT_TIMEOUT: "10"
+        run: |
+          set -euo pipefail
+          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy.log"
+          ./cloud-sql-proxy \
+            --address 127.0.0.1 \
+            --port 5432 \
+            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
+            >"${proxy_log}" 2>&1 &
+          proxy_pid=$!
+
+          cleanup_proxy() {
+            kill "${proxy_pid}" 2>/dev/null || true
+            wait "${proxy_pid}" 2>/dev/null || true
+          }
+          trap cleanup_proxy EXIT
+
+          proxy_ready=false
+          for _ in {1..30}; do
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+              proxy_ready=true
+              break
+            fi
+            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "${proxy_ready}" != "true" ]; then
+            echo "::error::Cloud SQL Auth Proxy did not become ready"
+            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
+            exit 1
+          fi
+
+          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
+          if [ -z "${DB_PASSWORD}" ]; then
+            echo "::error::Database password secret is empty"
+            exit 1
+          fi
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD
+          python scripts/verify_prod_test_db_connections.py
 
       - name: Sync direction policy note
         shell: bash
