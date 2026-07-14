@@ -92,7 +92,17 @@ def test_preflight_generates_fixed_backup_path_and_policy_lists():
         "portal_json_collections",
     )
     assert result.excluded_db_collections == ("production_operation_histories",)
-    assert result.gcs_target_prefixes == ("recordings/", "sheets/", "albums/", "promotion/")
+    assert result.gcs_target_prefixes == ("sheets/", "albums/")
+    assert result.gcs_dynamic_prefix_policies == (
+        {
+            "asset_type": "recordings",
+            "prefix_pattern": "<YYYY-MM-DD>/",
+            "object_path_pattern": "<YYYY-MM-DD>/<曲名>/<ファイル名>",
+            "match_regex": r"^\d{4}-\d{2}-\d{2}/",
+        },
+    )
+    assert "recordings/" not in result.gcs_target_prefixes
+    assert "promotion/" not in result.gcs_target_prefixes
     assert result.gcs_excluded_prefixes == ("auth/", "audit/", "sync-history/", "backups/")
 
 

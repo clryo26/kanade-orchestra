@@ -475,6 +475,33 @@ def test_sync_exclusion_contains_operation_history_collection(client, monkeypatc
     assert "production_operation_histories" in excluded
 
 
+def test_environment_status_reports_actual_gcs_sync_policy(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    _seed(client, device_id="dev-system", permission="システム管理者")
+
+    response = client.get("/api/system/environment/status", headers={"X-Device-Id": "dev-system"})
+
+    assert response.status_code == 200
+    rules = response.json().get("sync_rules") or {}
+    assert rules.get("gcs_sync_target_prefixes") == ["sheets/", "albums/"]
+    assert rules.get("gcs_sync_dynamic_prefix_policies") == [
+        {
+            "asset_type": "recordings",
+            "prefix_pattern": "<YYYY-MM-DD>/",
+            "object_path_pattern": "<YYYY-MM-DD>/<曲名>/<ファイル名>",
+            "match_regex": r"^\d{4}-\d{2}-\d{2}/",
+        }
+    ]
+    assert "recordings/" not in rules.get("gcs_sync_target_prefixes", [])
+    assert "promotion/" not in rules.get("gcs_sync_target_prefixes", [])
+    assert rules.get("gcs_sync_excluded_prefixes") == [
+        "auth/",
+        "audit/",
+        "sync-history/",
+        "backups/",
+    ]
+
+
 def test_operation_history_collection_is_not_exposed_via_extra_api(client):
     response = client.get("/api/extra/production_operation_histories")
     assert response.status_code == 404

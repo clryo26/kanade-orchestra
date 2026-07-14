@@ -390,15 +390,23 @@ def environment_status() -> dict[str, Any]:
                 HISTORY_COLLECTION,
             ],
             "gcs_sync_target_prefixes": [
-                "recordings/",
                 "sheets/",
                 "albums/",
-                "promotion/",
+            ],
+            # 録音は固定ディレクトリではなく、バケット直下の日付を起点に保存する。
+            "gcs_sync_dynamic_prefix_policies": [
+                {
+                    "asset_type": "recordings",
+                    "prefix_pattern": "<YYYY-MM-DD>/",
+                    "object_path_pattern": "<YYYY-MM-DD>/<曲名>/<ファイル名>",
+                    "match_regex": r"^\d{4}-\d{2}-\d{2}/",
+                },
             ],
             "gcs_sync_excluded_prefixes": [
                 "auth/",
                 "audit/",
                 "sync-history/",
+                "backups/",
             ],
             "pre_sync_backup_requirements": [
                 "テストDBの同期前バックアップを必須化する",

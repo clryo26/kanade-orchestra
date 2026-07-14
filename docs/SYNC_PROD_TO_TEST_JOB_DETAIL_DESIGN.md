@@ -1,6 +1,6 @@
 # 本番→テスト同期 Job 詳細設計書
 
-最終更新: 2026-07-07
+最終更新: 2026-07-14
 
 ## 1. 目的
 本設計書は、本番環境のデータをテスト環境へ安全に同期するための詳細設計を定義する。
@@ -83,11 +83,16 @@
 - sheet_library
 
 ## 10. 同期対象 (GCS)
-同期対象プレフィックスは以下とする。
-- recordings/
+実バケットの保存構造に合わせ、固定同期対象プレフィックスは以下とする。
 - sheets/
 - albums/
-- promotion/
+
+録音は固定プレフィックスを持たず、バケット直下の `<YYYY-MM-DD>/` に保存される。
+動的同期対象は `^\d{4}-\d{2}-\d{2}/` に一致する先頭プレフィックスとし、
+オブジェクト形式は `<YYYY-MM-DD>/<曲名>/<ファイル名>` とする。
+
+`recordings/` と `promotion/` は同期対象として扱わない。`promotion/` は実バケットに存在せず、
+バックエンドにも専用GCSアップロード処理がないためである。
 
 ## 11. 同期除外 (DB)
 以下は同期除外とする。
@@ -101,6 +106,9 @@
 - auth/
 - audit/
 - sync-history/
+- backups/
+
+`app-data/` は JSON 互換データであり、上記のGCS資産同期対象には含めない。
 
 ## 13. データ整合性方針
 - 本番側は常に read-only ソースとして扱う。
@@ -203,7 +211,8 @@
 Stage 3-1 adds a preflight step before real prod-to-test DB/GCS sync.
 
 - The preflight runs only when `dry_run=false`.
-- The preflight validates required settings, prod/test DB separation, prod/test GCS bucket separation, fixed DB exclusion tables, fixed GCS target/exclusion prefixes, and the deterministic backup path.
+- The preflight validates required settings, prod/test DB separation, prod/test GCS bucket separation, fixed DB exclusion tables, fixed GCS target/exclusion prefixes, the dynamic recording prefix policy, and the deterministic backup path.
+- Fixed GCS targets are `sheets/` and `albums/`. Recording targets use the bucket-root `<YYYY-MM-DD>/` policy and the `<YYYY-MM-DD>/<曲名>/<ファイル名>` object layout.
 - The deterministic backup path is `gs://<GCS_BUCKET_TEST>/backups/prod-to-test/<operation_id>/`.
 - The workflow may run read-only checks with `gcloud sql instances describe` and `gcloud storage buckets describe`.
 - The preflight must not run DB sync, GCS sync, test DB backup creation, test GCS backup creation, delete operations, restore operations, or any write operation.
@@ -230,3 +239,13 @@ either environment.
   unimplemented.
 - `Template guard` and the final `exit 1` remain enabled, so synchronization is still blocked.
 - Stage 3-2 does not change GitHub, GCP, DB, or GCS resources; it only performs read-only checks.
+
+## 31. Stage 3-3 Backup Target Policy
+
+Stage 3-3 のテストGCS事前バックアップ対象には、同期対象と同じ資産規則を適用する。
+
+- 固定対象は `sheets/` と `albums/` とする。
+- 録音対象はバケット直下の `<YYYY-MM-DD>/` 形式とし、オブジェクト形式は `<YYYY-MM-DD>/<曲名>/<ファイル名>` とする。
+- `recordings/`、`promotion/`、`app-data/`、`auth/`、`audit/`、`sync-history/`、`backups/` は資産バックアップ対象に含めない。
+- バックアップ格納先 `backups/prod-to-test/<operation_id>/` は同期・資産バックアップの入力対象から除外し、再帰的なバックアップを防止する。
+- 本段階では対象規則のみを定義し、DB/GCS の実バックアップ、同期、削除、復元処理は実装しない。

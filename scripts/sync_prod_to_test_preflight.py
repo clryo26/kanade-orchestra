@@ -57,10 +57,18 @@ TARGET_DB_TABLES = (
 )
 
 GCS_TARGET_PREFIXES = (
-    "recordings/",
     "sheets/",
     "albums/",
-    "promotion/",
+)
+
+# 録音は固定ディレクトリを持たず、バケット直下の日付から始まる。
+GCS_DYNAMIC_PREFIX_POLICIES = (
+    {
+        "asset_type": "recordings",
+        "prefix_pattern": "<YYYY-MM-DD>/",
+        "object_path_pattern": "<YYYY-MM-DD>/<曲名>/<ファイル名>",
+        "match_regex": r"^\d{4}-\d{2}-\d{2}/",
+    },
 )
 
 GCS_EXCLUDED_PREFIXES = (
@@ -104,6 +112,7 @@ class SyncPreflightResult:
     excluded_db_tables: tuple[str, ...]
     excluded_db_collections: tuple[str, ...]
     gcs_target_prefixes: tuple[str, ...]
+    gcs_dynamic_prefix_policies: tuple[dict[str, str], ...]
     gcs_excluded_prefixes: tuple[str, ...]
 
 
@@ -144,6 +153,8 @@ def run_preflight(config: SyncPreflightConfig) -> SyncPreflightResult:
         errors.append("EXCLUDED_DB_TABLES must not be empty")
     if not GCS_TARGET_PREFIXES:
         errors.append("GCS_TARGET_PREFIXES must not be empty")
+    if not GCS_DYNAMIC_PREFIX_POLICIES:
+        errors.append("GCS_DYNAMIC_PREFIX_POLICIES must not be empty")
     if not GCS_EXCLUDED_PREFIXES:
         errors.append("GCS_EXCLUDED_PREFIXES must not be empty")
     if errors:
@@ -156,6 +167,7 @@ def run_preflight(config: SyncPreflightConfig) -> SyncPreflightResult:
         excluded_db_tables=EXCLUDED_DB_TABLES,
         excluded_db_collections=EXCLUDED_DB_COLLECTIONS,
         gcs_target_prefixes=GCS_TARGET_PREFIXES,
+        gcs_dynamic_prefix_policies=GCS_DYNAMIC_PREFIX_POLICIES,
         gcs_excluded_prefixes=GCS_EXCLUDED_PREFIXES,
     )
 
