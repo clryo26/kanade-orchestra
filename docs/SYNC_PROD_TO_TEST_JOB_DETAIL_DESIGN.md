@@ -248,4 +248,64 @@ Stage 3-3 のテストGCS事前バックアップ対象には、同期対象と�
 - 録音対象はバケット直下の `<YYYY-MM-DD>/` 形式とし、オブジェクト形式は `<YYYY-MM-DD>/<曲名>/<ファイル名>` とする。
 - `recordings/`、`promotion/`、`app-data/`、`auth/`、`audit/`、`sync-history/`、`backups/` は資産バックアップ対象に含めない。
 - バックアップ格納先 `backups/prod-to-test/<operation_id>/` は同期・資産バックアップの入力対象から除外し、再帰的なバックアップを防止する。
-- 本段階では対象規則のみを定義し、DB/GCS の実バックアップ、同期、削除、復元処理は実装しない。
+
+### 31.1 第1実装の範囲
+
+事前バックアップ専用スクリプトとして `scripts/backup_test_environment_pre_sync.py` を実装する。
+このスクリプトはテスト環境だけを対象とし、本番DB名、本番DBユーザー、本番GCSバケットを入力に持たない。
+
+- テストDB全体を PostgreSQL 18 対応の `pg_dump` により custom 形式、`--no-owner`、`--no-acl` で取得する。
+- DBパスワードはコマンド引数へ含めず、子プロセスの `PGPASSWORD` だけに設定する。
+- dump作成後に `pg_restore --list` を実行し、読み取り可能性を検証する。
+- dumpのSHA-256とファイルサイズを計算し、SHA-256をGCSオブジェクトのcustom metadataへ設定する。
+- DB dumpアップロード後にblobを再読込し、GCS上のgeneration、size、SHA-256 metadataを検証する。
+- GCSは上記の固定・動的対象だけを同一テストバケット内の `gcs/<元のオブジェクトパス>` へコピーする。
+- 日付prefixは正規表現相当の書式だけでなく、暦上実在する日付であることを検証する。
+- 列挙時に取得した各コピー元generationを必須とし、コピー処理中も同じgenerationへ固定する。
+- コピー先blobを再読込し、generationとsizeを検証する。crc32cまたはMD5がコピー元に存在する場合はコピー先との一致も検証する。
+- 失敗時は自動復元、作成済みバックアップの削除、実同期を行わず、エラー終了する。
+
+### 31.2 保存先と上書き防止
+
+保存先は `gs://<GCS_BUCKET_TEST>/backups/prod-to-test/<operation_id>/` とし、配下を以下の構造にする。
+
+- `database/<安全化したDB_NAME_TEST>.dump`
+- `gcs/<元のオブジェクトパス>`
+- `manifest.json`
+
+同一 `operation_id` 配下に既存オブジェクトが1件でもある場合は開始前に失敗させる。
+さらに各GCS書き込みへ新規作成の世代一致条件を付け、事前確認後の競合による上書きも禁止する。
+資産コピーでは `source_generation` と `if_source_generation_match` に列挙時のgenerationを指定し、
+コピー元が列挙後に更新・削除された場合は別generationをコピーせず失敗させる。
+`operation_id` の許可文字規則は Stage 3-1 preflight と同じものを使用する。
+
+### 31.3 manifest完了条件
+
+`manifest.json` はDB dumpの検証・アップロードと全GCSコピーが成功した後、最後の書き込みとして作成する。
+manifestには識別情報、開始・完了時刻、対象環境、DB dumpのパス・サイズ・SHA-256・検証結果、
+DB dumpのgeneration、GCS対象規則、コピー件数・合計サイズ・コピー済み一覧、`backup_status` を記録する。
+GCSコピー済み一覧にはコピー元generation、コピー先generation、検証済みsizeと、存在する場合はchecksumを記録する。
+
+アップロード後にmanifestを再読込し、以下が一致した場合だけバックアップ成功とする。
+
+- `operation_id`
+- `backup_status=completed`
+- DB dumpのSHA-256
+- DB dumpのgenerationとsize
+- GCSコピー件数
+- GCSコピー合計サイズ
+- 各コピー先generationが空でなく、コピー完了時に記録したgenerationと一致すること
+
+コピー元generation競合、DB/GCSのsize・SHA-256 metadata・checksum不一致、generation欠落が
+発生した場合は、`manifest.json` を作成せず失敗する。manifest再読込検証が不一致の場合も
+成功扱いにせずエラー終了し、既存の失敗時方針どおり自動削除は行わない。
+
+### 31.4 CLI安全条件とworkflow接続状態
+
+CLIの既定動作はdry-runとする。明示的な `--execute` がある場合だけ、DB dump、GCSコピー、
+manifestアップロードを許可する。dry-runは対象規則、保存先、予定処理を表示するだけで、
+GCSクライアント生成、subprocess実行、GCS書き込みを行わない。
+
+第1実装では `.github/workflows/sync-prod-to-test.yml` へ接続しない。
+同workflowの `Template guard` と最終 `exit 1`、静的な書き込み禁止ガードを維持する。
+DB/GCS同期、削除、復元は引き続き未実装とする。
