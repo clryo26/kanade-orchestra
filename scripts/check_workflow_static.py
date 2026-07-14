@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 VERIFY_DB_SCRIPT = ROOT / "scripts" / "verify_prod_test_db_connections.py"
+BACKUP_SCRIPT = ROOT / "scripts" / "backup_test_environment_pre_sync.py"
 
 TARGET_WORKFLOWS = {
     "deploy-test.yml": {
@@ -60,6 +61,12 @@ TARGET_WORKFLOWS = {
             "kanade-portal-db-password",
             "DB_CONNECT_TIMEOUT",
             "setup-python",
+            "backup_test_environment_pre_sync.py",
+            "google-cloud-storage==2.14.0",
+            "postgresql-client-18",
+            "TARGET_GIT_SHA",
+            "B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8",
+            "github.workflow_sha",
         ],
         "required_phrases": [
             "Allowed direction only: production -> test",
@@ -158,13 +165,80 @@ def validate_no_secret_echo(content: str, file_name: str, errors: list[str]) -> 
             errors.append(f"{file_name}: echoing secret expression is forbidden: {line.strip()}")
 
 
+def validate_no_direct_input_echo(content: str, file_name: str, errors: list[str]) -> None:
+    pattern = re.compile(r"^\s*echo\b.*\$\{\{\s*inputs\.", re.IGNORECASE)
+    for line in content.splitlines():
+        if pattern.search(line):
+            errors.append(
+                f"{file_name}: workflow input must be passed through env before shell use"
+            )
+
+
 def validate_sync_workflow_has_no_write_commands(
     content: str, file_name: str, errors: list[str]
 ) -> None:
     if file_name != "sync-prod-to-test.yml":
         return
-    if SYNC_WRITE_PATTERN.search(content) or WRITE_SQL_PATTERN.search(content):
+    sql_scan_content = "\n".join(
+        line
+        for line in content.splitlines()
+        if not re.fullmatch(r"\s*sudo apt-get update\s*", line)
+    )
+    if SYNC_WRITE_PATTERN.search(content) or WRITE_SQL_PATTERN.search(sql_scan_content):
         errors.append(f"{file_name}: DB/GCS write or sync command is forbidden in this phase")
+
+
+def validate_sync_backup_invocation(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "sync-prod-to-test.yml":
+        return
+    invocation_pattern = re.compile(
+        r"^\s*python scripts/backup_test_environment_pre_sync\.py --execute\s*$",
+        re.MULTILINE,
+    )
+    invocations = list(invocation_pattern.finditer(content))
+    script_mentions = re.findall(r"backup_test_environment_pre_sync\.py", content)
+    if len(invocations) != 1 or len(script_mentions) != 1:
+        errors.append(
+            f"{file_name}: backup script must be invoked exactly once with --execute"
+        )
+        return
+
+    invocation_start = invocations[0].start()
+    step_start = content.rfind("\n      - name:", 0, invocation_start)
+    step_end = content.find("\n      - name:", invocation_start)
+    step_block = content[step_start : step_end if step_end >= 0 else len(content)]
+    if "if: ${{ inputs.dry_run == 'false' }}" not in step_block:
+        errors.append(f"{file_name}: backup step must require dry_run == 'false'")
+    backup_step_tokens = (
+        "OPERATION_ID: ${{ inputs.operation_id }}",
+        "TARGET_GIT_SHA: ${{ inputs.target_git_sha }}",
+        "DB_HOST: 127.0.0.1",
+        'DB_PORT: "5432"',
+        "DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}",
+        "DB_USER_TEST: ${{ secrets.TEST_DB_USER }}",
+        "GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}",
+        "trap cleanup_proxy EXIT",
+        "gcloud secrets versions access",
+        'echo "::add-mask::${DB_PASSWORD}"',
+    )
+    for token in backup_step_tokens:
+        if token not in step_block:
+            errors.append(f"{file_name}: backup step safety token missing: {token}")
+    if "GITHUB_ENV" in step_block:
+        errors.append(f"{file_name}: backup step must not write DB password to GITHUB_ENV")
+
+    verification_start = content.find("- name: Verify prod and test database read-only connections")
+    guard_start = content.find("- name: Template guard")
+    if (
+        verification_start < 0
+        or guard_start < 0
+        or not (verification_start < invocation_start < guard_start)
+    ):
+        errors.append(
+            f"{file_name}: backup must run after read-only DB verification and before template guard"
+        )
+    if "ref: ${{ inputs.target_git_sha }}" in content:
+        errors.append(f"{file_name}: executable scripts must not be checked out from target_git_sha")
 
 
 def validate_verification_script(path: Path, errors: list[str]) -> None:
@@ -179,8 +253,51 @@ def validate_verification_script(path: Path, errors: list[str]) -> None:
         errors.append(f"{path.name}: write SQL keyword is forbidden: {match.group(0)}")
 
 
-def run_checks(workflow_dir: Path = WORKFLOW_DIR, verify_db_script: Path = VERIFY_DB_SCRIPT) -> list[str]:
+def validate_backup_script(path: Path, errors: list[str]) -> None:
+    if not path.exists():
+        errors.append(f"missing test pre-sync backup script: {path.name}")
+        return
+    content = read_text(path)
+    required_tokens = (
+        "execute: bool = False",
+        "if_generation_match=0",
+        "source_generation=source_generation",
+        "if_source_generation_match=source_generation",
+        "manifest_blob.upload_from_string",
+        "POSTGRES_REQUIRED_MAJOR_VERSION = 18",
+    )
+    for token in required_tokens:
+        if token not in content:
+            errors.append(f"{path.name}: required safety token missing: {token}")
+
+    execute_start = content.find("def execute_backup(")
+    execute_content = content[execute_start:] if execute_start >= 0 else ""
+    write_order = [
+        execute_content.find("database_blob.upload_from_filename"),
+        execute_content.find("_copy_and_verify_gcs_object("),
+        execute_content.find("manifest_blob.upload_from_string"),
+    ]
+    manifest_write = write_order[-1]
+    write_after_manifest = any(
+        execute_content.find(token, manifest_write + 1) >= 0
+        for token in ("database_blob.upload_from_filename", "_copy_and_verify_gcs_object(")
+    )
+    if (
+        any(index < 0 for index in write_order)
+        or write_order != sorted(write_order)
+        or write_after_manifest
+        or execute_content.count("manifest_blob.upload_from_string") != 1
+    ):
+        errors.append(f"{path.name}: manifest must remain the final backup write")
+
+
+def run_checks(
+    workflow_dir: Path = WORKFLOW_DIR,
+    verify_db_script: Path = VERIFY_DB_SCRIPT,
+    backup_script: Path | None = None,
+) -> list[str]:
     errors: list[str] = []
+    backup_script = backup_script or verify_db_script.with_name(BACKUP_SCRIPT.name)
 
     for file_name in TARGET_WORKFLOWS:
         file_path = workflow_dir / file_name
@@ -195,9 +312,12 @@ def run_checks(workflow_dir: Path = WORKFLOW_DIR, verify_db_script: Path = VERIF
         validate_required_phrases(content, file_name, errors)
         validate_template_guard(content, file_name, errors)
         validate_no_secret_echo(content, file_name, errors)
+        validate_no_direct_input_echo(content, file_name, errors)
         validate_sync_workflow_has_no_write_commands(content, file_name, errors)
+        validate_sync_backup_invocation(content, file_name, errors)
 
     validate_verification_script(verify_db_script, errors)
+    validate_backup_script(backup_script, errors)
     return errors
 
 

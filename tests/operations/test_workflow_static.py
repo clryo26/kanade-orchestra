@@ -23,6 +23,8 @@ def _copy_fixture(tmp_path):
         shutil.copyfile(Path(".github/workflows") / name, workflow_dir / name)
     verify_script = tmp_path / "verify_prod_test_db_connections.py"
     shutil.copyfile(Path("scripts/verify_prod_test_db_connections.py"), verify_script)
+    backup_script = tmp_path / "backup_test_environment_pre_sync.py"
+    shutil.copyfile(Path("scripts/backup_test_environment_pre_sync.py"), backup_script)
     return workflow_dir, verify_script
 
 
@@ -146,3 +148,149 @@ def test_psql_write_command_in_workflow_fails(tmp_path):
     errors = module.run_checks(workflow_dir, verify_script)
 
     assert any("DB/GCS write or sync command is forbidden" in error for error in errors)
+
+
+def test_missing_backup_invocation_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "          python scripts/backup_test_environment_pre_sync.py --execute\n",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("backup script must be invoked exactly once" in error for error in errors)
+
+
+def test_duplicate_backup_invocation_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    content += "\n          python scripts/backup_test_environment_pre_sync.py --execute\n"
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("backup script must be invoked exactly once" in error for error in errors)
+
+
+def test_alternate_spelling_duplicate_backup_invocation_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    content += "\n          python ./scripts/backup_test_environment_pre_sync.py --execute\n"
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("backup script must be invoked exactly once" in error for error in errors)
+
+
+def test_backup_invocation_without_execute_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "python scripts/backup_test_environment_pre_sync.py --execute",
+        "python scripts/backup_test_environment_pre_sync.py",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("backup script must be invoked exactly once with --execute" in error for error in errors)
+
+
+def test_backup_step_without_dry_run_false_condition_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "      - name: Run test pre-sync backup\n        if: ${{ inputs.dry_run == 'false' }}",
+        "      - name: Run test pre-sync backup\n        if: ${{ inputs.dry_run == 'true' }}",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("backup step must require dry_run == 'false'" in error for error in errors)
+
+
+def test_missing_read_only_verification_step_marker_fails_backup_order(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "- name: Verify prod and test database read-only connections",
+        "- name: Renamed connection step",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("backup must run after read-only DB verification" in error for error in errors)
+
+
+def test_missing_template_guard_marker_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "- name: Template guard",
+        "- name: Disabled final step",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("template guard step is missing" in error for error in errors)
+
+
+def test_direct_gcs_copy_command_in_workflow_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    content += "\n          gcloud storage cp source destination\n"
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("DB/GCS write or sync command is forbidden" in error for error in errors)
+
+
+def test_backup_script_safety_token_missing_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    backup_script = tmp_path / "backup_test_environment_pre_sync.py"
+    _replace(backup_script, "if_source_generation_match=source_generation", "")
+
+    errors = module.run_checks(workflow_dir, verify_script, backup_script)
+
+    assert any("required safety token missing" in error for error in errors)
+
+
+def test_direct_workflow_input_echo_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    content += '\n          echo "${{ inputs.operation_id }}"\n'
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("workflow input must be passed through env" in error for error in errors)
+
+
+def test_checkout_from_target_git_sha_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "ref: ${{ github.workflow_sha }}",
+        "ref: ${{ inputs.target_git_sha }}",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("must not be checked out from target_git_sha" in error for error in errors)

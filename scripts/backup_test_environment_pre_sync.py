@@ -30,6 +30,7 @@ GCS_DYNAMIC_RECORDING_POLICY = {
 }
 BACKUP_ROOT_PREFIX = "backups/prod-to-test"
 MANIFEST_SCHEMA_VERSION = "1.0"
+POSTGRES_REQUIRED_MAJOR_VERSION = 18
 
 # preflight と同じ許可文字規則を使用し、GCSオブジェクト名へのパス注入も防ぐ。
 _OPERATION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
@@ -221,6 +222,21 @@ def _run_database_backup(
     dump_path: Path,
     run_command: Callable[..., Any],
 ) -> tuple[int, str]:
+    for executable in ("pg_dump", "pg_restore"):
+        version_result = run_command(
+            [executable, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        version_output = str(getattr(version_result, "stdout", "")).strip()
+        match = re.search(r"\b(\d+)(?:\.\d+)?\b", version_output)
+        if not match or int(match.group(1)) != POSTGRES_REQUIRED_MAJOR_VERSION:
+            raise RuntimeError(
+                f"{executable} major version must be {POSTGRES_REQUIRED_MAJOR_VERSION}"
+            )
+
     child_env = os.environ.copy()
     child_env["PGPASSWORD"] = config.db_password
     pg_dump_command = [

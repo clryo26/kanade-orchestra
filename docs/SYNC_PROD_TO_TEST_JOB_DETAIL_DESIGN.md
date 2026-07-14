@@ -300,12 +300,26 @@ GCSコピー済み一覧にはコピー元generation、コピー先generation、
 発生した場合は、`manifest.json` を作成せず失敗する。manifest再読込検証が不一致の場合も
 成功扱いにせずエラー終了し、既存の失敗時方針どおり自動削除は行わない。
 
-### 31.4 CLI安全条件とworkflow接続状態
+### 31.4 CLI安全条件とworkflow接続
 
 CLIの既定動作はdry-runとする。明示的な `--execute` がある場合だけ、DB dump、GCSコピー、
 manifestアップロードを許可する。dry-runは対象規則、保存先、予定処理を表示するだけで、
 GCSクライアント生成、subprocess実行、GCS書き込みを行わない。
 
-第1実装では `.github/workflows/sync-prod-to-test.yml` へ接続しない。
-同workflowの `Template guard` と最終 `exit 1`、静的な書き込み禁止ガードを維持する。
-DB/GCS同期、削除、復元は引き続き未実装とする。
+`.github/workflows/sync-prod-to-test.yml` は `dry_run=false` の場合だけ、preflightと本番・テストDBの
+読み取り専用接続確認が成功した後に、`python scripts/backup_test_environment_pre_sync.py --execute` を
+正確に1回実行する。`dry_run=true` では依存導入を含むGCP・DB・GCS処理をすべてスキップする。
+実行するスクリプトは `github.workflow_sha` の信頼済みworkflow revisionからcheckoutし、
+入力された `target_git_sha` はバックアップmanifestのmetadataとしてのみ使用する。
+
+バックアップ実行環境は以下の安全条件を満たす。
+
+- `google-cloud-storage==2.14.0` を明示的に導入する。
+- 公式PGDG apt repositoryの署名鍵をfail-closedで取得し、fingerprintを照合してから `postgresql-client-18` を導入する。
+- 専用バックアップスクリプトが `pg_dump` と `pg_restore` のmajor versionを実行直前に確認し、18以外または判定不能の場合は停止する。
+- Cloud SQL Auth Proxyの起動、ready確認、Secret ManagerからのDB password取得、マスク登録、バックアップ実行、trap cleanupを同一shell stepで行う。
+- DB passwordはコマンド引数、ログ、`GITHUB_ENV`へ出さず、同一step内の子プロセス環境変数だけで使用する。
+- workflow内にはDB/GCS同期・削除・復元コマンドを直接記述しない。
+
+バックアップ完了後も同workflowの `Template guard` と最終 `exit 1` で必ず停止する。
+静的な書き込み禁止ガードを維持し、DB/GCS同期、削除、復元は引き続き未実装とする。

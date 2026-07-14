@@ -6,6 +6,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -198,18 +199,21 @@ class _FakeStorageClient:
 
 
 class _FakeRunner:
-    def __init__(self, *, failure: Exception | None = None):
+    def __init__(self, *, failure: Exception | None = None, postgres_major: int = 18):
         self.failure = failure
+        self.postgres_major = postgres_major
         self.calls: list[dict] = []
 
     def __call__(self, command, **kwargs):
         self.calls.append({"command": list(command), **kwargs})
         if self.failure:
             raise self.failure
+        if command[1:] == ["--version"]:
+            return SimpleNamespace(stdout=f"{command[0]} (PostgreSQL) {self.postgres_major}.1")
         if command[0] == "pg_dump":
             output_path = Path(command[command.index("--file") + 1])
             output_path.write_bytes(b"test-custom-dump")
-        return object()
+        return SimpleNamespace(stdout="")
 
 
 def _config(module, **overrides):
@@ -374,7 +378,9 @@ def test_execute_runs_safe_dump_validates_and_writes_manifest_last(tmp_path):
     assert result["gcs_object_count"] == 3
     assert result["gcs_total_size_bytes"] == 60
 
-    pg_dump_call, pg_restore_call = runner.calls
+    pg_dump_version_call, pg_restore_version_call, pg_dump_call, pg_restore_call = runner.calls
+    assert pg_dump_version_call["command"] == ["pg_dump", "--version"]
+    assert pg_restore_version_call["command"] == ["pg_restore", "--version"]
     assert pg_dump_call["command"][:4] == [
         "pg_dump",
         "--format=custom",
@@ -454,6 +460,20 @@ def test_source_blob_without_generation_is_rejected_before_backup_writes(tmp_pat
         )
 
     assert runner.calls == []
+    assert bucket.events == []
+
+
+def test_postgres_client_major_version_must_be_18(tmp_path):
+    module = _load_backup_module()
+    bucket = _FakeBucket()
+    client = _FakeStorageClient([], bucket)
+
+    with pytest.raises(RuntimeError, match="pg_dump major version must be 18"):
+        module.execute_backup(
+            _config(module),
+            _dependencies(module, tmp_path, client, _FakeRunner(postgres_major=17)),
+        )
+
     assert bucket.events == []
 
 
@@ -596,6 +616,8 @@ def test_partial_failure_keeps_created_backup_and_never_writes_manifest_or_delet
     assert not any(name.endswith("manifest.json") for name in bucket.objects)
     assert all(event[0] != "delete" for event in bucket.events)
     assert [call["command"][0:2] for call in runner.calls] == [
+        ["pg_dump", "--version"],
+        ["pg_restore", "--version"],
         ["pg_dump", "--format=custom"],
         ["pg_restore", "--list"],
     ]
