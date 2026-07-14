@@ -323,3 +323,20 @@ GCSクライアント生成、subprocess実行、GCS書き込みを行わない�
 
 バックアップ完了後も同workflowの `Template guard` と最終 `exit 1` で必ず停止する。
 静的な書き込み禁止ガードを維持し、DB/GCS同期、削除、復元は引き続き未実装とする。
+
+### 31.5 実バックアップ #7 のfail-closed停止とPG18 PATH固定
+
+2026-07-14の実バックアップ #7 は、PostgreSQL 18 client導入とDB read-only接続確認の成功後、
+専用バックアップスクリプトの `pg_dump major version must be 18` 検証でdump作成前に停止した。
+保存先 `backups/prod-to-test/stage3-3-backup-20260714-01/` は空であり、再実行は行っていない。
+
+原因は、GitHub-hosted runnerの既定PATHで、PGDGから導入した18以外のclientが先に解決された
+可能性が高い。この再発を防ぐため、以下をfail-closed条件とする。
+
+- PGDG client導入直後に `/usr/lib/postgresql/18/bin/pg_dump` と `pg_restore` が実行可能であることを確認する。
+- 両絶対パスの `--version` 出力がmajor 18であることを確認する。
+- バックアップstep内で `PATH=/usr/lib/postgresql/18/bin:${PATH}` を設定する。
+- `command -v pg_dump` と `command -v pg_restore` の解決先が上記PG18絶対パスと完全一致することを確認する。
+- 専用バックアップスクリプト側のmajor 18検証も維持し、workflowとスクリプトの二重検証とする。
+
+PATH解決先、実行可能性、versionのいずれかが不一致の場合は、Secret取得およびdump作成前に停止する。

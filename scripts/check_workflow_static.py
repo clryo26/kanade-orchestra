@@ -101,6 +101,22 @@ SYNC_WRITE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+PG18_VALIDATION_LINE_PATTERNS = (
+    re.compile(r'^\s*if \[ ! -x "/usr/lib/postgresql/18/bin/pg_(?:dump|restore)" \]; then\s*$'),
+    re.compile(
+        r'^\s*(?:dump|restore)_version="\$\(/usr/lib/postgresql/18/bin/'
+        r'pg_(?:dump|restore) --version\)"\s*$'
+    ),
+    re.compile(r'^\s*"pg_(?:dump|restore) \(PostgreSQL\) 18"\|"pg_(?:dump|restore) '),
+    re.compile(
+        r'^\s*resolved_pg_(?:dump|restore)="\$\(command -v pg_(?:dump|restore)\)"\s*$'
+    ),
+    re.compile(
+        r'^\s*if \[ "\$\{resolved_pg_(?:dump|restore)\}" != '
+        r'"/usr/lib/postgresql/18/bin/pg_(?:dump|restore)" \]; then\s*$'
+    ),
+)
+
 
 def fail(message: str) -> None:
     print(f"[FAIL] {message}")
@@ -184,8 +200,108 @@ def validate_sync_workflow_has_no_write_commands(
         for line in content.splitlines()
         if not re.fullmatch(r"\s*sudo apt-get update\s*", line)
     )
-    if SYNC_WRITE_PATTERN.search(content) or WRITE_SQL_PATTERN.search(sql_scan_content):
+    sync_scan_content = "\n".join(
+        "" if any(pattern.match(line) for pattern in PG18_VALIDATION_LINE_PATTERNS) else line
+        for line in content.splitlines()
+    )
+    if SYNC_WRITE_PATTERN.search(sync_scan_content) or WRITE_SQL_PATTERN.search(sql_scan_content):
         errors.append(f"{file_name}: DB/GCS write or sync command is forbidden in this phase")
+
+
+def validate_sync_pg18_client_policy(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "sync-prod-to-test.yml":
+        return
+    install_marker = "- name: Install PostgreSQL 18 client from official PGDG repository"
+    install_start = content.find(install_marker)
+    install_end = content.find("\n      - name:", install_start + len(install_marker))
+    install_block = (
+        content[install_start : install_end if install_end >= 0 else len(content)]
+        if install_start >= 0
+        else ""
+    )
+    install_tokens = (
+        'if [ ! -x "/usr/lib/postgresql/18/bin/pg_dump" ]; then',
+        'if [ ! -x "/usr/lib/postgresql/18/bin/pg_restore" ]; then',
+        'dump_version="$(/usr/lib/postgresql/18/bin/pg_dump --version)"',
+        'restore_version="$(/usr/lib/postgresql/18/bin/pg_restore --version)"',
+        '"pg_dump (PostgreSQL) 18"|"pg_dump (PostgreSQL) 18."*',
+        '"pg_restore (PostgreSQL) 18"|"pg_restore (PostgreSQL) 18."*',
+    )
+    backup_marker = "- name: Run test pre-sync backup"
+    backup_start = content.find(backup_marker)
+    backup_end = content.find("\n      - name:", backup_start + len(backup_marker))
+    backup_block = (
+        content[backup_start : backup_end if backup_end >= 0 else len(content)]
+        if backup_start >= 0
+        else ""
+    )
+    backup_tokens = (
+        'export PATH="/usr/lib/postgresql/18/bin:${PATH}"',
+        'resolved_pg_dump="$(command -v pg_dump)"',
+        'resolved_pg_restore="$(command -v pg_restore)"',
+        'if [ "${resolved_pg_dump}" != "/usr/lib/postgresql/18/bin/pg_dump" ]; then',
+        'if [ "${resolved_pg_restore}" != "/usr/lib/postgresql/18/bin/pg_restore" ]; then',
+    )
+    if install_start < 0 or backup_start < 0 or install_start >= backup_start:
+        errors.append(f"{file_name}: PostgreSQL 18 setup must run before the backup step")
+    for token in install_tokens:
+        if token not in install_block:
+            errors.append(f"{file_name}: PostgreSQL 18 PATH safety token missing: {token}")
+    for token in backup_tokens:
+        if token not in backup_block:
+            errors.append(f"{file_name}: PostgreSQL 18 PATH safety token missing: {token}")
+    install_order_tokens = (
+        "sudo apt-get install --yes postgresql-client-18",
+        install_tokens[0],
+        install_tokens[1],
+        install_tokens[2],
+        install_tokens[3],
+        install_tokens[4],
+        install_tokens[5],
+    )
+    install_order = [install_block.find(token) for token in install_order_tokens]
+    if any(index < 0 for index in install_order) or install_order != sorted(install_order):
+        errors.append(
+            f"{file_name}: PostgreSQL 18 absolute-path validation must follow installation"
+        )
+
+    fail_closed_conditions = (
+        (install_block, install_tokens[0]),
+        (install_block, install_tokens[1]),
+        (backup_block, backup_tokens[3]),
+        (backup_block, backup_tokens[4]),
+    )
+    for block, condition in fail_closed_conditions:
+        condition_start = block.find(condition)
+        branch_end = block.find("\n          fi", condition_start)
+        branch = block[condition_start:branch_end] if branch_end >= 0 else ""
+        if condition_start < 0 or not re.search(r"^\s*exit 1\s*$", branch, re.MULTILINE):
+            errors.append(
+                f"{file_name}: PostgreSQL 18 mismatch branch must fail closed: {condition}"
+            )
+    case_failures = (
+        '*) echo "::error::PostgreSQL dump client major version is not 18"; exit 1 ;;',
+        '*) echo "::error::PostgreSQL restore client major version is not 18"; exit 1 ;;',
+    )
+    for token in case_failures:
+        if token not in install_block:
+            errors.append(f"{file_name}: PostgreSQL 18 version mismatch must fail closed")
+
+    backup_order = [backup_block.find(token) for token in backup_tokens]
+    secret_access_index = backup_block.find("gcloud secrets versions access")
+    invocation_index = backup_block.find(
+        "python scripts/backup_test_environment_pre_sync.py --execute"
+    )
+    if (
+        any(index < 0 for index in backup_order)
+        or secret_access_index < 0
+        or invocation_index < 0
+        or backup_order != sorted(backup_order)
+        or not (backup_order[-1] < secret_access_index < invocation_index)
+    ):
+        errors.append(
+            f"{file_name}: PostgreSQL 18 PATH resolution must precede secret access and backup"
+        )
 
 
 def validate_sync_backup_invocation(content: str, file_name: str, errors: list[str]) -> None:
@@ -314,6 +430,7 @@ def run_checks(
         validate_no_secret_echo(content, file_name, errors)
         validate_no_direct_input_echo(content, file_name, errors)
         validate_sync_workflow_has_no_write_commands(content, file_name, errors)
+        validate_sync_pg18_client_policy(content, file_name, errors)
         validate_sync_backup_invocation(content, file_name, errors)
 
     validate_verification_script(verify_db_script, errors)

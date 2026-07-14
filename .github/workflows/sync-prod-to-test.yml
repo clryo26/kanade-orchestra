@@ -150,6 +150,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client-18
 
+          if [ ! -x "/usr/lib/postgresql/18/bin/pg_dump" ]; then
+            echo "::error::PostgreSQL 18 dump executable is unavailable"
+            exit 1
+          fi
+          if [ ! -x "/usr/lib/postgresql/18/bin/pg_restore" ]; then
+            echo "::error::PostgreSQL 18 restore executable is unavailable"
+            exit 1
+          fi
+          dump_version="$(/usr/lib/postgresql/18/bin/pg_dump --version)"
+          restore_version="$(/usr/lib/postgresql/18/bin/pg_restore --version)"
+          case "${dump_version}" in
+            "pg_dump (PostgreSQL) 18"|"pg_dump (PostgreSQL) 18."*) ;;
+            *) echo "::error::PostgreSQL dump client major version is not 18"; exit 1 ;;
+          esac
+          case "${restore_version}" in
+            "pg_restore (PostgreSQL) 18"|"pg_restore (PostgreSQL) 18."*) ;;
+            *) echo "::error::PostgreSQL restore client major version is not 18"; exit 1 ;;
+          esac
+
       - name: Download Cloud SQL Auth Proxy
         if: ${{ inputs.dry_run != 'true' }}
         shell: bash
@@ -232,6 +251,17 @@ jobs:
           GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
         run: |
           set -euo pipefail
+          export PATH="/usr/lib/postgresql/18/bin:${PATH}"
+          resolved_pg_dump="$(command -v pg_dump)"
+          resolved_pg_restore="$(command -v pg_restore)"
+          if [ "${resolved_pg_dump}" != "/usr/lib/postgresql/18/bin/pg_dump" ]; then
+            echo "::error::Dump executable did not resolve to the PostgreSQL 18 client"
+            exit 1
+          fi
+          if [ "${resolved_pg_restore}" != "/usr/lib/postgresql/18/bin/pg_restore" ]; then
+            echo "::error::Restore executable did not resolve to the PostgreSQL 18 client"
+            exit 1
+          fi
           proxy_log="${RUNNER_TEMP}/cloud-sql-proxy-backup.log"
           proxy_pid=""
 
