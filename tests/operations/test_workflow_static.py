@@ -43,6 +43,89 @@ def test_valid_workflow_group_passes(tmp_path):
     assert module.run_checks(workflow_dir, verify_script) == []
 
 
+@pytest.mark.parametrize(
+    ("file_name", "guard"),
+    [
+        ("deploy-test.yml", 'if [ "${GCP_PROJECT_ID}" != "kanade-orchestra" ]; then'),
+        ("deploy-test.yml", 'if [ "${GCP_REGION}" != "asia-northeast2" ]; then'),
+        (
+            "deploy-test.yml",
+            'if [ "${TEST_CLOUD_RUN_SERVICE}" != "kanade-orchestra-test" ]; then',
+        ),
+        ("sync-prod-to-test.yml", 'if [ "${GCP_PROJECT_ID}" != "kanade-orchestra" ]; then'),
+        ("sync-prod-to-test.yml", 'if [ "${GCP_REGION}" != "asia-northeast2" ]; then'),
+        (
+            "sync-prod-to-test.yml",
+            'if [ "${TEST_CLOUD_RUN_SERVICE}" != "kanade-orchestra-test" ]; then',
+        ),
+    ],
+)
+def test_missing_exact_test_target_guard_fails(tmp_path, file_name, guard):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(workflow_dir / file_name, guard, "removed-target-guard")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("exact test target guard missing" in error for error in errors)
+
+
+def test_deploy_maintenance_guard_after_deployment_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    deploy_path = workflow_dir / "deploy-test.yml"
+    content = deploy_path.read_text(encoding="utf-8")
+    guard = "- name: Block deploy while test maintenance is enabled"
+    content = content.replace(guard, "- name: Temporary guard marker", 1)
+    content += f"\n      {guard}\n"
+    deploy_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("maintenance guard must run before deployment" in error for error in errors)
+
+
+def test_normal_deploy_without_explicit_maintenance_false_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "deploy-test.yml",
+        'ENV_VARS="APP_ENV=test,MAINTENANCE_MODE=false,',
+        'ENV_VARS="APP_ENV=test,',
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("normal deployment must explicitly disable maintenance" in error for error in errors)
+
+
+def test_deploy_maintenance_safety_with_always_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    deploy_path = workflow_dir / "deploy-test.yml"
+    content = deploy_path.read_text(encoding="utf-8")
+    content += "\n        if: ${{ always() }}\n"
+    deploy_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("maintenance safety must not use always()" in error for error in errors)
+
+
+def test_missing_maintenance_deploy_guard_invocation_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "deploy-test.yml",
+        "python scripts/check_test_maintenance_deploy.py",
+        "python scripts/unapproved_guard.py",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("required token missing: check_test_maintenance_deploy.py" in error for error in errors)
+
+
 def test_missing_stage_3_2_required_token_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)

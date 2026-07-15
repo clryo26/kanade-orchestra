@@ -552,3 +552,22 @@ Stage 3-4では本章の設計確定までを対象とする。
 後続の実装段階で追加する。
 
 `Template guard`、最終`exit 1`、DB/GCS同期・削除・復元の静的禁止ガードは維持する。
+
+### 32.10 メンテナンス運用の実装準備
+
+メンテナンスモードを実際に有効化する前段として、通常のDeploy Testと対象環境の
+安全ガードを先に実装する。
+
+- Deploy Testは現在のCloud Runリビジョンから`MAINTENANCE_MODE`を読み取る。
+- 値がtrue系の場合、通常デプロイをfail-closedで停止する。
+- 値が未設定またはfalse系の場合だけ通常デプロイを許可する。
+- 不正値、重複値、取得失敗はデプロイを許可しない。
+- 通常デプロイ時は`MAINTENANCE_MODE=false`を明示する。
+- `GCP_PROJECT_ID=kanade-orchestra`、`GCP_REGION=asia-northeast2`、
+  `TEST_CLOUD_RUN_SERVICE=kanade-orchestra-test`との完全一致を必須とする。
+- 同じ対象固定条件を本番→テスト同期workflowにも適用する。
+- メンテナンス解除を`always()`で実行してはならない。
+
+メンテナンス有効化、traffic切替、310秒の旧リクエスト終了待機、health再確認、
+DB接続停止確認、解除処理は次の実装単位とする。現段階ではこれらをworkflowへ接続せず、
+`Template guard`とDB/GCS書き込み禁止を維持する。

@@ -54,6 +54,19 @@ jobs:
             exit 1
           fi
 
+          if [ "${GCP_PROJECT_ID}" != "kanade-orchestra" ]; then
+            echo "::error::Test deploy is restricted to project kanade-orchestra."
+            exit 1
+          fi
+          if [ "${GCP_REGION}" != "asia-northeast2" ]; then
+            echo "::error::Test deploy is restricted to region asia-northeast2."
+            exit 1
+          fi
+          if [ "${TEST_CLOUD_RUN_SERVICE}" != "kanade-orchestra-test" ]; then
+            echo "::error::Test deploy is restricted to service kanade-orchestra-test."
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud via OIDC/WIF
         uses: google-github-actions/auth@v2
         with:
@@ -62,6 +75,20 @@ jobs:
 
       - name: Setup gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Block deploy while test maintenance is enabled
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
+        run: |
+          set -euo pipefail
+          service_json="$(gcloud run services describe "${TEST_CLOUD_RUN_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format=json)"
+          python scripts/check_test_maintenance_deploy.py <<<"${service_json}"
 
       - name: Configure Docker for Artifact Registry
         shell: bash
@@ -124,7 +151,7 @@ jobs:
           TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
         run: |
           set -euo pipefail
-          ENV_VARS="APP_ENV=test,DATA_BACKEND=db,LOCAL_JSON_FALLBACK_ENABLED=false,GIT_SHA=${TARGET_SHA},BUILD_TIMESTAMP=${BUILD_TIMESTAMP},IMAGE_URI=${IMAGE_URI},IMAGE_DIGEST=${IMAGE_DIGEST},GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=${TEST_GCS_BUCKET},PRODUCTION_OPERATION_EXECUTOR=github-actions,GITHUB_REPOSITORY=${{ github.repository }}"
+          ENV_VARS="APP_ENV=test,MAINTENANCE_MODE=false,DATA_BACKEND=db,LOCAL_JSON_FALLBACK_ENABLED=false,GIT_SHA=${TARGET_SHA},BUILD_TIMESTAMP=${BUILD_TIMESTAMP},IMAGE_URI=${IMAGE_URI},IMAGE_DIGEST=${IMAGE_DIGEST},GOOGLE_CLOUD_PROJECT=${{ vars.GCP_PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=${TEST_GCS_BUCKET},PRODUCTION_OPERATION_EXECUTOR=github-actions,GITHUB_REPOSITORY=${{ github.repository }}"
           ENV_VARS="${ENV_VARS},CLOUD_RUN_SERVICE=${TEST_CLOUD_RUN_SERVICE}"
 
           if [ -n "${TEST_DB_URL:-}" ]; then
