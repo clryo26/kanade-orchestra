@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 VERIFY_DB_SCRIPT = ROOT / "scripts" / "verify_prod_test_db_connections.py"
 BACKUP_SCRIPT = ROOT / "scripts" / "backup_test_environment_pre_sync.py"
+MAINTENANCE_DEPLOY_GUARD_SCRIPT = ROOT / "scripts" / "check_test_maintenance_deploy.py"
 
 TARGET_WORKFLOWS = {
     "deploy-test.yml": {
@@ -21,12 +22,15 @@ TARGET_WORKFLOWS = {
             "WIF_PROVIDER",
             "PRODUCTION_OPERATION_EXECUTOR",
             "GITHUB_REPOSITORY",
+            "MAINTENANCE_MODE=false",
+            "check_test_maintenance_deploy.py",
         ],
         "required_phrases": [
             "docker build",
             "docker push",
             "gcloud run deploy",
             "IMAGE_DIGEST",
+            "Block deploy while test maintenance is enabled",
         ],
     },
     "promote-production.yml": {
@@ -67,6 +71,7 @@ TARGET_WORKFLOWS = {
             "TARGET_GIT_SHA",
             "B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8",
             "github.workflow_sha",
+            "TEST_CLOUD_RUN_SERVICE",
         ],
         "required_phrases": [
             "Allowed direction only: production -> test",
@@ -78,6 +83,12 @@ TARGET_WORKFLOWS = {
             "Template guard",
         ],
     },
+}
+
+EXPECTED_TEST_TARGETS = {
+    "GCP_PROJECT_ID": "kanade-orchestra",
+    "GCP_REGION": "asia-northeast2",
+    "TEST_CLOUD_RUN_SERVICE": "kanade-orchestra-test",
 }
 
 FORBIDDEN_TOKENS = [
@@ -153,6 +164,30 @@ def validate_required_phrases(content: str, file_name: str, errors: list[str]) -
     for phrase in phrases:
         if phrase not in content:
             errors.append(f"{file_name}: required policy phrase missing: {phrase}")
+
+
+def validate_test_target_guards(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name not in {"deploy-test.yml", "sync-prod-to-test.yml"}:
+        return
+    for variable, expected in EXPECTED_TEST_TARGETS.items():
+        guard = f'if [ "${{{variable}}}" != "{expected}" ]; then'
+        if guard not in content:
+            errors.append(
+                f"{file_name}: exact test target guard missing: {variable}={expected}"
+            )
+
+
+def validate_deploy_maintenance_guard(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "deploy-test.yml":
+        return
+    guard_start = content.find("- name: Block deploy while test maintenance is enabled")
+    deploy_start = content.find("- name: Deploy tested image to test Cloud Run")
+    if guard_start < 0 or deploy_start < 0 or guard_start >= deploy_start:
+        errors.append(f"{file_name}: maintenance guard must run before deployment")
+    if 'ENV_VARS="APP_ENV=test,MAINTENANCE_MODE=false,' not in content:
+        errors.append(f"{file_name}: normal deployment must explicitly disable maintenance")
+    if "always()" in content:
+        errors.append(f"{file_name}: maintenance safety must not use always()")
 
 
 def validate_template_guard(content: str, file_name: str, errors: list[str]) -> None:
@@ -407,10 +442,28 @@ def validate_backup_script(path: Path, errors: list[str]) -> None:
         errors.append(f"{path.name}: manifest must remain the final backup write")
 
 
+def validate_maintenance_deploy_guard_script(path: Path, errors: list[str]) -> None:
+    if not path.exists():
+        errors.append(f"missing maintenance deploy guard script: {path.name}")
+        return
+    content = read_text(path)
+    required_tokens = (
+        "ensure_normal_deploy_allowed",
+        '"valueFrom" in entry',
+        "len(entries) > 1",
+        "test maintenance is enabled",
+        "return 1",
+    )
+    for token in required_tokens:
+        if token not in content:
+            errors.append(f"{path.name}: required fail-closed token missing: {token}")
+
+
 def run_checks(
     workflow_dir: Path = WORKFLOW_DIR,
     verify_db_script: Path = VERIFY_DB_SCRIPT,
     backup_script: Path | None = None,
+    maintenance_deploy_guard_script: Path = MAINTENANCE_DEPLOY_GUARD_SCRIPT,
 ) -> list[str]:
     errors: list[str] = []
     backup_script = backup_script or verify_db_script.with_name(BACKUP_SCRIPT.name)
@@ -426,6 +479,8 @@ def run_checks(
         validate_forbidden_tokens(content, file_name, errors)
         validate_required_tokens(content, file_name, errors)
         validate_required_phrases(content, file_name, errors)
+        validate_test_target_guards(content, file_name, errors)
+        validate_deploy_maintenance_guard(content, file_name, errors)
         validate_template_guard(content, file_name, errors)
         validate_no_secret_echo(content, file_name, errors)
         validate_no_direct_input_echo(content, file_name, errors)
@@ -435,6 +490,7 @@ def run_checks(
 
     validate_verification_script(verify_db_script, errors)
     validate_backup_script(backup_script, errors)
+    validate_maintenance_deploy_guard_script(maintenance_deploy_guard_script, errors)
     return errors
 
 
