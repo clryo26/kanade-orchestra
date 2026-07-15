@@ -577,6 +577,12 @@ DB接続停止確認、解除処理は次の実装単位とする。現段階で
 専用の`test-maintenance.yml`と`manage_test_maintenance.py`で、テストCloud Runの
 メンテナンス有効化・解除を通常デプロイおよび同期workflowから分離する。
 
+Cloud Runのサービス更新後は、新しいno-trafficリビジョンの状態反映が非同期であるため、
+`latestCreatedRevisionName`で新規リビジョンを特定し、最大300秒、5秒間隔で
+`latestReadyRevisionName`との一致を待機する。待機中に別の新規リビジョンが作成された場合、
+または期限内にReadyにならなかった場合は、trafficを切り替えず安全停止する。
+タイムアウト時は判定に使用したcreated・readyの各リビジョン名をエラーへ出力する。
+
 - `workflow_dispatch`だけを許可し、同時実行を禁止する。
 - project、region、serviceと確認文字列の完全一致を必須とする。
 - 操作承認時のlatest Ready revisionと実行時の値が異なる場合は停止する。
