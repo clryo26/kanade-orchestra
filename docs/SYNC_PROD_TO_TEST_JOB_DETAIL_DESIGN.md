@@ -340,3 +340,215 @@ GCSクライアント生成、subprocess実行、GCS書き込みを行わない�
 - 専用バックアップスクリプト側のmajor 18検証も維持し、workflowとスクリプトの二重検証とする。
 
 PATH解決先、実行可能性、versionのいずれかが不一致の場合は、Secret取得およびdump作成前に停止する。
+
+### 31.6 実バックアップ取得・検証完了
+
+2026-07-14、`operation_id=stage3-3-backup-20260714-01` によりテスト環境の
+同期前バックアップを実取得し、検証まで完了した。
+
+- 対象コミット: `479ebf1ea7cb6d232467505463079a361a0b5b14`
+- GCPプロジェクト: `kanade-orchestra`
+- テストDB: `kanade_portal_test`
+- テストGCSバケット: `kanade-storage-test`
+- DB dump:
+  - object path: `backups/prod-to-test/stage3-3-backup-20260714-01/database/kanade_portal_test.dump`
+  - generation: `1784043240342218`
+  - size: `2559696` bytes
+  - SHA-256: `1b221c8d3012215acb290e08ad1d0e72a45c68f20d133a28cf7738e4bc113abf`
+  - `pg_restore --list`: passed
+  - GCS size検証: passed
+  - GCS SHA-256 metadata検証: passed
+- GCS backup:
+  - object count: `354`
+  - total size: `259106063` bytes
+- manifest schema version: `1.0`
+- backup status: `completed`
+
+DB/GCS同期、削除、復元は実行していない。バックアップ完了後も
+`Template guard`と最終`exit 1`により、実同期は停止した状態を維持する。
+
+## 32. Stage 3-4 Restore Design
+
+Stage 3-4では、Stage 3-3で取得した同期前バックアップからテスト環境を復旧する方法、
+実行順序、誤操作防止、整合確認、失敗時の扱い、復元テスト基準を定義する。
+この段階では復元・同期・削除処理を実装または実行しない。
+
+### 32.1 復元処理の分離
+
+既存の`scripts/restore_db.py`は、任意の接続先へ`--clean`付きで復元できる汎用手動ツールであり、
+manifest検証、テスト環境限定、dry-run、PostgreSQL major version固定、復元後検証を備えていない。
+このため、本番→テスト同期の自動復旧処理には使用しない。
+
+Stage 3-4以降で実装する復元処理は専用スクリプトへ分離し、workflowにはDB/GCSの
+削除・復元コマンドを直接記述しない。
+
+### 32.2 manifest必須検証
+
+復元元は`operation_id`で指定し、次のパスに存在する`manifest.json`を必須とする。
+
+`gs://<TEST_GCS_BUCKET>/backups/prod-to-test/<operation_id>/manifest.json`
+
+復元開始前に、以下をすべて検証する。
+
+- manifest schema versionが復元処理の対応versionと一致する。
+- manifestの`operation_id`が入力値と一致する。
+- `backup_status=completed`である。
+- manifestの`project_id`が実行時の`GCP_PROJECT_ID`と一致する。
+- manifestの`test_database`が実行時の`TEST_DB_NAME`と一致する。
+- manifestの`test_gcs_bucket`が実行時の`TEST_GCS_BUCKET`と一致する。
+- `TEST_DB_NAME`と`PROD_DB_NAME`が異なる。
+- `TEST_GCS_BUCKET`と`PROD_GCS_BUCKET`が異なる。
+- manifestのテストDB・テストGCSが本番DB・本番GCSと一致しない。
+- manifest自体、DB dump、GCS backupを記録済みgenerationへ固定して読み取る。
+- DB dumpのsize、SHA-256、`pg_restore --list`がmanifestと一致する。
+- 全GCS backupのgeneration、size、存在するchecksumがmanifestと一致する。
+- GCS object countとtotal sizeがmanifestの集計値と一致する。
+
+いずれかが不一致、欠落、判定不能の場合は、書き込み前にエラー終了する。
+
+### 32.3 テスト環境メンテナンスモード
+
+現行アプリには復元中の書き込み停止機構がないため、テスト環境専用の
+`MAINTENANCE_MODE`を新設する。
+
+- `MAINTENANCE_MODE=true`は`APP_ENV=test`かつ
+  `K_SERVICE=kanade-orchestra-test`の場合だけ許可する。
+- 本番環境、本番Cloud Runサービス、環境判定不能時は起動を拒否する。
+- 有効時は`GET /api/health`だけを許可する。
+- その他の画面、静的資産、APIは`503 Service Unavailable`を返す。
+- 503レスポンスへ`Retry-After: 60`と`Cache-Control: no-store`を設定する。
+- 拒否したリクエストをendpoint、tenant処理、監査ログ処理へ到達させない。
+- healthレスポンスからメンテナンス状態を確認可能にする。
+- メンテナンス有効リビジョンへのtraffic 100%切替と、旧リビジョンの処理終了を
+  確認してから復元を開始する。
+- テストDBに復元処理以外の接続が残っている場合は復元を開始しない。
+- 復元途中で失敗した場合はメンテナンスモードを維持する。
+- DB復元、GCS復元、整合確認がすべて成功した場合だけ解除する。
+
+メンテナンスmiddlewareは既存の監査ログmiddlewareより外側で動作させ、
+復元中の拒否応答によってDB書き込みが発生しないことをテストで保証する。
+
+### 32.4 DB復元方法
+
+DB復元はPostgreSQL 18の`pg_restore`を使用し、テストDBへ次の条件で実行する。
+
+- `--clean`
+- `--if-exists`
+- `--single-transaction`
+- `--no-owner`
+- `--no-acl`
+- `--dbname <TEST_DB_NAME>`
+
+`--single-transaction`により、全復元コマンドが成功した場合だけcommitし、
+途中失敗時はDB変更全体をrollbackする。並列復元`--jobs`は使用しない。
+
+追加安全条件は以下とする。
+
+- `/usr/lib/postgresql/18/bin/pg_restore`の実行可能性とmajor version 18を確認する。
+- `command -v pg_restore`の解決先をPG18絶対パスへ固定する。
+- 接続先DB名を復元直前のSQLでも確認する。
+- DB passwordはコマンド引数、ログ、`GITHUB_ENV`へ出さない。
+- `PGHOST`、`PGPORT`、`PGDATABASE`、`PGUSER`、`PGPASSWORD`を
+  同一step内の子プロセス環境変数として使用する。
+- 復元前にテストDBへの別接続がないことを確認する。
+- dumpのgeneration、size、SHA-256、`pg_restore --list`を復元直前に再検証する。
+- 復元失敗時はGCS復元へ進まない。
+
+### 32.5 GCS復元方法
+
+GCS復元対象はmanifest記載のオブジェクトと、manifestに記録された対象規則から
+列挙される現在のテストGCSオブジェクトとする。除外prefixは変更しない。
+
+- `app-data/`
+- `backups/`
+- `auth/`
+- `audit/`
+- `sync-history/`
+
+GCS復元は以下の順序で行う。
+
+1. manifest記載の全backup objectを`backup_generation`へ固定して再検証する。
+2. 現在の対象範囲を列挙し、各destination generationを記録する。
+3. manifest記載の各backup objectを元の`source_object_path`へコピーする。
+4. 既存destinationは列挙時generation一致を条件に上書きする。
+5. destinationが存在しない場合は`if_generation_match=0`で新規作成する。
+6. コピー後のgeneration、size、CRC32C、MD5を検証する。
+7. 現在存在するがmanifestに存在しない対象オブジェクトを、列挙時generation一致を
+   条件として削除する。
+8. 復元後の件数、合計size、全checksumをmanifestと照合する。
+
+generation競合、コピー失敗、削除失敗、検証不一致が発生した場合は即時停止する。
+自動的にメンテナンスモードを解除せず、同じmanifestから再実行可能な状態として扱う。
+`backups/`配下の復元元資産は削除または上書きしない。
+
+### 32.6 復元順序と失敗時方針
+
+復元処理の順序は次のとおりとする。
+
+1. 入力値、対象環境、manifestを検証する。
+2. テスト環境のメンテナンスモードを有効化する。
+3. Cloud Run traffic切替、health、旧処理終了、DB接続停止を確認する。
+4. manifest、DB dump、全GCS backupをgeneration固定で再検証する。
+5. DBを単一トランザクションで復元する。
+6. DB復元後の必須検証を行う。
+7. GCSを復元する。
+8. DB/GCS全体の整合確認を行う。
+9. 復元履歴を成功として確定する。
+10. メンテナンスモードを解除する。
+11. テスト環境のhealthと主要機能を確認する。
+
+DB復元前の失敗ではDB/GCSを変更しない。
+DB復元失敗時はトランザクションをrollbackし、GCS復元へ進まない。
+DB復元後にGCS復元が失敗した場合はメンテナンスモードを維持し、
+同じmanifestによるGCS復元の再実行を許可する。
+すべての整合確認が完了するまで復元成功として扱わない。
+
+### 32.7 復元成功基準
+
+DBは少なくとも以下を確認する。
+
+- 接続先が`TEST_DB_NAME`と一致する。
+- 必須スキーマと期待テーブルが存在する。
+- manifestから復元したdumpの内容一覧と復元後オブジェクトが整合する。
+- 必須テーブルの読み取りが成功する。
+- migration管理情報に不整合がない。
+- orphan検査が実行可能である。
+- 復元処理以外の予期しない更新が発生していない。
+
+GCSは以下を確認する。
+
+- 対象object countがmanifestと一致する。
+- 対象total sizeがmanifestと一致する。
+- 全対象パスがmanifestの`source_object_path`集合と一致する。
+- 各オブジェクトのsizeと、存在するCRC32C・MD5がmanifestと一致する。
+- manifestに存在しない対象オブジェクトが残っていない。
+- 除外prefixが変更されていない。
+- backup資産とmanifestが変更されていない。
+
+DB/GCSの検証とテスト環境の主要機能確認がすべて成功した場合だけ、
+復元完了およびメンテナンス解除を許可する。
+
+### 32.8 復元テスト基準
+
+実テスト環境へ復元する前に、以下を順番に完了する。
+
+1. manifest検証、環境分離、DBコマンド生成、GCSコピー・削除条件、
+   メンテナンス制御の単体テスト。
+2. DB/GCSへ書き込まないdry-run。
+3. 一時DBと隔離GCS prefixを使用した隔離復元テスト。
+4. DBスキーマ、テーブル、主要データ、GCS件数・size・checksumの整合確認。
+5. SHA-256不一致、generation競合、DB復元エラー、GCS途中失敗を発生させる
+   fail-closedテスト。
+6. 失敗時に成功扱いせず、メンテナンスモードを解除しないことの確認。
+7. 同じmanifestから安全に再実行できることの確認。
+
+隔離復元テストでは本番DB、本番GCS、通常のテストDB、通常のテストGCS対象prefixを
+変更しない。隔離テスト用資産の作成・削除方法は、実行前に別途設計・承認する。
+
+### 32.9 Stage 3-4の境界
+
+Stage 3-4では本章の設計確定までを対象とする。
+復元スクリプト、メンテナンスモード、workflow接続、DB/GCS書き込み処理は
+後続の実装段階で追加する。
+
+`Template guard`、最終`exit 1`、DB/GCS同期・削除・復元の静的禁止ガードは維持する。
