@@ -21,7 +21,7 @@ def _load_module():
 def _copy_fixture(tmp_path):
     workflow_dir = tmp_path / "workflows"
     workflow_dir.mkdir()
-    for name in ("deploy-test.yml", "promote-production.yml", "sync-prod-to-test.yml"):
+    for name in ("deploy-test.yml", "promote-production.yml", "sync-prod-to-test.yml", "test-maintenance.yml"):
         shutil.copyfile(Path(".github/workflows") / name, workflow_dir / name)
     verify_script = tmp_path / "verify_prod_test_db_connections.py"
     shutil.copyfile(Path("scripts/verify_prod_test_db_connections.py"), verify_script)
@@ -41,6 +41,28 @@ def test_valid_workflow_group_passes(tmp_path):
     workflow_dir, verify_script = _copy_fixture(tmp_path)
 
     assert module.run_checks(workflow_dir, verify_script) == []
+
+
+def test_maintenance_workflow_cannot_be_automatic(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    path = workflow_dir / "test-maintenance.yml"
+    path.write_text(path.read_text(encoding="utf-8") + "\n  schedule:\n", encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("must remain manual" in error for error in errors)
+
+
+def test_maintenance_workflow_cannot_use_always(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    path = workflow_dir / "test-maintenance.yml"
+    path.write_text(path.read_text(encoding="utf-8") + "\n        if: ${{ always() }}\n", encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("must not use always" in error for error in errors)
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,61 @@
+name: Test Maintenance
+run-name: test-maintenance-${{ inputs.action }}-${{ inputs.expected_revision }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Maintenance transition"
+        required: true
+        type: choice
+        options: [enable, disable]
+      expected_revision:
+        description: "Exact current ready test revision"
+        required: true
+        type: string
+      confirmation:
+        description: "Type kanade-orchestra/asia-northeast2/kanade-orchestra-test"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: kanade-orchestra-test-maintenance
+  cancel-in-progress: false
+
+jobs:
+  test-maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted workflow revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+
+      - name: Authenticate to Google Cloud via OIDC/WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Apply test maintenance transition
+        shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          python scripts/manage_test_maintenance.py "${ACTION}" \
+            --project "kanade-orchestra" \
+            --region "asia-northeast2" \
+            --service "kanade-orchestra-test" \
+            --confirmation "${CONFIRMATION}" \
+            --expected-revision "${EXPECTED_REVISION}" \
+            --execute
