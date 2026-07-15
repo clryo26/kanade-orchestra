@@ -10,8 +10,28 @@ WORKFLOW_DIR = ROOT / ".github" / "workflows"
 VERIFY_DB_SCRIPT = ROOT / "scripts" / "verify_prod_test_db_connections.py"
 BACKUP_SCRIPT = ROOT / "scripts" / "backup_test_environment_pre_sync.py"
 MAINTENANCE_DEPLOY_GUARD_SCRIPT = ROOT / "scripts" / "check_test_maintenance_deploy.py"
+MAINTENANCE_OPERATION_SCRIPT = ROOT / "scripts" / "manage_test_maintenance.py"
 
 TARGET_WORKFLOWS = {
+    "test-maintenance.yml": {
+        "required_tokens": [
+            "workflow_dispatch",
+            "github.workflow_sha",
+            "cancel-in-progress: false",
+            "manage_test_maintenance.py",
+            'ACTION: ${{ inputs.action }}',
+            'EXPECTED_REVISION: ${{ inputs.expected_revision }}',
+            'CONFIRMATION: ${{ inputs.confirmation }}',
+            '--project "kanade-orchestra"',
+            '--region "asia-northeast2"',
+            '--service "kanade-orchestra-test"',
+            "--execute",
+        ],
+        "required_phrases": [
+            "Exact current ready test revision",
+            "Apply test maintenance transition",
+        ],
+    },
     "deploy-test.yml": {
         "required_tokens": [
             "TEST_CLOUD_RUN_SERVICE",
@@ -188,6 +208,15 @@ def validate_deploy_maintenance_guard(content: str, file_name: str, errors: list
         errors.append(f"{file_name}: normal deployment must explicitly disable maintenance")
     if "always()" in content:
         errors.append(f"{file_name}: maintenance safety must not use always()")
+
+
+def validate_maintenance_operation_workflow(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "test-maintenance.yml":
+        return
+    if "always()" in content:
+        errors.append(f"{file_name}: maintenance transition must not use always()")
+    if "schedule:" in content or "workflow_run:" in content:
+        errors.append(f"{file_name}: maintenance transition must remain manual")
 
 
 def validate_template_guard(content: str, file_name: str, errors: list[str]) -> None:
@@ -459,11 +488,33 @@ def validate_maintenance_deploy_guard_script(path: Path, errors: list[str]) -> N
             errors.append(f"{path.name}: required fail-closed token missing: {token}")
 
 
+def validate_maintenance_operation_script(path: Path, errors: list[str]) -> None:
+    if not path.exists():
+        errors.append(f"missing maintenance operation script: {path.name}")
+        return
+    content = read_text(path)
+    for token in (
+        'PROJECT = "kanade-orchestra"',
+        'REGION = "asia-northeast2"',
+        'SERVICE = "kanade-orchestra-test"',
+        "DRAIN_SECONDS = 310",
+        '"--no-traffic"',
+        '"update-traffic"',
+        'f"{revision}=100"',
+        "current ready revision does not match the approved revision",
+    ):
+        if token not in content:
+            errors.append(f"{path.name}: required fail-closed token missing: {token}")
+    if "MAINTENANCE_MODE=false" in content:
+        errors.append(f"{path.name}: automatic maintenance rollback is forbidden")
+
+
 def run_checks(
     workflow_dir: Path = WORKFLOW_DIR,
     verify_db_script: Path = VERIFY_DB_SCRIPT,
     backup_script: Path | None = None,
     maintenance_deploy_guard_script: Path = MAINTENANCE_DEPLOY_GUARD_SCRIPT,
+    maintenance_operation_script: Path = MAINTENANCE_OPERATION_SCRIPT,
 ) -> list[str]:
     errors: list[str] = []
     backup_script = backup_script or verify_db_script.with_name(BACKUP_SCRIPT.name)
@@ -481,6 +532,7 @@ def run_checks(
         validate_required_phrases(content, file_name, errors)
         validate_test_target_guards(content, file_name, errors)
         validate_deploy_maintenance_guard(content, file_name, errors)
+        validate_maintenance_operation_workflow(content, file_name, errors)
         validate_template_guard(content, file_name, errors)
         validate_no_secret_echo(content, file_name, errors)
         validate_no_direct_input_echo(content, file_name, errors)
@@ -491,6 +543,7 @@ def run_checks(
     validate_verification_script(verify_db_script, errors)
     validate_backup_script(backup_script, errors)
     validate_maintenance_deploy_guard_script(maintenance_deploy_guard_script, errors)
+    validate_maintenance_operation_script(maintenance_operation_script, errors)
     return errors
 
 
@@ -503,7 +556,7 @@ def main() -> int:
         return 1
 
     print("[PASS] Workflow static checks passed")
-    print("[PASS] Target workflows: deploy-test.yml, promote-production.yml, sync-prod-to-test.yml")
+    print("[PASS] Target workflows: deploy-test.yml, promote-production.yml, sync-prod-to-test.yml, test-maintenance.yml")
     return 0
 
 
