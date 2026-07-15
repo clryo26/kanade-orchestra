@@ -101,12 +101,14 @@ async def root() -> FileResponse:
 
 
 @router.get("/api/health")
-async def health_check() -> dict[str, str]:
-    return meta_service.health_payload(
+async def health_check(request: Request) -> dict[str, str]:
+    payload = meta_service.health_payload(
         storage_configured=storage_enabled(),
         db_expected=db_expected(),
         db_configured=db_data_enabled(),
     )
+    payload["maintenance"] = str(getattr(request.app.state, "maintenance_mode_status", "disabled"))
+    return payload
 
 
 @router.get("/api/diagnostic/config-status")
