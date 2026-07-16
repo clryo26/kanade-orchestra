@@ -27,6 +27,13 @@ def service(created: str, ready: str, mode: str, *, traffic: list[dict[str, Any]
     }
 
 
+def revision_resource(mode: str, ready: str = "True"):
+    return {
+        "spec": {"containers": [{"env": [{"name": "MAINTENANCE_MODE", "value": mode}]}]},
+        "status": {"conditions": [{"type": "Ready", "status": ready}]},
+    }
+
+
 @pytest.mark.parametrize("values", [
     ("wrong", "asia-northeast2", "kanade-orchestra-test", "wrong/asia-northeast2/kanade-orchestra-test"),
     ("kanade-orchestra", "wrong", "kanade-orchestra-test", "kanade-orchestra/wrong/kanade-orchestra-test"),
@@ -46,8 +53,8 @@ def test_enable_stages_routes_checks_health_and_drains():
     responses = iter([
         service("rev1", "rev1", "false"),
         {},
-        service("rev2", "rev2", "true"),
-        {"spec": {"containers": [{"env": [{"name": "MAINTENANCE_MODE", "value": "true"}]}]}},
+        service("rev2", "rev1", "true"),
+        revision_resource("true"),
         {},
         service("rev2", "rev2", "true", traffic=[{"revisionName": "rev2", "percent": 100}]),
         service("rev2", "rev2", "true", traffic=[{"revisionName": "rev2", "percent": 100}]),
@@ -80,8 +87,8 @@ def test_revision_race_fails_before_update():
 
 def test_disable_does_not_drain():
     responses = iter([
-        service("rev1", "rev1", "true"), {}, service("rev2", "rev2", "false"),
-        {"spec": {"containers": [{"env": [{"name": "MAINTENANCE_MODE", "value": "false"}]}]}}, {},
+        service("rev1", "rev1", "true"), {}, service("rev2", "rev1", "false"),
+        revision_resource("false"), {},
         service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
     sleeps = []
@@ -95,8 +102,9 @@ def test_waits_for_new_revision_to_become_ready_before_routing():
         service("rev1", "rev1", "true"),
         {},
         service("rev2", "rev1", "false"),
-        service("rev2", "rev2", "false"),
-        {"spec": {"containers": [{"env": [{"name": "MAINTENANCE_MODE", "value": "false"}]}]}},
+        revision_resource("false", "Unknown"),
+        service("rev2", "rev1", "false"),
+        revision_resource("false"),
         {},
         service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
@@ -119,6 +127,7 @@ def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
         service("rev1", "rev1", "false"),
         {},
         service("rev2", "rev1", "true"),
+        revision_resource("true", "Unknown"),
     ])
     times = iter([0.0, 301.0])
     commands = []
@@ -129,7 +138,7 @@ def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
 
     with pytest.raises(
         MaintenanceOperationError,
-        match=r"before timeout \(created=rev2, ready=rev1\)",
+        match=r"before timeout \(created=rev2, ready_condition=Unknown\)",
     ):
         execute_transition(
             "enable",
@@ -142,10 +151,54 @@ def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
     assert not any("update-traffic" in command for command in commands)
 
 
+def test_ready_retired_no_traffic_revision_routes_without_latest_ready_change():
+    ready_retired_revision = revision_resource("false")
+    ready_retired_revision["status"]["conditions"].append(
+        {"type": "Active", "status": "False", "reason": "Retired"}
+    )
+    responses = iter([
+        service("rev1", "rev1", "true"),
+        {},
+        service("rev2", "rev1", "false"),
+        ready_retired_revision,
+        {},
+        service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
+    ])
+
+    result = execute_transition(
+        "disable",
+        "rev1",
+        run_json=lambda _: next(responses),
+        health_state=lambda _: "disabled",
+    )
+
+    assert result == "rev2"
+
+
+def test_newer_revision_appearing_while_waiting_stops_before_routing():
+    responses = iter([
+        service("rev1", "rev1", "true"),
+        {},
+        service("rev2", "rev1", "false"),
+        revision_resource("false", "Unknown"),
+        service("rev3", "rev1", "false"),
+    ])
+    commands = []
+
+    def run(command):
+        commands.append(command)
+        return next(responses)
+
+    with pytest.raises(MaintenanceOperationError, match="newer revision"):
+        execute_transition("disable", "rev1", run_json=run, sleep=lambda _: None)
+
+    assert not any("update-traffic" in command for command in commands)
+
+
 def test_health_failure_never_triggers_automatic_disable():
     responses = iter([
-        service("rev1", "rev1", "false"), {}, service("rev2", "rev2", "true"),
-        {"spec": {"containers": [{"env": [{"name": "MAINTENANCE_MODE", "value": "true"}]}]}}, {},
+        service("rev1", "rev1", "false"), {}, service("rev2", "rev1", "true"),
+        revision_resource("true"), {},
         service("rev2", "rev2", "true", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
     commands = []

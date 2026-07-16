@@ -51,6 +51,21 @@ def _env_value(resource: Mapping[str, Any], name: str) -> str:
     return str(entries[0]["value"]).strip().lower()
 
 
+def _condition_status(resource: Mapping[str, Any], condition_type: str) -> str:
+    conditions = resource.get("status", {}).get("conditions", [])
+    if not isinstance(conditions, list):
+        raise MaintenanceOperationError("Cloud Run revision conditions are invalid")
+    matches = [item for item in conditions if isinstance(item, Mapping) and item.get("type") == condition_type]
+    if not matches:
+        return "Unknown"
+    if len(matches) != 1:
+        raise MaintenanceOperationError(f"Cloud Run revision has multiple {condition_type} conditions")
+    value = matches[0].get("status")
+    if value not in {"True", "False", "Unknown"}:
+        raise MaintenanceOperationError(f"Cloud Run revision {condition_type} condition is invalid")
+    return str(value)
+
+
 def validate_target(project: str, region: str, service: str, confirmation: str) -> None:
     expected_confirmation = f"{project}/{region}/{service}"
     if (project, region, service) != (PROJECT, REGION, SERVICE):
@@ -106,14 +121,17 @@ def execute_transition(
         "--update-env-vars", f"MAINTENANCE_MODE={desired_value}",
         "--no-traffic", "--format=json",
     ])
-    # Cloud Run updates the service status asynchronously. Wait for the new
-    # no-traffic revision to become Ready before validating it or moving traffic.
+    # Cloud Run updates the service and revision status asynchronously. Identify
+    # the new no-traffic revision from the service, then inspect that revision's
+    # own Ready condition. A Ready no-traffic revision can be Retired and does
+    # not necessarily become the service's latestReadyRevisionName.
     deadline = monotonic() + READY_TIMEOUT_SECONDS
     revision: str | None = None
+    revision_resource: Mapping[str, Any] | None = None
+    ready_condition = "Unknown"
     while True:
         staged = run_json(describe)
         created = _revision_name(staged, "latestCreatedRevisionName")
-        ready = _revision_name(staged, "latestReadyRevisionName")
         if revision is None and created != current:
             revision = created
         elif revision is not None and created != revision:
@@ -121,20 +139,23 @@ def execute_transition(
                 f"a newer revision appeared while waiting for {revision} to become ready: {created}"
             )
 
-        if revision is not None and ready == revision:
-            break
+        if revision is not None:
+            revision_resource = run_json([
+                "gcloud", "run", "revisions", "describe", revision,
+                "--project", PROJECT, "--region", REGION, "--format=json",
+            ])
+            ready_condition = _condition_status(revision_resource, "Ready")
+            if ready_condition == "True":
+                break
         if monotonic() >= deadline:
             raise MaintenanceOperationError(
                 "new maintenance revision did not become ready before timeout "
-                f"(created={created}, ready={ready})"
+                f"(created={created}, ready_condition={ready_condition})"
             )
         sleep(READY_POLL_SECONDS)
 
     assert revision is not None
-    revision_resource = run_json([
-        "gcloud", "run", "revisions", "describe", revision,
-        "--project", PROJECT, "--region", REGION, "--format=json",
-    ])
+    assert revision_resource is not None
     if _env_value(revision_resource, "MAINTENANCE_MODE") != desired_value:
         raise MaintenanceOperationError("new revision has an unexpected maintenance value")
 
