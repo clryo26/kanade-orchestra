@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 import pytest
@@ -8,6 +9,8 @@ from scripts.manage_test_maintenance import (
     DRAIN_SECONDS,
     MaintenanceOperationError,
     READY_POLL_SECONDS,
+    _run_command,
+    _run_json,
     execute_transition,
     validate_target,
 )
@@ -49,28 +52,51 @@ def test_wrong_confirmation_fails():
         validate_target("kanade-orchestra", "asia-northeast2", "kanade-orchestra-test", "no")
 
 
+def test_run_command_accepts_non_object_json_output(monkeypatch):
+    completed = subprocess.CompletedProcess(args=["gcloud"], returncode=0, stdout="[]\n", stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed)
+
+    assert _run_command(["gcloud", "run", "services", "update-traffic"]) is None
+
+
+def test_run_json_still_rejects_non_object_json_output(monkeypatch):
+    completed = subprocess.CompletedProcess(args=["gcloud"], returncode=0, stdout="[]\n", stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed)
+
+    with pytest.raises(MaintenanceOperationError, match="not a JSON object"):
+        _run_json(["gcloud", "run", "services", "describe"])
+
+
 def test_enable_stages_routes_checks_health_and_drains():
     responses = iter([
         service("rev1", "rev1", "false"),
         {},
         service("rev2", "rev1", "true"),
         revision_resource("true"),
-        {},
         service("rev2", "rev2", "true", traffic=[{"revisionName": "rev2", "percent": 100}]),
         service("rev2", "rev2", "true", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
     commands = []
+    state_change_commands = []
     sleeps = []
 
     def run(command):
         commands.append(command)
         return next(responses)
 
-    revision = execute_transition("enable", "rev1", run_json=run, health_state=lambda _: "enabled", sleep=sleeps.append)
+    revision = execute_transition(
+        "enable",
+        "rev1",
+        run_json=run,
+        run_command=state_change_commands.append,
+        health_state=lambda _: "enabled",
+        sleep=sleeps.append,
+    )
     assert revision == "rev2"
     assert sleeps == [DRAIN_SECONDS]
     assert any("--no-traffic" in command and "MAINTENANCE_MODE=true" in command for command in commands)
-    assert any("update-traffic" in command and "rev2=100" in command for command in commands)
+    assert any("update-traffic" in command and "rev2=100" in command for command in state_change_commands)
+    assert all("--format=json" not in command for command in state_change_commands)
 
 
 def test_revision_race_fails_before_update():
@@ -88,11 +114,18 @@ def test_revision_race_fails_before_update():
 def test_disable_does_not_drain():
     responses = iter([
         service("rev1", "rev1", "true"), {}, service("rev2", "rev1", "false"),
-        revision_resource("false"), {},
+        revision_resource("false"),
         service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
     sleeps = []
-    revision = execute_transition("disable", "rev1", run_json=lambda _: next(responses), health_state=lambda _: "disabled", sleep=sleeps.append)
+    revision = execute_transition(
+        "disable",
+        "rev1",
+        run_json=lambda _: next(responses),
+        run_command=lambda _: None,
+        health_state=lambda _: "disabled",
+        sleep=sleeps.append,
+    )
     assert revision == "rev2"
     assert sleeps == []
 
@@ -105,21 +138,32 @@ def test_waits_for_new_revision_to_become_ready_before_routing():
         revision_resource("false", "Unknown"),
         service("rev2", "rev1", "false"),
         revision_resource("false"),
-        {},
         service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
     sleeps = []
+    events = []
+
+    def run(command):
+        response = next(responses)
+        if "revisions" in command:
+            events.append(f"ready:{response['status']['conditions'][0]['status']}")
+        return response
+
+    def run_command(_):
+        events.append("update-traffic")
 
     revision = execute_transition(
         "disable",
         "rev1",
-        run_json=lambda _: next(responses),
+        run_json=run,
+        run_command=run_command,
         health_state=lambda _: "disabled",
         sleep=sleeps.append,
     )
 
     assert revision == "rev2"
     assert sleeps == [READY_POLL_SECONDS]
+    assert events == ["ready:Unknown", "ready:True", "update-traffic"]
 
 
 def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
@@ -131,6 +175,7 @@ def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
     ])
     times = iter([0.0, 301.0])
     commands = []
+    traffic_commands = []
 
     def run(command):
         commands.append(command)
@@ -144,11 +189,13 @@ def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
             "enable",
             "rev1",
             run_json=run,
+            run_command=traffic_commands.append,
             sleep=lambda _: None,
             monotonic=lambda: next(times),
         )
 
     assert not any("update-traffic" in command for command in commands)
+    assert traffic_commands == []
 
 
 def test_ready_retired_no_traffic_revision_routes_without_latest_ready_change():
@@ -161,7 +208,6 @@ def test_ready_retired_no_traffic_revision_routes_without_latest_ready_change():
         {},
         service("rev2", "rev1", "false"),
         ready_retired_revision,
-        {},
         service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
 
@@ -169,6 +215,7 @@ def test_ready_retired_no_traffic_revision_routes_without_latest_ready_change():
         "disable",
         "rev1",
         run_json=lambda _: next(responses),
+        run_command=lambda _: None,
         health_state=lambda _: "disabled",
     )
 
@@ -184,21 +231,29 @@ def test_newer_revision_appearing_while_waiting_stops_before_routing():
         service("rev3", "rev1", "false"),
     ])
     commands = []
+    traffic_commands = []
 
     def run(command):
         commands.append(command)
         return next(responses)
 
     with pytest.raises(MaintenanceOperationError, match="newer revision"):
-        execute_transition("disable", "rev1", run_json=run, sleep=lambda _: None)
+        execute_transition(
+            "disable",
+            "rev1",
+            run_json=run,
+            run_command=traffic_commands.append,
+            sleep=lambda _: None,
+        )
 
     assert not any("update-traffic" in command for command in commands)
+    assert traffic_commands == []
 
 
 def test_health_failure_never_triggers_automatic_disable():
     responses = iter([
         service("rev1", "rev1", "false"), {}, service("rev2", "rev1", "true"),
-        revision_resource("true"), {},
+        revision_resource("true"),
         service("rev2", "rev2", "true", traffic=[{"revisionName": "rev2", "percent": 100}]),
     ])
     commands = []
@@ -208,5 +263,11 @@ def test_health_failure_never_triggers_automatic_disable():
         return next(responses)
 
     with pytest.raises(MaintenanceOperationError, match="health"):
-        execute_transition("enable", "rev1", run_json=run, health_state=lambda _: "disabled")
+        execute_transition(
+            "enable",
+            "rev1",
+            run_json=run,
+            run_command=lambda command: commands.append(command),
+            health_state=lambda _: "disabled",
+        )
     assert not any("MAINTENANCE_MODE=false" in command for command in commands)

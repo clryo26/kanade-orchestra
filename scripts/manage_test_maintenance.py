@@ -31,6 +31,11 @@ def _run_json(command: Sequence[str]) -> Mapping[str, Any]:
     return value
 
 
+def _run_command(command: Sequence[str]) -> None:
+    """Run a state-changing command whose response is not part of verification."""
+    subprocess.run(command, check=True, capture_output=True, text=True)
+
+
 def _revision_name(service: Mapping[str, Any], field: str) -> str:
     value = service.get("status", {}).get(field)
     if not isinstance(value, str) or not value:
@@ -98,6 +103,7 @@ def execute_transition(
     expected_revision: str,
     *,
     run_json: Callable[[Sequence[str]], Mapping[str, Any]] = _run_json,
+    run_command: Callable[[Sequence[str]], None] = _run_command,
     health_state: Callable[[str], str] = _health_state,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
@@ -159,10 +165,10 @@ def execute_transition(
     if _env_value(revision_resource, "MAINTENANCE_MODE") != desired_value:
         raise MaintenanceOperationError("new revision has an unexpected maintenance value")
 
-    run_json([
+    run_command([
         "gcloud", "run", "services", "update-traffic", SERVICE,
         "--project", PROJECT, "--region", REGION,
-        "--to-revisions", f"{revision}=100", "--format=json",
+        "--to-revisions", f"{revision}=100",
     ])
     after = run_json(describe)
     traffic = after.get("status", {}).get("traffic")

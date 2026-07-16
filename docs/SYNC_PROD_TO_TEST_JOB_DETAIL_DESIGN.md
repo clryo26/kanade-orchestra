@@ -590,6 +590,10 @@ Cloud Runのサービス更新後は、新しいno-trafficリビジョンの状�
 - 操作承認時のlatest Ready revisionと実行時の値が異なる場合は停止する。
 - 環境変数だけを更新した新revisionを`--no-traffic`で作成する。
 - 新revisionがReadyかつ期待する`MAINTENANCE_MODE`を持つことを確認後、100% trafficを割り当てる。
+- `update-traffic`の出力形式は成功判定に使用せず、コマンドの終了コードを確認する。実環境では
+  `--format=json`でもJSON object以外の有効なJSONが返る場合があるため、JSON objectを要求する
+  describe系の実行経路とは分離する。切替成功は直後のサービス再取得で、新revisionへのtraffic 100%、
+  および公開healthの期待状態を確認して判定する。
 - healthの状態一致を確認する。有効化時はさらに310秒待機し、再度enabledを確認する。
 - いずれかの確認失敗時も自動解除しない。解除は独立した明示操作だけで行う。
 - このworkflowはDB接続確認、復元、同期、削除を行わず、`sync-prod-to-test.yml`へ接続しない。
