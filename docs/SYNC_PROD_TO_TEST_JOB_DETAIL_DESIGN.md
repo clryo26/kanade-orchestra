@@ -579,7 +579,9 @@ DB接続停止確認、解除処理は次の実装単位とする。現段階で
 
 Cloud Runのサービス更新後は、新しいno-trafficリビジョンの状態反映が非同期であるため、
 `latestCreatedRevisionName`で新規リビジョンを特定し、最大300秒、5秒間隔で
-`latestReadyRevisionName`との一致を待機する。待機中に別の新規リビジョンが作成された場合、
+作成したリビジョン自身の`Ready` conditionが`True`になるまで待機する。no-trafficのReadyリビジョンは
+`Retired`となり、サービスの`latestReadyRevisionName`へ反映されない場合があるため、同フィールドとの
+一致はReady判定に使用しない。待機中に別の新規リビジョンが作成された場合、
 または期限内にReadyにならなかった場合は、trafficを切り替えず安全停止する。
 タイムアウト時は判定に使用したcreated・readyの各リビジョン名をエラーへ出力する。
 
