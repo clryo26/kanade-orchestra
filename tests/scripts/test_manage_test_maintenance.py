@@ -7,6 +7,7 @@ import pytest
 from scripts.manage_test_maintenance import (
     DRAIN_SECONDS,
     MaintenanceOperationError,
+    READY_POLL_SECONDS,
     execute_transition,
     validate_target,
 )
@@ -87,6 +88,58 @@ def test_disable_does_not_drain():
     revision = execute_transition("disable", "rev1", run_json=lambda _: next(responses), health_state=lambda _: "disabled", sleep=sleeps.append)
     assert revision == "rev2"
     assert sleeps == []
+
+
+def test_waits_for_new_revision_to_become_ready_before_routing():
+    responses = iter([
+        service("rev1", "rev1", "true"),
+        {},
+        service("rev2", "rev1", "false"),
+        service("rev2", "rev2", "false"),
+        {"spec": {"containers": [{"env": [{"name": "MAINTENANCE_MODE", "value": "false"}]}]}},
+        {},
+        service("rev2", "rev2", "false", traffic=[{"revisionName": "rev2", "percent": 100}]),
+    ])
+    sleeps = []
+
+    revision = execute_transition(
+        "disable",
+        "rev1",
+        run_json=lambda _: next(responses),
+        health_state=lambda _: "disabled",
+        sleep=sleeps.append,
+    )
+
+    assert revision == "rev2"
+    assert sleeps == [READY_POLL_SECONDS]
+
+
+def test_ready_timeout_reports_created_and_ready_revisions_before_routing():
+    responses = iter([
+        service("rev1", "rev1", "false"),
+        {},
+        service("rev2", "rev1", "true"),
+    ])
+    times = iter([0.0, 301.0])
+    commands = []
+
+    def run(command):
+        commands.append(command)
+        return next(responses)
+
+    with pytest.raises(
+        MaintenanceOperationError,
+        match=r"before timeout \(created=rev2, ready=rev1\)",
+    ):
+        execute_transition(
+            "enable",
+            "rev1",
+            run_json=run,
+            sleep=lambda _: None,
+            monotonic=lambda: next(times),
+        )
+
+    assert not any("update-traffic" in command for command in commands)
 
 
 def test_health_failure_never_triggers_automatic_disable():

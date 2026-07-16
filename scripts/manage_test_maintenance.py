@@ -15,6 +15,8 @@ REGION = "asia-northeast2"
 SERVICE = "kanade-orchestra-test"
 HEALTH_PATH = "/api/health"
 DRAIN_SECONDS = 310
+READY_TIMEOUT_SECONDS = 300
+READY_POLL_SECONDS = 5
 
 
 class MaintenanceOperationError(RuntimeError):
@@ -83,6 +85,7 @@ def execute_transition(
     run_json: Callable[[Sequence[str]], Mapping[str, Any]] = _run_json,
     health_state: Callable[[str], str] = _health_state,
     sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> str:
     describe = ["gcloud", "run", "services", "describe", SERVICE, "--project", PROJECT, "--region", REGION, "--format=json"]
     before = run_json(describe)
@@ -103,10 +106,31 @@ def execute_transition(
         "--update-env-vars", f"MAINTENANCE_MODE={desired_value}",
         "--no-traffic", "--format=json",
     ])
-    staged = run_json(describe)
-    revision = _revision_name(staged, "latestCreatedRevisionName")
-    if revision == current or _revision_name(staged, "latestReadyRevisionName") != revision:
-        raise MaintenanceOperationError("new maintenance revision is not uniquely ready")
+    # Cloud Run updates the service status asynchronously. Wait for the new
+    # no-traffic revision to become Ready before validating it or moving traffic.
+    deadline = monotonic() + READY_TIMEOUT_SECONDS
+    revision: str | None = None
+    while True:
+        staged = run_json(describe)
+        created = _revision_name(staged, "latestCreatedRevisionName")
+        ready = _revision_name(staged, "latestReadyRevisionName")
+        if revision is None and created != current:
+            revision = created
+        elif revision is not None and created != revision:
+            raise MaintenanceOperationError(
+                f"a newer revision appeared while waiting for {revision} to become ready: {created}"
+            )
+
+        if revision is not None and ready == revision:
+            break
+        if monotonic() >= deadline:
+            raise MaintenanceOperationError(
+                "new maintenance revision did not become ready before timeout "
+                f"(created={created}, ready={ready})"
+            )
+        sleep(READY_POLL_SECONDS)
+
+    assert revision is not None
     revision_resource = run_json([
         "gcloud", "run", "revisions", "describe", revision,
         "--project", PROJECT, "--region", REGION, "--format=json",
