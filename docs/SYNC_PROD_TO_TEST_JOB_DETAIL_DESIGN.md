@@ -600,3 +600,20 @@ Cloud Runのサービス更新後は、新しいno-trafficリビジョンの状�
 
 DB接続停止確認は、接続主体を識別して復元処理自身を除外する方式を別実装単位で追加する。
 それまでは復元開始条件を満たさないため、Template guardと最終`exit 1`を維持する。
+
+## 33. Stage 3-5 Test Database Connection Drain Gate
+
+復元処理を接続する前段として、`scripts/check_test_db_connections_drained.py`を追加する。
+このスクリプトはテストDBへread-onlyで接続し、接続先が`TEST_DB_NAME`と一致することを
+確認したうえで、`pg_stat_activity`から自分自身のPIDだけを除外して他の接続を列挙する。
+
+- `DB_NAME_PROD`と`DB_NAME_TEST`の不一致を必須とする。
+- 判定用接続には専用`application_name`を設定する。
+- 除外する接続は`pid <> pg_backend_pid()`で識別できる判定用接続自身だけとする。
+- idleを含む他の接続が1件でも残る場合はfail-closedで停止する。
+- 接続先不一致、接続情報不足、SQL失敗、判定不能時も成功扱いにしない。
+- passwordや接続文字列をログへ出力しない。
+
+この段階では、同スクリプトを`sync-prod-to-test.yml`へまだ接続しない。Maintenance有効化、
+traffic切替、310秒のdrain待機を同一オーケストレーションへ接続した後に実行する。
+DB/GCS同期、削除、復元は引き続き実行せず、Template guardと最終`exit 1`を維持する。
