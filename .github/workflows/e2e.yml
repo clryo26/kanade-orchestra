@@ -15,7 +15,6 @@ jobs:
       LOCAL_JSON_FALLBACK_ENABLED: 'true'
       E2E_BASE_URL: 'http://127.0.0.1:8000'
       NO_PROXY: '127.0.0.1,localhost'
-      no_proxy: '127.0.0.1,localhost'
       NODE_TLS_REJECT_UNAUTHORIZED: '0'
     steps:
       - name: Checkout
