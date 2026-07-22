@@ -11,6 +11,8 @@ VERIFY_DB_SCRIPT = ROOT / "scripts" / "verify_prod_test_db_connections.py"
 BACKUP_SCRIPT = ROOT / "scripts" / "backup_test_environment_pre_sync.py"
 MAINTENANCE_DEPLOY_GUARD_SCRIPT = ROOT / "scripts" / "check_test_maintenance_deploy.py"
 MAINTENANCE_OPERATION_SCRIPT = ROOT / "scripts" / "manage_test_maintenance.py"
+DB_DRAIN_CHECK_SCRIPT = ROOT / "scripts" / "check_test_db_connections_drained.py"
+BACKUP_MANIFEST_CHECK_SCRIPT = ROOT / "scripts" / "check_backup_manifest.py"
 
 TARGET_WORKFLOWS = {
     "test-maintenance.yml": {
@@ -78,6 +80,13 @@ TARGET_WORKFLOWS = {
             "GCS_BUCKET_TEST",
             "DEPLOY_SERVICE_ACCOUNT",
             "WIF_PROVIDER",
+            "expected_test_revision",
+            "maintenance_confirmation",
+            "group: kanade-orchestra-test-maintenance",
+            "cancel-in-progress: false",
+            "check_backup_manifest.py",
+            "manage_test_maintenance.py enable",
+            "check_test_db_connections_drained.py",
             "sync_prod_to_test_preflight.py",
             "verify_prod_test_db_connections.py",
             "PROD_DB_USER",
@@ -421,6 +430,53 @@ def validate_sync_backup_invocation(content: str, file_name: str, errors: list[s
         errors.append(f"{file_name}: executable scripts must not be checked out from target_git_sha")
 
 
+def validate_sync_restore_gates(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "sync-prod-to-test.yml":
+        return
+
+    ordered_markers = (
+        "- name: Run test pre-sync backup",
+        "- name: Validate test pre-sync backup manifest",
+        "- name: Enable test maintenance and drain requests",
+        "- name: Verify test database connections are drained",
+        "- name: Template guard",
+    )
+    positions = [content.find(marker) for marker in ordered_markers]
+    if any(position < 0 for position in positions) or positions != sorted(positions):
+        errors.append(
+            f"{file_name}: backup, manifest, maintenance, drain check, and template guard order is invalid"
+        )
+
+    required_invocations = (
+        "python scripts/check_backup_manifest.py",
+        "python scripts/manage_test_maintenance.py enable",
+        "python scripts/check_test_db_connections_drained.py",
+    )
+    for invocation in required_invocations:
+        if content.count(invocation) != 1:
+            errors.append(f"{file_name}: required gate must be invoked exactly once: {invocation}")
+            continue
+        invocation_start = content.find(invocation)
+        step_start = content.rfind("\n      - name:", 0, invocation_start)
+        step_end = content.find("\n      - name:", invocation_start)
+        step_block = content[step_start : step_end if step_end >= 0 else len(content)]
+        if "if: ${{ inputs.dry_run == 'false' }}" not in step_block:
+            errors.append(f"{file_name}: restore gate must require dry_run == 'false': {invocation}")
+
+    safety_tokens = (
+        'EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}',
+        'MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}',
+        '--confirmation "${MAINTENANCE_CONFIRMATION}"',
+        '--expected-revision "${EXPECTED_TEST_REVISION}"',
+        "trap cleanup_proxy EXIT",
+        "default_transaction_read_only=on",
+    )
+    combined = content + read_text(DB_DRAIN_CHECK_SCRIPT)
+    for token in safety_tokens:
+        if token not in combined:
+            errors.append(f"{file_name}: restore gate safety token missing: {token}")
+
+
 def validate_verification_script(path: Path, errors: list[str]) -> None:
     if not path.exists():
         errors.append(f"missing database verification script: {path.name}")
@@ -539,6 +595,7 @@ def run_checks(
         validate_sync_workflow_has_no_write_commands(content, file_name, errors)
         validate_sync_pg18_client_policy(content, file_name, errors)
         validate_sync_backup_invocation(content, file_name, errors)
+        validate_sync_restore_gates(content, file_name, errors)
 
     validate_verification_script(verify_db_script, errors)
     validate_backup_script(backup_script, errors)

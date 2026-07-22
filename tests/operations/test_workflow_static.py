@@ -455,6 +455,66 @@ def test_unapproved_direct_pg_dump_command_still_fails(tmp_path):
     assert any("DB/GCS write or sync command is forbidden" in error for error in errors)
 
 
+def test_sync_restore_gates_are_accepted_in_safe_order(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert errors == []
+
+
+def test_sync_restore_gate_order_change_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    manifest = "- name: Validate test pre-sync backup manifest"
+    maintenance = "- name: Enable test maintenance and drain requests"
+    content = content.replace(manifest, "- name: TEMP restore gate")
+    content = content.replace(maintenance, manifest)
+    content = content.replace("- name: TEMP restore gate", maintenance)
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("order is invalid" in error for error in errors)
+
+
+def test_sync_restore_gate_without_false_condition_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    marker = "      - name: Validate test pre-sync backup manifest\n        if: ${{ inputs.dry_run == 'false' }}"
+    assert marker in content
+    content = content.replace(
+        marker,
+        "      - name: Validate test pre-sync backup manifest\n        if: ${{ inputs.dry_run == 'true' }}",
+        1,
+    )
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("restore gate must require dry_run == 'false'" in error for error in errors)
+
+
+def test_sync_restore_gate_duplicate_invocation_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    invocation = "          python scripts/check_backup_manifest.py\n"
+    assert invocation in content
+    content = content.replace(invocation, invocation * 2, 1)
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("required gate must be invoked exactly once" in error for error in errors)
+
+
 @pytest.mark.parametrize(
     ("old", "new"),
     [

@@ -636,3 +636,24 @@ DB dump、manifestに記録された全GCSバックアップをgeneration固定�
 
 この段階では同スクリプトを`sync-prod-to-test.yml`へまだ接続しない。DB/GCS同期、削除、復元は
 引き続き実行せず、Template guardと最終`exit 1`を維持する。
+
+### 33.2 Stage 3-5 Safety Gate Orchestration
+
+独立実装済みの復元前安全ゲートを`sync-prod-to-test.yml`へ接続する。
+`dry_run=false`の場合だけ、既存の事前バックアップ完了後に次の順序で実行する。
+
+1. `check_backup_manifest.py`で、作成済みバックアップとmanifestをgeneration固定で検証する。
+2. 承認時のテストCloud Run ready revisionとの一致を必須として、
+   `manage_test_maintenance.py enable`を実行する。新revisionへのtraffic 100%切替、health確認、
+   310秒のdrain待機、再度のhealth確認まで同スクリプト内で完了させる。
+3. 専用Cloud SQL Auth Proxyを起動し、`check_test_db_connections_drained.py`で判定用接続自身を
+   除くテストDB接続が0件であることを確認する。
+4. `Template guard`と最終`exit 1`で必ず停止する。
+
+実処理開始時は`expected_test_revision`と固定確認文字列
+`kanade-orchestra/asia-northeast2/kanade-orchestra-test`を必須とする。
+管理画面/APIからの現行要求は`dry_run=true`のため、追加入力を使用せず従来どおり検証のみ行う。
+
+同期workflowと手動メンテナンスworkflowは同じconcurrency groupを使用し、同時実行を禁止する。
+失敗時を含めメンテナンスは自動解除しない。DB/GCS復元・同期・削除は実装せず、
+静的禁止ガードを維持する。
