@@ -20,10 +20,22 @@ on:
         options:
           - "true"
           - "false"
+      expected_test_revision:
+        description: "Exact current ready test revision (required when dry_run=false)"
+        required: false
+        type: string
+      maintenance_confirmation:
+        description: "Type kanade-orchestra/asia-northeast2/kanade-orchestra-test when dry_run=false"
+        required: false
+        type: string
 
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: kanade-orchestra-test-maintenance
+  cancel-in-progress: false
 
 jobs:
   sync-prod-to-test:
@@ -50,10 +62,12 @@ jobs:
           DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
           PROD_DB_USER: ${{ secrets.PROD_DB_USER }}
           TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
+          EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}
+          MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}
         run: |
           set -euo pipefail
           missing=0
-          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE CLOUD_SQL_INSTANCE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT PROD_DB_USER TEST_DB_USER; do
+          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE CLOUD_SQL_INSTANCE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT PROD_DB_USER TEST_DB_USER EXPECTED_TEST_REVISION MAINTENANCE_CONFIRMATION; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing GitHub Variable/Secret: $name"
@@ -74,6 +88,10 @@ jobs:
           fi
           if [ "${TEST_CLOUD_RUN_SERVICE}" != "kanade-orchestra-test" ]; then
             echo "::error::Prod-to-test sync is restricted to service kanade-orchestra-test."
+            exit 1
+          fi
+          if [ "${MAINTENANCE_CONFIRMATION}" != "kanade-orchestra/asia-northeast2/kanade-orchestra-test" ]; then
+            echo "::error::Maintenance confirmation does not exactly match the test target."
             exit 1
           fi
 
@@ -319,6 +337,96 @@ jobs:
           echo "::add-mask::${DB_PASSWORD}"
           export DB_PASSWORD
           python scripts/backup_test_environment_pre_sync.py --execute
+
+      - name: Validate test pre-sync backup manifest
+        if: ${{ inputs.dry_run == 'false' }}
+        shell: bash
+        env:
+          OPERATION_ID: ${{ inputs.operation_id }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
+          DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
+          GCS_BUCKET_PROD: ${{ vars.PROD_GCS_BUCKET }}
+          GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
+        run: |
+          set -euo pipefail
+          export PATH="/usr/lib/postgresql/18/bin:${PATH}"
+          python scripts/check_backup_manifest.py
+
+      - name: Enable test maintenance and drain requests
+        if: ${{ inputs.dry_run == 'false' }}
+        shell: bash
+        env:
+          EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}
+          MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}
+        run: |
+          set -euo pipefail
+          python scripts/manage_test_maintenance.py enable \
+            --project "kanade-orchestra" \
+            --region "asia-northeast2" \
+            --service "kanade-orchestra-test" \
+            --confirmation "${MAINTENANCE_CONFIRMATION}" \
+            --expected-revision "${EXPECTED_TEST_REVISION}" \
+            --execute
+
+      - name: Verify test database connections are drained
+        if: ${{ inputs.dry_run == 'false' }}
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
+          DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
+          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
+          DB_CONNECT_TIMEOUT: "10"
+        run: |
+          set -euo pipefail
+          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy-drain-check.log"
+          proxy_pid=""
+
+          cleanup_proxy() {
+            if [ -n "${proxy_pid}" ]; then
+              kill "${proxy_pid}" 2>/dev/null || true
+              wait "${proxy_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_proxy EXIT
+
+          ./cloud-sql-proxy \
+            --address 127.0.0.1 \
+            --port 5432 \
+            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
+            >"${proxy_log}" 2>&1 &
+          proxy_pid=$!
+
+          proxy_ready=false
+          for _ in {1..30}; do
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+              proxy_ready=true
+              break
+            fi
+            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "${proxy_ready}" != "true" ]; then
+            echo "::error::Cloud SQL Auth Proxy did not become ready for drain check"
+            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
+            exit 1
+          fi
+
+          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
+          if [ -z "${DB_PASSWORD}" ]; then
+            echo "::error::Database password secret is empty"
+            exit 1
+          fi
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD
+          python scripts/check_test_db_connections_drained.py
 
       - name: Sync direction policy note
         shell: bash
