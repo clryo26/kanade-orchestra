@@ -617,3 +617,22 @@ DB接続停止確認は、接続主体を識別して復元処理自身を除外
 この段階では、同スクリプトを`sync-prod-to-test.yml`へまだ接続しない。Maintenance有効化、
 traffic切替、310秒のdrain待機を同一オーケストレーションへ接続した後に実行する。
 DB/GCS同期、削除、復元は引き続き実行せず、Template guardと最終`exit 1`を維持する。
+
+### 33.1 バックアップmanifest検証ゲート
+
+復元処理を接続する前段として、`scripts/check_backup_manifest.py`を追加する。
+このスクリプトは`operation_id`からテストGCS内の`manifest.json`を特定し、manifest自身、
+DB dump、manifestに記録された全GCSバックアップをgeneration固定で読み取って検証する。
+
+- schema version、operation ID、完了状態、project、テストDB、テストGCSの一致を必須とする。
+- 本番DBとテストDB、本番GCSとテストGCSの不一致を実行時設定とmanifestの両方で確認する。
+- manifestに記録されたGCS対象規則が、対応するバックアップ処理の固定規則と一致しない場合は停止する。
+- DB dumpは固定パス、generation、size、SHA-256 metadata、ダウンロード後SHA-256、
+  PostgreSQL 18の`pg_restore --list`をすべて検証する。
+- GCSバックアップは重複・不正パスを拒否し、各generation、size、記録済みCRC32C・MD5、
+  object count、total sizeを検証する。
+- 欠落、不一致、型不正、generation固定失敗、外部コマンド失敗はすべてfail-closedで停止する。
+- password、接続文字列、manifest本文をログへ出力しない。
+
+この段階では同スクリプトを`sync-prod-to-test.yml`へまだ接続しない。DB/GCS同期、削除、復元は
+引き続き実行せず、Template guardと最終`exit 1`を維持する。
