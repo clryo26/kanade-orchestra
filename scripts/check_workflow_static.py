@@ -88,6 +88,7 @@ TARGET_WORKFLOWS = {
             "manage_test_maintenance.py enable",
             "check_test_db_connections_drained.py",
             "sync_prod_to_test_db.py",
+            "sync_prod_to_test_gcs.py",
             "sync_prod_to_test_preflight.py",
             "verify_prod_test_db_connections.py",
             "PROD_DB_USER",
@@ -320,6 +321,42 @@ def validate_db_sync_invocation(content: str, file_name: str, errors: list[str])
         errors.append(f"{file_name}: DB sync must run after drain verification and before template guard")
 
 
+def validate_gcs_sync_invocation(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "sync-prod-to-test.yml":
+        return
+
+    invocation = "python scripts/sync_prod_to_test_gcs.py --execute"
+    if content.count(invocation) != 1:
+        errors.append(
+            f"{file_name}: GCS sync script must be invoked exactly once with --execute"
+        )
+        return
+
+    invocation_start = content.find(invocation)
+    step_start = content.rfind("\n      - name:", 0, invocation_start)
+    step_end = content.find("\n      - name:", invocation_start)
+    step_block = content[step_start : step_end if step_end >= 0 else len(content)]
+    required_tokens = (
+        "if: ${{ inputs.dry_run == 'false' }}",
+        "GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}",
+        "GCS_BUCKET_PROD: ${{ vars.PROD_GCS_BUCKET }}",
+        "GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}",
+        "set -euo pipefail",
+    )
+    for token in required_tokens:
+        if token not in step_block:
+            errors.append(f"{file_name}: GCS sync step safety token missing: {token}")
+
+    db_sync_start = content.find("python scripts/sync_prod_to_test_db.py")
+    guard_start = content.find("- name: Template guard")
+    if db_sync_start < 0 or guard_start < 0 or not (
+        db_sync_start < invocation_start < guard_start
+    ):
+        errors.append(
+            f"{file_name}: GCS sync must run after DB sync and before template guard"
+        )
+
+
 def validate_sync_pg18_client_policy(content: str, file_name: str, errors: list[str]) -> None:
     if file_name != "sync-prod-to-test.yml":
         return
@@ -479,6 +516,7 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
         "- name: Enable test maintenance and drain requests",
         "- name: Verify test database connections are drained",
         "- name: Synchronize approved production database tables to test",
+        "- name: Synchronize approved production GCS objects to test",
         "- name: Template guard",
     )
     positions = [content.find(marker) for marker in ordered_markers]
@@ -634,6 +672,7 @@ def run_checks(
         validate_no_direct_input_echo(content, file_name, errors)
         validate_sync_workflow_has_no_write_commands(content, file_name, errors)
         validate_db_sync_invocation(content, file_name, errors)
+        validate_gcs_sync_invocation(content, file_name, errors)
         validate_sync_pg18_client_policy(content, file_name, errors)
         validate_sync_backup_invocation(content, file_name, errors)
         validate_sync_restore_gates(content, file_name, errors)

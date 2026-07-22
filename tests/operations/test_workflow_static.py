@@ -510,6 +510,72 @@ def test_db_sync_before_drain_verification_fails(tmp_path):
     assert any("order is invalid" in error for error in errors)
 
 
+def test_gcs_sync_invocation_missing_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "python scripts/sync_prod_to_test_gcs.py --execute",
+        "python scripts/disabled_gcs_sync.py --execute",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("GCS sync script must be invoked exactly once" in error for error in errors)
+
+
+def test_gcs_sync_without_execute_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "python scripts/sync_prod_to_test_gcs.py --execute",
+        "python scripts/sync_prod_to_test_gcs.py",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any(
+        "GCS sync script must be invoked exactly once with --execute" in error
+        for error in errors
+    )
+
+
+def test_gcs_sync_without_false_condition_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    marker = (
+        "      - name: Synchronize approved production GCS objects to test\n"
+        "        if: ${{ inputs.dry_run == 'false' }}"
+    )
+    _replace(sync_path, marker, marker.replace("false", "true"))
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("GCS sync step safety token missing" in error for error in errors)
+
+
+def test_gcs_sync_before_db_sync_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    db_sync = "- name: Synchronize approved production database tables to test"
+    gcs_sync = "- name: Synchronize approved production GCS objects to test"
+    content = content.replace(db_sync, "- name: TEMP DB sync step")
+    content = content.replace(gcs_sync, db_sync)
+    content = content.replace("- name: TEMP DB sync step", gcs_sync)
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any(
+        "GCS sync must run after DB sync" in error or "order is invalid" in error
+        for error in errors
+    )
+
+
 def test_sync_restore_gate_order_change_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)

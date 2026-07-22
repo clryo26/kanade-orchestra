@@ -488,6 +488,17 @@ jobs:
           export DB_PASSWORD
           python scripts/sync_prod_to_test_db.py
 
+      - name: Synchronize approved production GCS objects to test
+        if: ${{ inputs.dry_run == 'false' }}
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCS_BUCKET_PROD: ${{ vars.PROD_GCS_BUCKET }}
+          GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
+        run: |
+          set -euo pipefail
+          python scripts/sync_prod_to_test_gcs.py --execute
+
       - name: Sync direction policy note
         shell: bash
         env:
@@ -501,9 +512,9 @@ jobs:
           echo "Allowed direction only: production -> test"
           echo "Reverse sync (test -> production) must not be implemented."
 
-      - name: Template guard (GCS sync remains disabled)
+      - name: Template guard (integrated execution remains disabled)
         shell: bash
         run: |
-          echo "Production-to-test database synchronization is connected."
-          echo "GCS synchronization remains disabled in this phase."
+          echo "Production-to-test database and GCS synchronization are connected."
+          echo "Integrated execution remains disabled until integration validation is complete."
           exit 1

@@ -693,5 +693,23 @@ DB同期後もTemplate guardと最終`exit 1`を維持する。これは未実�
 DB同期を実行しない。
 
 同期workflowと手動メンテナンスworkflowは同じconcurrency groupを使用し、同時実行を禁止する。
-失敗時を含めメンテナンスは自動解除しない。GCS復元・同期・削除は実装せず、
-静的禁止ガードを維持する。
+失敗時を含めメンテナンスは自動解除しない。GCS同期の接続完了まではGCS書き込みを禁止し、
+Template guardによる停止を維持する。
+
+### 33.4 GCS同期・同期後検証のワークフロー接続
+
+独立実装済みの`scripts/sync_prod_to_test_gcs.py`を、DB同期が正常終了した後へ接続する。
+`dry_run=false`の場合だけ`--execute`を指定し、`GCP_PROJECT_ID`、`GCS_BUCKET_PROD`、
+`GCS_BUCKET_TEST`は検証済みのGitHub Variablesから渡す。
+
+- DB同期が失敗した場合はGCS同期へ進まない。
+- GCS同期は固定対象prefixと有効な日付prefixだけを対象とし、除外prefixを変更しない。
+- コピー元generationとコピー先generationを固定し、競合時はfail-closedで停止する。
+- コピー後のsize・checksum検証が完了してから、本番側に存在しない対象を削除する。
+- 削除は列挙時generationとの一致を必須とする。
+- 最終的に対象パス集合、件数、size・checksumを本番側と照合する。
+- GCS同期失敗時はメンテナンスモードを維持し、自動解除しない。
+
+GCS同期後もTemplate guardと最終`exit 1`を維持する。これは統合テストと実行手順の確定が
+完了するまで実同期ワークフローを成功扱いにしない停止点である。管理画面/APIからの現行要求は
+`dry_run=true`のため、DB同期・GCS同期のどちらも実行しない。
