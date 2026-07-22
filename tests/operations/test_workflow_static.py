@@ -464,6 +464,52 @@ def test_sync_restore_gates_are_accepted_in_safe_order(tmp_path):
     assert errors == []
 
 
+def test_db_sync_invocation_missing_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "python scripts/sync_prod_to_test_db.py",
+        "python scripts/disabled_db_sync.py",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("DB sync script must be invoked exactly once" in error for error in errors)
+
+
+def test_db_sync_without_false_condition_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    marker = (
+        "      - name: Synchronize approved production database tables to test\n"
+        "        if: ${{ inputs.dry_run == 'false' }}"
+    )
+    _replace(sync_path, marker, marker.replace("false", "true"))
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("DB sync step safety token missing" in error for error in errors)
+
+
+def test_db_sync_before_drain_verification_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    drain = "- name: Verify test database connections are drained"
+    db_sync = "- name: Synchronize approved production database tables to test"
+    content = content.replace(drain, "- name: TEMP drain step")
+    content = content.replace(db_sync, drain)
+    content = content.replace("- name: TEMP drain step", db_sync)
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("order is invalid" in error for error in errors)
+
+
 def test_sync_restore_gate_order_change_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)

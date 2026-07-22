@@ -677,9 +677,16 @@ DB dump、manifestに記録された全GCSバックアップをgeneration固定�
   テストDBトランザクション全体をrollbackする。
 - password、接続文字列はログへ出力しない。
 
-この段階では専用スクリプトを`sync-prod-to-test.yml`へ接続しない。既存のTemplate guardと
-最終`exit 1`を維持し、ワークフロー・管理画面/APIへの接続は次の実装段階で行う。
+`sync_prod_to_test_db.py`は`sync-prod-to-test.yml`へ接続する。`dry_run=false`の場合だけ、
+事前バックアップmanifest検証、テスト環境メンテナンス化、テストDB接続停止確認がすべて
+成功した後に専用Cloud SQL Auth Proxyを起動して実行する。DBパスワードはSecret Managerから
+取得してログマスクを登録し、`GITHUB_ENV`には保存しない。同期処理が失敗した場合はスクリプト内の
+単一トランザクションをrollbackし、workflowを停止する。
+
+DB同期後もTemplate guardと最終`exit 1`を維持する。これは未実装のGCS同期へ進ませないための
+停止点であり、DB同期の実行自体は完了する。管理画面/APIからの現行要求は`dry_run=true`のため、
+DB同期を実行しない。
 
 同期workflowと手動メンテナンスworkflowは同じconcurrency groupを使用し、同時実行を禁止する。
-失敗時を含めメンテナンスは自動解除しない。DB/GCS復元・同期・削除は実装せず、
+失敗時を含めメンテナンスは自動解除しない。GCS復元・同期・削除は実装せず、
 静的禁止ガードを維持する。

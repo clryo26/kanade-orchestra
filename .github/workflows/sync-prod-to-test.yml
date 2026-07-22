@@ -428,6 +428,66 @@ jobs:
           export DB_PASSWORD
           python scripts/check_test_db_connections_drained.py
 
+      - name: Synchronize approved production database tables to test
+        if: ${{ inputs.dry_run == 'false' }}
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
+          DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
+          DB_USER_PROD: ${{ secrets.PROD_DB_USER }}
+          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
+          DB_CONNECT_TIMEOUT: "10"
+        run: |
+          set -euo pipefail
+          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy-db-sync.log"
+          proxy_pid=""
+
+          cleanup_proxy() {
+            if [ -n "${proxy_pid}" ]; then
+              kill "${proxy_pid}" 2>/dev/null || true
+              wait "${proxy_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_proxy EXIT
+
+          ./cloud-sql-proxy \
+            --address 127.0.0.1 \
+            --port 5432 \
+            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
+            >"${proxy_log}" 2>&1 &
+          proxy_pid=$!
+
+          proxy_ready=false
+          for _ in {1..30}; do
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+              proxy_ready=true
+              break
+            fi
+            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "${proxy_ready}" != "true" ]; then
+            echo "::error::Cloud SQL Auth Proxy did not become ready for database synchronization"
+            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
+            exit 1
+          fi
+
+          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
+          if [ -z "${DB_PASSWORD}" ]; then
+            echo "::error::Database password secret is empty"
+            exit 1
+          fi
+          echo "::add-mask::${DB_PASSWORD}"
+          export DB_PASSWORD
+          python scripts/sync_prod_to_test_db.py
+
       - name: Sync direction policy note
         shell: bash
         env:
@@ -441,10 +501,9 @@ jobs:
           echo "Allowed direction only: production -> test"
           echo "Reverse sync (test -> production) must not be implemented."
 
-      - name: Template guard (no real sync in this phase)
+      - name: Template guard (GCS sync remains disabled)
         shell: bash
         run: |
-          echo "This workflow is a template for prod-to-test sync preparation."
-          echo "workflow_dispatch wiring is enabled, but DB/GCS sync remains disabled."
-          echo "Real Cloud SQL/GCS sync command is intentionally disabled in this phase."
+          echo "Production-to-test database synchronization is connected."
+          echo "GCS synchronization remains disabled in this phase."
           exit 1
