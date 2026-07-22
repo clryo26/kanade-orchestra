@@ -87,6 +87,7 @@ TARGET_WORKFLOWS = {
             "check_backup_manifest.py",
             "manage_test_maintenance.py enable",
             "check_test_db_connections_drained.py",
+            "sync_prod_to_test_db.py",
             "sync_prod_to_test_preflight.py",
             "verify_prod_test_db_connections.py",
             "PROD_DB_USER",
@@ -281,6 +282,44 @@ def validate_sync_workflow_has_no_write_commands(
         errors.append(f"{file_name}: DB/GCS write or sync command is forbidden in this phase")
 
 
+def validate_db_sync_invocation(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "sync-prod-to-test.yml":
+        return
+
+    invocation = "python scripts/sync_prod_to_test_db.py"
+    if content.count(invocation) != 1:
+        errors.append(f"{file_name}: DB sync script must be invoked exactly once")
+        return
+
+    invocation_start = content.find(invocation)
+    step_start = content.rfind("\n      - name:", 0, invocation_start)
+    step_end = content.find("\n      - name:", invocation_start)
+    step_block = content[step_start : step_end if step_end >= 0 else len(content)]
+    required_tokens = (
+        "if: ${{ inputs.dry_run == 'false' }}",
+        "DB_HOST: 127.0.0.1",
+        'DB_PORT: "5432"',
+        "DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}",
+        "DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}",
+        "DB_USER_PROD: ${{ secrets.PROD_DB_USER }}",
+        "DB_USER_TEST: ${{ secrets.TEST_DB_USER }}",
+        "trap cleanup_proxy EXIT",
+        "gcloud secrets versions access",
+        'echo "::add-mask::${DB_PASSWORD}"',
+        "export DB_PASSWORD",
+    )
+    for token in required_tokens:
+        if token not in step_block:
+            errors.append(f"{file_name}: DB sync step safety token missing: {token}")
+    if "GITHUB_ENV" in step_block:
+        errors.append(f"{file_name}: DB sync step must not write DB password to GITHUB_ENV")
+
+    drain_start = content.find("- name: Verify test database connections are drained")
+    guard_start = content.find("- name: Template guard")
+    if drain_start < 0 or guard_start < 0 or not (drain_start < invocation_start < guard_start):
+        errors.append(f"{file_name}: DB sync must run after drain verification and before template guard")
+
+
 def validate_sync_pg18_client_policy(content: str, file_name: str, errors: list[str]) -> None:
     if file_name != "sync-prod-to-test.yml":
         return
@@ -439,6 +478,7 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
         "- name: Validate test pre-sync backup manifest",
         "- name: Enable test maintenance and drain requests",
         "- name: Verify test database connections are drained",
+        "- name: Synchronize approved production database tables to test",
         "- name: Template guard",
     )
     positions = [content.find(marker) for marker in ordered_markers]
@@ -593,6 +633,7 @@ def run_checks(
         validate_no_secret_echo(content, file_name, errors)
         validate_no_direct_input_echo(content, file_name, errors)
         validate_sync_workflow_has_no_write_commands(content, file_name, errors)
+        validate_db_sync_invocation(content, file_name, errors)
         validate_sync_pg18_client_policy(content, file_name, errors)
         validate_sync_backup_invocation(content, file_name, errors)
         validate_sync_restore_gates(content, file_name, errors)
