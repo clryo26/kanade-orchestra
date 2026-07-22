@@ -713,3 +713,16 @@ Template guardによる停止を維持する。
 GCS同期後もTemplate guardと最終`exit 1`を維持する。これは統合テストと実行手順の確定が
 完了するまで実同期ワークフローを成功扱いにしない停止点である。管理画面/APIからの現行要求は
 `dry_run=true`のため、DB同期・GCS同期のどちらも実行しない。
+
+### 33.5 最終統合と通常状態への復帰
+
+隔離環境での統合検証完了後、`Template guard`と最終`exit 1`を撤去し、実同期ワークフローを
+完成形へ移行する。`dry_run=true`では引き続きGCP・DB・GCSへの変更処理をすべてスキップし、
+検証成功として正常終了する。
+
+`dry_run=false`では、DB同期とGCS同期がすべて正常終了した場合に限り、メンテナンス有効化時に
+作成されたrevisionを固定値として`manage_test_maintenance.py disable`へ渡す。これにより、途中で
+別revisionが作成された場合はfail-closedで停止する。メンテナンス解除は`success()`条件を必須とし、
+DB同期、GCS同期、またはその前段が失敗した場合は実行しない。失敗時はテスト環境をメンテナンス
+状態に維持し、手動調査・復旧を行う。解除成功後は通常アクセス用revisionへtrafficを100%切り替え、
+healthが`maintenance=disabled`であることを同スクリプト内で確認する。
