@@ -182,21 +182,6 @@ def test_missing_secret_access_description_fails(tmp_path):
     assert any("gcloud secrets versions access" in error for error in errors)
 
 
-def test_missing_template_guard_or_exit_fails(tmp_path):
-    module = _load_module()
-    workflow_dir, verify_script = _copy_fixture(tmp_path)
-    sync_path = workflow_dir / "sync-prod-to-test.yml"
-    content = sync_path.read_text(encoding="utf-8")
-    guard_exit = "          exit 1\n"
-    before, separator, after = content.rpartition(guard_exit)
-    assert separator
-    sync_path.write_text(before + after, encoding="utf-8")
-
-    errors = module.run_checks(workflow_dir, verify_script)
-
-    assert any("exit 1 is missing" in error for error in errors)
-
-
 def test_direct_secret_expression_echo_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
@@ -338,18 +323,59 @@ def test_missing_read_only_verification_step_marker_fails_backup_order(tmp_path)
     assert any("backup must run after read-only DB verification" in error for error in errors)
 
 
-def test_missing_template_guard_marker_fails(tmp_path):
+def test_missing_integrated_completion_marker_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     _replace(
         workflow_dir / "sync-prod-to-test.yml",
-        "- name: Template guard",
+        "- name: Integrated synchronization completed",
         "- name: Disabled final step",
     )
 
     errors = module.run_checks(workflow_dir, verify_script)
 
-    assert any("template guard step is missing" in error for error in errors)
+    assert any("integrated completion step is missing" in error for error in errors)
+
+
+def test_template_guard_remaining_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    content += "\n      - name: Template guard\n        run: exit 1\n"
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("template guard must be removed" in error for error in errors)
+
+
+def test_maintenance_disable_with_always_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "if: ${{ inputs.dry_run == 'false' && success() }}",
+        "if: ${{ always() }}",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("maintenance must remain enabled after synchronization failure" in error for error in errors)
+
+
+def test_maintenance_disable_without_enabled_revision_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "ENABLED_MAINTENANCE_REVISION: ${{ steps.enable_maintenance.outputs.revision }}",
+        "ENABLED_MAINTENANCE_REVISION: unsafe-current-revision",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("maintenance disable safety token missing" in error for error in errors)
 
 
 def test_direct_gcs_copy_command_in_workflow_fails(tmp_path):

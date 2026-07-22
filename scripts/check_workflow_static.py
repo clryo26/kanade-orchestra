@@ -86,6 +86,7 @@ TARGET_WORKFLOWS = {
             "cancel-in-progress: false",
             "check_backup_manifest.py",
             "manage_test_maintenance.py enable",
+            "manage_test_maintenance.py disable",
             "check_test_db_connections_drained.py",
             "sync_prod_to_test_db.py",
             "sync_prod_to_test_gcs.py",
@@ -111,7 +112,7 @@ TARGET_WORKFLOWS = {
             "gcloud storage buckets describe",
             "cloud-sql-proxy",
             "gcloud secrets versions access",
-            "Template guard",
+            "Integrated synchronization completed",
         ],
     },
 }
@@ -232,17 +233,10 @@ def validate_maintenance_operation_workflow(content: str, file_name: str, errors
 
 def validate_template_guard(content: str, file_name: str, errors: list[str]) -> None:
     if file_name == "sync-prod-to-test.yml":
-        guard_marker = "- name: Template guard"
-        guard_start = content.find(guard_marker)
-        if guard_start < 0:
-            errors.append(f"{file_name}: template guard step is missing")
-        else:
-            guard_block = content[guard_start:]
-            next_step = guard_block.find("\n      - name:", len(guard_marker))
-            if next_step >= 0:
-                guard_block = guard_block[:next_step]
-            if not re.search(r"^\s*exit 1\s*$", guard_block, re.MULTILINE):
-                errors.append(f"{file_name}: template guard exists but exit 1 is missing")
+        if "- name: Template guard" in content:
+            errors.append(f"{file_name}: template guard must be removed after integration validation")
+        if "- name: Integrated synchronization completed" not in content:
+            errors.append(f"{file_name}: integrated completion step is missing")
     if file_name in {"deploy-test.yml", "promote-production.yml"} and "Template guard" in content:
         errors.append(f"{file_name}: template guard must be removed for active App Release Plan A")
 
@@ -316,9 +310,9 @@ def validate_db_sync_invocation(content: str, file_name: str, errors: list[str])
         errors.append(f"{file_name}: DB sync step must not write DB password to GITHUB_ENV")
 
     drain_start = content.find("- name: Verify test database connections are drained")
-    guard_start = content.find("- name: Template guard")
-    if drain_start < 0 or guard_start < 0 or not (drain_start < invocation_start < guard_start):
-        errors.append(f"{file_name}: DB sync must run after drain verification and before template guard")
+    completion_start = content.find("- name: Integrated synchronization completed")
+    if drain_start < 0 or completion_start < 0 or not (drain_start < invocation_start < completion_start):
+        errors.append(f"{file_name}: DB sync must run after drain verification and before completion")
 
 
 def validate_gcs_sync_invocation(content: str, file_name: str, errors: list[str]) -> None:
@@ -348,12 +342,12 @@ def validate_gcs_sync_invocation(content: str, file_name: str, errors: list[str]
             errors.append(f"{file_name}: GCS sync step safety token missing: {token}")
 
     db_sync_start = content.find("python scripts/sync_prod_to_test_db.py")
-    guard_start = content.find("- name: Template guard")
-    if db_sync_start < 0 or guard_start < 0 or not (
-        db_sync_start < invocation_start < guard_start
+    disable_start = content.find("- name: Disable test maintenance after successful synchronization")
+    if db_sync_start < 0 or disable_start < 0 or not (
+        db_sync_start < invocation_start < disable_start
     ):
         errors.append(
-            f"{file_name}: GCS sync must run after DB sync and before template guard"
+            f"{file_name}: GCS sync must run after DB sync and before maintenance disable"
         )
 
 
@@ -493,14 +487,14 @@ def validate_sync_backup_invocation(content: str, file_name: str, errors: list[s
         errors.append(f"{file_name}: backup step must not write DB password to GITHUB_ENV")
 
     verification_start = content.find("- name: Verify prod and test database read-only connections")
-    guard_start = content.find("- name: Template guard")
+    guard_start = content.find("- name: Integrated synchronization completed")
     if (
         verification_start < 0
         or guard_start < 0
         or not (verification_start < invocation_start < guard_start)
     ):
         errors.append(
-            f"{file_name}: backup must run after read-only DB verification and before template guard"
+            f"{file_name}: backup must run after read-only DB verification and before completion"
         )
     if "ref: ${{ inputs.target_git_sha }}" in content:
         errors.append(f"{file_name}: executable scripts must not be checked out from target_git_sha")
@@ -517,12 +511,13 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
         "- name: Verify test database connections are drained",
         "- name: Synchronize approved production database tables to test",
         "- name: Synchronize approved production GCS objects to test",
-        "- name: Template guard",
+        "- name: Disable test maintenance after successful synchronization",
+        "- name: Integrated synchronization completed",
     )
     positions = [content.find(marker) for marker in ordered_markers]
     if any(position < 0 for position in positions) or positions != sorted(positions):
         errors.append(
-            f"{file_name}: backup, manifest, maintenance, drain check, and template guard order is invalid"
+            f"{file_name}: backup, manifest, maintenance, synchronization, disable, and completion order is invalid"
         )
 
     required_invocations = (
@@ -553,6 +548,26 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
     for token in safety_tokens:
         if token not in combined:
             errors.append(f"{file_name}: restore gate safety token missing: {token}")
+
+    disable_invocation = "python scripts/manage_test_maintenance.py disable"
+    if content.count(disable_invocation) != 1:
+        errors.append(f"{file_name}: maintenance disable must be invoked exactly once")
+        return
+    disable_start = content.find(disable_invocation)
+    disable_step_start = content.rfind("\n      - name:", 0, disable_start)
+    disable_step_end = content.find("\n      - name:", disable_start)
+    disable_block = content[
+        disable_step_start : disable_step_end if disable_step_end >= 0 else len(content)
+    ]
+    for token in (
+        "if: ${{ inputs.dry_run == 'false' && success() }}",
+        "ENABLED_MAINTENANCE_REVISION: ${{ steps.enable_maintenance.outputs.revision }}",
+        '--expected-revision "${ENABLED_MAINTENANCE_REVISION}"',
+    ):
+        if token not in disable_block:
+            errors.append(f"{file_name}: maintenance disable safety token missing: {token}")
+    if "always()" in disable_block:
+        errors.append(f"{file_name}: maintenance must remain enabled after synchronization failure")
 
 
 def validate_verification_script(path: Path, errors: list[str]) -> None:
