@@ -12,7 +12,10 @@ from typing import Any
 import psycopg
 from psycopg import sql
 
-from scripts.sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TABLES
+try:
+    from scripts.sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TABLES
+except ModuleNotFoundError:
+    from sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TABLES
 
 
 APPLICATION_NAME_PROD = "kanade-prod-to-test-db-source"
