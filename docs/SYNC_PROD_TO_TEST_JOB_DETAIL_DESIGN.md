@@ -654,6 +654,32 @@ DB dump、manifestに記録された全GCSバックアップをgeneration固定�
 `kanade-orchestra/asia-northeast2/kanade-orchestra-test`を必須とする。
 管理画面/APIからの現行要求は`dry_run=true`のため、追加入力を使用せず従来どおり検証のみ行う。
 
+### 33.3 DB同期・同期後検証
+
+`scripts/sync_prod_to_test_db.py`をDB同期の専用実装とする。同期対象は
+`sync_prod_to_test_preflight.py`の`TARGET_DB_TABLES`だけとし、別の対象一覧を持たない。
+`EXCLUDED_DB_TABLES`および`production_operation_histories`は同期しない。
+
+- 本番DB接続は`default_transaction_read_only=on`に固定し、さらに最初のSQLで
+  `REPEATABLE READ READ ONLY`を宣言する。全対象テーブルは同一スナップショットから読む。
+- 本番DB名とテストDB名の不一致、接続先DB名、全必須テーブル、全insert対象列、主キーを
+  更新開始前に検証する。ソース・ターゲット間で列または主キーが異なる場合は停止する。
+- テストDBの外部キー定義から親子依存順を算出する。循環を検出した場合は更新しない。
+- 親から子の順で本番行を主キーupsertし、子から親の順で本番に存在しないテスト行を削除する。
+  同一主キー行を維持してから差分削除することで、除外済み監査・アクセス系テーブルへの
+  `ON DELETE`副作用を避ける。
+- identity/serial列は、同期後の最大値へ`setval`する。空テーブルは次回採番が初期値から
+  始まる状態へ戻す。
+- 全更新、採番再設定、同期後検証をテストDBの単一トランザクションで実行する。
+- 同期後に全対象テーブルの本番・テスト件数一致、対象テーブルに関係する外部キー整合性、
+  除外テーブルの件数・内容fingerprint不変を検証する。
+- SQL失敗、件数不一致、参照不整合、除外テーブル変更など、commit前のいずれかの失敗で
+  テストDBトランザクション全体をrollbackする。
+- password、接続文字列はログへ出力しない。
+
+この段階では専用スクリプトを`sync-prod-to-test.yml`へ接続しない。既存のTemplate guardと
+最終`exit 1`を維持し、ワークフロー・管理画面/APIへの接続は次の実装段階で行う。
+
 同期workflowと手動メンテナンスworkflowは同じconcurrency groupを使用し、同時実行を禁止する。
 失敗時を含めメンテナンスは自動解除しない。DB/GCS復元・同期・削除は実装せず、
 静的禁止ガードを維持する。
