@@ -300,7 +300,7 @@ def test_backup_step_without_dry_run_false_condition_fails(tmp_path):
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     _replace(
         workflow_dir / "sync-prod-to-test.yml",
-        "      - name: Run test pre-sync backup\n        if: ${{ inputs.dry_run == 'false' }}",
+        "      - name: Run test pre-sync backup\n        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}",
         "      - name: Run test pre-sync backup\n        if: ${{ inputs.dry_run == 'true' }}",
     )
 
@@ -369,7 +369,7 @@ def test_maintenance_disable_without_enabled_revision_fails(tmp_path):
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     _replace(
         workflow_dir / "sync-prod-to-test.yml",
-        "ENABLED_MAINTENANCE_REVISION: ${{ steps.enable_maintenance.outputs.revision }}",
+        "ENABLED_MAINTENANCE_REVISION: ${{ inputs.sync_scope == 'gcs_only' && inputs.expected_test_revision || steps.enable_maintenance.outputs.revision }}",
         "ENABLED_MAINTENANCE_REVISION: unsafe-current-revision",
     )
 
@@ -510,7 +510,7 @@ def test_db_sync_without_false_condition_fails(tmp_path):
     sync_path = workflow_dir / "sync-prod-to-test.yml"
     marker = (
         "      - name: Synchronize approved production database tables to test\n"
-        "        if: ${{ inputs.dry_run == 'false' }}"
+        "        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}"
     )
     _replace(sync_path, marker, marker.replace("false", "true"))
 
@@ -619,6 +619,58 @@ def test_gcs_sync_before_db_sync_fails(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "token",
+    [
+        "current != expected",
+        'traffic[0].get("revisionName") != expected',
+        'traffic[0].get("percent") != 100',
+        'maintenance != ["true"]',
+    ],
+)
+def test_gcs_resume_missing_maintenance_safety_check_fails(tmp_path, token):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(workflow_dir / "sync-prod-to-test.yml", token, "removed-resume-safety-check")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("GCS resume safety token missing" in error for error in errors)
+
+
+def test_gcs_resume_validation_after_gcs_sync_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    resume = "- name: Validate existing test maintenance revision for GCS resume"
+    gcs_sync = "- name: Synchronize approved production GCS objects to test"
+    content = content.replace(resume, "- name: TEMP resume validation")
+    content = content.replace(gcs_sync, resume)
+    content = content.replace("- name: TEMP resume validation", gcs_sync)
+    sync_path.write_text(content, encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("GCS resume validation must run before GCS synchronization" in error for error in errors)
+
+
+def test_db_sync_not_restricted_to_full_scope_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "      - name: Synchronize approved production database tables to test\n"
+        "        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}",
+        "      - name: Synchronize approved production database tables to test\n"
+        "        if: ${{ inputs.dry_run == 'false' }}",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("full-only step is not excluded from GCS resume" in error for error in errors)
+
+
 def test_sync_restore_gate_order_change_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
@@ -641,7 +693,7 @@ def test_sync_restore_gate_without_false_condition_fails(tmp_path):
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     sync_path = workflow_dir / "sync-prod-to-test.yml"
     content = sync_path.read_text(encoding="utf-8")
-    marker = "      - name: Validate test pre-sync backup manifest\n        if: ${{ inputs.dry_run == 'false' }}"
+    marker = "      - name: Validate test pre-sync backup manifest\n        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}"
     assert marker in content
     content = content.replace(
         marker,
