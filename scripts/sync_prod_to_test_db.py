@@ -11,6 +11,7 @@ from typing import Any
 
 import psycopg
 from psycopg import sql
+from psycopg.types.json import Json, Jsonb
 
 try:
     from scripts.sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TABLES
@@ -49,6 +50,7 @@ class TableSpec:
     columns: tuple[str, ...]
     primary_key: tuple[str, ...]
     sequence_columns: tuple[tuple[str, str], ...]
+    json_columns: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -174,16 +176,20 @@ def _existing_tables(cursor: Any) -> set[str]:
 def _table_spec(cursor: Any, table_name: str) -> TableSpec:
     cursor.execute(
         """
-        SELECT column_name, is_generated
+        SELECT column_name, is_generated, data_type
         FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = %s
         ORDER BY ordinal_position
         """,
         (table_name,),
     )
-    columns = tuple(row[0] for row in cursor.fetchall() if row[1] != "ALWAYS")
+    column_rows = tuple(row for row in cursor.fetchall() if row[1] != "ALWAYS")
+    columns = tuple(row[0] for row in column_rows)
     if not columns:
         raise RuntimeError(f"target table has no insertable columns: {table_name}")
+    json_columns = tuple(
+        (row[0], row[2]) for row in column_rows if row[2] in {"json", "jsonb"}
+    )
 
     cursor.execute(
         """
@@ -206,7 +212,13 @@ def _table_spec(cursor: Any, table_name: str) -> TableSpec:
         sequence_row = cursor.fetchone()
         if sequence_row and sequence_row[0]:
             sequence_columns.append((column, sequence_row[0]))
-    return TableSpec(table_name, columns, primary_key, tuple(sequence_columns))
+    return TableSpec(
+        table_name,
+        columns,
+        primary_key,
+        tuple(sequence_columns),
+        json_columns,
+    )
 
 
 def _foreign_keys(cursor: Any) -> tuple[ForeignKey, ...]:
@@ -269,6 +281,22 @@ def _fetch_source_rows(cursor: Any, spec: TableSpec) -> list[tuple[Any, ...]]:
 def _upsert_rows(cursor: Any, spec: TableSpec, rows: list[tuple[Any, ...]]) -> None:
     if not rows:
         return
+    json_column_types = dict(spec.json_columns)
+    adapted_rows = [
+        tuple(
+            (
+                Json(value)
+                if json_column_types.get(column) == "json"
+                else Jsonb(value)
+                if json_column_types.get(column) == "jsonb"
+                else value
+            )
+            if value is not None
+            else None
+            for column, value in zip(spec.columns, row, strict=True)
+        )
+        for row in rows
+    ]
     update_columns = tuple(column for column in spec.columns if column not in spec.primary_key)
     conflict_action = sql.SQL("DO NOTHING")
     if update_columns:
@@ -284,7 +312,7 @@ def _upsert_rows(cursor: Any, spec: TableSpec, rows: list[tuple[Any, ...]]) -> N
         sql.SQL(", ").join(map(sql.Identifier, spec.primary_key)),
         conflict_action,
     )
-    cursor.executemany(query, rows)
+    cursor.executemany(query, adapted_rows)
 
 
 def _delete_rows_absent_from_source(
@@ -403,6 +431,8 @@ def synchronize_databases(
                 for table in TARGET_DB_TABLES:
                     if prod_specs[table].columns != test_specs[table].columns:
                         raise RuntimeError(f"source/target column mismatch: {table}")
+                    if prod_specs[table].json_columns != test_specs[table].json_columns:
+                        raise RuntimeError(f"source/target JSON column mismatch: {table}")
                     if prod_specs[table].primary_key != test_specs[table].primary_key:
                         raise RuntimeError(f"source/target primary-key mismatch: {table}")
 
