@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from psycopg.types.json import Json, Jsonb
 
 import scripts.sync_prod_to_test_db as sync_module
 from scripts.sync_prod_to_test_db import (
@@ -10,6 +11,8 @@ from scripts.sync_prod_to_test_db import (
     ForeignKey,
     TableSpec,
     _connect_kwargs,
+    _table_spec,
+    _upsert_rows,
     dependency_order,
     read_config,
     synchronize_databases,
@@ -106,6 +109,84 @@ def test_approved_table_policy_is_used_without_expansion() -> None:
     assert "access_logs" in EXCLUDED_DB_TABLES
     assert "audit_logs" in EXCLUDED_DB_TABLES
     assert "portal_json_collections" in EXCLUDED_DB_TABLES
+
+
+class MetadataCursor:
+    def __init__(self) -> None:
+        self.query_index = 0
+
+    def execute(self, *_args: object, **_kwargs: object) -> None:
+        self.query_index += 1
+
+    def fetchall(self) -> list[tuple[object, ...]]:
+        if self.query_index == 1:
+            return [
+                ("id", "NEVER", "integer"),
+                ("payload", "NEVER", "json"),
+                ("detail", "NEVER", "jsonb"),
+            ]
+        if self.query_index == 2:
+            return [("id",)]
+        return []
+
+    def fetchone(self) -> tuple[None]:
+        return (None,)
+
+
+def test_table_spec_records_json_and_jsonb_columns() -> None:
+    spec = _table_spec(MetadataCursor(), "sample")
+
+    assert spec.columns == ("id", "payload", "detail")
+    assert spec.json_columns == (("payload", "json"), ("detail", "jsonb"))
+
+
+class UpsertCursor:
+    def __init__(self) -> None:
+        self.rows: list[tuple[object, ...]] = []
+
+    def executemany(
+        self, _query: object, rows: list[tuple[object, ...]]
+    ) -> None:
+        self.rows = rows
+
+
+def test_upsert_adapts_json_values_before_passing_them_to_psycopg() -> None:
+    cursor = UpsertCursor()
+    spec = TableSpec(
+        "sample",
+        ("id", "payload", "detail", "note"),
+        ("id",),
+        (),
+        (("payload", "json"), ("detail", "jsonb")),
+    )
+
+    _upsert_rows(
+        cursor,
+        spec,
+        [(1, {"enabled": True}, {"items": [1, 2]}, "unchanged")],
+    )
+
+    row = cursor.rows[0]
+    assert isinstance(row[1], Json)
+    assert row[1].obj == {"enabled": True}
+    assert isinstance(row[2], Jsonb)
+    assert row[2].obj == {"items": [1, 2]}
+    assert row[3] == "unchanged"
+
+
+def test_upsert_preserves_null_json_values() -> None:
+    cursor = UpsertCursor()
+    spec = TableSpec(
+        "sample",
+        ("id", "payload"),
+        ("id",),
+        (),
+        (("payload", "jsonb"),),
+    )
+
+    _upsert_rows(cursor, spec, [(1, None)])
+
+    assert cursor.rows == [(1, None)]
 
 
 class FakeCursor:
