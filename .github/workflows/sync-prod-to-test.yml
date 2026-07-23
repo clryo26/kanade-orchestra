@@ -504,7 +504,7 @@ jobs:
           GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
         run: |
           set -euo pipefail
-          python scripts/sync_prod_to_test_gcs.py --execute
+          python -m scripts.sync_prod_to_test_gcs --execute
 
       - name: Disable test maintenance after successful synchronization
         if: ${{ inputs.dry_run == 'false' && success() }}
