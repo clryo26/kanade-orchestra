@@ -541,8 +541,8 @@ def test_gcs_sync_invocation_missing_fails(tmp_path):
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     _replace(
         workflow_dir / "sync-prod-to-test.yml",
-        "python scripts/sync_prod_to_test_gcs.py --execute",
-        "python scripts/disabled_gcs_sync.py --execute",
+        "python -m scripts.sync_prod_to_test_gcs --execute",
+        "python -m scripts.disabled_gcs_sync --execute",
     )
 
     errors = module.run_checks(workflow_dir, verify_script)
@@ -550,19 +550,36 @@ def test_gcs_sync_invocation_missing_fails(tmp_path):
     assert any("GCS sync script must be invoked exactly once" in error for error in errors)
 
 
-def test_gcs_sync_without_execute_fails(tmp_path):
+def test_gcs_sync_direct_script_invocation_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     _replace(
         workflow_dir / "sync-prod-to-test.yml",
+        "python -m scripts.sync_prod_to_test_gcs --execute",
         "python scripts/sync_prod_to_test_gcs.py --execute",
-        "python scripts/sync_prod_to_test_gcs.py",
     )
 
     errors = module.run_checks(workflow_dir, verify_script)
 
     assert any(
-        "GCS sync script must be invoked exactly once with --execute" in error
+        "GCS sync script must be invoked exactly once as a module with --execute" in error
+        for error in errors
+    )
+
+
+def test_gcs_sync_without_execute_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "sync-prod-to-test.yml",
+        "python -m scripts.sync_prod_to_test_gcs --execute",
+        "python -m scripts.sync_prod_to_test_gcs",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any(
+        "GCS sync script must be invoked exactly once as a module with --execute" in error
         for error in errors
     )
 

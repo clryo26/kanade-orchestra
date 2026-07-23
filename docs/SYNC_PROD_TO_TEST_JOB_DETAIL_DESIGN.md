@@ -701,6 +701,8 @@ Template guardによる停止を維持する。
 独立実装済みの`scripts/sync_prod_to_test_gcs.py`を、DB同期が正常終了した後へ接続する。
 `dry_run=false`の場合だけ`--execute`を指定し、`GCP_PROJECT_ID`、`GCS_BUCKET_PROD`、
 `GCS_BUCKET_TEST`は検証済みのGitHub Variablesから渡す。
+スクリプト内の`scripts`パッケージ参照を解決するため、ワークフローでは
+`python -m scripts.sync_prod_to_test_gcs --execute`としてモジュール実行する。
 
 - DB同期が失敗した場合はGCS同期へ進まない。
 - GCS同期は固定対象prefixと有効な日付prefixだけを対象とし、除外prefixを変更しない。

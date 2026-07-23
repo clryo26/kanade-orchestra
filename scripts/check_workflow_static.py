@@ -89,7 +89,7 @@ TARGET_WORKFLOWS = {
             "manage_test_maintenance.py disable",
             "check_test_db_connections_drained.py",
             "sync_prod_to_test_db.py",
-            "sync_prod_to_test_gcs.py",
+            "sync_prod_to_test_gcs",
             "sync_prod_to_test_preflight.py",
             "verify_prod_test_db_connections.py",
             "PROD_DB_USER",
@@ -319,10 +319,10 @@ def validate_gcs_sync_invocation(content: str, file_name: str, errors: list[str]
     if file_name != "sync-prod-to-test.yml":
         return
 
-    invocation = "python scripts/sync_prod_to_test_gcs.py --execute"
+    invocation = "python -m scripts.sync_prod_to_test_gcs --execute"
     if content.count(invocation) != 1:
         errors.append(
-            f"{file_name}: GCS sync script must be invoked exactly once with --execute"
+            f"{file_name}: GCS sync script must be invoked exactly once as a module with --execute"
         )
         return
 
