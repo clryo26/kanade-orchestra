@@ -82,6 +82,7 @@ TARGET_WORKFLOWS = {
             "WIF_PROVIDER",
             "expected_test_revision",
             "maintenance_confirmation",
+            "sync_scope",
             "group: kanade-orchestra-test-maintenance",
             "cancel-in-progress: false",
             "check_backup_manifest.py",
@@ -291,7 +292,7 @@ def validate_db_sync_invocation(content: str, file_name: str, errors: list[str])
     step_end = content.find("\n      - name:", invocation_start)
     step_block = content[step_start : step_end if step_end >= 0 else len(content)]
     required_tokens = (
-        "if: ${{ inputs.dry_run == 'false' }}",
+        "if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}",
         "DB_HOST: 127.0.0.1",
         'DB_PORT: "5432"',
         "DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}",
@@ -466,8 +467,13 @@ def validate_sync_backup_invocation(content: str, file_name: str, errors: list[s
     step_start = content.rfind("\n      - name:", 0, invocation_start)
     step_end = content.find("\n      - name:", invocation_start)
     step_block = content[step_start : step_end if step_end >= 0 else len(content)]
-    if "if: ${{ inputs.dry_run == 'false' }}" not in step_block:
-        errors.append(f"{file_name}: backup step must require dry_run == 'false'")
+    if (
+        "if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}"
+        not in step_block
+    ):
+        errors.append(
+            f"{file_name}: backup step must require dry_run == 'false' and full scope"
+        )
     backup_step_tokens = (
         "OPERATION_ID: ${{ inputs.operation_id }}",
         "TARGET_GIT_SHA: ${{ inputs.target_git_sha }}",
@@ -533,8 +539,13 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
         step_start = content.rfind("\n      - name:", 0, invocation_start)
         step_end = content.find("\n      - name:", invocation_start)
         step_block = content[step_start : step_end if step_end >= 0 else len(content)]
-        if "if: ${{ inputs.dry_run == 'false' }}" not in step_block:
-            errors.append(f"{file_name}: restore gate must require dry_run == 'false': {invocation}")
+        if (
+            "if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}"
+            not in step_block
+        ):
+            errors.append(
+                f"{file_name}: restore gate must require dry_run == 'false' and full scope: {invocation}"
+            )
 
     safety_tokens = (
         'EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}',
@@ -561,13 +572,59 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
     ]
     for token in (
         "if: ${{ inputs.dry_run == 'false' && success() }}",
-        "ENABLED_MAINTENANCE_REVISION: ${{ steps.enable_maintenance.outputs.revision }}",
+        "ENABLED_MAINTENANCE_REVISION: ${{ inputs.sync_scope == 'gcs_only' && inputs.expected_test_revision || steps.enable_maintenance.outputs.revision }}",
         '--expected-revision "${ENABLED_MAINTENANCE_REVISION}"',
     ):
         if token not in disable_block:
             errors.append(f"{file_name}: maintenance disable safety token missing: {token}")
     if "always()" in disable_block:
         errors.append(f"{file_name}: maintenance must remain enabled after synchronization failure")
+
+
+def validate_gcs_resume_path(content: str, file_name: str, errors: list[str]) -> None:
+    if file_name != "sync-prod-to-test.yml":
+        return
+
+    resume_marker = "- name: Validate existing test maintenance revision for GCS resume"
+    resume_start = content.find(resume_marker)
+    gcs_start = content.find("- name: Synchronize approved production GCS objects to test")
+    if resume_start < 0 or gcs_start < 0 or resume_start >= gcs_start:
+        errors.append(f"{file_name}: GCS resume validation must run before GCS synchronization")
+        return
+
+    resume_end = content.find("\n      - name:", resume_start + len(resume_marker))
+    resume_block = content[resume_start : resume_end if resume_end >= 0 else len(content)]
+    required_tokens = (
+        "if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'gcs_only' }}",
+        'EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}',
+        'MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}',
+        "current != expected",
+        'traffic[0].get("revisionName") != expected',
+        'traffic[0].get("percent") != 100',
+        'maintenance != ["true"]',
+    )
+    for token in required_tokens:
+        if token not in resume_block:
+            errors.append(f"{file_name}: GCS resume safety token missing: {token}")
+
+    full_only_steps = (
+        "Install PostgreSQL 18 client from official PGDG repository",
+        "Download Cloud SQL Auth Proxy",
+        "Verify prod and test database read-only connections",
+        "Run test pre-sync backup",
+        "Validate test pre-sync backup manifest",
+        "Enable test maintenance and drain requests",
+        "Verify test database connections are drained",
+        "Synchronize approved production database tables to test",
+    )
+    full_condition = "if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}"
+    alternate_full_condition = "if: ${{ inputs.dry_run != 'true' && inputs.sync_scope == 'full' }}"
+    for marker in full_only_steps:
+        start = content.find(f"- name: {marker}")
+        end = content.find("\n      - name:", start + len(marker))
+        block = content[start : end if end >= 0 else len(content)] if start >= 0 else ""
+        if full_condition not in block and alternate_full_condition not in block:
+            errors.append(f"{file_name}: full-only step is not excluded from GCS resume: {marker}")
 
 
 def validate_verification_script(path: Path, errors: list[str]) -> None:
@@ -691,6 +748,7 @@ def run_checks(
         validate_sync_pg18_client_policy(content, file_name, errors)
         validate_sync_backup_invocation(content, file_name, errors)
         validate_sync_restore_gates(content, file_name, errors)
+        validate_gcs_resume_path(content, file_name, errors)
 
     validate_verification_script(verify_db_script, errors)
     validate_backup_script(backup_script, errors)

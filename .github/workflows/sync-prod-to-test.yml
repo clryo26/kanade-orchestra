@@ -20,8 +20,16 @@ on:
         options:
           - "true"
           - "false"
+      sync_scope:
+        description: "Execution scope (gcs_only resumes after a completed DB sync)"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - "full"
+          - "gcs_only"
       expected_test_revision:
-        description: "Exact current ready test revision (required when dry_run=false)"
+        description: "Exact current ready test revision (maintenance revision for gcs_only)"
         required: false
         type: string
       maintenance_confirmation:
@@ -152,7 +160,7 @@ jobs:
             "google-cloud-storage==2.14.0"
 
       - name: Install PostgreSQL 18 client from official PGDG repository
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -202,7 +210,7 @@ jobs:
           esac
 
       - name: Download Cloud SQL Auth Proxy
-        if: ${{ inputs.dry_run != 'true' }}
+        if: ${{ inputs.dry_run != 'true' && inputs.sync_scope == 'full' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -212,7 +220,7 @@ jobs:
           chmod +x cloud-sql-proxy
 
       - name: Verify prod and test database read-only connections
-        if: ${{ inputs.dry_run != 'true' }}
+        if: ${{ inputs.dry_run != 'true' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -268,7 +276,7 @@ jobs:
           python scripts/verify_prod_test_db_connections.py
 
       - name: Run test pre-sync backup
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
           OPERATION_ID: ${{ inputs.operation_id }}
@@ -339,7 +347,7 @@ jobs:
           python scripts/backup_test_environment_pre_sync.py --execute
 
       - name: Validate test pre-sync backup manifest
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
           OPERATION_ID: ${{ inputs.operation_id }}
@@ -355,7 +363,7 @@ jobs:
 
       - name: Enable test maintenance and drain requests
         id: enable_maintenance
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
           EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}
@@ -377,7 +385,7 @@ jobs:
           echo "revision=${maintenance_revision}" >> "${GITHUB_OUTPUT}"
 
       - name: Verify test database connections are drained
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -436,7 +444,7 @@ jobs:
           python scripts/check_test_db_connections_drained.py
 
       - name: Synchronize approved production database tables to test
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -495,6 +503,47 @@ jobs:
           export DB_PASSWORD
           python scripts/sync_prod_to_test_db.py
 
+      - name: Validate existing test maintenance revision for GCS resume
+        if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'gcs_only' }}
+        shell: bash
+        env:
+          EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}
+          MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}
+        run: |
+          set -euo pipefail
+          if [ "${MAINTENANCE_CONFIRMATION}" != "kanade-orchestra/asia-northeast2/kanade-orchestra-test" ]; then
+            echo "::error::Maintenance confirmation does not exactly match the test target."
+            exit 1
+          fi
+          service_json="$(gcloud run services describe "kanade-orchestra-test" \
+            --project "kanade-orchestra" \
+            --region "asia-northeast2" \
+            --format=json)"
+          export SERVICE_JSON="${service_json}"
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          service = json.loads(os.environ["SERVICE_JSON"])
+          expected = os.environ["EXPECTED_TEST_REVISION"]
+          current = service.get("status", {}).get("latestReadyRevisionName")
+          traffic = service.get("status", {}).get("traffic", [])
+          containers = service.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+          env = containers[0].get("env", []) if len(containers) == 1 else []
+          maintenance = [
+              item.get("value")
+              for item in env
+              if item.get("name") == "MAINTENANCE_MODE" and "valueFrom" not in item
+          ]
+          if not expected or current != expected:
+              sys.exit("Current ready revision does not match the approved maintenance revision")
+          if len(traffic) != 1 or traffic[0].get("revisionName") != expected or traffic[0].get("percent") != 100:
+              sys.exit("Traffic is not 100% assigned to the approved maintenance revision")
+          if maintenance != ["true"]:
+              sys.exit("Test service is not in maintenance mode")
+          PY
+
       - name: Synchronize approved production GCS objects to test
         if: ${{ inputs.dry_run == 'false' }}
         shell: bash
@@ -510,7 +559,7 @@ jobs:
         if: ${{ inputs.dry_run == 'false' && success() }}
         shell: bash
         env:
-          ENABLED_MAINTENANCE_REVISION: ${{ steps.enable_maintenance.outputs.revision }}
+          ENABLED_MAINTENANCE_REVISION: ${{ inputs.sync_scope == 'gcs_only' && inputs.expected_test_revision || steps.enable_maintenance.outputs.revision }}
           MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}
         run: |
           set -euo pipefail

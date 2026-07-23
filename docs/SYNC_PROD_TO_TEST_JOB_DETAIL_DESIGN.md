@@ -728,3 +728,10 @@ GCS同期後もTemplate guardと最終`exit 1`を維持する。これは統合�
 DB同期、GCS同期、またはその前段が失敗した場合は実行しない。失敗時はテスト環境をメンテナンス
 状態に維持し、手動調査・復旧を行う。解除成功後は通常アクセス用revisionへtrafficを100%切り替え、
 healthが`maintenance=disabled`であることを同スクリプト内で確認する。
+
+GCS同期がDB同期完了後に失敗した場合は、`sync_scope=gcs_only`で同じワークフローを再実行する。
+この経路では事前バックアップ、メンテナンス有効化、DB接続確認、DB同期を再実行しない。
+`expected_test_revision`で指定したrevisionが現在のready revisionであり、trafficが100%割り当て
+られ、`MAINTENANCE_MODE=true`であることを確認してからGCS同期を実行する。いずれかが一致しない
+場合は書き込み前にfail-closedで停止する。GCS同期成功後だけ、同じrevisionを固定値として
+メンテナンス解除へ渡す。
