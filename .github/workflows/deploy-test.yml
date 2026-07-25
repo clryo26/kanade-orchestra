@@ -176,4 +176,5 @@ jobs:
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
             --update-secrets "DB_PASSWORD=kanade-portal-db-password:latest" \
+            --to-latest \
             --quiet
