@@ -176,8 +176,8 @@ jobs:
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
             --update-secrets "DB_PASSWORD=kanade-portal-db-password:latest" \
-            --to-latest \
             --quiet
+
           gcloud run services update-traffic "${TEST_CLOUD_RUN_SERVICE}" \
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --region "${GCP_REGION}" \
