@@ -109,7 +109,29 @@ function orgShortName() {
 }
 
 function portalTitleText() {
-    return `${orgShortName()}ポータル`;
+    const baseTitle = `${orgShortName()}ポータル`;
+    return appState.appEnv === 'test' ? `${baseTitle}(テスト環境)` : baseTitle;
+}
+
+function validOtherEnvironmentUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        const parsed = new URL(raw);
+        if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) return '';
+        return raw;
+    } catch {
+        return '';
+    }
+}
+
+function otherEnvironmentLinkDefinition() {
+    if (!canAccessAdmin()) return null;
+    const url = validOtherEnvironmentUrl(appState.otherEnvironmentUrl);
+    if (!url) return null;
+    if (appState.appEnv === 'production') return { label: 'テスト環境を開く', url };
+    if (appState.appEnv === 'test') return { label: '本番環境を開く', url };
+    return null;
 }
 
 function currentConnectionSetting() {

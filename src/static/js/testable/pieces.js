@@ -2,7 +2,10 @@
     function resolveOrgShortName(org) {
         return String(org?.short_name || org?.shortName || org?.abbreviation || org?.short || org?.organization_abbreviation || org?.organizationAbbreviation || org?.name || org?.organization_name || org?.organizationName || org?.organization_name_full || org?.organizationNameFull || '楽団').trim() || '楽団';
     }
-    function portalTitleTextFromOrg(org) { return `${resolveOrgShortName(org)}ポータル`; }
+    function portalTitleTextFromOrg(org, appEnv = '') {
+        const baseTitle = `${resolveOrgShortName(org)}ポータル`;
+        return String(appEnv || '').trim().toLowerCase() === 'test' ? `${baseTitle}(テスト環境)` : baseTitle;
+    }
     function performancePieceLabel(piece) {
         if (typeof piece === 'string') return piece;
         const label = piece?.alias || piece?.short_name || (piece?.composer ? `${piece.composer}: ${piece.title}` : piece?.title);

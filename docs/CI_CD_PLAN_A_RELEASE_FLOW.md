@@ -40,6 +40,15 @@ GitHub push だけでは本番へ反映せず、CI 成功後にテスト Cloud R
 - `TEST_DB_NAME`（`TEST_DB_URL` を使わない場合）
 - `PROD_DB_NAME`（`PROD_DB_URL` を使わない場合）
 - `WIF_PROVIDER`
+- `PROD_PORTAL_URL`
+  - 正式値: `https://kanade-orchestra-apmcj4meeq-dt.a.run.app`
+  - `Deploy Test` がテスト環境の `OTHER_ENVIRONMENT_URL` として渡す。
+- `TEST_PORTAL_URL`
+  - 正式値: `https://kanade-orchestra-test-apmcj4meeq-dt.a.run.app`
+  - `Promote Production` が本番環境の `OTHER_ENVIRONMENT_URL` として渡す。
+
+`PROD_PORTAL_URL` / `TEST_PORTAL_URL` は公開URLであり Secret ではない。未登録または空の場合、
+workflow は `OTHER_ENVIRONMENT_URL` を Cloud Run へ追加せず、画面の環境切替リンクも表示されない。
 
 ## 5. GitHub Secrets
 

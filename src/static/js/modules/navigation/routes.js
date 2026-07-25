@@ -21,6 +21,7 @@ function requestAdminPanel() {
 function showAdminPanel(role = 'admin') {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('adminPanel').hidden = false;
+    updateOtherEnvironmentLink();
     $('memberPanel').hidden = true;
     if ($('systemPanel')) $('systemPanel').hidden = true;
     localStorage.setItem('userRole', role);

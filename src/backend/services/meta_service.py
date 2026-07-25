@@ -4,14 +4,47 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from ..core.config import normalized_app_env
 
 
 def cloud_run_revision() -> str:
     return os.getenv("K_REVISION", "").strip() or os.getenv("CLOUD_RUN_REVISION", "").strip()
 
 
+def public_https_url(value: str | None) -> str:
+    """Return only public absolute HTTPS URLs suitable for browser navigation."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return ""
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        return ""
+    return raw
+
+
+def other_environment_url() -> str:
+    return public_https_url(os.getenv("OTHER_ENVIRONMENT_URL", ""))
+
+
+def portal_title_for_environment(base_title: str, app_env: str | None = None) -> str:
+    env = normalized_app_env(app_env)
+    return f"{base_title}(テスト環境)" if env == "test" else base_title
+
+
 def revision_response_payload() -> str:
-    return json.dumps({"cloudRunRevision": cloud_run_revision()}, ensure_ascii=False)
+    return json.dumps(
+        {
+            "cloudRunRevision": cloud_run_revision(),
+            "appEnv": normalized_app_env(),
+            "otherEnvironmentUrl": other_environment_url(),
+        },
+        ensure_ascii=False,
+    )
 
 
 def manifest_response_payload(title: str) -> str:
