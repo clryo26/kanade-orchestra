@@ -67,7 +67,7 @@ def _org_short_name() -> str:
 
 
 def _portal_title() -> str:
-    return f"{_org_short_name()}ポータル"
+    return meta_service.portal_title_for_environment(f"{_org_short_name()}ポータル")
 
 
 @router.get("/api/revision", response_model=None)

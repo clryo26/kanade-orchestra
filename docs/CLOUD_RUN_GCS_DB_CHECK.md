@@ -1,5 +1,17 @@
 # CLOUD_RUN_GCS_DB_CHECK
 
+## Environment identity / portal switch
+
+- [ ] 本番 Cloud Run は `APP_ENV=production`
+- [ ] テスト Cloud Run は `APP_ENV=test`
+- [ ] 本番 Cloud Run の `OTHER_ENVIRONMENT_URL` は `https://kanade-orchestra-test-apmcj4meeq-dt.a.run.app`
+- [ ] テスト Cloud Run の `OTHER_ENVIRONMENT_URL` は `https://kanade-orchestra-apmcj4meeq-dt.a.run.app`
+- [ ] 本番の画面名称・ブラウザタイトルは従来の `{団体略称}ポータル`
+- [ ] テストの画面名称・ブラウザタイトルは `{団体略称}ポータル(テスト環境)`
+- [ ] 本番の管理者メニューには「テスト環境を開く」だけが表示される
+- [ ] テストの管理者メニューには「本番環境を開く」だけが表示される
+- [ ] 一般団員には環境切替リンクが表示されない
+
 最終更新: 2026-07-02
 
 本番/検証環境で Cloud Run・GCS・DB 設定を確認するための運用ドキュメント。

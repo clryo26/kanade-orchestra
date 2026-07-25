@@ -11,5 +11,8 @@ describe('org title fallback', () => {
         expect(resolveOrgShortName({ name: '奏オケ' })).toBe('奏オケ');
         expect(resolveOrgShortName({ organization_name: '楽団' })).toBe('楽団');
         expect(portalTitleTextFromOrg({ organization_abbreviation: '奏' })).toBe('奏ポータル');
+        expect(portalTitleTextFromOrg({ organization_abbreviation: '奏' }, 'production')).toBe('奏ポータル');
+        expect(portalTitleTextFromOrg({ organization_abbreviation: '奏' }, 'test')).toBe('奏ポータル(テスト環境)');
+        expect(portalTitleTextFromOrg({ organization_abbreviation: '奏' }, 'dev')).toBe('奏ポータル');
     });
 });

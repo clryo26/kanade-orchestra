@@ -121,6 +121,19 @@ def test_normal_deploy_without_explicit_maintenance_false_fails(tmp_path):
     assert any("normal deployment must explicitly disable maintenance" in error for error in errors)
 
 
+def test_deploy_workflows_pass_the_opposite_portal_url_only_when_configured():
+    deploy_test = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
+    promote_production = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
+
+    assert "PROD_PORTAL_URL: ${{ vars.PROD_PORTAL_URL }}" in deploy_test
+    assert 'if [ -n "${PROD_PORTAL_URL:-}" ]; then' in deploy_test
+    assert 'OTHER_ENVIRONMENT_URL=${PROD_PORTAL_URL}' in deploy_test
+
+    assert "TEST_PORTAL_URL: ${{ vars.TEST_PORTAL_URL }}" in promote_production
+    assert 'if [ -n "${TEST_PORTAL_URL:-}" ]; then' in promote_production
+    assert 'OTHER_ENVIRONMENT_URL=${TEST_PORTAL_URL}' in promote_production
+
+
 def test_deploy_maintenance_safety_with_always_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)

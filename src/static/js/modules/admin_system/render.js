@@ -142,6 +142,7 @@ function applyOrgSettings() {
     });
     if ($('portalBrandTitle')) $('portalBrandTitle').textContent = title;
     if ($('portalLoginTitle')) $('portalLoginTitle').textContent = title;
+    updateOtherEnvironmentLink();
     const iconUrl = org.icon_url || org.iconUrl || '';
     if (iconUrl) {
         document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((link) => {
@@ -153,6 +154,18 @@ function applyOrgSettings() {
     const logo = $('portalLogo');
     if (logo) logo.alt = orgShortName();
     applyDynamicManifest(title, title, org.icon_url || org.iconUrl || '');
+}
+
+function updateOtherEnvironmentLink() {
+    const link = $('otherEnvironmentLink');
+    if (!link) return;
+    const definition = otherEnvironmentLinkDefinition();
+    link.hidden = !definition;
+    link.removeAttribute('href');
+    link.textContent = '';
+    if (!definition) return;
+    link.href = definition.url;
+    link.textContent = definition.label;
 }
 
 function applyDynamicManifest(name, shortName, iconUrl = '') {

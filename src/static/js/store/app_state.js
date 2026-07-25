@@ -51,6 +51,8 @@ const initialPortalAppState = {
     currentUserIsRecordingManager: false,
     currentUserIsSheetManager: false,
     systemEnvironmentStatus: null,
+    appEnv: '',
+    otherEnvironmentUrl: '',
     sheetPdfScale: 1,
     sheetPdfUrl: '',
     sheetPdfRendering: false,

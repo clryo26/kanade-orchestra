@@ -51,7 +51,12 @@ async function installPortalApiMocks(page, options = {}) {
     const path = url.pathname;
 
     if (path === '/api/revision') {
-      return fulfillJson(route, { cloudRunRevision: 'test-revision' });
+      return fulfillJson(route, {
+        cloudRunRevision: 'test-revision',
+        appEnv: 'production',
+        otherEnvironmentUrl: '',
+        ...(options.revisionPayload || {}),
+      });
     }
 
     if (path === '/api/extra/part_settings' || path === '/api/extra/org_settings' || path === '/api/extra/sns_settings') {

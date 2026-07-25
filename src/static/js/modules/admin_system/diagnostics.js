@@ -105,6 +105,10 @@ async function loadCloudRunRevision() {
     try {
         const data = await requestJson('/api/revision', { cache: 'no-store' });
         appState.cloudRunRevision = data.cloudRunRevision || '';
+        appState.appEnv = String(data.appEnv || '').trim().toLowerCase();
+        appState.otherEnvironmentUrl = String(data.otherEnvironmentUrl || '').trim();
+        // Runtime environment metadata arrives asynchronously, so reapply all shared titles and links.
+        applyOrgSettings();
         updateCloudRunRevision();
     } catch (error) {
         console.warn('Cloud Run revision fetch failed', error);
