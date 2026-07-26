@@ -39,10 +39,11 @@ jobs:
           WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
           DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
           TEST_GCS_BUCKET: ${{ vars.TEST_GCS_BUCKET }}
+          TEST_DB_URL: ${{ secrets.TEST_DB_URL }}
         run: |
           set -euo pipefail
           missing=0
-          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE ARTIFACT_REGISTRY_REPOSITORY ARTIFACT_REGISTRY_IMAGE WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT TEST_GCS_BUCKET; do
+          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE ARTIFACT_REGISTRY_REPOSITORY ARTIFACT_REGISTRY_IMAGE WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT TEST_GCS_BUCKET TEST_DB_URL; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing required GitHub Variable/Secret: $name"
@@ -146,9 +147,6 @@ jobs:
           IMAGE_WITH_DIGEST: ${{ steps.image.outputs.image_with_digest }}
           BUILD_TIMESTAMP: ${{ steps.image.outputs.build_timestamp }}
           TEST_DB_URL: ${{ secrets.TEST_DB_URL }}
-          TEST_DB_HOST: ${{ secrets.TEST_DB_HOST }}
-          TEST_DB_NAME: ${{ vars.TEST_DB_NAME }}
-          TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
           PROD_PORTAL_URL: ${{ vars.PROD_PORTAL_URL }}
         run: |
           set -euo pipefail
@@ -158,24 +156,13 @@ jobs:
             ENV_VARS="${ENV_VARS},OTHER_ENVIRONMENT_URL=${PROD_PORTAL_URL}"
           fi
 
-          if [ -n "${TEST_DB_URL:-}" ]; then
-            ENV_VARS="${ENV_VARS},DB_URL=${TEST_DB_URL}"
-          else
-            for name in TEST_DB_HOST TEST_DB_NAME TEST_DB_USER; do
-              if [ -z "${!name:-}" ]; then
-                echo "::error::Set TEST_DB_URL or TEST_DB_HOST/TEST_DB_NAME/TEST_DB_USER."
-                exit 1
-              fi
-            done
-            ENV_VARS="${ENV_VARS},DB_HOST=${TEST_DB_HOST},DB_NAME=${TEST_DB_NAME},DB_USER=${TEST_DB_USER}"
-          fi
+          ENV_VARS="${ENV_VARS},DB_URL=${TEST_DB_URL}"
 
           gcloud run deploy "${TEST_CLOUD_RUN_SERVICE}" \
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --region "${GCP_REGION}" \
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
-            --update-secrets "DB_PASSWORD=kanade-portal-db-password:latest" \
             --quiet
 
           gcloud run services update-traffic "${TEST_CLOUD_RUN_SERVICE}" \

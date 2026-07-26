@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 try:
     from google.cloud import storage
@@ -42,11 +43,8 @@ class BackupConfig:
     operation_id: str
     target_git_sha: str
     project_id: str
-    db_host: str
-    db_port: int
+    test_db_direct_url: str
     db_name_test: str
-    db_user_test: str
-    db_password: str
     gcs_bucket_test: str
 
 
@@ -176,15 +174,8 @@ def validate_config(config: BackupConfig, *, execute: bool) -> BackupConfig:
         errors.append("DB_NAME_TEST is required")
     if not _normalize_bucket_name(config.gcs_bucket_test):
         errors.append("GCS_BUCKET_TEST is required")
-    if execute:
-        if not config.db_host:
-            errors.append("DB_HOST is required for --execute")
-        if not config.db_user_test:
-            errors.append("DB_USER_TEST is required for --execute")
-        if not config.db_password:
-            errors.append("DB_PASSWORD is required for --execute")
-        if not 1 <= config.db_port <= 65535:
-            errors.append("DB_PORT must be between 1 and 65535")
+    if execute and not config.test_db_direct_url:
+        errors.append("TEST_DB_DIRECT_URL is required for --execute")
     if config.db_name_test:
         normalize_database_dump_filename(config.db_name_test)
     if errors:
@@ -237,28 +228,20 @@ def _run_database_backup(
                 f"{executable} major version must be {POSTGRES_REQUIRED_MAJOR_VERSION}"
             )
 
-    child_env = os.environ.copy()
-    child_env["PGPASSWORD"] = config.db_password
+    pg_dump_env = os.environ.copy()
+    pg_dump_env["PGDATABASE"] = config.test_db_direct_url
     pg_dump_command = [
         "pg_dump",
         "--format=custom",
         "--no-owner",
         "--no-acl",
-        "--host",
-        config.db_host,
-        "--port",
-        str(config.db_port),
-        "--username",
-        config.db_user_test,
-        "--dbname",
-        config.db_name_test,
         "--file",
         str(dump_path),
     ]
     run_command(
         pg_dump_command,
         check=True,
-        env=child_env,
+        env=pg_dump_env,
         capture_output=True,
         text=True,
         shell=False,
@@ -266,7 +249,7 @@ def _run_database_backup(
     run_command(
         ["pg_restore", "--list", str(dump_path)],
         check=True,
-        env=child_env,
+        env=os.environ.copy(),
         capture_output=True,
         text=True,
         shell=False,
@@ -556,36 +539,39 @@ def _read_config_from_args(argv: list[str] | None = None) -> tuple[BackupConfig,
     parser.add_argument("--operation-id", default=os.getenv("OPERATION_ID", ""))
     parser.add_argument("--target-git-sha", default=os.getenv("TARGET_GIT_SHA", ""))
     parser.add_argument("--project-id", default=os.getenv("GCP_PROJECT_ID", ""))
-    parser.add_argument("--db-host", default=os.getenv("DB_HOST", ""))
-    parser.add_argument("--db-port", default=os.getenv("DB_PORT", "5432"))
+    parser.add_argument(
+        "--test-db-direct-url", default=os.getenv("TEST_DB_DIRECT_URL", "")
+    )
     parser.add_argument("--db-name-test", default=os.getenv("DB_NAME_TEST", ""))
-    parser.add_argument("--db-user-test", default=os.getenv("DB_USER_TEST", ""))
     parser.add_argument("--gcs-bucket-test", default=os.getenv("GCS_BUCKET_TEST", ""))
     args = parser.parse_args(argv)
-    try:
-        db_port = int(str(args.db_port).strip())
-    except ValueError as exc:
-        raise ValueError("DB_PORT must be an integer") from exc
     return (
         BackupConfig(
             operation_id=args.operation_id.strip(),
             target_git_sha=args.target_git_sha.strip(),
             project_id=args.project_id.strip(),
-            db_host=args.db_host.strip(),
-            db_port=db_port,
+            test_db_direct_url=args.test_db_direct_url.strip(),
             db_name_test=args.db_name_test.strip(),
-            db_user_test=args.db_user_test.strip(),
-            # パスワードはCLI引数にせず、子プロセス環境変数へだけ渡す。
-            db_password=os.getenv("DB_PASSWORD", ""),
             gcs_bucket_test=args.gcs_bucket_test.strip(),
         ),
         bool(args.execute),
     )
 
 
-def _redacted_error_message(error: Exception, password: str) -> str:
+def _redacted_error_message(error: Exception, database_url: str) -> str:
     message = str(error)
-    return message.replace(password, "***") if password else message
+    secrets = [database_url]
+    if database_url:
+        try:
+            password = urlsplit(database_url).password
+        except ValueError:
+            password = None
+        if password:
+            secrets.append(unquote(password))
+    for secret in secrets:
+        if secret:
+            message = message.replace(secret, "***")
+    return message
 
 
 def main(
@@ -593,13 +579,14 @@ def main(
     *,
     dependencies: BackupDependencies | None = None,
 ) -> int:
-    password = os.getenv("DB_PASSWORD", "")
+    database_url = os.getenv("TEST_DB_DIRECT_URL", "")
     try:
         config, execute = _read_config_from_args(argv)
+        database_url = config.test_db_direct_url
         result = run_backup(config, execute=execute, dependencies=dependencies)
     except Exception as exc:  # CLI boundary: report safely and exit non-zero
         print(
-            f"[FAIL] test pre-sync backup failed: {_redacted_error_message(exc, password)}",
+            f"[FAIL] test pre-sync backup failed: {_redacted_error_message(exc, database_url)}",
             file=sys.stderr,
         )
         return 1

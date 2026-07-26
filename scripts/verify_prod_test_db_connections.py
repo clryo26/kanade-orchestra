@@ -15,13 +15,10 @@ READ_ONLY_OPTIONS = "-c default_transaction_read_only=on"
 
 @dataclass(frozen=True)
 class DatabaseConnectionConfig:
-    host: str
-    port: int
+    prod_url: str
+    test_url: str
     prod_database: str
     test_database: str
-    prod_user: str
-    test_user: str
-    password: str
     connect_timeout: int
 
 
@@ -44,13 +41,14 @@ def _required(value: str, field_name: str) -> str:
 
 def read_config(argv: list[str] | None = None) -> DatabaseConnectionConfig:
     parser = argparse.ArgumentParser(description="Verify prod/test database read-only connections.")
-    parser.add_argument("--db-host", default=os.getenv("DB_HOST", "127.0.0.1"))
-    parser.add_argument("--db-port", default=os.getenv("DB_PORT", "5432"))
+    parser.add_argument(
+        "--prod-db-direct-url", default=os.getenv("PROD_DB_DIRECT_URL", "")
+    )
+    parser.add_argument(
+        "--test-db-direct-url", default=os.getenv("TEST_DB_DIRECT_URL", "")
+    )
     parser.add_argument("--db-name-prod", default=os.getenv("DB_NAME_PROD", ""))
     parser.add_argument("--db-name-test", default=os.getenv("DB_NAME_TEST", ""))
-    parser.add_argument("--db-user-prod", default=os.getenv("DB_USER_PROD", ""))
-    parser.add_argument("--db-user-test", default=os.getenv("DB_USER_TEST", ""))
-    parser.add_argument("--db-password", default=os.getenv("DB_PASSWORD", ""))
     parser.add_argument(
         "--db-connect-timeout", default=os.getenv("DB_CONNECT_TIMEOUT", "10")
     )
@@ -62,30 +60,23 @@ def read_config(argv: list[str] | None = None) -> DatabaseConnectionConfig:
         raise ValueError("DB_NAME_PROD and DB_NAME_TEST must be different")
 
     return DatabaseConnectionConfig(
-        host=_required(args.db_host, "DB_HOST"),
-        port=_positive_int(args.db_port, "DB_PORT"),
+        prod_url=_required(args.prod_db_direct_url, "PROD_DB_DIRECT_URL"),
+        test_url=_required(args.test_db_direct_url, "TEST_DB_DIRECT_URL"),
         prod_database=prod_database,
         test_database=test_database,
-        prod_user=_required(args.db_user_prod, "DB_USER_PROD"),
-        test_user=_required(args.db_user_test, "DB_USER_TEST"),
-        password=_required(args.db_password, "DB_PASSWORD"),
         connect_timeout=_positive_int(args.db_connect_timeout, "DB_CONNECT_TIMEOUT"),
     )
 
 
 def _verify_database(
     config: DatabaseConnectionConfig,
+    database_url: str,
     database: str,
-    user: str,
     connect_fn: Callable[..., Any],
 ) -> None:
     # Enforce read-only mode in the startup packet, before any verification SQL runs.
     connection = connect_fn(
-        host=config.host,
-        port=config.port,
-        dbname=database,
-        user=user,
-        password=config.password,
+        database_url,
         connect_timeout=config.connect_timeout,
         options=READ_ONLY_OPTIONS,
     )
@@ -118,8 +109,8 @@ def verify_prod_test_connections(
     connect_fn: Callable[..., Any] | None = None,
 ) -> None:
     connector = connect_fn or psycopg.connect
-    _verify_database(config, config.prod_database, config.prod_user, connector)
-    _verify_database(config, config.test_database, config.test_user, connector)
+    _verify_database(config, config.prod_url, config.prod_database, connector)
+    _verify_database(config, config.test_url, config.test_database, connector)
 
 
 def main(argv: list[str] | None = None) -> int:

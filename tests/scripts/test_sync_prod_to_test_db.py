@@ -22,13 +22,10 @@ from scripts.sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TA
 
 def config() -> DbSyncConfig:
     return DbSyncConfig(
-        host="127.0.0.1",
-        port=5432,
+        prod_url="postgresql://prod_reader:prod_secret@prod.example/kanade_portal?sslmode=require",
+        test_url="postgresql://test_writer:test_secret@test.example/kanade_portal_test?sslmode=require",
         prod_database="kanade_portal",
         test_database="kanade_portal_test",
-        prod_user="prod_reader",
-        test_user="test_writer",
-        password="secret",
         connect_timeout=10,
     )
 
@@ -37,16 +34,14 @@ def test_read_config_rejects_same_database() -> None:
     with pytest.raises(ValueError, match="must be different"):
         read_config(
             [
+                "--prod-db-direct-url",
+                "postgresql://prod.example/same",
+                "--test-db-direct-url",
+                "postgresql://test.example/same",
                 "--db-name-prod",
                 "same",
                 "--db-name-test",
                 "same",
-                "--db-user-prod",
-                "prod_reader",
-                "--db-user-test",
-                "test_writer",
-                "--db-password",
-                "secret",
             ]
         )
 
@@ -55,13 +50,11 @@ def test_production_connection_is_read_only_and_databases_are_separate() -> None
     prod = _connect_kwargs(config(), production=True)
     test = _connect_kwargs(config(), production=False)
 
-    assert prod["dbname"] == "kanade_portal"
-    assert prod["user"] == "prod_reader"
     assert prod["application_name"] == APPLICATION_NAME_PROD
     assert prod["options"] == "-c default_transaction_read_only=on"
-    assert test["dbname"] == "kanade_portal_test"
-    assert test["user"] == "test_writer"
+    assert prod["connect_timeout"] == 10
     assert test["application_name"] == APPLICATION_NAME_TEST
+    assert test["connect_timeout"] == 10
     assert "options" not in test
 
 
@@ -248,8 +241,15 @@ def test_sync_commits_only_after_all_validations(monkeypatch: pytest.MonkeyPatch
     prod_connection = FakeConnection()
     test_connection = FakeConnection()
     connections = iter((prod_connection, test_connection))
+    captured_urls: list[str] = []
 
-    result = synchronize_databases(config(), lambda **_: next(connections))
+    def connect_fn(database_url: str, **_kwargs: object) -> FakeConnection:
+        captured_urls.append(database_url)
+        return next(connections)
+
+    result = synchronize_databases(config(), connect_fn)
+
+    assert captured_urls == [config().prod_url, config().test_url]
 
     assert result.source_counts == {"members": 1}
     assert result.target_counts == {"members": 1}
@@ -268,11 +268,55 @@ def test_sync_rolls_back_all_test_changes_on_validation_failure(
     test_connection = FakeConnection()
     connections = iter((prod_connection, test_connection))
 
+    def connect_fn(_database_url: str, **_kwargs: object) -> FakeConnection:
+        return next(connections)
+
     with pytest.raises(RuntimeError, match="row-count validation failed"):
-        synchronize_databases(config(), lambda **_: next(connections))
+        synchronize_databases(config(), connect_fn)
 
     assert test_connection.committed is False
     assert test_connection.rolled_back is True
     assert prod_connection.rolled_back is True
     assert prod_connection.closed is True
     assert test_connection.closed is True
+
+
+
+def test_main_redacts_cli_database_urls(monkeypatch, capsys) -> None:
+    prod_url = (
+        "postgresql://prod_reader:prod_secret@prod.example/"
+        "kanade_portal?sslmode=require"
+    )
+    test_url = (
+        "postgresql://test_writer:test_secret@test.example/"
+        "kanade_portal_test?sslmode=require"
+    )
+    monkeypatch.delenv("PROD_DB_DIRECT_URL", raising=False)
+    monkeypatch.delenv("TEST_DB_DIRECT_URL", raising=False)
+
+    def fail(_config):
+        raise ConnectionError(
+            f"connections failed: prod={prod_url} test={test_url} "
+            "passwords=prod_secret,test_secret"
+        )
+
+    monkeypatch.setattr(sync_module, "synchronize_databases", fail)
+
+    argv = [
+        "--prod-db-direct-url",
+        prod_url,
+        "--test-db-direct-url",
+        test_url,
+        "--db-name-prod",
+        "kanade_portal",
+        "--db-name-test",
+        "kanade_portal_test",
+    ]
+
+    assert sync_module.main(argv) == 1
+    captured = capsys.readouterr()
+    assert prod_url not in captured.err
+    assert test_url not in captured.err
+    assert "prod_secret" not in captured.err
+    assert "test_secret" not in captured.err
+    assert "***" in captured.err

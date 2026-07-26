@@ -59,34 +59,45 @@ class FakeConnection:
 
 def _config(module):
     return module.DatabaseConnectionConfig(
-        host="127.0.0.1",
-        port=5432,
+        prod_url="postgresql://prod_user:prod_secret@prod.example/kanade_prod?sslmode=require",
+        test_url="postgresql://test_user:test_secret@test.example/kanade_test?sslmode=require",
         prod_database="kanade_prod",
         test_database="kanade_test",
-        prod_user="prod_reader",
-        test_user="test_reader",
-        password="do-not-print-this-password",
         connect_timeout=10,
     )
 
 
+def _database_for_url(config, database_url):
+    if database_url == config.prod_url:
+        return config.prod_database
+    if database_url == config.test_url:
+        return config.test_database
+    raise AssertionError(f"unexpected database URL: {database_url}")
+
+
 def test_verifies_prod_then_test_with_read_only_connections():
     module = _load_module()
+    config = _config(module)
     calls = []
     connections = []
 
-    def connect(**kwargs):
-        calls.append(kwargs)
-        connection = FakeConnection(kwargs["dbname"])
+    def connect(database_url, **kwargs):
+        calls.append((database_url, kwargs))
+        connection = FakeConnection(_database_for_url(config, database_url))
         connections.append(connection)
         return connection
 
-    module.verify_prod_test_connections(_config(module), connect)
+    module.verify_prod_test_connections(config, connect)
 
-    assert [call["dbname"] for call in calls] == ["kanade_prod", "kanade_test"]
-    assert [call["user"] for call in calls] == ["prod_reader", "test_reader"]
-    assert all(call["options"] == "-c default_transaction_read_only=on" for call in calls)
-    assert all(call["connect_timeout"] == 10 for call in calls)
+    assert [database_url for database_url, _ in calls] == [
+        config.prod_url,
+        config.test_url,
+    ]
+    assert all(
+        kwargs["options"] == "-c default_transaction_read_only=on"
+        for _, kwargs in calls
+    )
+    assert all(kwargs["connect_timeout"] == 10 for _, kwargs in calls)
     assert all(
         connection.fake_cursor.executed
         == ["SHOW transaction_read_only", "SELECT current_database()", "SELECT 1"]
@@ -98,24 +109,21 @@ def test_verifies_prod_then_test_with_read_only_connections():
 @pytest.mark.parametrize(
     ("env_name", "value"),
     [
+        ("PROD_DB_DIRECT_URL", ""),
+        ("TEST_DB_DIRECT_URL", "   "),
         ("DB_NAME_PROD", ""),
         ("DB_NAME_TEST", "   "),
-        ("DB_USER_PROD", ""),
-        ("DB_USER_TEST", ""),
-        ("DB_PASSWORD", ""),
-        ("DB_PORT", "not-a-number"),
         ("DB_CONNECT_TIMEOUT", "0"),
+        ("DB_CONNECT_TIMEOUT", "not-a-number"),
     ],
 )
 def test_rejects_invalid_environment_values(monkeypatch, env_name, value):
     module = _load_module()
     values = {
+        "PROD_DB_DIRECT_URL": " postgresql://prod.example/kanade_prod ",
+        "TEST_DB_DIRECT_URL": " postgresql://test.example/kanade_test ",
         "DB_NAME_PROD": " kanade_prod ",
         "DB_NAME_TEST": " kanade_test ",
-        "DB_USER_PROD": " prod_reader ",
-        "DB_USER_TEST": " test_reader ",
-        "DB_PASSWORD": " secret ",
-        "DB_PORT": "5432",
         "DB_CONNECT_TIMEOUT": "10",
     }
     values[env_name] = value
@@ -128,11 +136,16 @@ def test_rejects_invalid_environment_values(monkeypatch, env_name, value):
 
 def test_rejects_same_prod_and_test_database(monkeypatch):
     module = _load_module()
+    monkeypatch.setenv(
+        "PROD_DB_DIRECT_URL",
+        "postgresql://prod.example/same_db",
+    )
+    monkeypatch.setenv(
+        "TEST_DB_DIRECT_URL",
+        "postgresql://test.example/same_db",
+    )
     monkeypatch.setenv("DB_NAME_PROD", " same_db ")
     monkeypatch.setenv("DB_NAME_TEST", "same_db")
-    monkeypatch.setenv("DB_USER_PROD", "prod_reader")
-    monkeypatch.setenv("DB_USER_TEST", "test_reader")
-    monkeypatch.setenv("DB_PASSWORD", "secret")
 
     with pytest.raises(ValueError, match="must be different"):
         module.read_config([])
@@ -140,23 +153,25 @@ def test_rejects_same_prod_and_test_database(monkeypatch):
 
 def test_environment_values_are_trimmed(monkeypatch):
     module = _load_module()
-    monkeypatch.setenv("DB_HOST", " 127.0.0.1 ")
-    monkeypatch.setenv("DB_PORT", " 5432 ")
+    monkeypatch.setenv(
+        "PROD_DB_DIRECT_URL",
+        " postgresql://prod.example/kanade_prod ",
+    )
+    monkeypatch.setenv(
+        "TEST_DB_DIRECT_URL",
+        " postgresql://test.example/kanade_test ",
+    )
     monkeypatch.setenv("DB_NAME_PROD", " kanade_prod ")
     monkeypatch.setenv("DB_NAME_TEST", " kanade_test ")
-    monkeypatch.setenv("DB_USER_PROD", " prod_reader ")
-    monkeypatch.setenv("DB_USER_TEST", " test_reader ")
-    monkeypatch.setenv("DB_PASSWORD", " secret ")
     monkeypatch.setenv("DB_CONNECT_TIMEOUT", " 10 ")
 
     config = module.read_config([])
 
-    assert config.host == "127.0.0.1"
+    assert config.prod_url == "postgresql://prod.example/kanade_prod"
+    assert config.test_url == "postgresql://test.example/kanade_test"
     assert config.prod_database == "kanade_prod"
     assert config.test_database == "kanade_test"
-    assert config.prod_user == "prod_reader"
-    assert config.test_user == "test_reader"
-    assert config.password == "secret"
+    assert config.connect_timeout == 10
 
 
 @pytest.mark.parametrize(
@@ -169,25 +184,31 @@ def test_environment_values_are_trimmed(monkeypatch):
 )
 def test_rejects_failed_database_checks(query, value):
     module = _load_module()
+    config = _config(module)
 
-    def connect(**kwargs):
-        return FakeConnection(kwargs["dbname"], {query: value})
+    def connect(database_url, **_kwargs):
+        return FakeConnection(
+            _database_for_url(config, database_url),
+            {query: value},
+        )
 
     with pytest.raises(RuntimeError):
-        module.verify_prod_test_connections(_config(module), connect)
+        module.verify_prod_test_connections(config, connect)
 
 
 @pytest.mark.parametrize("failed_database", ["kanade_prod", "kanade_test"])
 def test_connection_failure_fails_the_whole_verification(failed_database):
     module = _load_module()
+    config = _config(module)
 
-    def connect(**kwargs):
-        if kwargs["dbname"] == failed_database:
+    def connect(database_url, **_kwargs):
+        database = _database_for_url(config, database_url)
+        if database == failed_database:
             raise ConnectionError("connection failed")
-        return FakeConnection(kwargs["dbname"])
+        return FakeConnection(database)
 
     with pytest.raises(ConnectionError):
-        module.verify_prod_test_connections(_config(module), connect)
+        module.verify_prod_test_connections(config, connect)
 
 
 def test_main_returns_zero_on_success(monkeypatch, capsys):
@@ -199,17 +220,18 @@ def test_main_returns_zero_on_success(monkeypatch, capsys):
     assert "[PASS]" in capsys.readouterr().out
 
 
-def test_main_returns_one_without_exposing_password(monkeypatch, capsys):
+def test_main_returns_one_without_exposing_database_url(monkeypatch, capsys):
     module = _load_module()
-    password = "do-not-print-this-password"
-    monkeypatch.setattr(module, "read_config", lambda argv: _config(module))
+    config = _config(module)
+    monkeypatch.setattr(module, "read_config", lambda argv: config)
 
     def fail(_config):
-        raise ConnectionError(f"connection failed with password={password}")
+        raise ConnectionError(f"connection failed for {config.prod_url}")
 
     monkeypatch.setattr(module, "verify_prod_test_connections", fail)
 
     assert module.main([]) == 1
     captured = capsys.readouterr()
     assert "[FAIL]" in captured.err
-    assert password not in captured.err
+    assert config.prod_url not in captured.err
+    assert "prod_secret" not in captured.err
