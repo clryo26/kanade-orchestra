@@ -252,28 +252,47 @@ def test_missing_stage_3_2_required_token_fails(tmp_path):
     assert any("required token missing: DB_CONNECT_TIMEOUT" in error for error in errors)
 
 
-def test_missing_cloud_sql_proxy_description_fails(tmp_path):
-    module = _load_module()
-    workflow_dir, verify_script = _copy_fixture(tmp_path)
-    _replace(workflow_dir / "sync-prod-to-test.yml", "cloud-sql-proxy", "sql-auth-helper")
-
-    errors = module.run_checks(workflow_dir, verify_script)
-
-    assert any("cloud-sql-proxy" in error for error in errors)
-
-
-def test_missing_secret_access_description_fails(tmp_path):
+def test_missing_neon_direct_url_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     _replace(
         workflow_dir / "sync-prod-to-test.yml",
-        "gcloud secrets versions access",
-        "gcloud secrets versions describe",
+        "PROD_DB_DIRECT_URL",
+        "PROD_DB_URL_REMOVED",
     )
 
     errors = module.run_checks(workflow_dir, verify_script)
 
-    assert any("gcloud secrets versions access" in error for error in errors)
+    assert any("required token missing: PROD_DB_DIRECT_URL" in error for error in errors)
+
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "CLOUD_SQL_INSTANCE",
+        "cloud-sql-proxy",
+        "DB_HOST",
+        "DB_PORT",
+        "DB_USER_PROD",
+        "DB_USER_TEST",
+        "DB_PASSWORD",
+        "kanade-portal-db-password",
+        "gcloud sql instances describe",
+        "gcloud secrets versions access",
+    ],
+)
+def test_sync_cloud_sql_token_fails(tmp_path, token):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    sync_path = workflow_dir / "sync-prod-to-test.yml"
+    content = sync_path.read_text(encoding="utf-8")
+    sync_path.write_text(content + f"\n          {token}\n", encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("Cloud SQL database token must not remain" in error for error in errors)
+
 
 
 def test_direct_secret_expression_echo_fails(tmp_path):
@@ -281,7 +300,7 @@ def test_direct_secret_expression_echo_fails(tmp_path):
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     sync_path = workflow_dir / "sync-prod-to-test.yml"
     content = sync_path.read_text(encoding="utf-8")
-    content += '\n          echo "${{ secrets.PROD_DB_USER }}"\n'
+    content += '\n          echo "${{ secrets.PROD_DB_DIRECT_URL }}"\n'
     sync_path.write_text(content, encoding="utf-8")
 
     errors = module.run_checks(workflow_dir, verify_script)
@@ -289,12 +308,12 @@ def test_direct_secret_expression_echo_fails(tmp_path):
     assert any("echoing secret expression is forbidden" in error for error in errors)
 
 
-def test_direct_database_password_echo_fails(tmp_path):
+def test_direct_database_url_echo_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     sync_path = workflow_dir / "sync-prod-to-test.yml"
     content = sync_path.read_text(encoding="utf-8")
-    content += '\n          echo "${DB_PASSWORD}"\n'
+    content += '\n          echo "${PROD_DB_DIRECT_URL}"\n'
     sync_path.write_text(content, encoding="utf-8")
 
     errors = module.run_checks(workflow_dir, verify_script)
@@ -862,20 +881,20 @@ def test_postgresql_18_absolute_version_check_before_install_fails(tmp_path):
     assert any("absolute-path validation must follow installation" in error for error in errors)
 
 
-def test_postgresql_18_path_check_after_secret_access_fails(tmp_path):
+def test_postgresql_18_path_check_after_backup_invocation_fails(tmp_path):
     module = _load_module()
     workflow_dir, verify_script = _copy_fixture(tmp_path)
     sync_path = workflow_dir / "sync-prod-to-test.yml"
     content = sync_path.read_text(encoding="utf-8")
     export_line = '          export PATH="/usr/lib/postgresql/18/bin:${PATH}"\n'
-    assert export_line in content
+    invocation = (
+        "          python scripts/backup_test_environment_pre_sync.py --execute\n"
+    )
+    assert export_line in content and invocation in content
     content = content.replace(export_line, "", 1)
-    secret_index = content.rfind('          DB_PASSWORD="$(gcloud secrets versions access latest')
-    assert secret_index >= 0
-    secret_line_end = content.find("\n", secret_index) + 1
-    content = content[:secret_line_end] + export_line + content[secret_line_end:]
+    content = content.replace(invocation, invocation + export_line, 1)
     sync_path.write_text(content, encoding="utf-8")
 
     errors = module.run_checks(workflow_dir, verify_script)
 
-    assert any("PATH resolution must precede secret access" in error for error in errors)
+    assert any("PATH resolution must precede backup" in error for error in errors)

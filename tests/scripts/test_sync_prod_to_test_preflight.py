@@ -22,7 +22,8 @@ def _valid_config(module):
         operation_id="sync-20260712-001",
         gcp_project_id="kanade-project",
         gcp_region="asia-northeast1",
-        cloud_sql_instance="kanade-sql",
+        prod_db_direct_url="postgresql://prod_user:prod_secret@prod.example/kanade_prod?sslmode=require",
+        test_db_direct_url="postgresql://test_user:test_secret@test.example/kanade_test?sslmode=require",
         db_name_prod="kanade_prod",
         db_name_test="kanade_test",
         gcs_bucket_prod="kanade-prod",
@@ -35,7 +36,8 @@ def _valid_env_values():
         "OPERATION_ID": "sync-cli-001",
         "GCP_PROJECT_ID": "kanade-project",
         "GCP_REGION": "asia-northeast1",
-        "CLOUD_SQL_INSTANCE": "kanade-sql",
+        "PROD_DB_DIRECT_URL": "postgresql://prod_user:prod_secret@prod.example/kanade_prod?sslmode=require",
+        "TEST_DB_DIRECT_URL": "postgresql://test_user:test_secret@test.example/kanade_test?sslmode=require",
         "DB_NAME_PROD": "kanade_prod",
         "DB_NAME_TEST": "kanade_test",
         "GCS_BUCKET_PROD": "kanade-prod",
@@ -112,7 +114,8 @@ def test_preflight_generates_fixed_backup_path_and_policy_lists():
         ("operation_id", "OPERATION_ID is required"),
         ("gcp_project_id", "GCP_PROJECT_ID is required"),
         ("gcp_region", "GCP_REGION is required"),
-        ("cloud_sql_instance", "CLOUD_SQL_INSTANCE is required"),
+        ("prod_db_direct_url", "PROD_DB_DIRECT_URL is required"),
+        ("test_db_direct_url", "TEST_DB_DIRECT_URL is required"),
         ("db_name_prod", "DB_NAME_PROD is required"),
         ("db_name_test", "DB_NAME_TEST is required"),
         ("gcs_bucket_prod", "GCS_BUCKET_PROD is required"),
@@ -181,6 +184,10 @@ def test_preflight_cli_accepts_environment_values(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "[PASS] prod-to-test preflight checks passed" in output
     assert "gs://kanade-test/backups/prod-to-test/sync-cli-001/" in output
+    assert "PROD_DB_DIRECT_URL" not in output
+    assert "TEST_DB_DIRECT_URL" not in output
+    assert "prod_secret" not in output
+    assert "test_secret" not in output
 
 
 def test_preflight_cli_returns_failure_for_empty_required_env(monkeypatch, capsys):

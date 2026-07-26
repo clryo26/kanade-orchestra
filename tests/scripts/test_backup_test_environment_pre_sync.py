@@ -221,11 +221,8 @@ def _config(module, **overrides):
         "operation_id": "sync-20260714-001",
         "target_git_sha": "abc123def456",
         "project_id": "kanade-project",
-        "db_host": "127.0.0.1",
-        "db_port": 5432,
+        "test_db_direct_url": "postgresql://test_user:top-secret-password@test.example/kanade_portal_test?sslmode=require",
         "db_name_test": "kanade_portal_test",
-        "db_user_test": "test_user",
-        "db_password": "top-secret-password",
         "gcs_bucket_test": "kanade-test",
     }
     values.update(overrides)
@@ -327,11 +324,8 @@ def test_cli_defaults_to_dry_run_and_requires_execute_flag_for_writes(monkeypatc
         "OPERATION_ID": "sync-cli-mode-001",
         "TARGET_GIT_SHA": "abc123",
         "GCP_PROJECT_ID": "kanade-project",
-        "DB_HOST": "127.0.0.1",
-        "DB_PORT": "5432",
+        "TEST_DB_DIRECT_URL": "postgresql://test_user:secret@test.example/kanade_portal_test?sslmode=require",
         "DB_NAME_TEST": "kanade_portal_test",
-        "DB_USER_TEST": "test_user",
-        "DB_PASSWORD": "secret",
         "GCS_BUCKET_TEST": "kanade-test",
     }
     for key, value in env.items():
@@ -387,15 +381,17 @@ def test_execute_runs_safe_dump_validates_and_writes_manifest_last(tmp_path):
         "--no-owner",
         "--no-acl",
     ]
-    assert pg_dump_call["command"][pg_dump_call["command"].index("--dbname") + 1] == (
-        "kanade_portal_test"
-    )
+    assert "--dbname" not in pg_dump_call["command"]
+    assert "--host" not in pg_dump_call["command"]
+    assert "--port" not in pg_dump_call["command"]
+    assert "--username" not in pg_dump_call["command"]
     assert pg_dump_call["shell"] is False
-    assert config.db_password not in pg_dump_call["command"]
-    assert pg_dump_call["env"]["PGPASSWORD"] == config.db_password
+    assert config.test_db_direct_url not in pg_dump_call["command"]
+    assert pg_dump_call["env"]["PGDATABASE"] == config.test_db_direct_url
     assert pg_restore_call["command"][0:2] == ["pg_restore", "--list"]
     assert pg_restore_call["shell"] is False
-    assert config.db_password not in pg_restore_call["command"]
+    assert config.test_db_direct_url not in pg_restore_call["command"]
+    assert "PGDATABASE" not in pg_restore_call["env"]
 
     write_events = [event for event in bucket.events if event[0] in {"upload_file", "copy", "upload_string"}]
     assert write_events[-1][0:2] == (
@@ -625,13 +621,18 @@ def test_partial_failure_keeps_created_backup_and_never_writes_manifest_or_delet
     assert not any(call["command"][0] in {"psql", "gcloud", "gsutil"} for call in runner.calls)
 
 
-def test_execute_cli_redacts_password_from_failure_log(monkeypatch, capsys, tmp_path):
+def test_execute_cli_redacts_database_url_from_failure_log(monkeypatch, capsys, tmp_path):
     module = _load_backup_module()
     password = "never-log-this-password"
-    monkeypatch.setenv("DB_PASSWORD", password)
+    database_url = (
+        f"postgresql://test_user:{password}@test.example/kanade_portal_test?sslmode=require"
+    )
+    monkeypatch.delenv("TEST_DB_DIRECT_URL", raising=False)
     bucket = _FakeBucket()
     client = _FakeStorageClient([], bucket)
-    runner = _FakeRunner(failure=RuntimeError(f"database rejected {password}"))
+    runner = _FakeRunner(
+        failure=RuntimeError(f"database rejected {database_url} password={password}")
+    )
     dependencies = _dependencies(module, tmp_path, client, runner)
     argv = [
         "--execute",
@@ -641,12 +642,10 @@ def test_execute_cli_redacts_password_from_failure_log(monkeypatch, capsys, tmp_
         "abc123",
         "--project-id",
         "kanade-project",
-        "--db-host",
-        "127.0.0.1",
+        "--test-db-direct-url",
+        database_url,
         "--db-name-test",
         "kanade_portal_test",
-        "--db-user-test",
-        "test_user",
         "--gcs-bucket-test",
         "kanade-test",
     ]
@@ -654,6 +653,8 @@ def test_execute_cli_redacts_password_from_failure_log(monkeypatch, capsys, tmp_
     assert module.main(argv, dependencies=dependencies) == 1
 
     captured = capsys.readouterr()
+    assert database_url not in captured.out
+    assert database_url not in captured.err
     assert password not in captured.out
     assert password not in captured.err
     assert "***" in captured.err

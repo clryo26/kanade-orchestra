@@ -77,7 +77,8 @@ TARGET_WORKFLOWS = {
     },
     "sync-prod-to-test.yml": {
         "required_tokens": [
-            "CLOUD_SQL_INSTANCE",
+            "PROD_DB_DIRECT_URL",
+            "TEST_DB_DIRECT_URL",
             "DB_NAME_PROD",
             "DB_NAME_TEST",
             "GCS_BUCKET_PROD",
@@ -97,9 +98,6 @@ TARGET_WORKFLOWS = {
             "sync_prod_to_test_gcs",
             "sync_prod_to_test_preflight.py",
             "verify_prod_test_db_connections.py",
-            "PROD_DB_USER",
-            "TEST_DB_USER",
-            "kanade-portal-db-password",
             "DB_CONNECT_TIMEOUT",
             "setup-python",
             "backup_test_environment_pre_sync.py",
@@ -113,10 +111,7 @@ TARGET_WORKFLOWS = {
         "required_phrases": [
             "Allowed direction only: production -> test",
             "Reverse sync (test -> production) must not be implemented.",
-            "gcloud sql instances describe",
             "gcloud storage buckets describe",
-            "cloud-sql-proxy",
-            "gcloud secrets versions access",
             "Integrated synchronization completed",
         ],
     },
@@ -137,7 +132,8 @@ FORBIDDEN_TOKENS = [
 # Secret names are allowed in env mapping (e.g. `${{ secrets.X }}`) but must not be echoed.
 SECRET_ECHO_PATTERN = re.compile(r"^\s*echo\b.*secrets\.", re.IGNORECASE)
 SENSITIVE_VALUE_ECHO_PATTERN = re.compile(
-    r"^\s*echo\b.*\$\{(?:DB_PASSWORD|PROD_DB_USER|TEST_DB_USER)\}", re.IGNORECASE
+    r"^\s*echo\b.*\$\{(?:DB_PASSWORD|PROD_DB_USER|TEST_DB_USER|PROD_DB_DIRECT_URL|TEST_DB_DIRECT_URL)\}",
+    re.IGNORECASE,
 )
 WRITE_SQL_PATTERN = re.compile(
     r"\b(?:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE)\b", re.IGNORECASE
@@ -241,6 +237,18 @@ def validate_deploy_neon_database_policy(
             "PROD_DB_NAME",
             "PROD_DB_USER",
         ),
+        "sync-prod-to-test.yml": (
+            "CLOUD_SQL_INSTANCE",
+            "cloud-sql-proxy",
+            "DB_HOST",
+            "DB_PORT",
+            "DB_USER_PROD",
+            "DB_USER_TEST",
+            "DB_PASSWORD",
+            "kanade-portal-db-password",
+            "gcloud sql instances describe",
+            "gcloud secrets versions access",
+        ),
     }
     if file_name not in database_tokens:
         return
@@ -326,22 +334,17 @@ def validate_db_sync_invocation(content: str, file_name: str, errors: list[str])
     step_block = content[step_start : step_end if step_end >= 0 else len(content)]
     required_tokens = (
         "if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}",
-        "DB_HOST: 127.0.0.1",
-        'DB_PORT: "5432"',
+        "PROD_DB_DIRECT_URL: ${{ secrets.PROD_DB_DIRECT_URL }}",
+        "TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}",
         "DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}",
         "DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}",
-        "DB_USER_PROD: ${{ secrets.PROD_DB_USER }}",
-        "DB_USER_TEST: ${{ secrets.TEST_DB_USER }}",
-        "trap cleanup_proxy EXIT",
-        "gcloud secrets versions access",
-        'echo "::add-mask::${DB_PASSWORD}"',
-        "export DB_PASSWORD",
+        'DB_CONNECT_TIMEOUT: "10"',
     )
     for token in required_tokens:
         if token not in step_block:
             errors.append(f"{file_name}: DB sync step safety token missing: {token}")
     if "GITHUB_ENV" in step_block:
-        errors.append(f"{file_name}: DB sync step must not write DB password to GITHUB_ENV")
+        errors.append(f"{file_name}: DB sync step must not write DB credentials to GITHUB_ENV")
 
     drain_start = content.find("- name: Verify test database connections are drained")
     completion_start = content.find("- name: Integrated synchronization completed")
@@ -465,19 +468,17 @@ def validate_sync_pg18_client_policy(content: str, file_name: str, errors: list[
             errors.append(f"{file_name}: PostgreSQL 18 version mismatch must fail closed")
 
     backup_order = [backup_block.find(token) for token in backup_tokens]
-    secret_access_index = backup_block.find("gcloud secrets versions access")
     invocation_index = backup_block.find(
         "python scripts/backup_test_environment_pre_sync.py --execute"
     )
     if (
         any(index < 0 for index in backup_order)
-        or secret_access_index < 0
         or invocation_index < 0
         or backup_order != sorted(backup_order)
-        or not (backup_order[-1] < secret_access_index < invocation_index)
+        or not backup_order[-1] < invocation_index
     ):
         errors.append(
-            f"{file_name}: PostgreSQL 18 PATH resolution must precede secret access and backup"
+            f"{file_name}: PostgreSQL 18 PATH resolution must precede backup"
         )
 
 
@@ -510,20 +511,15 @@ def validate_sync_backup_invocation(content: str, file_name: str, errors: list[s
     backup_step_tokens = (
         "OPERATION_ID: ${{ inputs.operation_id }}",
         "TARGET_GIT_SHA: ${{ inputs.target_git_sha }}",
-        "DB_HOST: 127.0.0.1",
-        'DB_PORT: "5432"',
+        "TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}",
         "DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}",
-        "DB_USER_TEST: ${{ secrets.TEST_DB_USER }}",
         "GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}",
-        "trap cleanup_proxy EXIT",
-        "gcloud secrets versions access",
-        'echo "::add-mask::${DB_PASSWORD}"',
     )
     for token in backup_step_tokens:
         if token not in step_block:
             errors.append(f"{file_name}: backup step safety token missing: {token}")
     if "GITHUB_ENV" in step_block:
-        errors.append(f"{file_name}: backup step must not write DB password to GITHUB_ENV")
+        errors.append(f"{file_name}: backup step must not write DB credentials to GITHUB_ENV")
 
     verification_start = content.find("- name: Verify prod and test database read-only connections")
     guard_start = content.find("- name: Integrated synchronization completed")
@@ -585,7 +581,6 @@ def validate_sync_restore_gates(content: str, file_name: str, errors: list[str])
         'MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}',
         '--confirmation "${MAINTENANCE_CONFIRMATION}"',
         '--expected-revision "${EXPECTED_TEST_REVISION}"',
-        "trap cleanup_proxy EXIT",
         "default_transaction_read_only=on",
     )
     combined = content + read_text(DB_DRAIN_CHECK_SCRIPT)
@@ -642,7 +637,6 @@ def validate_gcs_resume_path(content: str, file_name: str, errors: list[str]) ->
 
     full_only_steps = (
         "Install PostgreSQL 18 client from official PGDG repository",
-        "Download Cloud SQL Auth Proxy",
         "Verify prod and test database read-only connections",
         "Run test pre-sync backup",
         "Validate test pre-sync backup manifest",

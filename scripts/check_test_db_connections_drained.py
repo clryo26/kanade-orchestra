@@ -16,12 +16,9 @@ APPLICATION_NAME = "kanade-prod-to-test-drain-check"
 
 @dataclass(frozen=True)
 class DrainCheckConfig:
-    host: str
-    port: int
+    test_url: str
     prod_database: str
     test_database: str
-    test_user: str
-    password: str
     connect_timeout: int
 
 
@@ -46,12 +43,11 @@ def read_config(argv: list[str] | None = None) -> DrainCheckConfig:
     parser = argparse.ArgumentParser(
         description="Fail unless the test database has no connections other than this check."
     )
-    parser.add_argument("--db-host", default=os.getenv("DB_HOST", "127.0.0.1"))
-    parser.add_argument("--db-port", default=os.getenv("DB_PORT", "5432"))
+    parser.add_argument(
+        "--test-db-direct-url", default=os.getenv("TEST_DB_DIRECT_URL", "")
+    )
     parser.add_argument("--db-name-prod", default=os.getenv("DB_NAME_PROD", ""))
     parser.add_argument("--db-name-test", default=os.getenv("DB_NAME_TEST", ""))
-    parser.add_argument("--db-user-test", default=os.getenv("DB_USER_TEST", ""))
-    parser.add_argument("--db-password", default=os.getenv("DB_PASSWORD", ""))
     parser.add_argument(
         "--db-connect-timeout", default=os.getenv("DB_CONNECT_TIMEOUT", "10")
     )
@@ -63,12 +59,9 @@ def read_config(argv: list[str] | None = None) -> DrainCheckConfig:
         raise ValueError("DB_NAME_PROD and DB_NAME_TEST must be different")
 
     return DrainCheckConfig(
-        host=_required(args.db_host, "DB_HOST"),
-        port=_positive_int(args.db_port, "DB_PORT"),
+        test_url=_required(args.test_db_direct_url, "TEST_DB_DIRECT_URL"),
         prod_database=prod_database,
         test_database=test_database,
-        test_user=_required(args.db_user_test, "DB_USER_TEST"),
-        password=_required(args.db_password, "DB_PASSWORD"),
         connect_timeout=_positive_int(args.db_connect_timeout, "DB_CONNECT_TIMEOUT"),
     )
 
@@ -79,11 +72,7 @@ def find_other_test_database_connections(
 ) -> list[tuple[Any, ...]]:
     connector = connect_fn or psycopg.connect
     connection = connector(
-        host=config.host,
-        port=config.port,
-        dbname=config.test_database,
-        user=config.test_user,
-        password=config.password,
+        config.test_url,
         connect_timeout=config.connect_timeout,
         application_name=APPLICATION_NAME,
         options="-c default_transaction_read_only=on",
@@ -135,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         # Do not print connection parameters or database credentials.
         print(
-            f"[FAIL] test database connection drain check failed: {exc}",
+            f"[FAIL] test database connection drain check failed ({type(exc).__name__})",
             file=sys.stderr,
         )
         return 1

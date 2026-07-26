@@ -61,21 +61,20 @@ jobs:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_REGION: ${{ vars.GCP_REGION }}
           TEST_CLOUD_RUN_SERVICE: ${{ vars.TEST_CLOUD_RUN_SERVICE }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
           DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
           DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
           GCS_BUCKET_PROD: ${{ vars.PROD_GCS_BUCKET }}
           GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
           WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
           DEPLOY_SERVICE_ACCOUNT: ${{ secrets.DEPLOY_SERVICE_ACCOUNT }}
-          PROD_DB_USER: ${{ secrets.PROD_DB_USER }}
-          TEST_DB_USER: ${{ secrets.TEST_DB_USER }}
+          PROD_DB_DIRECT_URL: ${{ secrets.PROD_DB_DIRECT_URL }}
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
           EXPECTED_TEST_REVISION: ${{ inputs.expected_test_revision }}
           MAINTENANCE_CONFIRMATION: ${{ inputs.maintenance_confirmation }}
         run: |
           set -euo pipefail
           missing=0
-          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE CLOUD_SQL_INSTANCE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT PROD_DB_USER TEST_DB_USER EXPECTED_TEST_REVISION MAINTENANCE_CONFIRMATION; do
+          for name in GCP_PROJECT_ID GCP_REGION TEST_CLOUD_RUN_SERVICE DB_NAME_PROD DB_NAME_TEST GCS_BUCKET_PROD GCS_BUCKET_TEST WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT PROD_DB_DIRECT_URL TEST_DB_DIRECT_URL EXPECTED_TEST_REVISION MAINTENANCE_CONFIRMATION; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing GitHub Variable/Secret: $name"
@@ -121,7 +120,8 @@ jobs:
           OPERATION_ID: ${{ inputs.operation_id }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+          PROD_DB_DIRECT_URL: ${{ secrets.PROD_DB_DIRECT_URL }}
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
           DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
           DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
           GCS_BUCKET_PROD: ${{ vars.PROD_GCS_BUCKET }}
@@ -134,13 +134,10 @@ jobs:
         if: ${{ inputs.dry_run != 'true' }}
         shell: bash
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
           GCS_BUCKET_PROD: ${{ vars.PROD_GCS_BUCKET }}
           GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
         run: |
           set -euo pipefail
-          gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" --project "${GCP_PROJECT_ID}"
           gcloud storage buckets describe "gs://${GCS_BUCKET_PROD}"
           gcloud storage buckets describe "gs://${GCS_BUCKET_TEST}"
 
@@ -209,70 +206,17 @@ jobs:
             *) echo "::error::PostgreSQL restore client major version is not 18"; exit 1 ;;
           esac
 
-      - name: Download Cloud SQL Auth Proxy
-        if: ${{ inputs.dry_run != 'true' && inputs.sync_scope == 'full' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --location --silent --show-error \
-            --output cloud-sql-proxy \
-            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.2/cloud-sql-proxy.linux.amd64
-          chmod +x cloud-sql-proxy
-
       - name: Verify prod and test database read-only connections
         if: ${{ inputs.dry_run != 'true' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
-          DB_HOST: 127.0.0.1
-          DB_PORT: "5432"
+          PROD_DB_DIRECT_URL: ${{ secrets.PROD_DB_DIRECT_URL }}
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
           DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
           DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
-          DB_USER_PROD: ${{ secrets.PROD_DB_USER }}
-          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
           DB_CONNECT_TIMEOUT: "10"
         run: |
           set -euo pipefail
-          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy.log"
-          ./cloud-sql-proxy \
-            --address 127.0.0.1 \
-            --port 5432 \
-            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
-            >"${proxy_log}" 2>&1 &
-          proxy_pid=$!
-
-          cleanup_proxy() {
-            kill "${proxy_pid}" 2>/dev/null || true
-            wait "${proxy_pid}" 2>/dev/null || true
-          }
-          trap cleanup_proxy EXIT
-
-          proxy_ready=false
-          for _ in {1..30}; do
-            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-              proxy_ready=true
-              break
-            fi
-            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          if [ "${proxy_ready}" != "true" ]; then
-            echo "::error::Cloud SQL Auth Proxy did not become ready"
-            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
-            exit 1
-          fi
-
-          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
-          if [ -z "${DB_PASSWORD}" ]; then
-            echo "::error::Database password secret is empty"
-            exit 1
-          fi
-          echo "::add-mask::${DB_PASSWORD}"
-          export DB_PASSWORD
           python scripts/verify_prod_test_db_connections.py
 
       - name: Run test pre-sync backup
@@ -282,12 +226,8 @@ jobs:
           OPERATION_ID: ${{ inputs.operation_id }}
           TARGET_GIT_SHA: ${{ inputs.target_git_sha }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
-          DB_HOST: 127.0.0.1
-          DB_PORT: "5432"
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
           DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
-          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
           GCS_BUCKET_TEST: ${{ vars.TEST_GCS_BUCKET }}
         run: |
           set -euo pipefail
@@ -302,48 +242,6 @@ jobs:
             echo "::error::Restore executable did not resolve to the PostgreSQL 18 client"
             exit 1
           fi
-          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy-backup.log"
-          proxy_pid=""
-
-          cleanup_proxy() {
-            if [ -n "${proxy_pid}" ]; then
-              kill "${proxy_pid}" 2>/dev/null || true
-              wait "${proxy_pid}" 2>/dev/null || true
-            fi
-          }
-          trap cleanup_proxy EXIT
-
-          ./cloud-sql-proxy \
-            --address 127.0.0.1 \
-            --port 5432 \
-            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
-            >"${proxy_log}" 2>&1 &
-          proxy_pid=$!
-
-          proxy_ready=false
-          for _ in {1..30}; do
-            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-              proxy_ready=true
-              break
-            fi
-            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          if [ "${proxy_ready}" != "true" ]; then
-            echo "::error::Cloud SQL Auth Proxy did not become ready for backup"
-            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
-            exit 1
-          fi
-
-          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
-          if [ -z "${DB_PASSWORD}" ]; then
-            echo "::error::Database password secret is empty"
-            exit 1
-          fi
-          echo "::add-mask::${DB_PASSWORD}"
-          export DB_PASSWORD
           python scripts/backup_test_environment_pre_sync.py --execute
 
       - name: Validate test pre-sync backup manifest
@@ -388,119 +286,25 @@ jobs:
         if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
-          DB_HOST: 127.0.0.1
-          DB_PORT: "5432"
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
           DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
           DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
-          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
           DB_CONNECT_TIMEOUT: "10"
         run: |
           set -euo pipefail
-          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy-drain-check.log"
-          proxy_pid=""
-
-          cleanup_proxy() {
-            if [ -n "${proxy_pid}" ]; then
-              kill "${proxy_pid}" 2>/dev/null || true
-              wait "${proxy_pid}" 2>/dev/null || true
-            fi
-          }
-          trap cleanup_proxy EXIT
-
-          ./cloud-sql-proxy \
-            --address 127.0.0.1 \
-            --port 5432 \
-            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
-            >"${proxy_log}" 2>&1 &
-          proxy_pid=$!
-
-          proxy_ready=false
-          for _ in {1..30}; do
-            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-              proxy_ready=true
-              break
-            fi
-            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          if [ "${proxy_ready}" != "true" ]; then
-            echo "::error::Cloud SQL Auth Proxy did not become ready for drain check"
-            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
-            exit 1
-          fi
-
-          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
-          if [ -z "${DB_PASSWORD}" ]; then
-            echo "::error::Database password secret is empty"
-            exit 1
-          fi
-          echo "::add-mask::${DB_PASSWORD}"
-          export DB_PASSWORD
           python scripts/check_test_db_connections_drained.py
 
       - name: Synchronize approved production database tables to test
         if: ${{ inputs.dry_run == 'false' && inputs.sync_scope == 'full' }}
         shell: bash
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
-          DB_HOST: 127.0.0.1
-          DB_PORT: "5432"
+          PROD_DB_DIRECT_URL: ${{ secrets.PROD_DB_DIRECT_URL }}
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
           DB_NAME_PROD: ${{ vars.PROD_DB_NAME }}
           DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
-          DB_USER_PROD: ${{ secrets.PROD_DB_USER }}
-          DB_USER_TEST: ${{ secrets.TEST_DB_USER }}
           DB_CONNECT_TIMEOUT: "10"
         run: |
           set -euo pipefail
-          proxy_log="${RUNNER_TEMP}/cloud-sql-proxy-db-sync.log"
-          proxy_pid=""
-
-          cleanup_proxy() {
-            if [ -n "${proxy_pid}" ]; then
-              kill "${proxy_pid}" 2>/dev/null || true
-              wait "${proxy_pid}" 2>/dev/null || true
-            fi
-          }
-          trap cleanup_proxy EXIT
-
-          ./cloud-sql-proxy \
-            --address 127.0.0.1 \
-            --port 5432 \
-            "${GCP_PROJECT_ID}:${GCP_REGION}:${CLOUD_SQL_INSTANCE}" \
-            >"${proxy_log}" 2>&1 &
-          proxy_pid=$!
-
-          proxy_ready=false
-          for _ in {1..30}; do
-            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-              proxy_ready=true
-              break
-            fi
-            if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          if [ "${proxy_ready}" != "true" ]; then
-            echo "::error::Cloud SQL Auth Proxy did not become ready for database synchronization"
-            sed -e 's/^/[cloud-sql-proxy] /' "${proxy_log}"
-            exit 1
-          fi
-
-          DB_PASSWORD="$(gcloud secrets versions access latest --secret=kanade-portal-db-password --project "${GCP_PROJECT_ID}")"
-          if [ -z "${DB_PASSWORD}" ]; then
-            echo "::error::Database password secret is empty"
-            exit 1
-          fi
-          echo "::add-mask::${DB_PASSWORD}"
-          export DB_PASSWORD
           python scripts/sync_prod_to_test_db.py
 
       - name: Validate existing test maintenance revision for GCS resume

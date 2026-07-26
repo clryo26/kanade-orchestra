@@ -8,6 +8,7 @@ from collections import defaultdict, deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import psycopg
 from psycopg import sql
@@ -25,13 +26,10 @@ APPLICATION_NAME_TEST = "kanade-prod-to-test-db-target"
 
 @dataclass(frozen=True)
 class DbSyncConfig:
-    host: str
-    port: int
+    prod_url: str
+    test_url: str
     prod_database: str
     test_database: str
-    prod_user: str
-    test_user: str
-    password: str
     connect_timeout: int
 
 
@@ -81,13 +79,14 @@ def read_config(argv: list[str] | None = None) -> DbSyncConfig:
     parser = argparse.ArgumentParser(
         description="Synchronize the approved production DB tables to the test DB."
     )
-    parser.add_argument("--db-host", default=os.getenv("DB_HOST", "127.0.0.1"))
-    parser.add_argument("--db-port", default=os.getenv("DB_PORT", "5432"))
+    parser.add_argument(
+        "--prod-db-direct-url", default=os.getenv("PROD_DB_DIRECT_URL", "")
+    )
+    parser.add_argument(
+        "--test-db-direct-url", default=os.getenv("TEST_DB_DIRECT_URL", "")
+    )
     parser.add_argument("--db-name-prod", default=os.getenv("DB_NAME_PROD", ""))
     parser.add_argument("--db-name-test", default=os.getenv("DB_NAME_TEST", ""))
-    parser.add_argument("--db-user-prod", default=os.getenv("DB_USER_PROD", ""))
-    parser.add_argument("--db-user-test", default=os.getenv("DB_USER_TEST", ""))
-    parser.add_argument("--db-password", default=os.getenv("DB_PASSWORD", ""))
     parser.add_argument(
         "--db-connect-timeout", default=os.getenv("DB_CONNECT_TIMEOUT", "10")
     )
@@ -99,13 +98,10 @@ def read_config(argv: list[str] | None = None) -> DbSyncConfig:
         raise ValueError("DB_NAME_PROD and DB_NAME_TEST must be different")
 
     return DbSyncConfig(
-        host=_required(args.db_host, "DB_HOST"),
-        port=_positive_int(args.db_port, "DB_PORT"),
+        prod_url=_required(args.prod_db_direct_url, "PROD_DB_DIRECT_URL"),
+        test_url=_required(args.test_db_direct_url, "TEST_DB_DIRECT_URL"),
         prod_database=prod_database,
         test_database=test_database,
-        prod_user=_required(args.db_user_prod, "DB_USER_PROD"),
-        test_user=_required(args.db_user_test, "DB_USER_TEST"),
-        password=_required(args.db_password, "DB_PASSWORD"),
         connect_timeout=_positive_int(args.db_connect_timeout, "DB_CONNECT_TIMEOUT"),
     )
 
@@ -144,11 +140,6 @@ def dependency_order(tables: Sequence[str], foreign_keys: Iterable[ForeignKey]) 
 
 def _connect_kwargs(config: DbSyncConfig, *, production: bool) -> dict[str, Any]:
     return {
-        "host": config.host,
-        "port": config.port,
-        "dbname": config.prod_database if production else config.test_database,
-        "user": config.prod_user if production else config.test_user,
-        "password": config.password,
         "connect_timeout": config.connect_timeout,
         "application_name": APPLICATION_NAME_PROD if production else APPLICATION_NAME_TEST,
         **({"options": "-c default_transaction_read_only=on"} if production else {}),
@@ -397,7 +388,9 @@ def synchronize_databases(
     connect_fn: Callable[..., Any] | None = None,
 ) -> SyncResult:
     connector = connect_fn or psycopg.connect
-    prod_connection = connector(**_connect_kwargs(config, production=True))
+    prod_connection = connector(
+        config.prod_url, **_connect_kwargs(config, production=True)
+    )
     test_connection = None
     try:
         prod_cursor = prod_connection.cursor()
@@ -417,7 +410,9 @@ def synchronize_databases(
             }
             source_counts = {table: len(source_rows[table]) for table in TARGET_DB_TABLES}
 
-            test_connection = connector(**_connect_kwargs(config, production=False))
+            test_connection = connector(
+                config.test_url, **_connect_kwargs(config, production=False)
+            )
             test_cursor = test_connection.cursor()
             try:
                 _assert_connected_database(test_cursor, config.test_database)
@@ -487,12 +482,40 @@ def synchronize_databases(
         prod_connection.close()
 
 
+def _redacted_error_message(
+    error: Exception, prod_url: str, test_url: str
+) -> str:
+    message = str(error)
+    secrets = [prod_url, test_url]
+    for database_url in (prod_url, test_url):
+        if not database_url:
+            continue
+        try:
+            password = urlsplit(database_url).password
+        except ValueError:
+            password = None
+        if password:
+            secrets.append(unquote(password))
+    for secret in secrets:
+        if secret:
+            message = message.replace(secret, "***")
+    return message
+
+
 def main(argv: list[str] | None = None) -> int:
+    prod_url = os.getenv("PROD_DB_DIRECT_URL", "")
+    test_url = os.getenv("TEST_DB_DIRECT_URL", "")
     try:
-        result = synchronize_databases(read_config(argv))
+        config = read_config(argv)
+        prod_url = config.prod_url
+        test_url = config.test_url
+        result = synchronize_databases(config)
     except Exception as exc:
-        # Connection parameters and credentials must never be emitted.
-        print(f"[FAIL] production-to-test DB synchronization failed: {exc}", file=sys.stderr)
+        print(
+            "[FAIL] production-to-test DB synchronization failed: "
+            f"{_redacted_error_message(exc, prod_url, test_url)}",
+            file=sys.stderr,
+        )
         return 1
 
     total_rows = sum(result.target_counts.values())

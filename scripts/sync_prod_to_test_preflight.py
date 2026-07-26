@@ -82,7 +82,8 @@ REQUIRED_FIELDS = (
     "operation_id",
     "gcp_project_id",
     "gcp_region",
-    "cloud_sql_instance",
+    "prod_db_direct_url",
+    "test_db_direct_url",
     "db_name_prod",
     "db_name_test",
     "gcs_bucket_prod",
@@ -97,7 +98,8 @@ class SyncPreflightConfig:
     operation_id: str
     gcp_project_id: str
     gcp_region: str
-    cloud_sql_instance: str
+    prod_db_direct_url: str
+    test_db_direct_url: str
     db_name_prod: str
     db_name_test: str
     gcs_bucket_prod: str
@@ -186,7 +188,8 @@ def _read_config_from_args(argv: list[str] | None = None) -> SyncPreflightConfig
         operation_id=args.operation_id.strip(),
         gcp_project_id=args.gcp_project_id.strip(),
         gcp_region=args.gcp_region.strip(),
-        cloud_sql_instance=args.cloud_sql_instance.strip(),
+        prod_db_direct_url=args.prod_db_direct_url.strip(),
+        test_db_direct_url=args.test_db_direct_url.strip(),
         db_name_prod=args.db_name_prod.strip(),
         db_name_test=args.db_name_test.strip(),
         gcs_bucket_prod=args.gcs_bucket_prod.strip(),
