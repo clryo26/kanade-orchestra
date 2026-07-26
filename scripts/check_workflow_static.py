@@ -66,6 +66,8 @@ TARGET_WORKFLOWS = {
             "PROD_GCS_BUCKET",
             "DEPLOY_SERVICE_ACCOUNT",
             "WIF_PROVIDER",
+            "PROD_DB_URL",
+            "DB_URL=${PROD_DB_URL}",
         ],
         "required_phrases": [
             "tested_image_digest",
@@ -228,13 +230,22 @@ def validate_deploy_maintenance_guard(content: str, file_name: str, errors: list
 def validate_deploy_neon_database_policy(
     content: str, file_name: str, errors: list[str]
 ) -> None:
-    if file_name != "deploy-test.yml":
+    database_tokens = {
+        "deploy-test.yml": (
+            "TEST_DB_HOST",
+            "TEST_DB_NAME",
+            "TEST_DB_USER",
+        ),
+        "promote-production.yml": (
+            "PROD_DB_HOST",
+            "PROD_DB_NAME",
+            "PROD_DB_USER",
+        ),
+    }
+    if file_name not in database_tokens:
         return
 
-    forbidden_tokens = (
-        "TEST_DB_HOST",
-        "TEST_DB_NAME",
-        "TEST_DB_USER",
+    forbidden_tokens = database_tokens[file_name] + (
         "kanade-portal-db-password",
         '--update-secrets "DB_PASSWORD=',
     )

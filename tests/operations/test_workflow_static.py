@@ -160,6 +160,48 @@ def test_deploy_test_cloud_sql_token_fails(tmp_path, token):
     )
 
 
+def test_missing_prod_db_url_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "promote-production.yml",
+        "PROD_DB_URL",
+        "REMOVED_DB_URL",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("required token missing: PROD_DB_URL" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "PROD_DB_HOST",
+        "PROD_DB_NAME",
+        "PROD_DB_USER",
+        "kanade-portal-db-password",
+        '--update-secrets "DB_PASSWORD=',
+    ],
+)
+def test_promote_production_cloud_sql_token_fails(tmp_path, token):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    production_path = workflow_dir / "promote-production.yml"
+    content = production_path.read_text(encoding="utf-8")
+    production_path.write_text(
+        content + f"\n          {token}\n",
+        encoding="utf-8",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any(
+        "Cloud SQL database token must not remain" in error
+        for error in errors
+    )
+
+
 def test_deploy_workflows_pass_the_opposite_portal_url_only_when_configured():
     deploy_test = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
     promote_production = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
