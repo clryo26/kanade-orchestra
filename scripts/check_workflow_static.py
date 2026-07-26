@@ -46,6 +46,8 @@ TARGET_WORKFLOWS = {
             "GITHUB_REPOSITORY",
             "MAINTENANCE_MODE=false",
             "check_test_maintenance_deploy.py",
+            "TEST_DB_URL",
+            "DB_URL=${TEST_DB_URL}",
         ],
         "required_phrases": [
             "docker build",
@@ -221,6 +223,26 @@ def validate_deploy_maintenance_guard(content: str, file_name: str, errors: list
         errors.append(f"{file_name}: normal deployment must explicitly disable maintenance")
     if "always()" in content:
         errors.append(f"{file_name}: maintenance safety must not use always()")
+
+
+def validate_deploy_neon_database_policy(
+    content: str, file_name: str, errors: list[str]
+) -> None:
+    if file_name != "deploy-test.yml":
+        return
+
+    forbidden_tokens = (
+        "TEST_DB_HOST",
+        "TEST_DB_NAME",
+        "TEST_DB_USER",
+        "kanade-portal-db-password",
+        '--update-secrets "DB_PASSWORD=',
+    )
+    for token in forbidden_tokens:
+        if token in content:
+            errors.append(
+                f"{file_name}: Cloud SQL database token must not remain: {token}"
+            )
 
 
 def validate_maintenance_operation_workflow(content: str, file_name: str, errors: list[str]) -> None:
@@ -738,6 +760,7 @@ def run_checks(
         validate_required_phrases(content, file_name, errors)
         validate_test_target_guards(content, file_name, errors)
         validate_deploy_maintenance_guard(content, file_name, errors)
+        validate_deploy_neon_database_policy(content, file_name, errors)
         validate_maintenance_operation_workflow(content, file_name, errors)
         validate_template_guard(content, file_name, errors)
         validate_no_secret_echo(content, file_name, errors)

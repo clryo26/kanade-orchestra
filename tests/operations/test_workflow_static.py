@@ -121,6 +121,45 @@ def test_normal_deploy_without_explicit_maintenance_false_fails(tmp_path):
     assert any("normal deployment must explicitly disable maintenance" in error for error in errors)
 
 
+def test_missing_test_db_url_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "deploy-test.yml",
+        "TEST_DB_URL",
+        "REMOVED_DB_URL",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("required token missing: TEST_DB_URL" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "TEST_DB_HOST",
+        "TEST_DB_NAME",
+        "TEST_DB_USER",
+        "kanade-portal-db-password",
+        '--update-secrets "DB_PASSWORD=',
+    ],
+)
+def test_deploy_test_cloud_sql_token_fails(tmp_path, token):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    deploy_path = workflow_dir / "deploy-test.yml"
+    content = deploy_path.read_text(encoding="utf-8")
+    deploy_path.write_text(content + f"\n          {token}\n", encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any(
+        "Cloud SQL database token must not remain" in error
+        for error in errors
+    )
+
+
 def test_deploy_workflows_pass_the_opposite_portal_url_only_when_configured():
     deploy_test = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
     promote_production = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
