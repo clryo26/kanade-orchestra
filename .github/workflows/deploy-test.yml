@@ -163,8 +163,8 @@ jobs:
             --region "${GCP_REGION}" \
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
-            --to-latest \
             --quiet
+
           gcloud run services update-traffic "${TEST_CLOUD_RUN_SERVICE}" \
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --region "${GCP_REGION}" \
