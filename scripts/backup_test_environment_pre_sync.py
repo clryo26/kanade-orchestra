@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
     from google.cloud import storage
@@ -228,8 +228,48 @@ def _run_database_backup(
                 f"{executable} major version must be {POSTGRES_REQUIRED_MAJOR_VERSION}"
             )
 
+    parsed_database_url = urlsplit(config.test_db_direct_url)
+    if (
+        parsed_database_url.scheme not in {"postgres", "postgresql"}
+        or not parsed_database_url.hostname
+    ):
+        raise ValueError("TEST_DB_DIRECT_URL must be a PostgreSQL URL with a host")
+
+    database_name = unquote(parsed_database_url.path.lstrip("/"))
+    if not database_name:
+        raise ValueError("TEST_DB_DIRECT_URL must include a database name")
+
     pg_dump_env = os.environ.copy()
-    pg_dump_env["PGDATABASE"] = config.test_db_direct_url
+    for variable_name in (
+        "PGHOST",
+        "PGPORT",
+        "PGUSER",
+        "PGPASSWORD",
+        "PGDATABASE",
+        "PGSSLMODE",
+        "PGCHANNELBINDING",
+        "PGCONNECT_TIMEOUT",
+    ):
+        pg_dump_env.pop(variable_name, None)
+
+    pg_dump_env["PGHOST"] = parsed_database_url.hostname
+    pg_dump_env["PGPORT"] = str(parsed_database_url.port or 5432)
+    pg_dump_env["PGDATABASE"] = database_name
+    if parsed_database_url.username is not None:
+        pg_dump_env["PGUSER"] = unquote(parsed_database_url.username)
+    if parsed_database_url.password is not None:
+        pg_dump_env["PGPASSWORD"] = unquote(parsed_database_url.password)
+
+    query_parameters = parse_qs(parsed_database_url.query)
+    for query_name, variable_name in {
+        "sslmode": "PGSSLMODE",
+        "channel_binding": "PGCHANNELBINDING",
+        "connect_timeout": "PGCONNECT_TIMEOUT",
+    }.items():
+        values = query_parameters.get(query_name)
+        if values:
+            pg_dump_env[variable_name] = values[-1]
+
     pg_dump_command = [
         "pg_dump",
         "--format=custom",

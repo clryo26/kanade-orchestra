@@ -387,7 +387,12 @@ def test_execute_runs_safe_dump_validates_and_writes_manifest_last(tmp_path):
     assert "--username" not in pg_dump_call["command"]
     assert pg_dump_call["shell"] is False
     assert config.test_db_direct_url not in pg_dump_call["command"]
-    assert pg_dump_call["env"]["PGDATABASE"] == config.test_db_direct_url
+    assert pg_dump_call["env"]["PGHOST"] == "test.example"
+    assert pg_dump_call["env"]["PGPORT"] == "5432"
+    assert pg_dump_call["env"]["PGUSER"] == "test_user"
+    assert pg_dump_call["env"]["PGPASSWORD"] == "top-secret-password"
+    assert pg_dump_call["env"]["PGDATABASE"] == "kanade_portal_test"
+    assert pg_dump_call["env"]["PGSSLMODE"] == "require"
     assert pg_restore_call["command"][0:2] == ["pg_restore", "--list"]
     assert pg_restore_call["shell"] is False
     assert config.test_db_direct_url not in pg_restore_call["command"]
