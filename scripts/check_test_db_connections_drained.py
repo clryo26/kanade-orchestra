@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -12,6 +13,16 @@ import psycopg
 
 
 APPLICATION_NAME = "kanade-prod-to-test-drain-check"
+CONNECTION_DRAIN_TIMEOUT_SECONDS = 60.0
+CONNECTION_DRAIN_RETRY_INTERVAL_SECONDS = 5.0
+
+
+class DatabaseNameMismatchError(RuntimeError):
+    """Raised when the connection is not attached to the configured test DB."""
+
+
+class ConnectionsNotDrainedError(RuntimeError):
+    """Raised when other test database connections remain after the timeout."""
 
 
 @dataclass(frozen=True)
@@ -82,7 +93,9 @@ def find_other_test_database_connections(
         try:
             cursor.execute("SELECT current_database()")
             if cursor.fetchone()[0] != config.test_database:
-                raise RuntimeError("connected database does not match DB_NAME_TEST")
+                raise DatabaseNameMismatchError(
+                    "connected database does not match DB_NAME_TEST"
+                )
 
             # Exclude only this checker connection. Any other session attached to
             # the test database can race with pg_restore and therefore blocks it.
@@ -109,11 +122,30 @@ def find_other_test_database_connections(
 def assert_test_database_connections_drained(
     config: DrainCheckConfig,
     connect_fn: Callable[..., Any] | None = None,
+    *,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    monotonic_fn: Callable[[], float] = time.monotonic,
 ) -> None:
-    connections = find_other_test_database_connections(config, connect_fn)
-    if connections:
-        raise RuntimeError(
-            f"test database still has {len(connections)} other connection(s)"
+    started_at = monotonic_fn()
+
+    while True:
+        connections = find_other_test_database_connections(config, connect_fn)
+        if not connections:
+            return
+
+        elapsed = monotonic_fn() - started_at
+        if elapsed >= CONNECTION_DRAIN_TIMEOUT_SECONDS:
+            raise ConnectionsNotDrainedError(
+                f"test database still has {len(connections)} other connection(s) "
+                "after waiting 60 seconds"
+            )
+
+        # Retry only when valid inspection results show that other sessions remain.
+        sleep_fn(
+            min(
+                CONNECTION_DRAIN_RETRY_INTERVAL_SECONDS,
+                CONNECTION_DRAIN_TIMEOUT_SECONDS - elapsed,
+            )
         )
 
 
@@ -121,10 +153,25 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = read_config(argv)
         assert_test_database_connections_drained(config)
-    except Exception as exc:
-        # Do not print connection parameters or database credentials.
+    except ConnectionsNotDrainedError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        return 1
+    except DatabaseNameMismatchError:
         print(
-            f"[FAIL] test database connection drain check failed ({type(exc).__name__})",
+            "[FAIL] connected database does not match DB_NAME_TEST",
+            file=sys.stderr,
+        )
+        return 1
+    except ValueError:
+        print("[FAIL] invalid database drain check configuration", file=sys.stderr)
+        return 1
+    except (psycopg.Error, ConnectionError):
+        print("[FAIL] test database connection error", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        # Print only the exception type, never connection parameters or credentials.
+        print(
+            f"[FAIL] unexpected database drain check failure ({type(exc).__name__})",
             file=sys.stderr,
         )
         return 1
