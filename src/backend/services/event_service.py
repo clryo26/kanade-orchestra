@@ -19,12 +19,12 @@ def get_event(event_id: int) -> dict[str, Any]:
 
 
 def create_event(payload: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
-    member_id = device.get("member_id")
-    if not str(member_id or "").strip().isdigit():
+    member_id_text = str(device.get("member_id") or "").strip()
+    if not member_id_text.isdigit():
         raise HTTPException(status_code=403, detail="Event creator member_id is required")
     normalized_payload = {
         **payload,
-        "created_by_member_id": int(member_id) if str(member_id or "").strip().isdigit() else None,
+        "created_by_member_id": int(member_id_text),
     }
     return cast(dict[str, Any], _repo.create(normalized_payload))
 
