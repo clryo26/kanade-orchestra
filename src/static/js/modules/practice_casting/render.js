@@ -4,9 +4,15 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
-function extraDisplayName(name) {
+function extraDisplayName(name, part) {
     const base = String(name || '').trim();
     if (!base) return '';
+
+    const normalizedPart = String(part || '').trim().toLowerCase();
+    if (normalizedPart === 'conductor') {
+        return base;
+    }
+
     return base.includes('（エキストラ）') ? base : `${base}（エキストラ）`;
 }
 
@@ -140,7 +146,7 @@ function renderCastingAdminList() {
                         const memberName = memberNameMap.get(String(m.member_id || '')) || m.name || '';
                         const memberData = appState.members.find((item) => String(item.id || '') === String(m.member_id || ''));
                         const displayName = memberData && String(memberData.permission || '') === 'エキストラ'
-                            ? extraDisplayName(memberName)
+                            ? extraDisplayName(memberName, m.part)
                             : memberName;
                         return `${displayName}${m.part ? `（${m.part}）` : ''}`;
                     }).join(', ') : '';
@@ -186,14 +192,14 @@ function renderCastingView() {
                 const member = appState.members.find((item) => item.id === m.member_id);
                 const name = member ? memberDisplayName(member) : `団員ID:${m.member_id}`;
                 const displayName = member && String(member.permission || '') === 'エキストラ'
-                    ? extraDisplayName(name)
+                    ? extraDisplayName(name, m.part || member?.part)
                     : name;
                 const part = m.part || member?.part || '（パート未設定）';
                 if (!partMap.has(part)) partMap.set(part, []);
                 partMap.get(part).push(displayName);
             });
             (r.extras || []).forEach((e) => {
-                const name = extraDisplayName(e.name || '');
+                const name = extraDisplayName(e.name || '', e.part);
                 if (!name) return;
                 const part = e.part || '（エキストラ）';
                 if (!partMap.has(part)) partMap.set(part, []);
