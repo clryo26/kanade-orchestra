@@ -109,7 +109,17 @@ def find_other_test_database_connections(
                 """,
                 (config.test_database,),
             )
-            return list(cursor.fetchall())
+            connections = list(cursor.fetchall())
+            return [
+                connection
+                for connection in connections
+                if not (
+                    connection[2] == "pgbouncer"
+                    and connection[3] in {"::1/128", "127.0.0.1/32"}
+                    and connection[4] == "idle"
+                    and connection[5] == "client backend"
+                )
+            ]
         finally:
             cursor.close()
     finally:
