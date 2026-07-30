@@ -113,6 +113,44 @@ def test_connection_check_excludes_only_its_own_backend() -> None:
     assert cursor.closed is True
 
 
+def test_connection_check_ignores_neon_internal_pgbouncer_session() -> None:
+    internal_pgbouncer_row = (
+        674,
+        "neondb_owner",
+        "pgbouncer",
+        "::1/128",
+        "idle",
+        "client backend",
+    )
+    cursor = FakeCursor("kanade_portal_test", [internal_pgbouncer_row])
+    connection = FakeConnection(cursor)
+
+    result = find_other_test_database_connections(
+        config(), lambda _database_url, **_: connection
+    )
+
+    assert result == []
+
+
+def test_connection_check_keeps_non_internal_pgbouncer_session() -> None:
+    external_pgbouncer_row = (
+        675,
+        "neondb_owner",
+        "pgbouncer",
+        "203.0.113.10/32",
+        "idle",
+        "client backend",
+    )
+    cursor = FakeCursor("kanade_portal_test", [external_pgbouncer_row])
+    connection = FakeConnection(cursor)
+
+    result = find_other_test_database_connections(
+        config(), lambda _database_url, **_: connection
+    )
+
+    assert result == [external_pgbouncer_row]
+
+
 def test_connection_check_fails_closed_when_another_session_exists() -> None:
     connection_row = (
         123,
