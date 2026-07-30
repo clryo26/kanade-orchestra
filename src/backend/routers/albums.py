@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import Response
 
-from ..core.auth_dependencies import get_admin_device_auth, get_device_auth
+from ..core.auth_dependencies import get_device_auth
 from ..services.extra_collection_helpers import read_json_body
 from ..services import album_service, extra_service
 
@@ -70,6 +70,6 @@ async def get_album_photo(album_id: int, photo_id: int) -> Response:
 async def delete_album_photo(
     album_id: int,
     photo_id: int,
-    _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
+    device: dict[str, Any] = Depends(get_device_auth),
 ) -> dict[str, str]:
-    return album_service.delete_album_photo(album_id, photo_id)
+    return album_service.delete_album_photo(album_id, photo_id, device)

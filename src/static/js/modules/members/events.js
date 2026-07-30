@@ -4,14 +4,39 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+function canDeleteMemberEvent(event) {
+    const creatorId = String(event?.created_by_member_id || '').trim();
+    if (!creatorId) return false;
+    return creatorId === String(appState.currentUserMemberId || '').trim();
+}
+
+function setMemberEventFormVisible(visible) {
+    const form = $('memberEventCreateForm');
+    const openBtn = $('memberEventOpenFormBtn');
+    if (form) form.hidden = !visible;
+    if (openBtn) openBtn.hidden = visible;
+}
+
+function clearMemberEventCreateForm() {
+    if ($('memberEventTitle')) $('memberEventTitle').value = '';
+    if ($('memberEventDate')) $('memberEventDate').value = window.portalRuntimeContext.today();
+    if ($('memberEventStartTime')) $('memberEventStartTime').value = '';
+    if ($('memberEventDeadline')) $('memberEventDeadline').value = window.portalRuntimeContext.today();
+    if ($('memberEventFee')) $('memberEventFee').value = '';
+    if ($('memberEventNotes')) $('memberEventNotes').value = '';
+    if ($('memberEventDeletePhrase')) $('memberEventDeletePhrase').value = '';
+}
+
 function renderMemberEventView() {
     const c = $('memberEventInfo'); if (!c) return;
     c.innerHTML = `
         <div id="memberEventListView">
             <h6>イベント一覧</h6>
             <div class="list-group mb-3" id="memberEventList"></div>
-            <h6>イベント登録</h6>
-            <div class="row g-2 mb-3">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <button id="memberEventOpenFormBtn" class="btn btn-outline-primary" type="button">イベント登録</button>
+            </div>
+            <div class="row g-2 mb-3" id="memberEventCreateForm" hidden>
                 <div class="col-md-4"><label class="form-label">イベント名</label><input id="memberEventTitle" class="form-control"></div>
                 <div class="col-md-3"><label class="form-label">開催日</label><input id="memberEventDate" type="date" class="form-control"></div>
                 <div class="col-md-2"><label class="form-label">開始時刻</label><input id="memberEventStartTime" type="time" class="form-control"></div>
@@ -20,11 +45,17 @@ function renderMemberEventView() {
                 <div class="col-12"><label class="form-label">イベント概要/備考</label><textarea id="memberEventNotes" class="form-control" rows="3"></textarea></div>
                 <div class="col-md-6"><label class="form-label">削除時の合言葉</label><input id="memberEventDeletePhrase" class="form-control"></div>
                 <div class="col-md-3 d-flex align-items-end"><button id="memberEventCreateBtn" class="btn btn-primary w-100" type="button">イベント登録</button></div>
+                <div class="col-md-3 d-flex align-items-end"><button id="memberEventFormCancelBtn" class="btn btn-outline-secondary w-100" type="button">キャンセル</button></div>
             </div>
         </div>
         <div id="memberEventDetailView" hidden></div>`;
-    $('memberEventDate').value = window.portalRuntimeContext.today();
-    $('memberEventDeadline').value = window.portalRuntimeContext.today();
+    clearMemberEventCreateForm();
+    setMemberEventFormVisible(false);
+    $('memberEventOpenFormBtn')?.addEventListener('click', () => setMemberEventFormVisible(true));
+    $('memberEventFormCancelBtn')?.addEventListener('click', () => {
+        clearMemberEventCreateForm();
+        setMemberEventFormVisible(false);
+    });
     $('memberEventCreateBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '作成中...', async () => {
         const payload = {
             title: $('memberEventTitle').value.trim(),
@@ -42,6 +73,8 @@ function renderMemberEventView() {
         }
         await request('/api/events', jsonOptions('POST', payload));
         showAlert('イベントを作成しました', 'success');
+        clearMemberEventCreateForm();
+        setMemberEventFormVisible(false);
         await loadEvents(); await loadExtraData();
     }));
     renderMemberEventList();
@@ -89,9 +122,7 @@ function renderMemberEventDetail(id) {
             <div class="col-md-7"><label class="form-label">参加/不参加</label><select id="eventResponseStatus" class="form-select"><option>参加</option><option>不参加</option></select></div>
             <div class="col-md-3"><button id="eventResponseSaveBtn" class="btn btn-primary w-100" type="button">登録</button></div>
         </div>
-        <div class="d-flex flex-wrap gap-2 mb-3">
-            <button class="btn btn-outline-danger" id="memberEventDeleteBtn" type="button">イベント削除</button>
-        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">${canDeleteMemberEvent(event) ? '<button class="btn btn-outline-danger" id="memberEventDeleteBtn" type="button">イベント削除</button>' : ''}</div>
         <h6>回答状況</h6>
         ${groupedResponsesHtml}
     `;
@@ -117,15 +148,18 @@ function renderMemberEventDetail(id) {
         await loadExtraData();
         renderMemberEventDetail(id);
     }));
-    $('memberEventDeleteBtn').addEventListener('click', (clickEvent) => withButtonStatus(clickEvent.currentTarget, '削除中...', async () => {
-        const phrase = prompt('削除時の合言葉を入力してください');
-        if (phrase === null) return;
-        if (phrase !== (event.delete_phrase || '')) {
-            showAlert('削除時の合言葉が違います', 'danger');
-            return;
-        }
-        if (!confirmDelete()) return;
-        await deleteEventById(id, false);
-        renderMemberEventView();
-    }));
+    const deleteBtn = $('memberEventDeleteBtn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', (clickEvent) => withButtonStatus(clickEvent.currentTarget, '削除中...', async () => {
+            const phrase = prompt('削除時の合言葉を入力してください');
+            if (phrase === null) return;
+            if (phrase !== (event.delete_phrase || '')) {
+                showAlert('削除時の合言葉が違います', 'danger');
+                return;
+            }
+            if (!confirmDelete()) return;
+            await deleteEventById(id, false);
+            renderMemberEventView();
+        }));
+    }
 }

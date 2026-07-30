@@ -79,6 +79,7 @@ class EventAdjustment(BaseModel):
     notes: str = ""
     delete_phrase: str = ""
     fee: str = ""
+    created_by_member_id: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
 

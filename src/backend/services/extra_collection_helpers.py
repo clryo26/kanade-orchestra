@@ -34,7 +34,6 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "payments",
     "castings",
     "performance_day_infos",
-    "albums",
     "part_settings",
     "venue_settings",
     "flyer_distributions",
@@ -112,6 +111,20 @@ def assert_extra_collection_permission(
         if member_name and owner_name and member_name == owner_name:
             return
         raise HTTPException(status_code=403, detail="Only owner can modify this record")
+
+    if name == "albums":
+        if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
+            return
+        member_id = str(device.get("member_id") or "")
+        member_name = str(device.get("member_name") or "")
+        target = current or payload or {}
+        owner_id = str(target.get("created_by_member_id") or "")
+        owner_name = str(target.get("created_by_member_name") or "")
+        if member_id and owner_id and member_id == owner_id:
+            return
+        if member_name and owner_name and member_name == owner_name:
+            return
+        raise HTTPException(status_code=403, detail="Only album creator can modify this record")
 
 
 def normalize_extra_payload(

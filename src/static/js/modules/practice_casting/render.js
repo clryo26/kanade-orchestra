@@ -4,6 +4,12 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+function extraDisplayName(name) {
+    const base = String(name || '').trim();
+    if (!base) return '';
+    return base.includes('（エキストラ）') ? base : `${base}（エキストラ）`;
+}
+
 function renderPracticeInstructionAdmin() {
     const perfSelect = $('practiceInstructionPerformance');
     const list = $('practiceInstructionAdminList');
@@ -132,9 +138,13 @@ function renderCastingAdminList() {
                 ${castings.map((c) => {
                     const members = Array.isArray(c.members) ? c.members.map((m) => {
                         const memberName = memberNameMap.get(String(m.member_id || '')) || m.name || '';
-                        return `${memberName}${m.part ? `（${m.part}）` : ''}`;
+                        const memberData = appState.members.find((item) => String(item.id || '') === String(m.member_id || ''));
+                        const displayName = memberData && String(memberData.permission || '') === 'エキストラ'
+                            ? extraDisplayName(memberName)
+                            : memberName;
+                        return `${displayName}${m.part ? `（${m.part}）` : ''}`;
                     }).join(', ') : '';
-                    const extras = Array.isArray(c.extras) ? c.extras.map((e) => `${e.name || ''}${e.part ? `（${e.part}）` : ''}`).join(', ') : '';
+                    const extras = Array.isArray(c.extras) ? c.extras.map((e) => `${extraDisplayName(e.name || '')}${e.part ? `（${e.part}）` : ''}`).join(', ') : '';
                     const allCasting = [members, extras].filter(Boolean).join(' / ') || '(出演者未設定)';
                     return `
                         <div class="p-2 border rounded mb-2">
@@ -175,12 +185,15 @@ function renderCastingView() {
             (r.members || []).forEach((m) => {
                 const member = appState.members.find((item) => item.id === m.member_id);
                 const name = member ? memberDisplayName(member) : `団員ID:${m.member_id}`;
+                const displayName = member && String(member.permission || '') === 'エキストラ'
+                    ? extraDisplayName(name)
+                    : name;
                 const part = m.part || member?.part || '（パート未設定）';
                 if (!partMap.has(part)) partMap.set(part, []);
-                partMap.get(part).push(name);
+                partMap.get(part).push(displayName);
             });
             (r.extras || []).forEach((e) => {
-                const name = e.name || '';
+                const name = extraDisplayName(e.name || '');
                 if (!name) return;
                 const part = e.part || '（エキストラ）';
                 if (!partMap.has(part)) partMap.set(part, []);

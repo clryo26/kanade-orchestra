@@ -214,31 +214,28 @@ function renderFlyerDistributionView() {
                 <div class="list-group">${facilities.map((facility) => {
                     const assignment = findFlyerDistributionAssignment(performance.id, facility.id);
                     const facilityId = String(facility.id || '');
-                    const plannedMemberId = String(assignment?.planned_member_id || '');
                     const distributedMemberId = String(assignment?.distributed_member_id || '');
+                    const assignmentNote = String(assignment?.note || '');
                     return `
                         <div class="list-group-item" data-flyer-assignment-row data-performance-id="${escapeHtml(performanceId)}" data-facility-id="${escapeHtml(facilityId)}">
                             <input type="hidden" class="flyer-assignment-id" value="${escapeHtml(String(assignment?.id || ''))}">
                             <div class="fw-bold mb-1">${escapeHtml(facility.facility_name || '')}</div>
                             <div class="small text-muted mb-2">${escapeHtml(facility.area_address || '')}</div>
                             <div class="row g-2 align-items-end">
-                                <div class="col-md-3">
-                                    <label class="form-label mb-1">配布予定者</label>
-                                    <select class="form-select flyer-planned-member-id">${flyerDistributionMemberOptionsHtml(plannedMemberId)}</select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label mb-1">配布予定日</label>
-                                    <input type="date" class="form-control flyer-planned-date" value="${escapeHtml(String(assignment?.planned_date || ''))}">
-                                </div>
-                                <div class="col-md-3">
+                                <div class="col-md-6">
                                     <label class="form-label mb-1">配布者</label>
                                     <select class="form-select flyer-distributed-member-id">${flyerDistributionMemberOptionsHtml(distributedMemberId)}</select>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-6">
                                     <label class="form-label mb-1">配布日</label>
                                     <input type="date" class="form-control flyer-distributed-date" value="${escapeHtml(String(assignment?.distributed_date || ''))}">
                                 </div>
+                                <div class="col-12">
+                                    <label class="form-label mb-1">備考</label>
+                                    <textarea class="form-control flyer-assignment-note multiline-text" rows="3" placeholder="配布登録の備考（任意）">${escapeHtml(assignmentNote)}</textarea>
+                                </div>
                             </div>
+                            ${String(assignmentNote).trim() ? `<div class="small text-muted mt-2 multiline-text">登録済み備考: ${escapeHtml(assignmentNote)}</div>` : ''}
                             <div class="d-flex flex-wrap gap-2 mt-2">
                                 <button class="btn btn-sm btn-success flyer-assignment-save-btn" type="button">保存</button>
                                 <button class="btn btn-sm btn-outline-danger flyer-assignment-delete-btn" type="button" ${assignment?.id ? '' : 'disabled'}>削除</button>
@@ -270,20 +267,17 @@ async function saveFlyerDistributionAssignment(button) {
     }
 
     const assignmentId = row.querySelector('.flyer-assignment-id')?.value || '';
-    const plannedMemberId = row.querySelector('.flyer-planned-member-id')?.value || '';
-    const plannedDate = row.querySelector('.flyer-planned-date')?.value || '';
     const distributedMemberId = row.querySelector('.flyer-distributed-member-id')?.value || '';
     const distributedDate = row.querySelector('.flyer-distributed-date')?.value || '';
+    const assignmentNote = row.querySelector('.flyer-assignment-note')?.value || '';
 
     const payload = {
         performance_id: Number(performanceId),
         flyer_distribution_id: Number(facilityId),
-        planned_member_id: plannedMemberId || '',
-        planned_member_name: flyerDistributionMemberName(plannedMemberId),
-        planned_date: plannedDate,
         distributed_member_id: distributedMemberId || '',
         distributed_member_name: flyerDistributionMemberName(distributedMemberId),
         distributed_date: distributedDate,
+        note: assignmentNote,
     };
 
     if (hasDuplicateFlyerDistributionAssignment(performanceId, facilityId, assignmentId)) {

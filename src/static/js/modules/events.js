@@ -3,6 +3,12 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+function canDeleteEventForCurrentUser(event) {
+    const creatorId = String(event?.created_by_member_id || '').trim();
+    if (!creatorId) return false;
+    return creatorId === String(appState.currentUserMemberId || '').trim();
+}
+
 async function saveEvent() {
     const payload = {
         title: $('eventTitle').value.trim(),
@@ -80,7 +86,7 @@ function sortedEvents(events) {
 
 function eventDateTimeLabel(event) {
     const date = formatDateWithWeekday(event?.date, '未定');
-    return event?.start_time ? `${date} ${event.start_time}` : date;
+    return event?.start_time ? `${date} ${formatClockTime(event.start_time)}` : date;
 }
 
 
@@ -98,19 +104,20 @@ function renderEvents() {
                     <div class="small text-muted">開催日: ${escapeHtml(eventDateTimeLabel(event))} / 回答期限: ${escapeHtml(formatDateWithWeekday(event.deadline))}${event.fee ? ` / 会費: ${escapeHtml(event.fee)}` : ''}</div>
                     <div class="small text-muted">削除時の合言葉: ${escapeHtml(event.delete_phrase || '未設定')}</div>
                 </span>
-                <span>
-                    <button class="btn btn-sm btn-outline-danger admin-event-delete-btn" type="button">削除</button>
-                </span>
+                <span>${canDeleteEventForCurrentUser(event) ? '<button class="btn btn-sm btn-outline-danger admin-event-delete-btn" type="button">削除</button>' : ''}</span>
             </div>
             ${event.notes ? `<div class="small multiline-text mt-1">${escapeHtml(event.notes)}</div>` : ''}
             ${event.url ? `<div class="small text-truncate">${escapeHtml(event.url)}</div>` : ''}
         `;
         item.addEventListener('click', () => selectEvent(event.id));
-        item.querySelector('.admin-event-delete-btn').addEventListener('click', (clickEvent) => {
-            clickEvent.preventDefault();
-            clickEvent.stopPropagation();
-            withButtonStatus(clickEvent.currentTarget, '削除中...', () => deleteEventById(event.id, true));
-        });
+        const deleteBtn = item.querySelector('.admin-event-delete-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (clickEvent) => {
+                clickEvent.preventDefault();
+                clickEvent.stopPropagation();
+                withButtonStatus(clickEvent.currentTarget, '削除中...', () => deleteEventById(event.id, true));
+            });
+        }
         list.appendChild(item);
     });
     if (!appState.suppressDerivedRender) renderMemberEventView();
