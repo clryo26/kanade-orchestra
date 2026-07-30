@@ -92,12 +92,10 @@ def _create_payload(collection_name: str) -> dict:
         return {
             "performance_id": 1,
             "flyer_distribution_id": 1,
-            "planned_member_id": 1,
-            "planned_member_name": "Admin",
-            "planned_date": "2026-07-06",
             "distributed_member_id": 1,
             "distributed_member_name": "Admin",
             "distributed_date": "2026-07-07",
+            "note": "初回配布\n入口付近",
         }
     if collection_name == "org_settings":
         return {"name": "Kanade", "short_name": "K", "organization_name": "Kanade", "organization_abbreviation": "K"}
@@ -152,6 +150,8 @@ def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatc
     assert created.status_code == 200
     created_item = created.json()
     item_id = created_item["id"]
+    if collection_name == "flyer_distribution_assignments":
+        assert created_item.get("note") == "初回配布\n入口付近"
 
     updated_payload = dict(create_payload)
     if collection_name == "piece_infos":
@@ -165,7 +165,7 @@ def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatc
     elif collection_name == "flyer_distributions":
         updated_payload["facility_name"] = "Store B"
     elif collection_name == "flyer_distribution_assignments":
-        updated_payload["planned_date"] = "2026-07-08"
+        updated_payload["note"] = ""
     elif collection_name == "org_settings":
         updated_payload["name"] = "Kanade Updated"
         updated_payload["organization_name"] = "Kanade Updated"
@@ -189,6 +189,10 @@ def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatc
     assert listed.status_code == 200
     listed_rows = listed.json()
     assert any(str(item.get("id")) == str(item_id) for item in listed_rows)
+    if collection_name == "flyer_distribution_assignments":
+        assignment = next(item for item in listed_rows if str(item.get("id")) == str(item_id))
+        assert "note" in assignment
+        assert assignment.get("note") == ""
 
     deleted = client.delete(f"/api/extra/{collection_name}/{item_id}", headers=headers)
     assert deleted.status_code == 200

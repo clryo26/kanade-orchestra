@@ -55,9 +55,36 @@
         }
         return '長さ未取得';
     }
+    function paymentMonthLabel(monthText) {
+        const match = String(monthText || '').trim().match(/^(\d{4})-(\d{2})$/);
+        if (!match) return '';
+        return `${match[1]}年${match[2]}月`;
+    }
+    function paymentMonthValue(monthText) {
+        if (!monthText || !/^\d{4}-\d{2}$/.test(String(monthText))) return null;
+        const [year, month] = String(monthText).split('-').map(Number);
+        return year * 12 + month;
+    }
+    function paymentCurrentMonthValue() {
+        const today = typeof window !== 'undefined' && window.portalRuntimeContext && typeof window.portalRuntimeContext.today === 'function'
+            ? window.portalRuntimeContext.today()
+            : new Date().toISOString().slice(0, 10);
+        return paymentMonthValue(String(today || '').slice(0, 7));
+    }
+    function paymentRemainingMonthCount(payment) {
+        const paidUntil = paymentMonthValue(payment?.paid_until_month || payment?.membership_fee || payment?.dues || '');
+        const current = paymentCurrentMonthValue();
+        if (paidUntil === null || current === null) return null;
+        return Math.max(0, current - paidUntil);
+    }
     function paymentPaymentRangeLabel(payment) {
         const until = payment?.paid_until_month || payment?.membership_fee || payment?.dues || '';
-        return until ? `${until}まで支払い済み` : '未登録';
+        if (!until) return '未登録';
+        const label = paymentMonthLabel(until);
+        if (!label) return '未登録';
+        const remaining = paymentRemainingMonthCount(payment);
+        if (remaining === null || remaining <= 0) return `${label}まで支払済み`;
+        return `${label}まで支払済み（${remaining}ヶ月分未納）`;
     }
     function integerAmountNumber(value) {
         const amount = Number(value || 0);

@@ -1038,6 +1038,17 @@ body.album-photo-viewer-open {
 .member-intro-text {
     color: #212529;
 }
+.member-founder-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #556270;
+    background-color: #f6f8fa;
+    border: 1px solid #d8e0e8;
+    border-radius: 999px;
+    padding: 0.1rem 0.45rem;
+    vertical-align: middle;
+}
 .member-comment {
     color: #212529;
 }

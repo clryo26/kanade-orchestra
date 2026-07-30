@@ -165,7 +165,7 @@ describe('FE-PURE', () => {
     });
 
     test('FE-PURE-003 payment range label', () => {
-        expect(paymentPaymentRangeLabel({ paid_until_month: '2026-12' })).toBe('2026-12まで支払い済み');
+        expect(paymentPaymentRangeLabel({ paid_until_month: '2026-12' })).toBe('2026年12月まで支払済み');
         expect(paymentPaymentRangeLabel({})).toBe('未登録');
     });
 

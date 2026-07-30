@@ -135,13 +135,26 @@ def get_album_photo_response(album_id: int, photo_id: int) -> Response:
     raise HTTPException(status_code=404, detail="Photo source not found")
 
 
-def delete_album_photo(album_id: int, photo_id: int) -> dict[str, str]:
+def _can_delete_photo(photo: dict[str, Any], device: dict[str, Any]) -> bool:
+    permission = str(device.get("permission") or "")
+    if permission in {"管理者", "システム管理者"}:
+        return True
+    owner_id = str(photo.get("uploaded_by_member_id") or "").strip()
+    device_member_id = str(device.get("member_id") or "").strip()
+    if owner_id and device_member_id and owner_id == device_member_id:
+        return True
+    return False
+
+
+def delete_album_photo(album_id: int, photo_id: int, device: dict[str, Any]) -> dict[str, str]:
     albums = load_json_data("albums")
     index, album = find_item(albums, album_id)
     photos = album.get("photos") or []
     photo_to_delete = next((p for p in photos if p.get("id") == photo_id), None)
     if not photo_to_delete:
         raise HTTPException(status_code=404, detail="Photo not found")
+    if not _can_delete_photo(photo_to_delete, device):
+        raise HTTPException(status_code=403, detail="Only uploader or admin can delete this photo")
 
     if storage_enabled() and photo_to_delete.get("object_name"):
         try:

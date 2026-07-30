@@ -30,7 +30,8 @@ function renderAlbumView() {
                     const photoUrl = (photo.id && album.id)
                         ? `/api/albums/${encodeURIComponent(String(album.id || ''))}/photos/${encodeURIComponent(String(photo.id || ''))}`
                         : String(photo.url || '#');
-                    const deleteBtn = isAdmin ? `<button class="btn btn-sm btn-outline-danger album-delete-photo-btn mt-1" type="button" data-album-id="${escapeHtml(String(album.id || ''))}" data-photo-id="${escapeHtml(String(photo.id || ''))}">削除</button>` : '';
+                    const canDeletePhoto = isAdmin || String(photo.uploaded_by_member_id || '') === String(currentUserId || '');
+                    const deleteBtn = canDeletePhoto ? `<button class="btn btn-sm btn-outline-danger album-delete-photo-btn mt-1" type="button" data-album-id="${escapeHtml(String(album.id || ''))}" data-photo-id="${escapeHtml(String(photo.id || ''))}">削除</button>` : '';
                     return `<div class="col-6 col-md-4 col-lg-3 position-relative">
                         <button class="album-photo-open-btn" type="button" data-album-photo-url="${escapeHtml(photoUrl)}" data-album-photo-title="${escapeHtml(photo.filename || '写真')}">
                             <img src="${escapeHtml(photoUrl)}" class="album-photo" alt="${escapeHtml(photo.filename || '写真')}" loading="lazy">

@@ -22,7 +22,7 @@ function memberPaymentStatusHtml() {
     return `
         <div class="info-block">
             <h6>団費</h6>
-            <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">${escapeHtml(payment ? paymentPaymentRangeLabel(payment) : '未登録')}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
+            <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">${escapeHtml(payment ? paymentPaymentRangeLabel(payment) : '未登録')}</div>
             <h6 class="mt-3">演奏会費</h6>
             <div>${performanceFees || '<p class="text-muted mb-0">演奏会情報は未登録です</p>'}</div>
         </div>
@@ -132,7 +132,7 @@ function paymentStatusHtml(payment) {
         : '<div class="text-muted mt-2">演奏会費は未払いなし</div>';
     return `
         <div class="info-block">
-            <div class="${summary.duesRemaining !== null && summary.duesRemaining > 0 ? 'payment-overdue' : ''}">団費: ${escapeHtml(summary.duesLabel)}${alertInfo.duesOverdue ? '（滞納）' : ''}</div>
+            <div class="${summary.duesRemaining !== null && summary.duesRemaining > 0 ? 'payment-overdue' : ''}">団費: ${escapeHtml(summary.duesLabel)}</div>
             <div>最新支払日: ${escapeHtml(summary.latestPaymentDate)}</div>
             <div class="mt-2"><strong>演奏会費</strong>${performanceFees || '<div class="text-muted">演奏会情報は未登録です</div>'}</div>
             ${unpaidPerformanceText}
