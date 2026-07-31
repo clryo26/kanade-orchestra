@@ -50,12 +50,28 @@ function setDefaultDates() {
 // 団員トップ画面と楽譜ビューワー枠を初期化する。
 // 既に生成済みなら重複生成しない。
 
+// 読み込み失敗時はローディングバーを解除して例外を呼出元へ伝播する
 async function loadEssentialData() {
     setLoadingBar('データを読み込んでいます...');
-    const data = await requestBootstrapData('/api/bootstrap-lite');
-    applyBootstrapData(data);
-    clearLoadingBar();
-    renderEssentialViews();
+    try {
+        const data = await requestBootstrapData('/api/bootstrap-lite');
+        applyBootstrapData(data);
+        clearLoadingBar();
+        // Phase 2計測: 主要画面描画の成功・失敗を記録
+        if (window.portalStartup) window.portalStartup.mark('ESSENTIAL_RENDER_START');
+        let renderStatus = 'success';
+        try {
+        renderEssentialViews();
+        } catch (error) {
+            renderStatus = 'error';
+            throw error;
+        } finally {
+            if (window.portalStartup) window.portalStartup.mark('ESSENTIAL_RENDER_END', { status: renderStatus });
+        }
+    } catch (e) {
+        clearLoadingBar();
+        throw e;
+    }
 }
 
 function renderLoadingPlaceholders() {
@@ -352,7 +368,7 @@ function renderInitialViews(options = {}) {
     renderAnnouncements();
     renderEvents();
     renderMembers();
-    if (includeHeavyLists) renderRecordings();
+    if (includeHeavyLists) void ensureRecordingsFeatureLoaded().then(renderRecordings);
     if (includeHeavyLists) renderSheetAdmin();
     renderPaymentAdmin();
     renderVenueManagement();

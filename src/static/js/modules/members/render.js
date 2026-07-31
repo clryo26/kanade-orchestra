@@ -4,11 +4,6 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
-function joinedAtMonthLabel(value) {
-    const match = String(value || '').trim().match(/^(\d{4})[-\/\.](\d{2})/);
-    return match ? `${match[1]}年${match[2]}月` : '';
-}
-
 function renderMembers() {
     const list = $('memberListItems');
     if (list) {
@@ -59,10 +54,10 @@ function renderMemberIntros() {
                 <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body member-intro-card-body">
                     ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo" loading="lazy">` : ''}
                     <div class="member-intro-text mt-2">
-                        <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="member-founder-badge ms-2">創設メンバー</span>' : ''}</h6>
+                        <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="badge text-bg-info ms-2">創設メンバー</span>' : ''}</h6>
                         ${memberKanaName(member) ? `<div class="small text-muted">${escapeHtml(memberKanaName(member))}</div>` : ''}
                         <div class="small text-muted">${escapeHtml(member.part || '')}</div>
-                        ${member.joined_at ? `<div class="small mt-2"><strong>入団:</strong> ${escapeHtml(joinedAtMonthLabel(member.joined_at) || member.joined_at)}</div>` : ''}
+                        ${member.joined_at ? `<div class="small mt-2"><strong>入団:</strong> ${escapeHtml(member.joined_at)}</div>` : ''}
                         ${member.introducer ? `<div class="small"><strong>紹介者:</strong> ${escapeHtml(member.introducer)}</div>` : ''}
                         ${member.role ? `<div class="small"><strong>役割:</strong> ${escapeHtml(member.role)}</div>` : ''}
                         ${member.instrument_history ? `<div class="small mt-2 multiline-text"><strong>楽器歴:</strong><br>${escapeHtml(member.instrument_history)}</div>` : ''}
@@ -82,7 +77,6 @@ function renderMemberViews() {
     renderMemberPerformances();
     renderMemberSchedules();
     renderAnnouncements();
-    renderRecordings();
     renderMemberIntros();
     renderPortalHome();
     renderMemberExtraViews({ includeHeavyLists: false });
@@ -99,7 +93,7 @@ function renderMemberPerformances() {
     container.innerHTML = `${nextPerf && countdown !== null ? `<div class="countdown-banner">本番まであと${countdown}日！</div>` : ''}` + appState.performances.map((perf) => `
         <article class="info-block">
             <h5>${escapeHtml(perf.title)}</h5>
-            <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(formatClockTime(perf.open_time))}開場 / ${escapeHtml(formatClockTime(perf.start_time))}開演</p>
+            <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(perf.open_time)}開場 / ${escapeHtml(perf.start_time)}開演</p>
             <p>${escapeHtml(perf.venue || '会場未定')} / 指揮: ${escapeHtml(perf.conductor || '未定')}</p>
             <div class="${perf.flyer_image ? 'mb-3' : 'mb-0'}">${(perf.pieces || []).map((piece) => `<div>${escapeHtml(performancePieceFormalLabel(piece))}</div>`).join('')}</div>
             ${perf.flyer_image ? `<div class="mb-0"><img src="${escapeHtml(perf.flyer_image)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy"></div>` : ''}

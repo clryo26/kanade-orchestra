@@ -1,4 +1,4 @@
-// 認証 UI と端末認証のクライアント側処理を app.js から分離したモジュール。
+// 認証 UI と端末認証のクライアント�E処琁E�� app.js から刁E��したモジュール、E
 
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
@@ -39,23 +39,51 @@ function bindPortalPasswordNormalization(input) {
     input.addEventListener('blur', () => normalizePortalPasswordInput(input));
 }
 
+// 認証状態を3値で返す:
+//   authenticated  : API正常応答かつ認証済み
+//   unauthenticated: ローカル認証惁E��なし、また�E明確な未認証レスポンス
+//   unavailable    : タイムアウト�Eネットワークエラー等で認証の成否不�E
 async function isPortalAuthenticated() {
-    if (appState.portalAuthVerified) return true;
+    // メモリ上に認証済みフラグがある場合�EAPI呼出し不要E
+    if (appState.portalAuthVerified) {
+        if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'authenticated' });
+        return { status: 'authenticated', device: null, error: null };
+    }
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY);
-    if (!deviceId || localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') return false;
+    if (!deviceId || localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') {
+        if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
+        return { status: 'unauthenticated', device: null, error: null };
+    }
     try {
-        const result = await request(`/api/auth/devices/${encodeURIComponent(deviceId)}`);
-        appState.portalAuthVerified = Boolean(result.authenticated);
-        appState.currentUserMemberId = result.device?.member_id ?? null;
-        appState.currentUserName = result.device?.member_name || '';
-        appState.currentUserPermission = result.device?.permission || '';
-        appState.currentUserPart = result.device?.member_part || '';
-        appState.currentUserHiddenUser = Boolean(result.device?.hidden_user);
-        appState.currentUserIsRecordingManager = Boolean(result.device?.is_recording_manager);
-        appState.currentUserIsSheetManager = Boolean(result.device?.is_sheet_manager);
-        return appState.portalAuthVerified;
-    } catch {
-        return false;
+        const response = await fetchWithTimeout(
+            `/api/auth/devices/${encodeURIComponent(deviceId)}`,
+            { method: 'GET', headers: { 'X-Device-Id': deviceId } },
+            PORTAL_TIMEOUT_AUTH
+        );
+        // 401/403/404は明確な未認証: 認証状態をクリアする
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+            clearPortalAuthState();
+            if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
+            return { status: 'unauthenticated', device: null, error: null };
+        }
+        if (!response.ok) {
+            // サーバ�Eエラー: 通信はできたが�E否不�E
+            if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unavailable' });
+            return { status: 'unavailable', device: null, error: new Error(`HTTP ${response.status}`) };
+        }
+        const result = await response.json().catch(() => ({}));
+        if (!result || !result.authenticated) {
+            clearPortalAuthState();
+            if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
+            return { status: 'unauthenticated', device: null, error: null };
+        }
+        applyPortalAuthDevice(result.device || {});
+        if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'authenticated' });
+        return { status: 'authenticated', device: result.device || null, error: null };
+    } catch (e) {
+        // タイムアウト�Eネットワークエラー: 認証状態を変更しなぁE
+        if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unavailable' });
+        return { status: 'unavailable', device: null, error: e };
     }
 }
 
@@ -74,10 +102,10 @@ function showPortalLogin() {
                     <div id="portalLoginForm">
                         <h1 id="portalLoginTitle">${escapeHtml(portalTitleText())}</h1>
                         <label class="form-label" for="portalNameInput">名前</label>
-                        <input class="form-control" id="portalNameInput" type="text" autocomplete="name" placeholder="漢字またはふりがな">
-                        <label class="form-label mt-3" for="portalPartInput">パート</label>
+                        <input class="form-control" id="portalNameInput" type="text" autocomplete="name" placeholder="漢字また�Eふりがな">
+                        <label class="form-label mt-3" for="portalPartInput">パ�EチE/label>
                         <select class="form-select" id="portalPartInput"></select>
-                        <label class="form-label mt-3" for="portalPasswordInput">パスワード</label>
+                        <label class="form-label mt-3" for="portalPasswordInput">パスワーチE/label>
                         <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button class="btn btn-primary w-100 mt-3" id="portalLoginBtn" type="button">ログイン</button>
                         <div class="portal-login-actions mt-3">
@@ -87,15 +115,15 @@ function showPortalLogin() {
                     </div>
                     <div id="portalPasswordSetupForm" hidden>
                         <h1>パスワード登録</h1>
-                        <p class="text-muted small mb-3">団員情報に名前が見つかりました。個人用パスワードを登録してください。</p>
+                        <p class="text-muted small mb-3">団員惁E��に名前が見つかりました。個人用パスワードを登録してください、E/p>
                         <input type="hidden" id="portalSetupName">
                         <input type="hidden" id="portalSetupPart">
-                        <label class="form-label" for="portalNewPasswordInput">新しいパスワード</label>
+                        <label class="form-label" for="portalNewPasswordInput">新しいパスワーチE/label>
                         <input class="form-control" id="portalNewPasswordInput" type="password" autocomplete="new-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
-                        <label class="form-label mt-3" for="portalNewPasswordConfirmInput">新しいパスワード（確認）</label>
+                        <label class="form-label mt-3" for="portalNewPasswordConfirmInput">新しいパスワード（確認！E/label>
                         <input class="form-control" id="portalNewPasswordConfirmInput" type="password" autocomplete="new-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button class="btn btn-primary w-100 mt-3" id="portalPasswordSetupBtn" type="button">登録</button>
-                        <button class="btn btn-outline-secondary w-100 mt-2" id="portalBackToLoginBtn" type="button">ログインに戻る</button>
+                        <button class="btn btn-outline-secondary w-100 mt-2" id="portalBackToLoginBtn" type="button">ログインに戻めE/button>
                     </div>
                 </div>
             </section>
@@ -136,7 +164,7 @@ async function handlePortalLogin() {
     if (!nameInput || !partInput || !passwordInput) return;
     const name = nameInput.value.trim();
     const part = partInput.value;
-    // hidden admin は大文字小文字・全角半角の揺れを吸収して判定する。
+    // hidden admin は大斁E��小文字�E全角半角�E揺れを吸収して判定する、E
     const normalizedName = String(name || '').normalize('NFKC').replace(/[\u200b-\u200d\u2060\ufeff\s\u3000]+/g, '').toLowerCase();
     const isHiddenAdmin = normalizedName === 'administrator';
     const password = normalizePortalPasswordInput(passwordInput);
@@ -173,7 +201,12 @@ async function handlePortalLogin() {
     appState.currentUserIsSheetManager = Boolean(result.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
     appState.portalAuthVerified = true;
-    await enterPortal();
+    try {
+        await enterPortal();
+    } catch (e) {
+        console.error('enterPortal failed after login:', e);
+        showAlert(e.message || 'データの読み込みに失敗しました。もう一度試行してください。', 'danger');
+    }
 }
 
 function showPortalLoginForm() {
@@ -208,7 +241,7 @@ async function handleMemberPasswordSetup() {
         return;
     }
     await request('/api/auth/member-password', jsonOptions('POST', { name, part, password }));
-    showAlert('パスワードを登録しました。もう一度ログインしてください', 'success');
+    showAlert('パスワードを登録しました。もぁE��度ログインしてください', 'success');
     showPortalLoginForm();
 }
 
