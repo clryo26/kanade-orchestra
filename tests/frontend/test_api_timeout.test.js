@@ -20,6 +20,7 @@ this.__apiRuntimeTestExports = {
     PORTAL_TIMEOUT_BOOTSTRAP_CORE,
     PORTAL_TIMEOUT_GET,
     PORTAL_TIMEOUT_MUTATION,
+    request,
 };`;
 
 function createApiRuntimeSandbox() {
@@ -48,6 +49,7 @@ function createApiRuntimeSandbox() {
         PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
         inFlightGetRequests: new Map(),
         dbCache: {
+            getEntry: () => Promise.resolve(null),
             get: () => Promise.resolve(null),
             set: () => Promise.resolve(),
             delete: () => Promise.resolve(),
@@ -63,6 +65,7 @@ let sandbox;
 let PortalTimeoutError, fetchWithTimeout, _resolveTimeoutMs;
 let PORTAL_TIMEOUT_AUTH, PORTAL_TIMEOUT_BOOTSTRAP_LITE, PORTAL_TIMEOUT_BOOTSTRAP_CORE;
 let PORTAL_TIMEOUT_GET, PORTAL_TIMEOUT_MUTATION;
+let request;
 
 beforeAll(() => {
     sandbox = createApiRuntimeSandbox();
@@ -75,6 +78,7 @@ beforeAll(() => {
     PORTAL_TIMEOUT_BOOTSTRAP_CORE = exp.PORTAL_TIMEOUT_BOOTSTRAP_CORE;
     PORTAL_TIMEOUT_GET = exp.PORTAL_TIMEOUT_GET;
     PORTAL_TIMEOUT_MUTATION = exp.PORTAL_TIMEOUT_MUTATION;
+    request = exp.request;
 });
 
 beforeEach(() => {
@@ -242,6 +246,71 @@ describe('fetchWithTimeout (本番 api_runtime.js)', () => {
         }));
         await expect(
             fetchWithTimeout('/api/test', { signal: controller.signal }, 5000)
+        ).rejects.toThrow();
+    });
+});
+
+describe('request cache ETag restore', () => {
+    test('IndexedDB entry ETag is sent and 304 returns cached data', async () => {
+        const cachedData = { performances: [{ id: 1 }] };
+
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue({
+            data: cachedData,
+            etag: '"bootstrap-etag-v1"',
+            timestamp: 123456789,
+        });
+
+        let capturedOptions;
+        sandbox.fetch = vi.fn().mockImplementation((_url, options) => {
+            capturedOptions = options;
+            return Promise.resolve({
+                ok: false,
+                status: 304,
+                headers: {
+                    get: () => null,
+                },
+            });
+        });
+
+        const result = await request('/api/bootstrap-lite');
+
+        expect(capturedOptions.headers['If-None-Match']).toBe('"bootstrap-etag-v1"');
+        expect(result).toEqual(cachedData);
+        expect(sandbox.portalRuntimeContext.dbCache.getEntry)
+            .toHaveBeenCalledWith('/api/bootstrap-lite');
+    });
+});
+
+describe('request cache fallback control', () => {
+    test('_allowCacheFallback is not passed to fetch', async () => {
+        let capturedOptions;
+        sandbox.fetch = vi.fn().mockImplementation((_url, options) => {
+            capturedOptions = options;
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                headers: {
+                    get: (name) => name === 'content-type' ? 'application/json' : null,
+                },
+                json: async () => ({ ok: true }),
+            });
+        });
+
+        await request('/api/test', { _allowCacheFallback: false });
+
+        expect(capturedOptions).not.toHaveProperty('_allowCacheFallback');
+    });
+
+    test('network failure throws when cache fallback is disabled', async () => {
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue({
+            data: { cached: true },
+            etag: '"etag-v1"',
+            timestamp: 123,
+        });
+        sandbox.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+        await expect(
+            request('/api/bootstrap-lite', { _allowCacheFallback: false })
         ).rejects.toThrow();
     });
 });

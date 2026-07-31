@@ -55,7 +55,7 @@ async function fetchWithTimeout(url, options, timeoutMs) {
     }, timeoutMs);
 
     // 内部専用プロパティを除外してfetchOptionsを構築
-    const { _skipAuthRecovery: _omit1, signal: _omit2, ...fetchOptions } = Object(options || {});
+    const { _skipAuthRecovery: _omit1, _allowCacheFallback: _omit2, signal: _omit3, ...fetchOptions } = Object(options || {});
     fetchOptions.signal = controller.signal;
 
     try {
@@ -113,6 +113,8 @@ function apiTargetLabel(url) {
 function clearPortalAuthState() {
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     appState.portalAuthVerified = false;
+    appState.lastPortalSessionVerifiedAt = 0;
+    appState.lastEssentialDataLoadedAt = 0;
     appState.essentialDataLoaded = false;
     appState.dataLoaded = false;
     appState.currentUserMemberId = null;
@@ -127,6 +129,7 @@ function clearPortalAuthState() {
 function applyPortalAuthDevice(device) {
     if (!device || typeof device !== 'object') return;
     appState.portalAuthVerified = true;
+    appState.lastPortalSessionVerifiedAt = Date.now();
     appState.currentUserMemberId = device.member_id ?? null;
     appState.currentUserName = device.member_name || '';
     appState.currentUserPermission = device.permission || '';
@@ -217,12 +220,14 @@ async function request(url, options = {}) {
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const baseHeaders = { ...(options.headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) };
     const skipAuthRecovery = Boolean(options._skipAuthRecovery);
+    const allowCacheFallback = options._allowCacheFallback !== false;
     const timeoutMs = _resolveTimeoutMs(url, method);
     if (method === 'GET') {
         if (window.portalRuntimeContext.inFlightGetRequests.has(cacheKey)) return window.portalRuntimeContext.inFlightGetRequests.get(cacheKey);
         const pending = (async () => {
-            const cached = await window.portalRuntimeContext.dbCache.get(cacheKey);
-            const etag = window.portalRuntimeContext.dbCache.getETag(cacheKey);
+            const cacheEntry = await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+            const cached = cacheEntry?.data ?? null;
+            const etag = cacheEntry?.etag ?? null;
             const headers = { ...baseHeaders };
             if (etag) headers['If-None-Match'] = etag;
             let response;
@@ -230,7 +235,7 @@ async function request(url, options = {}) {
                 response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
             } catch (networkError) {
                 if (networkError instanceof PortalTimeoutError) {
-                    if (cached) {
+                    if (allowCacheFallback && cached) {
                         showAlert('通信が不安定なため、保存済みデータを表示しています。', 'warning');
                         return cached;
                     }
@@ -238,7 +243,7 @@ async function request(url, options = {}) {
                     showAlert(message, 'danger');
                     throw networkError;
                 }
-                if (cached) {
+                if (allowCacheFallback && cached) {
                     showAlert('通信が不安定なため、保存済みデータを表示しています。', 'warning');
                     return cached;
                 }

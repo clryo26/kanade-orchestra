@@ -43,6 +43,8 @@ const initialPortalAppState = {
     accessLogs: [],
     suppressDerivedRender: false,
     portalAuthVerified: false,
+    lastPortalSessionVerifiedAt: 0,
+    lastEssentialDataLoadedAt: 0,
     currentUserMemberId: null,
     currentUserName: '',
     currentUserPermission: '',

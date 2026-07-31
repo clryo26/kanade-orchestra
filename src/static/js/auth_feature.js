@@ -43,9 +43,10 @@ function bindPortalPasswordNormalization(input) {
 //   authenticated  : API正常応答かつ認証済み
 //   unauthenticated: ローカル認証惁E��なし、また�E明確な未認証レスポンス
 //   unavailable    : タイムアウト�Eネットワークエラー等で認証の成否不�E
-async function isPortalAuthenticated() {
+async function isPortalAuthenticated(options = {}) {
+    const forceVerify = options.forceVerify === true;
     // メモリ上に認証済みフラグがある場合�EAPI呼出し不要E
-    if (appState.portalAuthVerified) {
+    if (appState.portalAuthVerified && !forceVerify) {
         if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'authenticated' });
         return { status: 'authenticated', device: null, error: null };
     }
@@ -201,6 +202,7 @@ async function handlePortalLogin() {
     appState.currentUserIsSheetManager = Boolean(result.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
     appState.portalAuthVerified = true;
+    appState.lastPortalSessionVerifiedAt = Date.now();
     try {
         await enterPortal();
     } catch (e) {
@@ -249,6 +251,8 @@ function logoutPortal() {
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
+    appState.lastPortalSessionVerifiedAt = 0;
+    appState.lastEssentialDataLoadedAt = 0;
     appState.currentUserMemberId = null;
     appState.currentUserName = '';
     appState.currentUserPermission = '';

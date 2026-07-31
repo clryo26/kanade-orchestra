@@ -4,7 +4,9 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+var PORTAL_RESUME_SYNC_MAX_AGE_MS = 60 * 1000;
 var portalResumeSyncInFlight = false;
+var portalWasOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
 
 if (window.__KANADE_BOOTSTRAP_INIT_BOUND__) {
     // Avoid duplicate listeners when legacy compatibility loaders re-inject scripts.
@@ -52,11 +54,27 @@ async function syncPortalSessionOnResume() {
     if (portalResumeSyncInFlight) return;
     if (document.visibilityState === 'hidden') return;
     if (localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') return;
+
+    const now = Date.now();
+    const authIsFresh =
+        appState.portalAuthVerified === true &&
+        appState.lastPortalSessionVerifiedAt > 0 &&
+        now - appState.lastPortalSessionVerifiedAt < PORTAL_RESUME_SYNC_MAX_AGE_MS;
+    const essentialDataIsFresh =
+        appState.essentialDataLoaded === true &&
+        appState.lastEssentialDataLoadedAt > 0 &&
+        now - appState.lastEssentialDataLoadedAt < PORTAL_RESUME_SYNC_MAX_AGE_MS;
+
+    if (authIsFresh && essentialDataIsFresh) return;
+
     portalResumeSyncInFlight = true;
     try {
-        const authResult = await isPortalAuthenticated();
+        const authResult = authIsFresh
+            ? { status: 'authenticated', device: null, error: null }
+            : await isPortalAuthenticated({ forceVerify: true });
+
         if (authResult.status === 'authenticated') {
-            if (appState.portalAuthVerified) {
+            if (appState.portalAuthVerified && !essentialDataIsFresh) {
                 await loadEssentialData();
                 appState.essentialDataLoaded = true;
             }
@@ -64,11 +82,10 @@ async function syncPortalSessionOnResume() {
             showAlert('ログイン期限が切れました。もう一度ログインしてください。', 'warning');
             showPortalLogin();
         } else {
-            // unavailable: 現在の画面を維持し、ローカル認証状態を削除しない
             showAlert('通信が不安定です。しばらくしてから再試行してください。', 'warning');
         }
     } catch {
-        showAlert('通信が�E断されました。�E接続してぁE��ぁE.. [再試行]', 'warning');
+        showAlert('通信が切断されました。再接続しています... [再試行]', 'warning');
     } finally {
         portalResumeSyncInFlight = false;
     }
@@ -133,7 +150,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             syncPortalSessionOnResume();
         }
     });
+    window.addEventListener('offline', () => {
+        portalWasOffline = true;
+    });
     window.addEventListener('online', () => {
+        if (!portalWasOffline) return;
+        portalWasOffline = false;
         syncPortalSessionOnResume();
     });
 });

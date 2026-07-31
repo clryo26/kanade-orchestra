@@ -31,7 +31,7 @@ async function enterPortal() {
 
     if (!appState.essentialDataLoaded) {
         try {
-            await loadEssentialData();
+            await loadEssentialData({ useCachedPreview: true });
             appState.essentialDataLoaded = true;
         } catch (error) {
             clearLoadingBar();

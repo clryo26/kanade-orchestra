@@ -10,6 +10,8 @@ function buildAuthSandbox({ deviceId, authKey, fetchImpl }) {
 
     const appState = {
         portalAuthVerified: false,
+        lastPortalSessionVerifiedAt: 0,
+        lastEssentialDataLoadedAt: 0,
         currentUserMemberId: null,
         currentUserName: '',
         currentUserPermission: '',
@@ -39,6 +41,7 @@ function buildAuthSandbox({ deviceId, authKey, fetchImpl }) {
         PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
         inFlightGetRequests: new Map(),
         dbCache: {
+            getEntry: vi.fn().mockResolvedValue(null),
             get: vi.fn().mockResolvedValue(null),
             set: vi.fn().mockResolvedValue(undefined),
             delete: vi.fn().mockResolvedValue(undefined),
@@ -187,5 +190,65 @@ describe('isPortalAuthenticated 3状態', () => {
         const result = await sandbox.isPortalAuthenticated();
         expect(result.status).toBe('authenticated');
         expect(mockFetch).not.toHaveBeenCalled();
+    });
+    test('forceVerify=trueの場合はportalAuthVerified=trueでもAPIを再確認する', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                authenticated: true,
+                device: { member_id: 1, member_name: 'test' },
+            }),
+        });
+        const { sandbox, appState } = buildAuthSandbox({
+            deviceId: 'dev-abc',
+            authKey: 'true',
+            fetchImpl: mockFetch,
+        });
+        loadAuthModules(sandbox);
+        appState.portalAuthVerified = true;
+
+        const result = await sandbox.isPortalAuthenticated({ forceVerify: true });
+
+        expect(result.status).toBe('authenticated');
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(appState.lastPortalSessionVerifiedAt).toBeGreaterThan(0);
+    });
+
+    test('clearPortalAuthStateは認証確認時刻を0へ戻す', () => {
+        const { sandbox, appState } = buildAuthSandbox({
+            deviceId: 'dev-abc',
+            authKey: 'true',
+        });
+        loadAuthModules(sandbox);
+        appState.portalAuthVerified = true;
+        appState.lastPortalSessionVerifiedAt = 123456;
+        appState.lastEssentialDataLoadedAt = 123456;
+
+        sandbox.clearPortalAuthState();
+
+        expect(appState.portalAuthVerified).toBe(false);
+        expect(appState.lastPortalSessionVerifiedAt).toBe(0);
+        expect(appState.lastEssentialDataLoadedAt).toBe(0);
+    });
+
+    test('logoutPortalは認証確認時刻を0へ戻す', () => {
+        const { sandbox, appState } = buildAuthSandbox({
+            deviceId: 'dev-abc',
+            authKey: 'true',
+        });
+        loadAuthModules(sandbox);
+        appState.portalAuthVerified = true;
+        appState.lastPortalSessionVerifiedAt = 123456;
+        appState.lastEssentialDataLoadedAt = 123456;
+
+        const fakeElement = { hidden: false, value: '', focus: vi.fn(), addEventListener: vi.fn() };
+        sandbox.$ = vi.fn(() => fakeElement);
+
+        sandbox.logoutPortal();
+
+        expect(appState.portalAuthVerified).toBe(false);
+        expect(appState.lastPortalSessionVerifiedAt).toBe(0);
+        expect(appState.lastEssentialDataLoadedAt).toBe(0);
     });
 });
