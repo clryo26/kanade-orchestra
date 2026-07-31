@@ -280,6 +280,28 @@ def test_performance_piece_child_rows_keep_part(backend_env):
     assert db_row[part_index] == "第一部"
 
 
+def test_casting_child_rows_discard_existing_ids_for_db_replace(backend_env):
+    rows = backend_env.db_child_rows_for_collection(
+        "castings",
+        [
+            {
+                "id": 10,
+                "members": [{"id": 101, "member_id": 1, "part": "Violin"}],
+                "extras": [{"id": 201, "name": "Guest", "furigana": "Guest", "part": "Viola"}],
+            }
+        ],
+    )
+
+    member = rows["casting_members"][0]
+    extra = rows["casting_extras"][0]
+
+    assert member["id"] is None
+    assert member["casting_id"] == 10
+    assert member["member_id"] == 1
+    assert extra["id"] is None
+    assert extra["casting_id"] == 10
+    assert extra["name"] == "Guest"
+
 def test_absence_db_row_keeps_planned_time(backend_env):
     columns = backend_env.DB_COLLECTION_COLUMNS["absences"]
     row = backend_env.db_row_tuple(

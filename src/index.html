@@ -643,7 +643,7 @@
 
             <!-- 支払状況管理 -->
             <div id="paymentAdminTab" class="tab-content" hidden>
-                <div class="card">
+                <div class="card" id="paymentAdminForm">
                     <div class="card-header">支払状況登録</div>
                     <div class="card-body">
                         <input type="hidden" id="paymentId">
@@ -668,6 +668,12 @@
                         <div class="d-flex flex-wrap gap-2 mb-3">
                             <button class="btn btn-success" id="savePaymentBtn" type="button">保存</button>
                             <button class="btn btn-outline-secondary" id="clearPaymentBtn" type="button">選択解除</button>
+                        </div>
+                        <div id="paymentAdminSortControls" class="d-flex flex-wrap gap-2 mb-2">
+                            <button class="btn btn-sm btn-outline-primary" type="button" data-payment-sort="dues" data-sort-label="団費未納順">団費未納順</button>
+                            <button class="btn btn-sm btn-outline-primary" type="button" data-payment-sort="performance" data-sort-label="演奏会費未納順">演奏会費未納順</button>
+                            <button class="btn btn-sm btn-outline-primary" type="button" data-payment-sort="part" data-sort-label="パート順">パート順</button>
+                            <button class="btn btn-sm btn-outline-primary" type="button" data-payment-sort="name" data-sort-label="氏名順">氏名順</button>
                         </div>
                         <div id="paymentAdminList"></div>
                     </div>
