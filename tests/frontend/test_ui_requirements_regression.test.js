@@ -44,4 +44,24 @@ describe('ui requirement regression', () => {
         expect(content).toContain('extraDisplayName');
         expect(content).toContain('base.includes(\'（エキストラ）\') ? base');
     });
+
+    test('piece info menu uses updated label', () => {
+        const helpers = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/modules/navigation/helpers.js'), 'utf8');
+        const menu = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/modules/navigation/menu.js'), 'utf8');
+        expect(helpers).toContain('\u697d\u66f2\u60c5\u5831');
+        expect(menu).toContain('\u697d\u66f2\u60c5\u5831');
+    });
+
+    test('member casting view does not use all-pieces fallback label', () => {
+        const content = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/modules/practice_casting/render.js'), 'utf8');
+        expect(content).not.toContain("r.piece || '\u5168\u66f2'");
+    });
+
+    test('casting extra part uses configured select with other option and custom input', () => {
+        const content = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/modules/practice_casting/render.js'), 'utf8');
+        expect(content).toContain('sortedPartSettings()');
+        expect(content).toContain('data-extra-part-select-index');
+        expect(content).toContain('__other__');
+        expect(content).toContain('data-extra-custom-part-index');
+    });
 });

@@ -41,7 +41,7 @@ const ACCESS_LOG_MENU_LABELS = {
     'member-casting': '乗り番表',
     'member-event': 'イベント調整',
     'member-date-adjustment': '日程調整',
-    'member-piece-info': '楽曲紹介',
+    'member-piece-info': '楽曲情報',
     'member-desired-piece': '演奏希望曲',
     'member-promotion': '宣伝',
     'member-manual': 'マニュアル',

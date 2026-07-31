@@ -85,7 +85,17 @@ function renderCastingAdmin() {
 function renderCastingExtrasList() {
     const list = $('castingExtrasList');
     if (!list) return;
-    list.innerHTML = appState.castingEditingExtras.map((extra, index) => `
+
+    const configuredParts = sortedPartSettings()
+        .map((part) => String(part.name || '').trim())
+        .filter(Boolean);
+
+    list.innerHTML = appState.castingEditingExtras.map((extra, index) => {
+        const currentPart = String(extra.part || '').trim();
+        const isConfiguredPart = configuredParts.includes(currentPart);
+        const selectedPart = !currentPart ? '' : (isConfiguredPart ? currentPart : '__other__');
+
+        return `
             <div class="mb-3 p-2 border rounded">
                 <div class="mb-2">
                     <label class="form-label form-label-sm mb-1">名前</label>
@@ -97,29 +107,61 @@ function renderCastingExtrasList() {
                 </div>
                 <div class="mb-2">
                     <label class="form-label form-label-sm mb-1">パート</label>
-                    <input type="text" class="form-control form-control-sm" placeholder="パート" value="${escapeHtml(extra.part || '')}" data-extra-part-index="${index}">
+                    <select class="form-select form-select-sm" data-extra-part-select-index="${index}">
+                        <option value="" ${selectedPart === '' ? 'selected' : ''}>選択してください</option>
+                        ${configuredParts.map((part) => `<option value="${escapeHtml(part)}" ${part === selectedPart ? 'selected' : ''}>${escapeHtml(part)}</option>`).join('')}
+                        <option value="__other__" ${selectedPart === '__other__' ? 'selected' : ''}>その他</option>
+                    </select>
+                </div>
+                <div class="mb-2" data-extra-custom-part-container="${index}" ${selectedPart === '__other__' ? '' : 'hidden'}>
+                    <label class="form-label form-label-sm mb-1">その他のパート</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="パート名を入力" value="${selectedPart === '__other__' ? escapeHtml(currentPart) : ''}" data-extra-custom-part-index="${index}">
                 </div>
                 <button class="btn btn-sm btn-outline-danger casting-extra-delete-btn" data-index="${index}" type="button">削除</button>
             </div>
-        `).join('');
+        `;
+    }).join('');
+
     list.querySelectorAll('[data-name-index]').forEach((input) => {
         input.addEventListener('change', (e) => {
             const index = Number(e.target.dataset.nameIndex || 0);
             if (appState.castingEditingExtras[index]) appState.castingEditingExtras[index].name = e.target.value.trim();
         });
     });
+
     list.querySelectorAll('[data-furigana-index]').forEach((input) => {
         input.addEventListener('change', (e) => {
             const index = Number(e.target.dataset.furiganaIndex || 0);
             if (appState.castingEditingExtras[index]) appState.castingEditingExtras[index].furigana = e.target.value.trim();
         });
     });
-    list.querySelectorAll('[data-extra-part-index]').forEach((input) => {
+
+    list.querySelectorAll('[data-extra-part-select-index]').forEach((select) => {
+        select.addEventListener('change', (e) => {
+            const index = Number(e.target.dataset.extraPartSelectIndex || 0);
+            const extra = appState.castingEditingExtras[index];
+            if (!extra) return;
+
+            const customContainer = list.querySelector(`[data-extra-custom-part-container="${index}"]`);
+            const customInput = list.querySelector(`[data-extra-custom-part-index="${index}"]`);
+
+            if (e.target.value === '__other__') {
+                if (customContainer) customContainer.hidden = false;
+                extra.part = customInput ? customInput.value.trim() : '';
+            } else {
+                if (customContainer) customContainer.hidden = true;
+                extra.part = e.target.value;
+            }
+        });
+    });
+
+    list.querySelectorAll('[data-extra-custom-part-index]').forEach((input) => {
         input.addEventListener('change', (e) => {
-            const index = Number(e.target.dataset.extraPartIndex || 0);
+            const index = Number(e.target.dataset.extraCustomPartIndex || 0);
             if (appState.castingEditingExtras[index]) appState.castingEditingExtras[index].part = e.target.value.trim();
         });
     });
+
     list.querySelectorAll('.casting-extra-delete-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => {
             const index = Number(e.target.dataset.index || 0);
@@ -128,7 +170,6 @@ function renderCastingExtrasList() {
         });
     });
 }
-
 function renderCastingAdminList() {
     const list = $('castingAdminList');
     if (!list) return;
@@ -207,7 +248,7 @@ function renderCastingView() {
             });
             const sortedParts = [...partMap.entries()].sort(([a], [b]) => partSortIndex(a) - partSortIndex(b) || String(a).localeCompare(String(b), 'ja'));
             if (!sortedParts.length) {
-                return `<div class="info-block"><strong>${escapeHtml(r.piece || '全曲')}</strong><p class="text-muted mb-0">（未登録）</p></div>`;
+                return `<div class="info-block"><strong>${escapeHtml(r.piece || '')}</strong><p class="text-muted mb-0">（未登録）</p></div>`;
             }
             const tableRows = sortedParts.map(([part, names]) => {
                 const memberList = Array.isArray(names) && names.length
@@ -215,7 +256,7 @@ function renderCastingView() {
                     : '<span class="text-muted">（未登録）</span>';
                 return `<tr><td class="casting-part-cell text-nowrap text-muted small fw-bold">${escapeHtml(part)}</td><td class="casting-members-cell">${memberList}</td></tr>`;
             }).join('');
-            return `<div class="info-block mb-3"><strong class="d-block mb-2">${escapeHtml(r.piece || '全曲')}</strong><table class="table table-sm table-borderless mb-0 casting-table"><tbody>${tableRows}</tbody></table></div>`;
+            return `<div class="info-block mb-3"><strong class="d-block mb-2">${escapeHtml(r.piece || '')}</strong><table class="table table-sm table-borderless mb-0 casting-table"><tbody>${tableRows}</tbody></table></div>`;
         }).join('') : '<p class="text-muted">乗り番表は未登録です</p>';
         return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${castingContent}</section>`;
     }).join('');

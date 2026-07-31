@@ -429,7 +429,7 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
                     children["casting_members"].append(
                         {
                             "organization_id": member.get("organization_id") or parent.get("organization_id") or tenant_id,
-                            "id": member.get("id"),
+                            "id": None,
                             "casting_id": parent_id,
                             "member_id": member.get("member_id"),
                             "part": member.get("part") or "",
@@ -444,7 +444,7 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
                     children["casting_extras"].append(
                         {
                             "organization_id": extra.get("organization_id") or parent.get("organization_id") or tenant_id,
-                            "id": extra.get("id"),
+                            "id": None,
                             "casting_id": parent_id,
                             "name": extra.get("name") or "",
                             "furigana": extra.get("furigana") or "",
