@@ -141,7 +141,397 @@ describe('runtime bootstrap order', () => {
         // Simulate DOMContentLoaded callback to register resume listeners.
         return Promise.resolve(documentListeners.DOMContentLoaded[0]()).then(() => {
             expect(documentListeners.visibilitychange).toHaveLength(1);
+            expect(windowListeners.offline).toHaveLength(1);
             expect(windowListeners.online).toHaveLength(1);
+        });
+    });
+    test('resume within 60 seconds skips auth and essential reload', async () => {
+        const bootstrapInitJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/common_helpers/bootstrap_init.js'),
+            'utf8'
+        );
+
+        const now = Date.now();
+        const documentListeners = { DOMContentLoaded: [], visibilitychange: [] };
+        const windowListeners = { online: [], offline: [] };
+        const isPortalAuthenticated = vi.fn().mockResolvedValue({ status: 'authenticated', device: null, error: null });
+        const loadEssentialData = vi.fn();
+
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            navigator: { onLine: true },
+            localStorage: {
+                getItem: () => 'true',
+            },
+            document: {
+                visibilityState: 'visible',
+                addEventListener: (name, handler) => {
+                    if (!documentListeners[name]) documentListeners[name] = [];
+                    documentListeners[name].push(handler);
+                },
+            },
+            setDefaultDates: () => {},
+            setupPortalHome: () => {},
+            setupMemberManagerTabs: () => {},
+            bindNavigation: () => {},
+            bindUpload: () => {},
+            bindForms: () => {},
+            bindDownloadConfirmations: () => {},
+            updateSavePath: () => {},
+            loadCloudRunRevision: () => {},
+            isPortalAuthenticated,
+            enterPortal: async () => {},
+            showPortalLogin: () => {},
+            loadPartSettingsForLogin: () => {},
+            loadEssentialData,
+            showAlert: () => {},
+            console,
+        };
+
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.window.addEventListener = (name, handler) => {
+            if (!windowListeners[name]) windowListeners[name] = [];
+            windowListeners[name].push(handler);
+        };
+        sandbox.portalRuntimeContext = {
+            appState: {
+                portalAuthVerified: true,
+                essentialDataLoaded: true,
+                lastPortalSessionVerifiedAt: now - 1000,
+                lastEssentialDataLoadedAt: now - 1000,
+            },
+            getById: () => null,
+            dbCache: { init: async () => {} },
+            PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
+        };
+
+        vm.runInNewContext(bootstrapInitJs, sandbox);
+
+        await documentListeners.DOMContentLoaded[0]();
+        isPortalAuthenticated.mockClear();
+        loadEssentialData.mockClear();
+        await documentListeners.visibilitychange[0]();
+
+        expect(isPortalAuthenticated).not.toHaveBeenCalled();
+        expect(loadEssentialData).not.toHaveBeenCalled();
+    });
+    test('resume with stale auth and fresh essential rechecks auth only', async () => {
+        const bootstrapInitJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/common_helpers/bootstrap_init.js'),
+            'utf8'
+        );
+
+        const now = Date.now();
+        const documentListeners = { DOMContentLoaded: [], visibilitychange: [] };
+        const windowListeners = { online: [], offline: [] };
+        const isPortalAuthenticated = vi.fn().mockResolvedValue({
+            status: 'authenticated',
+            device: null,
+            error: null,
+        });
+        const loadEssentialData = vi.fn();
+
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            navigator: { onLine: true },
+            localStorage: { getItem: () => 'true' },
+            document: {
+                visibilityState: 'visible',
+                addEventListener: (name, handler) => {
+                    if (!documentListeners[name]) documentListeners[name] = [];
+                    documentListeners[name].push(handler);
+                },
+            },
+            setDefaultDates: () => {},
+            setupPortalHome: () => {},
+            setupMemberManagerTabs: () => {},
+            bindNavigation: () => {},
+            bindUpload: () => {},
+            bindForms: () => {},
+            bindDownloadConfirmations: () => {},
+            updateSavePath: () => {},
+            loadCloudRunRevision: () => {},
+            isPortalAuthenticated,
+            enterPortal: async () => {},
+            showPortalLogin: () => {},
+            loadPartSettingsForLogin: () => {},
+            loadEssentialData,
+            showAlert: () => {},
+            console,
+        };
+
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.window.addEventListener = (name, handler) => {
+            if (!windowListeners[name]) windowListeners[name] = [];
+            windowListeners[name].push(handler);
+        };
+        sandbox.portalRuntimeContext = {
+            appState: {
+                portalAuthVerified: true,
+                essentialDataLoaded: true,
+                lastPortalSessionVerifiedAt: now - 61000,
+                lastEssentialDataLoadedAt: now - 1000,
+            },
+            getById: () => null,
+            dbCache: { init: async () => {} },
+            PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
+        };
+
+        vm.runInNewContext(bootstrapInitJs, sandbox);
+
+        await documentListeners.DOMContentLoaded[0]();
+        isPortalAuthenticated.mockClear();
+        loadEssentialData.mockClear();
+
+        await documentListeners.visibilitychange[0]();
+
+        expect(isPortalAuthenticated).toHaveBeenCalledTimes(1);
+        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true });
+        expect(loadEssentialData).not.toHaveBeenCalled();
+    });
+    test('resume with fresh auth and stale essential reloads essential only', async () => {
+        const bootstrapInitJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/common_helpers/bootstrap_init.js'),
+            'utf8'
+        );
+
+        const now = Date.now();
+        const documentListeners = { DOMContentLoaded: [], visibilitychange: [] };
+        const windowListeners = { online: [], offline: [] };
+        const isPortalAuthenticated = vi.fn().mockResolvedValue({
+            status: 'authenticated',
+            device: null,
+            error: null,
+        });
+        const loadEssentialData = vi.fn();
+
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            navigator: { onLine: true },
+            localStorage: { getItem: () => 'true' },
+            document: {
+                visibilityState: 'visible',
+                addEventListener: (name, handler) => {
+                    if (!documentListeners[name]) documentListeners[name] = [];
+                    documentListeners[name].push(handler);
+                },
+            },
+            setDefaultDates: () => {},
+            setupPortalHome: () => {},
+            setupMemberManagerTabs: () => {},
+            bindNavigation: () => {},
+            bindUpload: () => {},
+            bindForms: () => {},
+            bindDownloadConfirmations: () => {},
+            updateSavePath: () => {},
+            loadCloudRunRevision: () => {},
+            isPortalAuthenticated,
+            enterPortal: async () => {},
+            showPortalLogin: () => {},
+            loadPartSettingsForLogin: () => {},
+            loadEssentialData,
+            showAlert: () => {},
+            console,
+        };
+
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.window.addEventListener = (name, handler) => {
+            if (!windowListeners[name]) windowListeners[name] = [];
+            windowListeners[name].push(handler);
+        };
+        sandbox.portalRuntimeContext = {
+            appState: {
+                portalAuthVerified: true,
+                essentialDataLoaded: true,
+                lastPortalSessionVerifiedAt: now - 1000,
+                lastEssentialDataLoadedAt: now - 61000,
+            },
+            getById: () => null,
+            dbCache: { init: async () => {} },
+            PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
+        };
+
+        vm.runInNewContext(bootstrapInitJs, sandbox);
+
+        await documentListeners.DOMContentLoaded[0]();
+        isPortalAuthenticated.mockClear();
+        loadEssentialData.mockClear();
+
+        await documentListeners.visibilitychange[0]();
+
+        expect(isPortalAuthenticated).not.toHaveBeenCalled();
+        expect(loadEssentialData).toHaveBeenCalledTimes(1);
+    });
+    test('resume with stale auth and stale essential rechecks auth and reloads essential', async () => {
+        const bootstrapInitJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/common_helpers/bootstrap_init.js'),
+            'utf8'
+        );
+
+        const now = Date.now();
+        const documentListeners = { DOMContentLoaded: [], visibilitychange: [] };
+        const windowListeners = { online: [], offline: [] };
+        const isPortalAuthenticated = vi.fn().mockResolvedValue({
+            status: 'authenticated',
+            device: null,
+            error: null,
+        });
+        const loadEssentialData = vi.fn();
+
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            navigator: { onLine: true },
+            localStorage: { getItem: () => 'true' },
+            document: {
+                visibilityState: 'visible',
+                addEventListener: (name, handler) => {
+                    if (!documentListeners[name]) documentListeners[name] = [];
+                    documentListeners[name].push(handler);
+                },
+            },
+            setDefaultDates: () => {},
+            setupPortalHome: () => {},
+            setupMemberManagerTabs: () => {},
+            bindNavigation: () => {},
+            bindUpload: () => {},
+            bindForms: () => {},
+            bindDownloadConfirmations: () => {},
+            updateSavePath: () => {},
+            loadCloudRunRevision: () => {},
+            isPortalAuthenticated,
+            enterPortal: async () => {},
+            showPortalLogin: () => {},
+            loadPartSettingsForLogin: () => {},
+            loadEssentialData,
+            showAlert: () => {},
+            console,
+        };
+
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.window.addEventListener = (name, handler) => {
+            if (!windowListeners[name]) windowListeners[name] = [];
+            windowListeners[name].push(handler);
+        };
+        sandbox.portalRuntimeContext = {
+            appState: {
+                portalAuthVerified: true,
+                essentialDataLoaded: true,
+                lastPortalSessionVerifiedAt: now - 61000,
+                lastEssentialDataLoadedAt: now - 61000,
+            },
+            getById: () => null,
+            dbCache: { init: async () => {} },
+            PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
+        };
+
+        vm.runInNewContext(bootstrapInitJs, sandbox);
+
+        await documentListeners.DOMContentLoaded[0]();
+        isPortalAuthenticated.mockClear();
+        loadEssentialData.mockClear();
+
+        await documentListeners.visibilitychange[0]();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(isPortalAuthenticated).toHaveBeenCalledTimes(1);
+        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true });
+        expect(loadEssentialData).toHaveBeenCalledTimes(1);
+    });
+    test('online sync runs only after an offline transition', async () => {
+        const bootstrapInitJs = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/common_helpers/bootstrap_init.js'),
+            'utf8'
+        );
+
+        const now = Date.now();
+        const documentListeners = { DOMContentLoaded: [], visibilitychange: [] };
+        const windowListeners = { online: [], offline: [] };
+        const isPortalAuthenticated = vi.fn().mockResolvedValue({
+            status: 'authenticated',
+            device: null,
+            error: null,
+        });
+        const loadEssentialData = vi.fn();
+
+        const sandbox = {
+            window: null,
+            globalThis: null,
+            navigator: { onLine: true },
+            localStorage: { getItem: () => 'true' },
+            document: {
+                visibilityState: 'visible',
+                addEventListener: (name, handler) => {
+                    if (!documentListeners[name]) documentListeners[name] = [];
+                    documentListeners[name].push(handler);
+                },
+            },
+            setDefaultDates: () => {},
+            setupPortalHome: () => {},
+            setupMemberManagerTabs: () => {},
+            bindNavigation: () => {},
+            bindUpload: () => {},
+            bindForms: () => {},
+            bindDownloadConfirmations: () => {},
+            updateSavePath: () => {},
+            loadCloudRunRevision: () => {},
+            isPortalAuthenticated,
+            enterPortal: async () => {},
+            showPortalLogin: () => {},
+            loadPartSettingsForLogin: () => {},
+            loadEssentialData,
+            showAlert: () => {},
+            console,
+        };
+
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+        sandbox.window.addEventListener = (name, handler) => {
+            if (!windowListeners[name]) windowListeners[name] = [];
+            windowListeners[name].push(handler);
+        };
+        sandbox.portalRuntimeContext = {
+            appState: {
+                portalAuthVerified: true,
+                essentialDataLoaded: true,
+                lastPortalSessionVerifiedAt: now - 61000,
+                lastEssentialDataLoadedAt: now - 61000,
+            },
+            getById: () => null,
+            dbCache: { init: async () => {} },
+            PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
+        };
+
+        vm.runInNewContext(bootstrapInitJs, sandbox);
+
+        await documentListeners.DOMContentLoaded[0]();
+        isPortalAuthenticated.mockClear();
+        loadEssentialData.mockClear();
+
+        windowListeners.online[0]();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(isPortalAuthenticated).not.toHaveBeenCalled();
+        expect(loadEssentialData).not.toHaveBeenCalled();
+
+        windowListeners.offline[0]();
+        windowListeners.online[0]();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(isPortalAuthenticated).toHaveBeenCalledTimes(1);
+        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true });
+        await vi.waitFor(() => {
+            expect(loadEssentialData).toHaveBeenCalledTimes(1);
         });
     });
 });

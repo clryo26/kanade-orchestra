@@ -3,6 +3,30 @@
 
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
+var recordingsFeatureLoadPromise = null;
+
+function ensureRecordingsFeatureLoaded() {
+    if (typeof renderRecordings === 'function') {
+        return Promise.resolve();
+    }
+    if (recordingsFeatureLoadPromise) {
+        return recordingsFeatureLoadPromise;
+    }
+
+    recordingsFeatureLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/static/js/recordings_feature.js?v=20260731-1';
+        script.async = true;
+        script.addEventListener('load', () => resolve(), { once: true });
+        script.addEventListener('error', () => {
+            recordingsFeatureLoadPromise = null;
+            reject(new Error('Recording feature script failed to load'));
+        }, { once: true });
+        document.head.appendChild(script);
+    });
+
+    return recordingsFeatureLoadPromise;
+}
 
 function canManageRecordings() {
     return canAccessAdmin() || appState.currentUserIsRecordingManager;
@@ -13,6 +37,7 @@ function canManageRecordings() {
 
 
 async function loadRecordings() {
+    await ensureRecordingsFeatureLoaded();
     const data = await request('/api/recordings');
     appState.recordings = data.files || [];
     appState.recordingsLoaded = true;
@@ -23,6 +48,7 @@ async function loadRecordings() {
 
 
 async function ensureRecordingsLoaded() {
+    await ensureRecordingsFeatureLoaded();
     if (appState.recordingsLoaded) {
         renderRecordings();
         return;

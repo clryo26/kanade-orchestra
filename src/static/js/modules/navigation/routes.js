@@ -6,7 +6,12 @@ var $ = window.portalRuntimeContext.getById;
 
 function requestAdminPanel() {
     return (async () => {
-        if (!(await isPortalAuthenticated())) {
+        const authResult = await isPortalAuthenticated();
+        if (authResult.status === 'unavailable') {
+            showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+            return;
+        }
+        if (authResult.status !== 'authenticated') {
             showPortalLogin();
             return;
         }
@@ -31,7 +36,12 @@ function showAdminPanel(role = 'admin') {
 
 function showSystemPanel() {
     return (async () => {
-        if (!(await isPortalAuthenticated())) {
+        const authResult = await isPortalAuthenticated();
+        if (authResult.status === 'unavailable') {
+            showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+            return;
+        }
+        if (authResult.status !== 'authenticated') {
             showPortalLogin();
             return;
         }
@@ -64,7 +74,12 @@ function showMemberPanel(shouldRender = true) {
 
 function showMemberTab(tabName, shouldRender = true) {
     return (async () => {
-        if (!(await isPortalAuthenticated())) {
+        const authResult = await isPortalAuthenticated();
+        if (authResult.status === 'unavailable') {
+            showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+            return;
+        }
+        if (authResult.status !== 'authenticated') {
             showPortalLogin();
             return;
         }

@@ -21,27 +21,32 @@ function closePortalDrawer() {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').setAttribute('aria-expanded', 'false');
 }
 
-function enterPortal() {
-    return (async () => {
-        if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
-        await showMemberPanel(false);
-        renderPortalHome();
-        renderLoadingPlaceholders();
-        setLoadingBar('読み込み中...');
+// loadEssentialData完亁E��で征E��し、完亁E��に起動画面を非表示にする
+async function enterPortal() {
+    if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
+    await showMemberPanel(false);
+    renderPortalHome();
+    renderLoadingPlaceholders();
+    setLoadingBar('読み込み中...');
 
-        if (!appState.essentialDataLoaded) {
-            loadEssentialData()
-                .then(() => { appState.essentialDataLoaded = true; })
-                .catch((error) => {
-                    clearLoadingBar();
-                    showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
-                })
-                .finally(() => loadFullDataInBackground());
-        } else {
-            renderEssentialViews();
-            loadFullDataInBackground();
+    if (!appState.essentialDataLoaded) {
+        try {
+            await loadEssentialData({ useCachedPreview: true });
+            appState.essentialDataLoaded = true;
+        } catch (error) {
+            clearLoadingBar();
+            showAlert(error.message || 'チE�Eタの読み込みに失敗しました', 'danger');
+            throw error; // 呼出允E_runAuthAndStart筁Eへ伝播
         }
-    })();
+    } else {
+        renderEssentialViews();
+    }
+
+    // 正常起動完亁E 起動画面を非表示にする
+    if (window.portalStartup) window.portalStartup.ready();
+
+    // 背景チE�Eタ読込は操作可能化後に開始。エラーは冁E��で処琁E��る、E
+    void loadFullDataInBackground();
 }
 
 function bindNavigation() {

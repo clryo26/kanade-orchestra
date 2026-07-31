@@ -82,7 +82,6 @@ function renderMemberViews() {
     renderMemberPerformances();
     renderMemberSchedules();
     renderAnnouncements();
-    renderRecordings();
     renderMemberIntros();
     renderPortalHome();
     renderMemberExtraViews({ includeHeavyLists: false });

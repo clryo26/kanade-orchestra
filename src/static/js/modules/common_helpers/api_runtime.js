@@ -3,6 +3,77 @@
 
 var appState = window.portalRuntimeContext.appState;
 
+// 通信タイムアウト定数（ミリ秒）
+var PORTAL_TIMEOUT_AUTH = 10000;
+var PORTAL_TIMEOUT_BOOTSTRAP_LITE = 12000;
+var PORTAL_TIMEOUT_BOOTSTRAP_CORE = 20000;
+var PORTAL_TIMEOUT_GET = 15000;
+var PORTAL_TIMEOUT_MUTATION = 20000;
+
+// タイムアウトエラーを他のネットワークエラーと区別するクラス
+class PortalTimeoutError extends Error {
+    constructor(message, timeoutMs) {
+        super(message);
+        this.name = 'PortalTimeoutError';
+        this.timeoutMs = timeoutMs;
+    }
+}
+
+// URLとメソッドからタイムアウト値を決定する
+function _resolveTimeoutMs(url, method) {
+    if (method !== 'GET') return PORTAL_TIMEOUT_MUTATION;
+    const path = String(url || '').split('?')[0];
+    if (path.startsWith('/api/auth/devices/')) return PORTAL_TIMEOUT_AUTH;
+    if (path === '/api/bootstrap-lite') return PORTAL_TIMEOUT_BOOTSTRAP_LITE;
+    if (path === '/api/bootstrap-core') return PORTAL_TIMEOUT_BOOTSTRAP_CORE;
+    return PORTAL_TIMEOUT_GET;
+}
+
+// AbortControllerで外部signalとタイムアウトを統合したfetch
+// _skipAuthRecovery等の内部専用プロパティはfetch()へ渡さない
+async function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const externalSignal = options && options.signal;
+
+    // 外部signalが既にabort済みの場合は即時停止
+    if (externalSignal && externalSignal.aborted) {
+        controller.abort(externalSignal.reason);
+    }
+
+    // 外部signalのabortを内部controllerへ伝播
+    let externalAbortHandler = null;
+    if (externalSignal && !externalSignal.aborted) {
+        externalAbortHandler = function () {
+            controller.abort(externalSignal.reason);
+        };
+        externalSignal.addEventListener('abort', externalAbortHandler, { once: true });
+    }
+
+    // タイムアウト後にPortalTimeoutErrorでabortする
+    const timer = setTimeout(function () {
+        controller.abort(new PortalTimeoutError('Request timed out after ' + timeoutMs + 'ms', timeoutMs));
+    }, timeoutMs);
+
+    // 内部専用プロパティを除外してfetchOptionsを構築
+    const { _skipAuthRecovery: _omit1, _allowCacheFallback: _omit2, signal: _omit3, ...fetchOptions } = Object(options || {});
+    fetchOptions.signal = controller.signal;
+
+    try {
+        return await fetch(url, fetchOptions);
+    } catch (e) {
+        if (controller.signal.aborted) {
+            const reason = controller.signal.reason;
+            if (reason instanceof PortalTimeoutError) throw reason;
+        }
+        throw e;
+    } finally {
+        clearTimeout(timer);
+        if (externalSignal && externalAbortHandler) {
+            externalSignal.removeEventListener('abort', externalAbortHandler);
+        }
+    }
+}
+
 function apiActionLabel(method) {
     const upper = String(method || 'GET').toUpperCase();
     if (upper === 'POST') return '登録';
@@ -42,6 +113,8 @@ function apiTargetLabel(url) {
 function clearPortalAuthState() {
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     appState.portalAuthVerified = false;
+    appState.lastPortalSessionVerifiedAt = 0;
+    appState.lastEssentialDataLoadedAt = 0;
     appState.essentialDataLoaded = false;
     appState.dataLoaded = false;
     appState.currentUserMemberId = null;
@@ -56,6 +129,7 @@ function clearPortalAuthState() {
 function applyPortalAuthDevice(device) {
     if (!device || typeof device !== 'object') return;
     appState.portalAuthVerified = true;
+    appState.lastPortalSessionVerifiedAt = Date.now();
     appState.currentUserMemberId = device.member_id ?? null;
     appState.currentUserName = device.member_name || '';
     appState.currentUserPermission = device.permission || '';
@@ -88,12 +162,16 @@ async function tryRecoverPortalSession(deviceId) {
         return false;
     }
     try {
-        const response = await fetch(`/api/auth/devices/${encodeURIComponent(deviceId)}`, {
-            method: 'GET',
-            headers: { 'X-Device-Id': deviceId },
-        });
+        const response = await fetchWithTimeout(
+            `/api/auth/devices/${encodeURIComponent(deviceId)}`,
+            { method: 'GET', headers: { 'X-Device-Id': deviceId } },
+            PORTAL_TIMEOUT_AUTH
+        );
         if (!response.ok) {
-            clearPortalAuthState();
+            // 明確な未認証(401/403/404)のみ認証状態をクリア
+            if (response.status === 401 || response.status === 403 || response.status === 404) {
+                clearPortalAuthState();
+            }
             return false;
         }
         const payload = await response.json().catch(() => ({}));
@@ -104,6 +182,7 @@ async function tryRecoverPortalSession(deviceId) {
         applyPortalAuthDevice(payload.device);
         return true;
     } catch {
+        // タイムアウトやネットワークエラー: 認証状態を保持して失敗扱い
         return false;
     }
 }
@@ -140,18 +219,31 @@ async function request(url, options = {}) {
     const cacheKey = url;
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const baseHeaders = { ...(options.headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) };
+    const skipAuthRecovery = Boolean(options._skipAuthRecovery);
+    const allowCacheFallback = options._allowCacheFallback !== false;
+    const timeoutMs = _resolveTimeoutMs(url, method);
     if (method === 'GET') {
         if (window.portalRuntimeContext.inFlightGetRequests.has(cacheKey)) return window.portalRuntimeContext.inFlightGetRequests.get(cacheKey);
         const pending = (async () => {
-            const cached = await window.portalRuntimeContext.dbCache.get(cacheKey);
-            const etag = window.portalRuntimeContext.dbCache.getETag(cacheKey);
+            const cacheEntry = await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+            const cached = cacheEntry?.data ?? null;
+            const etag = cacheEntry?.etag ?? null;
             const headers = { ...baseHeaders };
             if (etag) headers['If-None-Match'] = etag;
             let response;
             try {
-                response = await fetch(url, { ...options, method, headers });
+                response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
             } catch (networkError) {
-                if (cached) {
+                if (networkError instanceof PortalTimeoutError) {
+                    if (allowCacheFallback && cached) {
+                        showAlert('通信が不安定なため、保存済みデータを表示しています。', 'warning');
+                        return cached;
+                    }
+                    const message = `${apiTargetLabel(url)}の取得がタイムアウトしました。再試行してください。`;
+                    showAlert(message, 'danger');
+                    throw networkError;
+                }
+                if (allowCacheFallback && cached) {
                     showAlert('通信が不安定なため、保存済みデータを表示しています。', 'warning');
                     return cached;
                 }
@@ -159,10 +251,10 @@ async function request(url, options = {}) {
                 showAlert(message, 'danger');
                 throw new Error(message);
             }
-            if (response.status === 401 && !options._skipAuthRecovery) {
+            if (response.status === 401 && !skipAuthRecovery) {
                 const recovered = await tryRecoverPortalSession(deviceId);
                 if (recovered) {
-                    response = await fetch(url, { ...options, method, headers, _skipAuthRecovery: true });
+                    response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
                 }
             }
             if (response.status === 304 && cached) return cached;
@@ -188,16 +280,21 @@ async function request(url, options = {}) {
     }
     let response;
     try {
-        response = await fetch(url, { ...options, headers: baseHeaders });
+        response = await fetchWithTimeout(url, { ...options, headers: baseHeaders }, timeoutMs);
     } catch (networkError) {
+        if (networkError instanceof PortalTimeoutError) {
+            const message = `${apiTargetLabel(url)}の${apiActionLabel(method)}がタイムアウトしました。再試行してください。`;
+            showAlert(message, 'danger');
+            throw networkError;
+        }
         const message = buildApiFailureMessage(url, method, 0, networkError instanceof Error ? networkError.message : 'network error');
         showAlert(message, 'danger');
         throw new Error(message);
     }
-    if (response.status === 401 && !options._skipAuthRecovery) {
+    if (response.status === 401 && !skipAuthRecovery) {
         const recovered = await tryRecoverPortalSession(deviceId);
         if (recovered) {
-            response = await fetch(url, { ...options, headers: baseHeaders, _skipAuthRecovery: true });
+            response = await fetchWithTimeout(url, { ...options, headers: baseHeaders }, timeoutMs);
         }
     }
     const contentType = response.headers.get('content-type') || '';

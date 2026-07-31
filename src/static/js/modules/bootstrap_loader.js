@@ -50,12 +50,182 @@ function setDefaultDates() {
 // 団員トップ画面と楽譜ビューワー枠を初期化する。
 // 既に生成済みなら重複生成しない。
 
-async function loadEssentialData() {
+// 読み込み失敗時はローディングバーを解除して例外を呼出元へ伝播する
+async function loadEssentialData(options = {}) {
+    const useCachedPreview = options.useCachedPreview === true;
+    const cacheKey = '/api/bootstrap-lite';
+
+    let cachedPreviewRendered = false;
+    let cachedPreviewData = null;
+
     setLoadingBar('データを読み込んでいます...');
-    const data = await requestBootstrapData('/api/bootstrap-lite');
-    applyBootstrapData(data);
-    clearLoadingBar();
-    renderEssentialViews();
+
+    if (
+        useCachedPreview &&
+        appState.portalAuthVerified === true &&
+        window.portalRuntimeContext &&
+        window.portalRuntimeContext.dbCache
+    ) {
+        const cachedEntry =
+            await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+
+        if (
+            cachedEntry &&
+            (
+                cachedEntry.invalid === true ||
+                !cachedEntry.data ||
+                typeof cachedEntry.data !== 'object'
+            )
+        ) {
+            try {
+                await window.portalRuntimeContext.dbCache.delete(cacheKey);
+            } catch (deleteError) {
+                console.warn(
+                    '[bootstrap] failed to delete invalid bootstrap-lite cache:',
+                    deleteError
+                );
+            }
+        }
+
+        if (
+            cachedEntry &&
+            cachedEntry.data &&
+            typeof cachedEntry.data === 'object'
+        ) {
+            try {
+                cachedPreviewData = cachedEntry.data;
+                applyBootstrapData(cachedPreviewData);
+
+                if (window.portalStartup) {
+                    window.portalStartup.mark('ESSENTIAL_RENDER_START');
+                }
+
+                let cachedRenderStatus = 'success';
+                try {
+                    renderEssentialViews();
+                } catch (error) {
+                    cachedRenderStatus = 'error';
+                    throw error;
+                } finally {
+                    if (window.portalStartup) {
+                        window.portalStartup.mark(
+                            'ESSENTIAL_RENDER_END',
+                            { status: cachedRenderStatus }
+                        );
+                    }
+                }
+
+                cachedPreviewRendered = true;
+                setLoadingBar(
+                    '保存済みデータを表示しています。最新データを確認中です。'
+                );
+
+                if (window.portalStartup) {
+                    window.portalStartup.ready();
+                }
+            } catch (error) {
+                console.warn(
+                    '[bootstrap] cached bootstrap-lite preview failed; falling back to network:',
+                    error
+                );
+
+                cachedPreviewData = null;
+                cachedPreviewRendered = false;
+
+                try {
+                    await window.portalRuntimeContext.dbCache.delete(cacheKey);
+                } catch (deleteError) {
+                    console.warn(
+                        '[bootstrap] failed to delete invalid bootstrap-lite cache:',
+                        deleteError
+                    );
+                }
+
+                setLoadingBar('データを読み込んでいます...');
+            }
+        }
+    }
+
+    try {
+        const requestOptions = cachedPreviewRendered
+            ? { _allowCacheFallback: false }
+            : {};
+
+        const data = await requestBootstrapData(cacheKey, requestOptions);
+
+        if (cachedPreviewRendered) {
+            try {
+                applyBootstrapData(data);
+                renderEssentialViews();
+                appState.lastEssentialDataLoadedAt = Date.now();
+                clearLoadingBar();
+                return;
+            } catch (error) {
+                console.warn(
+                    '[bootstrap] latest bootstrap-lite apply/render failed; restoring cached preview:',
+                    error
+                );
+
+                try {
+                    await window.portalRuntimeContext.dbCache.delete(cacheKey);
+                } catch (deleteError) {
+                    console.warn(
+                        '[bootstrap] failed to delete invalid latest bootstrap-lite cache:',
+                        deleteError
+                    );
+                }
+
+                if (cachedPreviewData) {
+                    applyBootstrapData(cachedPreviewData);
+                    renderEssentialViews();
+                    setLoadingBar(
+                        '保存済みデータを表示しています。最新データの反映に失敗しました。'
+                    );
+                    return;
+                }
+
+                throw error;
+            }
+        }
+
+        applyBootstrapData(data);
+        clearLoadingBar();
+
+        if (window.portalStartup) {
+            window.portalStartup.mark('ESSENTIAL_RENDER_START');
+        }
+
+        let renderStatus = 'success';
+        try {
+            renderEssentialViews();
+        } catch (error) {
+            renderStatus = 'error';
+            throw error;
+        } finally {
+            if (window.portalStartup) {
+                window.portalStartup.mark(
+                    'ESSENTIAL_RENDER_END',
+                    { status: renderStatus }
+                );
+            }
+        }
+
+        appState.lastEssentialDataLoadedAt = Date.now();
+    } catch (error) {
+        if (cachedPreviewRendered) {
+            console.warn(
+                '[bootstrap] latest bootstrap-lite request failed; keeping cached preview:',
+                error
+            );
+            setLoadingBar(
+                '保存済みデータを表示しています。最新データの取得に失敗しました。'
+            );
+            return;
+        }
+
+        clearLoadingBar();
+        throw error;
+    }
 }
 
 function renderLoadingPlaceholders() {
@@ -155,9 +325,9 @@ async function loadAll(options = {}) {
     renderInitialViews({ includeHeavyLists });
 }
 
-async function requestBootstrapData(url) {
-    if (typeof request === 'function') return request(url);
-    return requestJson(url);
+async function requestBootstrapData(url, options = {}) {
+    if (typeof request === 'function') return request(url, options);
+    return requestJson(url, options);
 }
 
 async function requestJson(url, options = {}) {
@@ -352,7 +522,7 @@ function renderInitialViews(options = {}) {
     renderAnnouncements();
     renderEvents();
     renderMembers();
-    if (includeHeavyLists) renderRecordings();
+    if (includeHeavyLists) void ensureRecordingsFeatureLoaded().then(renderRecordings);
     if (includeHeavyLists) renderSheetAdmin();
     renderPaymentAdmin();
     renderVenueManagement();

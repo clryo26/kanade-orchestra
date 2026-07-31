@@ -30,15 +30,43 @@ class IndexedDBCache {
         return Promise.race([open, timeout]);
     }
 
-    async get(key) {
+    async getEntry(key) {
         if (!this.db) return null;
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readonly');
             const store = transaction.objectStore('bootstrap_cache');
             const request = store.get(key);
             request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result?.data ?? null);
+            request.onsuccess = () => {
+                const entry = request.result;
+                if (!entry) {
+                    resolve(null);
+                    return;
+                }
+                if (
+                    typeof entry !== 'object' ||
+                    !Object.prototype.hasOwnProperty.call(entry, 'data')
+                ) {
+                    resolve({
+                        data: null,
+                        etag: null,
+                        timestamp: null,
+                        invalid: true,
+                    });
+                    return;
+                }
+                resolve({
+                    data: entry.data,
+                    etag: entry.etag ?? null,
+                    timestamp: entry.timestamp ?? null,
+                });
+            };
         });
+    }
+
+    async get(key) {
+        const entry = await this.getEntry(key);
+        return entry?.data ?? null;
     }
 
     async set(key, data, etag = null) {

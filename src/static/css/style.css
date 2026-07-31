@@ -1118,3 +1118,17 @@ body.album-photo-viewer-open {
     font-size: 1.1rem;
     font-weight: 700;
 }
+
+/* 起動画面: startupGuardが制御する全画面オーバーレイ */
+.portal-startup-spinner {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 3px solid #d0dcea;
+    border-top-color: var(--brand, #235789);
+    border-radius: 50%;
+    animation: portal-spin 0.9s linear infinite;
+    margin-bottom: 1.25rem;
+}
+@keyframes portal-spin {
+    to { transform: rotate(360deg); }
+}
