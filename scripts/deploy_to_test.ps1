@@ -197,7 +197,15 @@ try {
         Stop-Deploy "Failed to query existing pull requests."
     }
 
-    $existingPr = @($existingPrJson | ConvertFrom-Json)
+    $existingPrJsonText = [string]$existingPrJson
+    $existingPrListIsEmpty = [string]::IsNullOrWhiteSpace($existingPrJsonText) -or ($existingPrJsonText.Trim() -eq "[]")
+
+    if ($existingPrListIsEmpty) {
+        $existingPr = @()
+    }
+    else {
+        $existingPr = @($existingPrJsonText | ConvertFrom-Json)
+    }
 
     if ($existingPr.Count -gt 0) {
         $prNumber = [int]$existingPr[0].number
