@@ -8,6 +8,31 @@ describe('ui requirement regression', () => {
         expect(content).toContain('formatClockTime(perf.start_time)');
     });
 
+    test('portal login and password setup labels are valid Japanese HTML', () => {
+        const content = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/auth_feature.js'),
+            'utf8'
+        );
+
+        expect(content).toContain('placeholder="漢字またはふりがな"');
+        expect(content).toContain('for="portalPartInput">パート</label>');
+        expect(content).toContain('for="portalPasswordInput">パスワード</label>');
+        expect(content).toContain('for="portalNewPasswordInput">新しいパスワード</label>');
+        expect(content).toContain('新しいパスワード（確認）</label>');
+        expect(content).toContain('ログインに戻る</button>');
+        expect(content).toContain('もう一度ログインしてください。');
+    });
+
+    test('absence planned time display removes seconds', () => {
+        const content = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/absences.js'),
+            'utf8'
+        );
+
+        expect(content).toContain('function absencePlannedTimeLabel(value)');
+        expect(content).toContain("text.match(/^(\\d{2}:\\d{2})/)");
+        expect(content).toContain('absencePlannedTimeLabel(absence?.planned_time)');
+    });
     test('member intro joined_at shows month label and founder badge uses subtle class', () => {
         const content = fs.readFileSync(path.resolve(__dirname, '../../src/static/js/modules/members/render.js'), 'utf8');
         const css = fs.readFileSync(path.resolve(__dirname, '../../src/static/css/style.css'), 'utf8');

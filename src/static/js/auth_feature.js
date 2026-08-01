@@ -103,10 +103,10 @@ function showPortalLogin() {
                     <div id="portalLoginForm">
                         <h1 id="portalLoginTitle">${escapeHtml(portalTitleText())}</h1>
                         <label class="form-label" for="portalNameInput">名前</label>
-                        <input class="form-control" id="portalNameInput" type="text" autocomplete="name" placeholder="漢字また�Eふりがな">
-                        <label class="form-label mt-3" for="portalPartInput">パ�EチE/label>
+                        <input class="form-control" id="portalNameInput" type="text" autocomplete="name" placeholder="漢字またはふりがな">
+                        <label class="form-label mt-3" for="portalPartInput">パート</label>
                         <select class="form-select" id="portalPartInput"></select>
-                        <label class="form-label mt-3" for="portalPasswordInput">パスワーチE/label>
+                        <label class="form-label mt-3" for="portalPasswordInput">パスワード</label>
                         <input class="form-control" id="portalPasswordInput" type="password" autocomplete="current-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button class="btn btn-primary w-100 mt-3" id="portalLoginBtn" type="button">ログイン</button>
                         <div class="portal-login-actions mt-3">
@@ -116,15 +116,15 @@ function showPortalLogin() {
                     </div>
                     <div id="portalPasswordSetupForm" hidden>
                         <h1>パスワード登録</h1>
-                        <p class="text-muted small mb-3">団員惁E��に名前が見つかりました。個人用パスワードを登録してください、E/p>
+                        <p class="text-muted small mb-3">団員情報に名前が見つかりました。個人用パスワードを登録してください。</p>
                         <input type="hidden" id="portalSetupName">
                         <input type="hidden" id="portalSetupPart">
-                        <label class="form-label" for="portalNewPasswordInput">新しいパスワーチE/label>
+                        <label class="form-label" for="portalNewPasswordInput">新しいパスワード</label>
                         <input class="form-control" id="portalNewPasswordInput" type="password" autocomplete="new-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
-                        <label class="form-label mt-3" for="portalNewPasswordConfirmInput">新しいパスワード（確認！E/label>
+                        <label class="form-label mt-3" for="portalNewPasswordConfirmInput">新しいパスワード（確認）</label>
                         <input class="form-control" id="portalNewPasswordConfirmInput" type="password" autocomplete="new-password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false">
                         <button class="btn btn-primary w-100 mt-3" id="portalPasswordSetupBtn" type="button">登録</button>
-                        <button class="btn btn-outline-secondary w-100 mt-2" id="portalBackToLoginBtn" type="button">ログインに戻めE/button>
+                        <button class="btn btn-outline-secondary w-100 mt-2" id="portalBackToLoginBtn" type="button">ログインに戻る</button>
                     </div>
                 </div>
             </section>
@@ -243,7 +243,7 @@ async function handleMemberPasswordSetup() {
         return;
     }
     await request('/api/auth/member-password', jsonOptions('POST', { name, part, password }));
-    showAlert('パスワードを登録しました。もぁE��度ログインしてください', 'success');
+    showAlert('パスワードを登録しました。もう一度ログインしてください。', 'success');
     showPortalLoginForm();
 }
 

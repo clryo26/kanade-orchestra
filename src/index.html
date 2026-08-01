@@ -562,10 +562,6 @@
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label" for="memberPassword">新しいパスワード（再設定時のみ）</label>
-                                <input type="password" class="form-control" id="memberPassword" autocomplete="new-password" placeholder="未入力なら変更しない">
-                            </div>
-                            <div class="col-md-3">
                                 <label class="form-label" for="memberPermission">権限</label>
                                 <select class="form-select" id="memberPermission">
                                     <option value="一般">一般</option>
@@ -605,6 +601,7 @@
                         </div>
                         <div class="d-flex flex-wrap gap-2 mb-3">
                             <button class="btn btn-success" id="addMemberBtn" type="button">保存</button>
+                            <button class="btn btn-outline-warning" id="resetMemberPasswordBtn" type="button">パスワードリセット</button>
                             <button class="btn btn-outline-secondary" id="clearMemberBtn" type="button">選択解除</button>
                             <button class="btn btn-danger" id="deleteMemberBtn" type="button">削除</button>
                         </div>

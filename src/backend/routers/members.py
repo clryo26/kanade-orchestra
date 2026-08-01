@@ -34,6 +34,13 @@ async def update_member(
     return member_service.update_member(member_id, model_dump(member))
 
 
+@router.post("/api/members/{member_id}/reset-password", response_model=Member)
+async def reset_member_password(
+    member_id: int,
+    _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
+) -> dict[str, Any]:
+    return member_service.reset_member_password(member_id)
+
 @router.delete("/api/members/{member_id}")
 async def delete_member(
     member_id: int,

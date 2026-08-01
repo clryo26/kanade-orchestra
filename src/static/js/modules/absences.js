@@ -114,8 +114,14 @@ function absenceStatusLabel(absence) {
 }
 
 
+function absencePlannedTimeLabel(value) {
+    const text = String(value || '');
+    const match = text.match(/^(\d{2}:\d{2})/);
+    return match ? match[1] : text;
+}
 function absenceEntryLabel(absence, includeName = true) {
-    const time = absence?.planned_time ? ` ${absence.planned_time}` : '';
+    const plannedTime = absencePlannedTimeLabel(absence?.planned_time);
+    const time = plannedTime ? ` ${plannedTime}` : '';
     const status = `${absenceStatusLabel(absence)}${time}`;
     return includeName ? `${absence?.name || ''}（${status}）` : status;
 }

@@ -26,5 +26,14 @@ def update_member(member_id: int, member_payload: dict[str, Any]) -> dict[str, A
     return public_member_payload(updated)
 
 
+def reset_member_password(member_id: int) -> dict[str, Any]:
+    def _mutate(current: dict[str, Any]) -> dict[str, Any]:
+        updated = dict(current)
+        updated["password"] = ""
+        return updated
+
+    updated = _repo.update(member_id, _mutate)
+    return public_member_payload(updated)
+
 def delete_member(member_id: int) -> None:
     _repo.delete(member_id)
