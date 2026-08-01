@@ -236,6 +236,65 @@ function renderLoadingPlaceholders() {
     });
 }
 
+async function reloadPortalForRevision(latestRevision) {
+    const reloadUrl = new URL(window.location.href);
+    reloadUrl.searchParams.set('_portal_revision', latestRevision);
+    window.location.replace(reloadUrl.toString());
+}
+
+function loadedPortalRevision() {
+    try {
+        return String(
+            sessionStorage.getItem('portalLoadedCloudRunRevision') || ''
+        ).trim();
+    } catch {
+        return '';
+    }
+}
+
+async function refreshPortalWithRevisionCheck() {
+    if (appState.portalRevisionRefreshInProgress) {
+        return appState.portalRevisionRefreshInProgress;
+    }
+
+    appState.portalRevisionRefreshInProgress = (async () => {
+        try {
+            const revisionUrl = `/api/revision?_=${Date.now()}`;
+            const revisionData = await requestJson(revisionUrl, { cache: 'no-store' });
+            const latestRevision = String(revisionData.cloudRunRevision || '').trim();
+            const loadedRevision = loadedPortalRevision()
+                || String(appState.cloudRunRevision || '').trim();
+
+            if (loadedRevision && latestRevision && loadedRevision !== latestRevision) {
+                await reloadPortalForRevision(latestRevision);
+                return;
+            }
+
+            if (latestRevision) {
+                appState.cloudRunRevision = latestRevision;
+                try {
+                    sessionStorage.setItem(
+                        'portalLoadedCloudRunRevision',
+                        latestRevision
+                    );
+                } catch {
+                    // Continue with the normal refresh when storage is unavailable.
+                }
+            }
+        } catch (error) {
+            console.warn('Portal revision check failed', error);
+        }
+
+        return refreshPortalData();
+    })();
+
+    try {
+        return await appState.portalRevisionRefreshInProgress;
+    } finally {
+        appState.portalRevisionRefreshInProgress = null;
+    }
+}
+
 async function refreshPortalData(options = {}) {
     const includeBackground = options.includeBackground !== false;
     if (appState.portalRefreshInProgress) return appState.portalRefreshInProgress;
