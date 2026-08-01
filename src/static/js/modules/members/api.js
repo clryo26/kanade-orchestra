@@ -8,7 +8,6 @@ async function saveMember() {
     const current = appState.members.find((member) => String(member.id) === String($('memberId').value));
     const photoFile = $('memberPhotoFile')?.files?.[0];
     const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current?.photo_url || '');
-    const password = $('memberPassword') ? $('memberPassword').value.trim() : '';
     const lastName = $('memberLastName') ? $('memberLastName').value.trim() : '';
     const firstName = $('memberFirstName') ? $('memberFirstName').value.trim() : '';
     const payload = {
@@ -24,7 +23,7 @@ async function saveMember() {
         is_founder: $('memberIsFounder') ? $('memberIsFounder').checked : false,
         is_recording_manager: $('memberIsRecordingManager') ? $('memberIsRecordingManager').checked : false,
         is_sheet_manager: $('memberIsSheetManager') ? $('memberIsSheetManager').checked : false,
-        password,
+        password: '',
         permission: $('memberPermission') ? $('memberPermission').value : '一般',
         joined_at: $('memberJoinedAt') ? $('memberJoinedAt').value : '',
         system_access_until: $('memberSystemAccessUntil') ? $('memberSystemAccessUntil').value : '',
@@ -54,6 +53,22 @@ async function saveMember() {
     clearMemberForm();
     await loadMembers();
     showAlert('団員情報を保存しました', 'success');
+}
+
+async function resetMemberPassword() {
+    const id = $('memberId').value;
+    if (!id) {
+        showAlert('パスワードをリセットする団員を一覧から選択してください', 'warning');
+        return;
+    }
+
+    const member = appState.members.find((item) => String(item.id) === String(id));
+    const name = member ? memberDisplayName(member) : '';
+    if (!window.confirm(`${name || '選択中の団員'}のパスワードをリセットしますか？`)) return;
+
+    await request(`/api/members/${encodeURIComponent(id)}/reset-password`, { method: 'POST' });
+    await loadMembers();
+    showAlert('パスワードをリセットしました。次回ログイン時に本人が新しいパスワードを登録します', 'success');
 }
 
 async function deleteMember() {

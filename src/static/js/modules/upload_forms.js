@@ -54,6 +54,7 @@ function bindForms() {
     $('deleteEventBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteEvent()));
 
     $('addMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveMember()));
+    $('resetMemberPasswordBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, 'リセット中...', () => resetMemberPassword()));
     $('clearMemberBtn').addEventListener('click', clearMemberForm);
     $('deleteMemberBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteMember()));
     if ($('memberPermission')) $('memberPermission').addEventListener('change', syncMemberPermissionFields);

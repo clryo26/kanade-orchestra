@@ -319,10 +319,12 @@ function paymentAlertInfo(payment = null, memberId = '') {
 
     if (!member) return info;
 
+    const resolvedPayment = payment || findPaymentForMember(member.id, memberDisplayName(member));
+
     const paidUntil = monthValue(
-        payment?.paid_until_month
-        || payment?.membership_fee
-        || payment?.dues
+        resolvedPayment?.paid_until_month
+        || resolvedPayment?.membership_fee
+        || resolvedPayment?.dues
         || ''
     );
 
@@ -337,7 +339,7 @@ function paymentAlertInfo(payment = null, memberId = '') {
             );
     }
 
-    const feeMap = performanceFeeMap(payment);
+    const feeMap = performanceFeeMap(resolvedPayment);
     const eligibleIds =
         paymentChargeablePerformanceIdsForMember(member.id);
 
@@ -411,9 +413,23 @@ function paymentAdminVisibleMembers() {
     return (appState.members || []).filter((member) => String(member.permission || '一般') !== 'エキストラ');
 }
 
+function paymentAdminPartOrder(partName) {
+    const target = String(partName || '');
+    const setting = (appState.partSettings || []).find(
+        (item) => String(item.name || '') === target
+    );
+    const order = Number(setting?.display_order ?? setting?.sort_order);
+    return Number.isFinite(order) ? order : Number.MAX_SAFE_INTEGER;
+}
+
+function paymentAdminComparePartNames(aPart, bPart) {
+    return paymentAdminPartOrder(aPart) - paymentAdminPartOrder(bPart)
+        || String(aPart || '').localeCompare(String(bPart || ''), 'ja');
+}
+
 function paymentAdminVisibleMembersSortedByPartAndName() {
     return [...paymentAdminVisibleMembers()].sort((a, b) =>
-        String(a.part || '').localeCompare(String(b.part || ''), 'ja')
+        paymentAdminComparePartNames(a.part, b.part)
         || String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)), 'ja')
     );
 }
@@ -426,7 +442,7 @@ function paymentAdminCompareName(a, b) {
 }
 
 function paymentAdminComparePart(a, b) {
-    return String(a.member.part || '').localeCompare(String(b.member.part || ''), 'ja');
+    return paymentAdminComparePartNames(a.member.part, b.member.part);
 }
 
 function paymentAdminComparePartAndName(a, b) {

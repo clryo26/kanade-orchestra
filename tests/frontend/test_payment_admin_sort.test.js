@@ -10,7 +10,7 @@ function paymentSandbox() {
     const sandbox = {
         window: {
             portalRuntimeContext: {
-                appState: { members: [], performances: [], payments: [] },
+                appState: { members: [], performances: [], payments: [], castings: [], partSettings: [] },
                 getById: () => null,
                 today: () => '2026-08-01',
             },
@@ -74,6 +74,58 @@ describe('payment admin sorting', () => {
         expect(sandbox.paymentAdminSortDirection).toBe('asc');
     });
 
+    test('part sort follows configured display order before member name', () => {
+        const sandbox = paymentSandbox();
+
+        sandbox.window.portalRuntimeContext.appState.partSettings = [
+            { name: 'Fl', display_order: 1 },
+            { name: 'Cl', display_order: 2 },
+            { name: 'Vn', display_order: 3 },
+        ];
+        sandbox.appState = sandbox.window.portalRuntimeContext.appState;
+        sandbox.paymentAdminSortKey = 'part';
+        sandbox.paymentAdminSortDirection = 'asc';
+
+        const rows = [
+            { member: { name: 'A', part: 'Vn' }, payment: null, summary: {} },
+            { member: { name: 'B', part: 'Cl' }, payment: null, summary: {} },
+            { member: { name: 'C', part: 'Fl' }, payment: null, summary: {} },
+        ];
+
+        rows.sort(sandbox.paymentAdminCompareEntries);
+
+        expect(rows.map((row) => row.member.part)).toEqual(['Fl', 'Cl', 'Vn']);
+    });
+
+    test('payment alert resolves current member payment when payment argument is omitted', () => {
+        const sandbox = paymentSandbox();
+
+        sandbox.window.portalRuntimeContext.appState.currentUserMemberId = 1;
+        sandbox.window.portalRuntimeContext.appState.members = [
+            { id: 1, name: 'Current Member', joined_at: '2026-02' },
+        ];
+        sandbox.window.portalRuntimeContext.appState.performances = [
+            { id: 10, title: 'Summer 2026', date: '2026-08-02' },
+        ];
+        sandbox.window.portalRuntimeContext.appState.castings = [
+            { performance_id: 10, members: [{ member_id: 1 }] },
+        ];
+        sandbox.window.portalRuntimeContext.appState.payments = [
+            {
+                member_id: 1,
+                name: 'Current Member',
+                paid_until_month: '2026-08',
+                performance_fees: { 10: true },
+            },
+        ];
+        sandbox.appState = sandbox.window.portalRuntimeContext.appState;
+
+        const info = sandbox.paymentAlertInfo();
+
+        expect(info.duesOverdue).toBe(false);
+        expect(info.overduePerformanceIds.size).toBe(0);
+        expect(info.hasAlert).toBe(false);
+    });
     test('part sort uses part then name', () => {
         const sandbox = paymentSandbox();
         sandbox.paymentAdminSortKey = 'part';

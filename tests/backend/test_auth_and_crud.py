@@ -585,6 +585,56 @@ def test_member_update_without_password_preserves_existing_hash(client, backend_
     assert backend_env.load_json_data("members")[0]["password"] == stored_before
 
 
+def test_member_password_reset_clears_hash_and_requires_setup(
+    client,
+    backend_env,
+    seed_device_fn,
+    admin_headers_fixture,
+):
+    seed_device_fn(device_id="dev-admin", permission="管理者")
+
+    created = client.post(
+        "/api/members",
+        headers=admin_headers_fixture,
+        json={
+            "last_name": "奏",
+            "first_name": "次郎",
+            "part": "Cl",
+            "password": "before-reset",
+            "permission": "一般",
+        },
+    )
+    assert created.status_code == 200
+
+    stored_before = backend_env.load_json_data("members")[0]["password"]
+    assert stored_before
+    assert backend_env.verify_password("before-reset", stored_before)
+
+    reset = client.post(
+        "/api/members/1/reset-password",
+        headers=admin_headers_fixture,
+    )
+
+    assert reset.status_code == 200
+    assert reset.json()["password"] == ""
+    assert reset.json()["password_set"] is False
+    assert backend_env.load_json_data("members")[0]["password"] == ""
+
+    login = client.post(
+        "/api/auth/portal-login",
+        json={
+            "name": "奏次郎",
+            "part": "Cl",
+            "password": "before-reset",
+            "device_id": "after-reset-device",
+            "device_name": "Browser",
+        },
+    )
+
+    assert login.status_code == 200
+    assert login.json()["authenticated"] is False
+    assert login.json()["needs_password_setup"] is True
+
 def test_recording_delete_forbidden_for_general(client, seed_device_fn):
     seed_device_fn(device_id="dev-general", permission="一般")
     response = client.request(

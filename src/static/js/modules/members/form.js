@@ -26,7 +26,6 @@ function selectMember(id) {
     if ($('memberIsFounder')) $('memberIsFounder').checked = Boolean(item.is_founder);
     if ($('memberIsRecordingManager')) $('memberIsRecordingManager').checked = Boolean(item.is_recording_manager);
     if ($('memberIsSheetManager')) $('memberIsSheetManager').checked = Boolean(item.is_sheet_manager);
-    if ($('memberPassword')) $('memberPassword').value = '';
     if ($('memberPermission')) $('memberPermission').value = item.permission || '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = joinedAtMonthInputValue(item.joined_at);
     if ($('memberSystemAccessUntil')) $('memberSystemAccessUntil').value = item.system_access_until || '';
@@ -51,7 +50,6 @@ function clearMemberForm() {
     if ($('memberIsFounder')) $('memberIsFounder').checked = false;
     if ($('memberIsRecordingManager')) $('memberIsRecordingManager').checked = false;
     if ($('memberIsSheetManager')) $('memberIsSheetManager').checked = false;
-    if ($('memberPassword')) $('memberPassword').value = '';
     if ($('memberPermission')) $('memberPermission').value = '一般';
     if ($('memberJoinedAt')) $('memberJoinedAt').value = '';
     if ($('memberSystemAccessUntil')) $('memberSystemAccessUntil').value = '';
