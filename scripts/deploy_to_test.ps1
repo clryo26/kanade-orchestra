@@ -368,7 +368,23 @@ After PR CI succeeds, this automation merges the PR and waits for main CI and De
         Stop-Deploy "TEST GIT_SHA mismatch. Expected $mergeSha but deployed $deployedGitSha."
     }
 
-    $imageDigest = [string]$revision.status.imageDigest
+    $imageDigest = ""
+    $imageDigestSource = [string]$revision.status.imageDigest
+
+    if ($imageDigestSource -match "(sha256:[0-9a-fA-F]{64})$") {
+        $imageDigest = $Matches[1]
+    }
+
+    if (-not $imageDigest) {
+        $imageDigestEnv = @($revision.spec.containers[0].env) |
+            Where-Object { $_.name -eq "IMAGE_DIGEST" } |
+            Select-Object -First 1
+
+        $imageDigestEnvValue = [string]$imageDigestEnv.value
+        if ($imageDigestEnvValue -match "^sha256:[0-9a-fA-F]{64}$") {
+            $imageDigest = $imageDigestEnvValue
+        }
+    }
 
     if (-not $imageDigest) {
         $containerImage = [string]$revision.spec.containers[0].image
