@@ -95,7 +95,10 @@ function renderMemberPerformances() {
     }
     const nextPerf = nextPerformance() || [...appState.performances].filter((perf) => perf.date).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
     const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
-    container.innerHTML = `${nextPerf && countdown !== null ? `<div class="countdown-banner">本番まであと${countdown}日！</div>` : ''}` + appState.performances.map((perf) => `
+    const countdownLabel = countdown === 0
+        ? '本番当日！頑張りましょう！！'
+        : `本番まであと${countdown}日！`;
+    container.innerHTML = `${nextPerf && countdown !== null ? `<div class="countdown-banner">${countdownLabel}</div>` : ''}` + appState.performances.map((perf) => `
         <article class="info-block">
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(formatClockTime(perf.open_time))}開場 / ${escapeHtml(formatClockTime(perf.start_time))}開演</p>

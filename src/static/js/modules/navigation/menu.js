@@ -134,7 +134,7 @@ function renderMenuGroups(container) {
     if (reloadButton) reloadButton.addEventListener('click', (event) => {
         event.stopPropagation();
         setLoadingBar('更新中...');
-        refreshPortalData();
+        void refreshPortalWithRevisionCheck();
     });
 
     updateCloudRunRevision();

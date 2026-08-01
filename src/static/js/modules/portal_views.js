@@ -130,9 +130,12 @@ function renderPortalHome() {
 
     const nextPerf = nextPerformance();
     const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
+    const countdownLabel = countdown === 0
+        ? '本番当日！頑張りましょう！！'
+        : `本番まであと${Math.max(0, countdown)}日！`;
     countdownContainer.innerHTML = nextPerf && countdown !== null
         ? `<section class="portal-countdown-card">
-            <div class="portal-countdown-main">本番まであと${Math.max(0, countdown)}日！</div>
+            <div class="portal-countdown-main">${countdownLabel}</div>
             <div class="portal-countdown-sub">${escapeHtml(nextPerf.title || '')} / ${escapeHtml(formatDateWithWeekday(nextPerf.date, ''))}</div>
         </section>`
         : `<section class="portal-countdown-card muted">
