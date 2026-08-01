@@ -76,19 +76,21 @@ function Wait-WorkflowRun {
         $endpoint = "repos/$Repo/actions/workflows/$WorkflowFile/runs?" + ($query -join "&")
         $response = Invoke-GhApiJson $endpoint
 
-        $runs = @($response.workflow_runs) | Where-Object {
-            $createdAt = [datetime]$_.created_at
-            if ($createdAt -lt $NotBefore) {
-                return $false
-            }
+        $runs = @(
+            @($response.workflow_runs) | Where-Object {
+                $createdAt = [datetime]$_.created_at
+                if ($createdAt -lt $NotBefore) {
+                    return $false
+                }
 
-            if ($PullRequestNumber -gt 0) {
-                $numbers = @($_.pull_requests | ForEach-Object { [int]$_.number })
-                return $numbers -contains $PullRequestNumber
-            }
+                if ($PullRequestNumber -gt 0) {
+                    $numbers = @($_.pull_requests | ForEach-Object { [int]$_.number })
+                    return $numbers -contains $PullRequestNumber
+                }
 
-            return $true
-        } | Sort-Object { [datetime]$_.created_at } -Descending
+                return $true
+            } | Sort-Object { [datetime]$_.created_at } -Descending
+        )
 
         if ($runs.Count -gt 0) {
             return $runs[0]
