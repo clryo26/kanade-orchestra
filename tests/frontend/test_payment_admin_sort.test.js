@@ -16,6 +16,7 @@ function paymentSandbox() {
             },
         },
         memberDisplayName: (member) => member.name || '',
+        memberKanaName: (member) => `${member.last_name_kana || ''}${member.first_name_kana || ''}`,
         console,
     };
     vm.createContext(sandbox);
@@ -140,18 +141,18 @@ describe('payment admin sorting', () => {
         expect(rows.map((row) => row.member.name)).toEqual(['A', 'B', 'C']);
     });
 
-    test('name sort uses member name', () => {
+    test('name sort uses kana name while displaying kanji name', () => {
         const sandbox = paymentSandbox();
         sandbox.paymentAdminSortKey = 'name';
         sandbox.paymentAdminSortDirection = 'asc';
 
         const rows = [
-            { member: { name: 'C' }, payment: null, summary: {} },
-            { member: { name: 'A' }, payment: null, summary: {} },
-            { member: { name: 'B' }, payment: null, summary: {} },
+            { member: { name: '\u5c71\u7530', last_name_kana: '\u3084\u307e\u3060' }, payment: null, summary: {} },
+            { member: { name: '\u963f\u90e8', last_name_kana: '\u3042\u3079' }, payment: null, summary: {} },
+            { member: { name: '\u4f0a\u85e4', last_name_kana: '\u3044\u3068\u3046' }, payment: null, summary: {} },
         ];
         rows.sort(sandbox.paymentAdminCompareEntries);
-        expect(rows.map((row) => row.member.name)).toEqual(['A', 'B', 'C']);
+        expect(rows.map((row) => row.member.name)).toEqual(['\u963f\u90e8', '\u4f0a\u85e4', '\u5c71\u7530']);
     });
 
     test('performance unpaid sort prioritizes unpaid status of nearer performance then part and name', () => {
