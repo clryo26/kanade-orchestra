@@ -427,10 +427,17 @@ function paymentAdminComparePartNames(aPart, bPart) {
         || String(aPart || '').localeCompare(String(bPart || ''), 'ja');
 }
 
+function paymentAdminCompareMemberNames(a, b) {
+    return String(memberKanaName(a) || memberDisplayName(a)).localeCompare(
+        String(memberKanaName(b) || memberDisplayName(b)),
+        'ja'
+    ) || String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)), 'ja');
+}
+
 function paymentAdminVisibleMembersSortedByPartAndName() {
     return [...paymentAdminVisibleMembers()].sort((a, b) =>
         paymentAdminComparePartNames(a.part, b.part)
-        || String(memberDisplayName(a)).localeCompare(String(memberDisplayName(b)), 'ja')
+        || paymentAdminCompareMemberNames(a, b)
     );
 }
 
@@ -438,7 +445,7 @@ function paymentAdminVisibleMembersSortedByPartAndName() {
 // 保存済みデータを直接触らず、一覧の「編集」はレコードIDで対象を特定する。
 
 function paymentAdminCompareName(a, b) {
-    return String(memberDisplayName(a.member)).localeCompare(String(memberDisplayName(b.member)), 'ja');
+    return paymentAdminCompareMemberNames(a.member, b.member);
 }
 
 function paymentAdminComparePart(a, b) {
