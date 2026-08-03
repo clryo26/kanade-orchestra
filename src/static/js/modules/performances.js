@@ -10,7 +10,11 @@ var performancePieceLookupLabels = window.performancePieceLookupLabels;
 var findPieceScopedItem = window.findPieceScopedItem;
 var pieceScopedRows = window.pieceScopedRows;
 var uploadPieceOptionsCompat = function uploadPieceOptionsCompat(performance) {
-    return window.uploadPieceOptions(performance, window.WHOLE_PRACTICE_RECORDING_PIECE);
+    return window.uploadPieceOptions(
+        performance,
+        window.CONCERT_PERFORMANCE_RECORDING_PIECE,
+        window.WHOLE_PRACTICE_RECORDING_PIECE
+    );
 };
 
 async function savePerformance() {

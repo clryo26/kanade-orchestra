@@ -1,4 +1,5 @@
 // 本番共有状態を main.js から切り離した互換ストア。新規状態追加はこのファイルへ寄せる。
+window.CONCERT_PERFORMANCE_RECORDING_PIECE = 'コンサート本番';
 window.WHOLE_PRACTICE_RECORDING_PIECE = '練習全体の通し';
 const initialPortalAppState = {
     selectedFiles: [],

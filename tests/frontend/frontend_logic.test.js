@@ -242,10 +242,15 @@ describe('FE-PURE', () => {
                     { title: 'Sym', composer: 'B' }
                 ]
             },
+            'コンサート本番',
             '練習全体の通し'
         );
 
-        expect(options.map((item) => item.value)).toEqual(['B: Sym', '練習全体の通し']);
+        expect(options.map((item) => item.value)).toEqual([
+            'B: Sym',
+            'コンサート本番',
+            '練習全体の通し'
+        ]);
     });
     test('FE-PURE-011 performance day assignment add keeps blank edit rows', () => {
         const rows = performanceDayAssignmentRowsAfterAdd([{ role: '受付', members: '田中' }]);
