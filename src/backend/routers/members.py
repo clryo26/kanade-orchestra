@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from ..core.auth_dependencies import get_admin_device_auth
-from ..models.schemas import Member
+from ..core.auth_dependencies import get_admin_device_auth, get_device_auth
+from ..models.schemas import Member, MemberProfileUpdate
 from ..services import member_service
 from ..utils.serialization import model_dump
 
@@ -32,6 +32,18 @@ async def update_member(
     _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
 ) -> dict[str, Any]:
     return member_service.update_member(member_id, model_dump(member))
+
+
+@router.put("/api/members/{member_id}/profile", response_model=Member)
+async def update_own_member_profile(
+    member_id: int,
+    profile: MemberProfileUpdate,
+    device: dict[str, Any] = Depends(get_device_auth),
+) -> dict[str, Any]:
+    authenticated_member_id = device.get("member_id")
+    if authenticated_member_id is None or str(authenticated_member_id) != str(member_id):
+        raise HTTPException(status_code=403, detail="Only the authenticated member can update this profile")
+    return member_service.update_member_profile(member_id, profile.model_dump(exclude_unset=True))
 
 
 @router.post("/api/members/{member_id}/reset-password", response_model=Member)

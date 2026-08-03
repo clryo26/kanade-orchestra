@@ -87,7 +87,6 @@ async function saveOwnProfile(memberId) {
     const photoFile = $('profilePhotoFile')?.files?.[0];
     const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current.photo_url || '');
     const payload = {
-        ...current,
         photo_url: photoUrl,
         joined_at: $('profileJoinedAt')?.value || '',
         introducer: $('profileIntroducer')?.value.trim() || '',
@@ -96,7 +95,7 @@ async function saveOwnProfile(memberId) {
         past_orchestras: $('profilePastOrchestras')?.value.trim() || '',
         comment: $('profileComment')?.value.trim() || ''
     };
-    await request(`/api/members/${encodeURIComponent(memberId)}`, jsonOptions('PUT', payload));
+    await request(`/api/members/${encodeURIComponent(memberId)}/profile`, jsonOptions('PUT', payload));
     await loadMembers();
     showAlert('プロフィールを保存しました', 'success');
 }

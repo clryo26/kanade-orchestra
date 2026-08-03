@@ -26,6 +26,27 @@ def update_member(member_id: int, member_payload: dict[str, Any]) -> dict[str, A
     return public_member_payload(updated)
 
 
+def update_member_profile(member_id: int, profile_payload: dict[str, Any]) -> dict[str, Any]:
+    allowed_fields = {
+        "photo_url",
+        "joined_at",
+        "introducer",
+        "role",
+        "instrument_history",
+        "past_orchestras",
+        "comment",
+    }
+
+    def _mutate(current: dict[str, Any]) -> dict[str, Any]:
+        updated = dict(current)
+        for key in allowed_fields:
+            if key in profile_payload:
+                updated[key] = profile_payload[key]
+        return updated
+
+    updated = _repo.update(member_id, _mutate)
+    return public_member_payload(updated)
+
 def reset_member_password(member_id: int) -> dict[str, Any]:
     def _mutate(current: dict[str, Any]) -> dict[str, Any]:
         updated = dict(current)

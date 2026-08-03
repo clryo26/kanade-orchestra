@@ -756,3 +756,150 @@ def test_sheet_bulk_update_permission(client, seed_device_fn):
         json={"sheet_ids": [], "part": "Vn"},
     )
     assert allowed.status_code == 400
+
+def test_general_member_can_update_only_own_profile(
+    client,
+    backend_env,
+    seed_device_fn,
+):
+    general_permission = "\u4e00\u822c"
+    backend_env.save_json_data(
+        "members",
+        [
+            {
+                "id": 1,
+                "name": "Own Member",
+                "part": "Cl",
+                "photo_url": "",
+                "password": "stored-password",
+                "permission": general_permission,
+                "joined_at": "",
+                "introducer": "",
+                "role": "",
+                "instrument_history": "",
+                "past_orchestras": "",
+                "comment": "",
+            },
+            {
+                "id": 2,
+                "name": "Other Member",
+                "part": "Fl",
+                "permission": general_permission,
+            },
+        ],
+    )
+    seed_device_fn(
+        device_id="dev-general-profile",
+        permission=general_permission,
+        member_id=1,
+        member_name="Own Member",
+    )
+
+    response = client.put(
+        "/api/members/1/profile",
+        headers={"X-Device-Id": "dev-general-profile"},
+        json={
+            "photo_url": "data:image/png;base64,profile",
+            "joined_at": "2026-08",
+            "introducer": "Introducer",
+            "role": "Role",
+            "instrument_history": "Ten years",
+            "past_orchestras": "Former orchestra",
+            "comment": "Updated comment",
+        },
+    )
+
+    assert response.status_code == 200
+    stored = backend_env.load_json_data("members")[0]
+    assert stored["photo_url"] == "data:image/png;base64,profile"
+    assert stored["joined_at"] == "2026-08"
+    assert stored["introducer"] == "Introducer"
+    assert stored["role"] == "Role"
+    assert stored["instrument_history"] == "Ten years"
+    assert stored["past_orchestras"] == "Former orchestra"
+    assert stored["comment"] == "Updated comment"
+    assert stored["part"] == "Cl"
+    assert stored["permission"] == general_permission
+    assert stored["password"] == "stored-password"
+
+
+def test_general_member_cannot_update_another_members_profile(
+    client,
+    backend_env,
+    seed_device_fn,
+):
+    general_permission = "\u4e00\u822c"
+    backend_env.save_json_data(
+        "members",
+        [
+            {"id": 1, "name": "Own Member", "part": "Cl", "permission": general_permission},
+            {"id": 2, "name": "Other Member", "part": "Fl", "permission": general_permission},
+        ],
+    )
+    seed_device_fn(
+        device_id="dev-general-profile",
+        permission=general_permission,
+        member_id=1,
+        member_name="Own Member",
+    )
+
+    response = client.put(
+        "/api/members/2/profile",
+        headers={"X-Device-Id": "dev-general-profile"},
+        json={"comment": "Unauthorized update"},
+    )
+
+    assert response.status_code == 403
+    other = backend_env.load_json_data("members")[1]
+    assert other.get("comment") != "Unauthorized update"
+
+def test_general_member_partial_profile_update_preserves_unsent_fields(
+    client,
+    backend_env,
+    seed_device_fn,
+):
+    general_permission = "\u4e00\u822c"
+    backend_env.save_json_data(
+        "members",
+        [
+            {
+                "id": 1,
+                "name": "Own Member",
+                "part": "Cl",
+                "photo_url": "existing-photo",
+                "password": "stored-password",
+                "permission": general_permission,
+                "joined_at": "2020-04",
+                "introducer": "Existing introducer",
+                "role": "Existing role",
+                "instrument_history": "Existing history",
+                "past_orchestras": "Existing orchestra",
+                "comment": "Existing comment",
+            },
+        ],
+    )
+    seed_device_fn(
+        device_id="dev-general-partial-profile",
+        permission=general_permission,
+        member_id=1,
+        member_name="Own Member",
+    )
+
+    response = client.put(
+        "/api/members/1/profile",
+        headers={"X-Device-Id": "dev-general-partial-profile"},
+        json={"comment": "Changed comment"},
+    )
+
+    assert response.status_code == 200
+    stored = backend_env.load_json_data("members")[0]
+    assert stored["comment"] == "Changed comment"
+    assert stored["photo_url"] == "existing-photo"
+    assert stored["joined_at"] == "2020-04"
+    assert stored["introducer"] == "Existing introducer"
+    assert stored["role"] == "Existing role"
+    assert stored["instrument_history"] == "Existing history"
+    assert stored["past_orchestras"] == "Existing orchestra"
+    assert stored["part"] == "Cl"
+    assert stored["permission"] == general_permission
+    assert stored["password"] == "stored-password"

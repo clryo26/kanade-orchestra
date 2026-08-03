@@ -89,4 +89,21 @@ describe('ui requirement regression', () => {
         expect(content).toContain('__other__');
         expect(content).toContain('data-extra-custom-part-index');
     });
+
+    test('desired piece list hides registrant and own profile uses dedicated endpoint', () => {
+        const desiredPieceContent = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/date_piece_promotion/render_desired_promotion.js'),
+            'utf8'
+        );
+        const profileContent = fs.readFileSync(
+            path.resolve(__dirname, '../../src/static/js/modules/portal_views.js'),
+            'utf8'
+        );
+
+        expect(desiredPieceContent.indexOf('registered_by || item.name')).toBe(-1);
+        expect(profileContent).toContain(
+            "/api/members/${encodeURIComponent(memberId)}/profile"
+        );
+        expect(profileContent).not.toContain('...current,');
+    });
 });
