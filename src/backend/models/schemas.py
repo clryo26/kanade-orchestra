@@ -112,6 +112,16 @@ class Member(BaseModel):
     updated_at: str | None = None
 
 
+class MemberProfileUpdate(BaseModel):
+    photo_url: str = ""
+    joined_at: str = ""
+    introducer: str = ""
+    role: str = ""
+    instrument_history: str = ""
+    past_orchestras: str = ""
+    comment: str = ""
+
+
 class RecordingDeleteRequest(BaseModel):
     source: str
     object_name: str = ""
