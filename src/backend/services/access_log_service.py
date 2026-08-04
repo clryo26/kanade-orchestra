@@ -22,10 +22,9 @@ def create_access_log_payload(
     x_device_id: str,
     user_agent: str,
     now: str,
-    next_id: int,
+    next_id: int | None,
 ) -> dict[str, Any]:
-    return {
-        "id": next_id,
+    payload = {
         "member_id": device.get("member_id"),
         "member_name": device.get("member_name") or "",
         "member_part": device.get("member_part") or "",
@@ -40,6 +39,9 @@ def create_access_log_payload(
         "created_at": now,
         "updated_at": now,
     }
+    if next_id is not None:
+        payload["id"] = next_id
+    return payload
 
 
 def trim_access_logs(items: list[dict[str, Any]], max_items: int = 2000) -> list[dict[str, Any]]:
