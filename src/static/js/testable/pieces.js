@@ -61,11 +61,16 @@
             };
         });
     }
-    function uploadPieceOptions(performance, wholePracticeLabel = '練習全体の通し') {
+    function uploadPieceOptions(
+        performance,
+        concertPerformanceLabel = 'コンサート本番',
+        wholePracticeLabel = '練習全体の通し'
+    ) {
         if (!performance) return [];
         const options = normalizePerformancePieces(performance?.pieces || [])
             .map((piece) => ({ value: performancePieceLabel(piece), label: performancePieceFormalLabel(piece) }))
             .filter((option) => option.value);
+        options.push({ value: concertPerformanceLabel, label: concertPerformanceLabel });
         options.push({ value: wholePracticeLabel, label: wholePracticeLabel });
         const seen = new Set();
         return options.filter((option) => {

@@ -143,7 +143,7 @@ function pieceScopedRows(performances, scopedItems) {
         };
     });
 }
-function uploadPieceOptions(performance, wholePracticeLabel) {
+function uploadPieceOptions(performance, concertPerformanceLabel, wholePracticeLabel) {
     if (!performance) return [];
 
     const options = normalizePerformancePieces(performance.pieces || [])
@@ -152,6 +152,11 @@ function uploadPieceOptions(performance, wholePracticeLabel) {
             label: performancePieceFormalLabel(piece)
         }))
         .filter((option) => option.value);
+
+    options.push({
+        value: concertPerformanceLabel,
+        label: concertPerformanceLabel
+    });
 
     options.push({
         value: wholePracticeLabel,
