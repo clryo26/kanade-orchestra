@@ -24,6 +24,13 @@ def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any]) -> 
     upsert = parse_extra_upsert_request(raw_body)
     normalized_body = normalize_extra_for_collection(name, upsert.payload)
     assert_extra_collection_permission(name, device, payload=normalized_body)
+    if (
+        name in {"desired_pieces", "promotions"}
+        and str(device.get("permission") or "")
+        not in {"管理者", "システム管理者"}
+    ):
+        normalized_body["member_id"] = device.get("member_id") or ""
+        normalized_body["registered_by"] = device.get("member_name") or ""
     payload = normalize_extra_payload(normalized_body, next_updated_at_func=next_updated_at, item_id=next_id(items))
     items.append(payload)
     save_json_data(name, items)
@@ -37,6 +44,17 @@ def update_item(name: str, item_id: int, raw_body: dict[str, Any], device: dict[
     ensure_expected_updated_at(current, upsert.expected_updated_at)
     normalized_body = normalize_extra_for_collection(name, upsert.payload)
     assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
+    if (
+        name in {"desired_pieces", "promotions"}
+        and str(device.get("permission") or "")
+        not in {"管理者", "システム管理者"}
+    ):
+        normalized_body["member_id"] = (
+            current.get("member_id") or device.get("member_id") or ""
+        )
+        normalized_body["registered_by"] = (
+            current.get("registered_by") or device.get("member_name") or ""
+        )
     payload = normalize_extra_payload(normalized_body, next_updated_at_func=next_updated_at, item_id=item_id, current=current)
     items[index] = payload
     save_json_data(name, items)

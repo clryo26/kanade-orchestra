@@ -40,9 +40,81 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "org_settings",
     "sns_settings",
     "connection_settings",
-    "desired_pieces",
-    "promotions",
 }
+
+
+def _is_admin(device: dict[str, Any]) -> bool:
+    return str(device.get("permission") or "") in {"管理者", "システム管理者"}
+
+
+def _same_member(
+    device: dict[str, Any],
+    target: dict[str, Any],
+    *,
+    id_key: str,
+    name_key: str,
+) -> bool:
+    member_id = str(device.get("member_id") or "")
+    member_name = str(device.get("member_name") or "")
+    owner_id = str(target.get(id_key) or "")
+    owner_name = str(target.get(name_key) or "")
+    return bool(
+        (member_id and owner_id and member_id == owner_id)
+        or (member_name and owner_name and member_name == owner_name)
+    )
+
+
+def _vote_identity(vote: Any) -> tuple[str, str]:
+    if isinstance(vote, dict):
+        return str(vote.get("member_id") or ""), str(vote.get("name") or "")
+    return "", str(vote or "")
+
+
+def _desired_piece_vote_only_update(
+    payload: dict[str, Any],
+    current: dict[str, Any],
+    device: dict[str, Any],
+) -> bool:
+    immutable_keys = {
+        "title",
+        "piece",
+        "composer",
+        "duration",
+        "genre",
+        "formation",
+        "notes",
+        "member_id",
+        "registered_by",
+    }
+    if any(payload.get(key) != current.get(key) for key in immutable_keys):
+        return False
+
+    actor_id = str(device.get("member_id") or "")
+    actor_name = str(device.get("member_name") or "")
+
+    def is_actor(vote: Any) -> bool:
+        vote_id, vote_name = _vote_identity(vote)
+        return bool(
+            (actor_id and vote_id == actor_id)
+            or (actor_name and vote_name == actor_name)
+        )
+
+    current_others = sorted(
+        _vote_identity(vote)
+        for vote in (current.get("votes") or [])
+        if not is_actor(vote)
+    )
+    payload_others = sorted(
+        _vote_identity(vote)
+        for vote in (payload.get("votes") or [])
+        if not is_actor(vote)
+    )
+    actor_votes = [
+        _vote_identity(vote)
+        for vote in (payload.get("votes") or [])
+        if is_actor(vote)
+    ]
+    return current_others == payload_others and len(actor_votes) <= 1
 
 
 def parse_extra_upsert_request(raw_body: dict[str, Any]) -> ExtraUpsertRequest:
@@ -69,6 +141,42 @@ def assert_extra_collection_permission(
         if permission not in {"管理者", "システム管理者"}:
             raise HTTPException(status_code=403, detail="Admin permission is required")
         return
+
+    if name == "desired_pieces":
+        if _is_admin(device) or current is None:
+            return
+        if _same_member(
+            device,
+            current,
+            id_key="member_id",
+            name_key="registered_by",
+        ):
+            return
+        if payload is not None and _desired_piece_vote_only_update(
+            payload,
+            current,
+            device,
+        ):
+            return
+        raise HTTPException(
+            status_code=403,
+            detail="Only owner can modify desired piece details",
+        )
+
+    if name == "promotions":
+        if _is_admin(device) or current is None:
+            return
+        if _same_member(
+            device,
+            current,
+            id_key="member_id",
+            name_key="registered_by",
+        ):
+            return
+        raise HTTPException(
+            status_code=403,
+            detail="Only owner can modify promotion",
+        )
 
     if name == "date_adjustments":
         if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
