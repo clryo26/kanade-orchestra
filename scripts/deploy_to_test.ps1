@@ -253,6 +253,7 @@ After PR CI succeeds, this automation merges the PR and waits for main CI and De
         -WorkflowFile "ci.yml" `
         -Event "pull_request" `
         -Branch $branch `
+        -HeadSha $headSha `
         -PullRequestNumber $prNumber `
         -NotBefore $prCreatedAt
 

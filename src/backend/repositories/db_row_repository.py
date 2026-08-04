@@ -462,7 +462,7 @@ def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[
                 if isinstance(vote, dict):
                     row = {
                         "organization_id": vote.get("organization_id") or parent.get("organization_id") or tenant_id,
-                        "id": vote.get("id"),
+                        "id": None,
                         "desired_piece_id": parent_id,
                         "member_id": vote.get("member_id"),
                         "name": vote.get("name") or "",
