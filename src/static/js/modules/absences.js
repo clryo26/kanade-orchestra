@@ -68,7 +68,7 @@ function renderAbsenceView() {
         const existing = appState.absences.find((item) => String(item.schedule_id || '') === String(scheduleId) && (String(item.member_id || '') === String(appState.currentUserMemberId || '') || item.name === name));
         const saveId = absenceId || existing?.id || '';
         if (saveId) await request(`/api/extra/absences/${encodeURIComponent(saveId)}`, jsonOptions('PUT', payload)); else await saveExtra('absences', payload);
-        showAlert('出欠連絡を登録しました', 'success'); await loadExtraData();
+        showAlert('出欠連絡を登録しました', 'success'); await loadExtraData(['absences']);
     }));
 }
 
@@ -102,7 +102,7 @@ async function deleteOwnAbsence(absenceId) {
     if (!confirmDelete()) return;
     await request(`/api/extra/absences/${encodeURIComponent(absenceId)}`, { method: 'DELETE' });
     showAlert('出欠連絡を削除しました', 'success');
-    await loadExtraData();
+    await loadExtraData(['absences']);
 }
 
 
@@ -125,4 +125,3 @@ function absenceEntryLabel(absence, includeName = true) {
     const status = `${absenceStatusLabel(absence)}${time}`;
     return includeName ? `${absence?.name || ''}（${status}）` : status;
 }
-

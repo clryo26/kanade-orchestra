@@ -629,34 +629,79 @@ async function loadAuthManagement() {
     renderAuthDevices();
 }
 
-async function loadExtraData() {
-    const requestSpecs = [
-        ['absences', request('/api/extra/absences')],
-        ['eventResponses', request('/api/extra/event_responses')],
-        ['dateAdjustments', request('/api/extra/date_adjustments')],
-        ['dateAdjustmentResponses', request('/api/extra/date_adjustment_responses')],
-        ['sheets', request('/api/sheets')],
-        ['payments', request('/api/extra/payments')],
-        ['castings', request('/api/extra/castings')],
-        ['pieceInfos', request('/api/extra/piece_infos')],
-        ['practiceInstructions', request('/api/extra/practice_instructions')],
-        ['performanceDayInfos', request('/api/extra/performance_day_infos')],
-        ['desiredPieces', request('/api/extra/desired_pieces')],
-        ['promotions', request('/api/extra/promotions')],
-        ['albums', request('/api/extra/albums')],
-        ['partSettings', request('/api/extra/part_settings')],
-        ['venueSettings', request('/api/extra/venue_settings')],
-        ['flyerDistributions', request('/api/extra/flyer_distributions')],
-        ['flyerDistributionAssignments', request('/api/extra/flyer_distribution_assignments')],
-        ['orgSettings', request('/api/extra/org_settings')],
-        ['snsSettings', request('/api/extra/sns_settings')],
-        ['connectionSettings', request('/api/extra/connection_settings')]
+async function loadExtraData(collectionNames = null) {
+    const allRequestSpecs = [
+        ['absences', '/api/extra/absences'],
+        ['eventResponses', '/api/extra/event_responses'],
+        ['dateAdjustments', '/api/extra/date_adjustments'],
+        ['dateAdjustmentResponses', '/api/extra/date_adjustment_responses'],
+        ['sheets', '/api/sheets'],
+        ['payments', '/api/extra/payments'],
+        ['castings', '/api/extra/castings'],
+        ['pieceInfos', '/api/extra/piece_infos'],
+        ['practiceInstructions', '/api/extra/practice_instructions'],
+        ['performanceDayInfos', '/api/extra/performance_day_infos'],
+        ['desiredPieces', '/api/extra/desired_pieces'],
+        ['promotions', '/api/extra/promotions'],
+        ['albums', '/api/extra/albums'],
+        ['partSettings', '/api/extra/part_settings'],
+        ['venueSettings', '/api/extra/venue_settings'],
+        ['flyerDistributions', '/api/extra/flyer_distributions'],
+        ['flyerDistributionAssignments', '/api/extra/flyer_distribution_assignments'],
+        ['orgSettings', '/api/extra/org_settings'],
+        ['snsSettings', '/api/extra/sns_settings'],
+        ['connectionSettings', '/api/extra/connection_settings']
     ];
-    const settled = await Promise.allSettled(requestSpecs.map(([, promise]) => promise));
+
+    const knownNames = new Set(
+        allRequestSpecs.map(([name]) => name)
+    );
+
+    const requestedNames = collectionNames == null
+        ? null
+        : [...new Set(collectionNames)];
+
+    if (
+        requestedNames !== null
+        && !Array.isArray(collectionNames)
+    ) {
+        throw new TypeError(
+            'loadExtraData collectionNames must be an array'
+        );
+    }
+
+    const unknownNames = requestedNames === null
+        ? []
+        : requestedNames.filter(
+            (name) => !knownNames.has(name)
+        );
+
+    if (unknownNames.length) {
+        throw new Error(
+            `Unknown extra data collections: ${unknownNames.join(', ')}`
+        );
+    }
+
+    const selectedSpecs = requestedNames === null
+        ? allRequestSpecs
+        : allRequestSpecs.filter(
+            ([name]) => requestedNames.includes(name)
+        );
+
+    const requestSpecs = selectedSpecs.map(
+        ([name, url]) => [name, request(url)]
+    );
+
+    const settled = await Promise.allSettled(
+        requestSpecs.map(([, promise]) => promise)
+    );
+
     const resultMap = new Map();
     const failed = [];
+
     settled.forEach((item, index) => {
         const key = requestSpecs[index][0];
+
         if (item.status === 'fulfilled') {
             resultMap.set(key, item.value);
         } else {
@@ -665,30 +710,46 @@ async function loadExtraData() {
     });
 
     if (failed.length) {
-        showAlert(`一部データの読込に失敗しました: ${failed.join(', ')}`, 'warning');
+        showAlert(
+            `一部データの読込に失敗しました: ${failed.join(', ')}`,
+            'warning'
+        );
     }
 
-    const absences = resultMap.get('absences') || appState.absences || [];
-    const eventResponses = resultMap.get('eventResponses') || appState.eventResponses || [];
-    const dateAdjustments = resultMap.get('dateAdjustments') || appState.dateAdjustments || [];
-    const dateAdjustmentResponses = resultMap.get('dateAdjustmentResponses') || appState.dateAdjustmentResponses || [];
-    const sheets = resultMap.get('sheets') || { files: appState.sheetLibrary || [] };
-    const payments = resultMap.get('payments') || appState.payments || [];
-    const castings = resultMap.get('castings') || appState.castings || [];
-    const pieceInfos = resultMap.get('pieceInfos') || appState.pieceInfos || [];
-    const practiceInstructions = resultMap.get('practiceInstructions') || appState.practiceInstructions || [];
-    const performanceDayInfos = resultMap.get('performanceDayInfos') || appState.performanceDayInfos || [];
-    const desiredPieces = resultMap.get('desiredPieces') || appState.desiredPieces || [];
-    const promotions = resultMap.get('promotions') || appState.promotions || [];
-    const albums = resultMap.get('albums') || appState.albums || [];
-    const partSettings = resultMap.get('partSettings') || appState.partSettings || [];
-    const venueSettings = resultMap.get('venueSettings') || appState.venueSettings || [];
-    const flyerDistributions = resultMap.get('flyerDistributions') || appState.flyerDistributions || [];
-    const flyerDistributionAssignments = resultMap.get('flyerDistributionAssignments') || appState.flyerDistributionAssignments || [];
-    const orgSettings = resultMap.get('orgSettings') || appState.orgSettings || [];
-    const snsSettings = resultMap.get('snsSettings') || appState.snsSettings || [];
-    const connectionSettings = resultMap.get('connectionSettings') || appState.connectionSettings || [];
-    Object.assign(appState, { absences, eventResponses, dateAdjustments, dateAdjustmentResponses, sheetLibrary: sheets.files || [], payments, castings, pieceInfos, practiceInstructions, performanceDayInfos, desiredPieces, promotions, albums, partSettings, venueSettings, flyerDistributions, flyerDistributionAssignments, orgSettings, snsSettings, connectionSettings });
+    const stateTargets = {
+        absences: 'absences',
+        eventResponses: 'eventResponses',
+        dateAdjustments: 'dateAdjustments',
+        dateAdjustmentResponses: 'dateAdjustmentResponses',
+        payments: 'payments',
+        castings: 'castings',
+        pieceInfos: 'pieceInfos',
+        practiceInstructions: 'practiceInstructions',
+        performanceDayInfos: 'performanceDayInfos',
+        desiredPieces: 'desiredPieces',
+        promotions: 'promotions',
+        albums: 'albums',
+        partSettings: 'partSettings',
+        venueSettings: 'venueSettings',
+        flyerDistributions: 'flyerDistributions',
+        flyerDistributionAssignments: 'flyerDistributionAssignments',
+        orgSettings: 'orgSettings',
+        snsSettings: 'snsSettings',
+        connectionSettings: 'connectionSettings'
+    };
+
+    resultMap.forEach((value, key) => {
+        if (key === 'sheets') {
+            appState.sheetLibrary = value?.files || [];
+            return;
+        }
+
+        const stateKey = stateTargets[key];
+        if (stateKey) {
+            appState[stateKey] = value || [];
+        }
+    });
+
     refreshPartSelectOptions();
     refreshVenueOptions();
     applyOrgSettings();
@@ -705,6 +766,7 @@ async function loadExtraData() {
     renderSnsManagement();
     renderConnectionSettingsManagement();
 }
+
 
 async function saveExtra(name, payload) {
     return request(`/api/extra/${name}`, jsonOptions('POST', payload));

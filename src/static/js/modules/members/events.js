@@ -75,7 +75,7 @@ function renderMemberEventView() {
         showAlert('イベントを作成しました', 'success');
         clearMemberEventCreateForm();
         setMemberEventFormVisible(false);
-        await loadEvents(); await loadExtraData();
+        await loadEvents(); await loadExtraData(['eventResponses']);
     }));
     renderMemberEventList();
 }
@@ -145,7 +145,7 @@ function renderMemberEventDetail(id) {
             await saveExtra('event_responses', payload);
             showAlert('イベント出欠を登録しました', 'success');
         }
-        await loadExtraData();
+        await loadExtraData(['eventResponses']);
         renderMemberEventDetail(id);
     }));
     const deleteBtn = $('memberEventDeleteBtn');

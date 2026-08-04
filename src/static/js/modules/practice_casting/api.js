@@ -29,7 +29,7 @@ async function savePracticeInstructionAdmin() {
         await saveExtra('practice_instructions', payload);
     }
     clearPracticeInstructionForm();
-    await loadExtraData();
+    await loadExtraData(['practiceInstructions']);
     showAlert('練習指示を保存しました', 'success');
 }
 
@@ -42,7 +42,7 @@ async function deletePracticeInstructionAdmin() {
     if (!confirmDelete()) return;
     await request(`/api/extra/practice_instructions/${encodeURIComponent(id)}`, { method: 'DELETE' });
     clearPracticeInstructionForm();
-    await loadExtraData();
+    await loadExtraData(['practiceInstructions']);
     showAlert('練習指示を削除しました', 'success');
 }
 
@@ -70,7 +70,7 @@ async function saveCasting() {
         } else {
             await request('/api/extra/castings', jsonOptions('POST', payload));
         }
-        await loadExtraData();
+        await loadExtraData(['castings']);
         renderCastingAdmin();
         showAlert('乗り番を保存しました', 'success');
         setOperationStatus('castingOperationStatus', null);
@@ -89,7 +89,7 @@ async function deleteCasting() {
     try {
         setOperationStatus('castingOperationStatus', '削除中...');
         await request(`/api/extra/castings/${appState.castingEditingId}`, jsonOptions('DELETE'));
-        await loadExtraData();
+        await loadExtraData(['castings']);
         renderCastingAdmin();
         clearCastingForm();
         showAlert('乗り番を削除しました', 'success');

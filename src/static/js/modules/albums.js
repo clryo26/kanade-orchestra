@@ -188,7 +188,7 @@ async function createAlbumEvent() {
 
     await saveExtra('albums', payload);
     $('albumEventName').value = '';
-    await loadExtraData();
+    await loadExtraData(['albums']);
     showAlert('アルバムイベントを作成しました', 'success');
 }
 
@@ -197,7 +197,7 @@ async function deleteAlbumEvent(albumId) {
     if (!confirmDelete()) return;
 
     await request(`/api/extra/albums/${encodeURIComponent(albumId)}`, { method: 'DELETE' });
-    await loadExtraData();
+    await loadExtraData(['albums']);
     showAlert('アルバムイベントを削除しました', 'success');
 }
 
@@ -230,7 +230,7 @@ async function uploadAlbumPhotos(albumId) {
     }
 
     fileInput.value = '';
-    await loadExtraData();
+    await loadExtraData(['albums']);
     showAlert(`${uploadedCount}件の写真をアップロードしました`, 'success');
 }
 
@@ -244,6 +244,6 @@ async function deleteAlbumPhoto(albumId, photoId) {
     await request(`/api/extra/albums/${encodeURIComponent(albumIdNum)}/photos/${encodeURIComponent(photoIdNum)}`, {
         method: 'DELETE'
     });
-    await loadExtraData();
+    await loadExtraData(['albums']);
     showAlert('写真を削除しました', 'success');
 }

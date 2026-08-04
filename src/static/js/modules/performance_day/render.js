@@ -16,9 +16,18 @@ function renderPerformanceDayInfoView() {
         <article class="info-block">
             <h5>${escapeHtml(item.performanceTitle)}</h5>
             <div class="small text-muted mb-2">${escapeHtml(formatDateWithWeekday(item.performanceDate || ''))}</div>
-            <div class="mb-3"><strong>当日タイムテーブル</strong>${timelineRowsHtml(normalizedPerformanceDayTimelineRows(item))}</div>
-            <div class="mb-3"><strong>本番衣装</strong>${costumeDetailHtml(normalizedCostumeDetail(item))}</div>
-            <div><strong>係り割</strong>${assignmentRowsHtml(normalizedPerformanceDayAssignments(item))}</div>
+            <div class="mb-3">
+                <strong>本番タイムテーブル</strong>
+                ${timelineRowsHtml(normalizedPerformanceDayTimelineRows(item))}
+            </div>
+            <div class="mb-3">
+                <strong>本番衣装</strong>
+                ${costumeDetailHtml(normalizedCostumeDetail(item))}
+            </div>
+            <div>
+                <strong>係り割</strong>
+                ${assignmentRowsHtml(normalizedPerformanceDayAssignments(item))}
+            </div>
         </article>
     `).join('');
 }
@@ -27,11 +36,16 @@ function renderPerformanceDayInfoAdmin() {
     const performanceSelect = $('performanceDayInfoPerformance');
     const list = $('performanceDayInfoList');
     if (!performanceSelect || !list) return;
+
     const current = performanceSelect.value;
-    performanceSelect.innerHTML = '<option value="">演奏会を選択</option>' + appState.performances.map((perf) => `<option value="${escapeHtml(String(perf.id || ''))}">${escapeHtml(perf.title || '')}</option>`).join('');
+    performanceSelect.innerHTML = '<option value="">演奏会を選択</option>' + appState.performances.map((perf) =>
+        `<option value="${escapeHtml(String(perf.id || ''))}">${escapeHtml(perf.title || '')}</option>`
+    ).join('');
     if ([...performanceSelect.options].some((option) => option.value === current)) performanceSelect.value = current;
+
     const rows = sortedPerformanceDayInfoRows();
-    list.innerHTML = rows.length ? `<div class="list-group">${rows.map((item) => `
+    list.innerHTML = rows.length
+        ? `<div class="list-group">${rows.map((item) => `
             <button class="list-group-item list-group-item-action text-start performance-day-info-select-btn" type="button" data-performance-day-info-id="${escapeHtml(String(item.id || ''))}">
                 <strong>${escapeHtml(item.performanceTitle)}</strong>
                 <div class="small text-muted">${escapeHtml(formatDateWithWeekday(item.performanceDate || ''))}</div>
@@ -39,7 +53,9 @@ function renderPerformanceDayInfoAdmin() {
                 <div class="small text-truncate">本番衣装: ${escapeHtml(costumeDetailToLegacyText(normalizedCostumeDetail(item)) || '未登録')}</div>
                 <div class="small text-truncate">係り割: ${escapeHtml(assignmentRowsToText(normalizedPerformanceDayAssignments(item)) || '未登録')}</div>
             </button>
-        `).join('')}</div>` : '<p class="text-muted mb-0">本番情報はまだ登録されていません</p>';
+        `).join('')}</div>`
+        : '<p class="text-muted mb-0">本番情報はまだ登録されていません</p>';
+
     list.querySelectorAll('.performance-day-info-select-btn').forEach((button) => {
         button.addEventListener('click', () => selectPerformanceDayInfo(button.dataset.performanceDayInfoId || ''));
     });

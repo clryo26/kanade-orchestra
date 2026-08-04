@@ -42,7 +42,6 @@
         '/static/js/modules/performance_day/helpers.js',
         '/static/js/modules/performance_day/render.js',
         '/static/js/modules/performance_day/events.js',
-        '/static/js/modules/performance_day.js',
         '/static/js/modules/practice_casting/helpers.js',
         '/static/js/modules/practice_casting/api.js',
         '/static/js/modules/practice_casting/render.js',

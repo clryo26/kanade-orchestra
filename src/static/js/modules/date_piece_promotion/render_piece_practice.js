@@ -63,7 +63,7 @@ function renderPieceInfoView() {
         if (existing?.id) await request(`/api/extra/piece_infos/${encodeURIComponent(existing.id)}`, jsonOptions('PUT', payload));
         else await saveExtra('piece_infos', payload);
         appState.pieceInfoEditing = false;
-        await loadExtraData();
+        await loadExtraData(['pieceInfos']);
         showAlert('楽曲情報を保存しました', 'success');
         renderPieceInfoView();
     }));
@@ -72,7 +72,7 @@ function renderPieceInfoView() {
         if (!confirmDelete()) return;
         await request(`/api/extra/piece_infos/${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
         appState.pieceInfoEditing = false;
-        await loadExtraData();
+        await loadExtraData(['pieceInfos']);
         showAlert('楽曲情報を削除しました', 'success');
         renderPieceInfoView();
     }));
@@ -135,7 +135,7 @@ function renderPracticeInstructionView() {
         if (existing?.id) await request(`/api/extra/practice_instructions/${encodeURIComponent(existing.id)}`, jsonOptions('PUT', payload));
         else await saveExtra('practice_instructions', payload);
         appState.practiceInstructionEditing = false;
-        await loadExtraData();
+        await loadExtraData(['practiceInstructions']);
         showAlert('練習指示を保存しました', 'success');
         renderPracticeInstructionView();
     }));
@@ -144,7 +144,7 @@ function renderPracticeInstructionView() {
         if (!confirmDelete()) return;
         await request(`/api/extra/practice_instructions/${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
         appState.practiceInstructionEditing = false;
-        await loadExtraData();
+        await loadExtraData(['practiceInstructions']);
         showAlert('練習指示を削除しました', 'success');
         renderPracticeInstructionView();
     }));

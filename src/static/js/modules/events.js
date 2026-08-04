@@ -60,7 +60,7 @@ async function deleteEventById(id, adminDelete = false) {
     await request(`/api/events/${id}`, { method: 'DELETE' });
     clearEventForm();
     await loadEvents();
-    await loadExtraData();
+    await loadExtraData(['eventResponses']);
     showAlert('イベント調整を削除しました', 'success');
 }
 
@@ -122,4 +122,3 @@ function renderEvents() {
     });
     if (!appState.suppressDerivedRender) renderMemberEventView();
 }
-
