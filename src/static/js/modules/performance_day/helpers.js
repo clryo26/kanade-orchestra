@@ -26,7 +26,9 @@ function inferDurationFromTimelineContent(content, performance) {
         const duration = String(piece?.duration || '').trim();
         if (!duration) continue;
         const labels = performancePieceLookupLabels(piece);
-        if (labels.some((label) => label && normalizedContent.includes(label))) return duration;
+        if (labels.some((label) => label && normalizedContent.includes(label))) {
+            return duration;
+        }
     }
     return '';
 }
@@ -38,6 +40,7 @@ function parseTimelineTextRows(text, performance) {
         let endTime = '';
         let durationMinutes = '';
         let content = line;
+
         let matched = line.match(/^(\d{1,2}:\d{2})\s*[\-~〜]\s*(\d{1,2}:\d{2})\s+(.+)$/);
         if (matched) {
             startTime = normalizeClockText(matched[1]);
@@ -67,6 +70,7 @@ function parseTimelineTextRows(text, performance) {
                 }
             }
         }
+
         return {
             sort_order: index + 1,
             start_time: startTime,
@@ -78,7 +82,7 @@ function parseTimelineTextRows(text, performance) {
             reception: '',
             setting: '',
             note: '',
-            source_line: line,
+            source_line: line
         };
     }).filter((row) => row.content || row.start_time);
 }
@@ -88,17 +92,20 @@ function normalizedPerformanceDayTimelineRows(item) {
     if (timelineRows.length) {
         return timelineRows.map((row, index) => ({
             sort_order: Number(row?.sort_order || index + 1),
-            start_time: normalizeClockText(row?.start_time || row?.start || ''),
+            start_time: performanceDayTimelineStartValue(row),
             end_time: normalizeClockText(row?.end_time || row?.end || ''),
             duration_minutes: String(row?.duration_minutes || row?.duration || '').trim(),
+            kind: String(row?.kind || row?.type || '').trim(),
+            part: String(row?.part || row?.section || '').trim(),
             section: String(row?.section || row?.category || '').trim(),
-            content: String(row?.content || row?.title || '').trim(),
+            label: String(row?.label || row?.content || row?.title || '').trim(),
+            content: String(row?.content || row?.label || row?.title || '').trim(),
             mc: String(row?.mc || '').trim(),
             reception: String(row?.reception || row?.desk || '').trim(),
             setting: String(row?.setting || '').trim(),
             note: String(row?.note || '').trim(),
-            source_line: String(row?.source_line || '').trim(),
-        })).filter((row) => row.content || row.start_time || row.section);
+            source_line: String(row?.source_line || '').trim()
+        })).filter((row) => row.content || row.label || row.start_time || row.section || row.part);
     }
     const performance = appState.performances.find((perf) => String(perf.id || '') === String(item?.performance_id || ''));
     return parseTimelineTextRows(item?.timeline || item?.timetable || '', performance);
@@ -108,40 +115,59 @@ function timelineRowsToLegacyText(rows) {
     return (rows || []).map((row) => {
         const start = normalizeClockText(row?.start_time || '');
         const end = normalizeClockText(row?.end_time || '');
-        const content = String(row?.content || '').trim();
-        if (start && end && content) return `${start}-${end} ${content}`;
-        if (start && content) return `${start} ${content}`;
-        if (content) return content;
+        const kind = String(row?.kind || '').trim();
+        const label = String(row?.label || row?.content || row?.section || '').trim();
+        if (!kind && String(row?.source_line || '').trim()) return String(row?.source_line || '').trim();
+        if (kind === 'part_rehearsal' && label) return `${label}: ${normalizePartRehearsalMinutes(row?.start_time || '')}`;
+        if (start && end && label) return `${label}: ${start}-${end}`;
+        if (start && label) return `${label}: ${start}`;
+        if (label) return label;
         return String(row?.source_line || '').trim();
     }).filter(Boolean).join('\n');
 }
 
 function parseAssignmentTextRows(text) {
-    return String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-        const parts = line.split(/[:：]/, 2);
-        if (parts.length === 2) return { role: String(parts[0] || '').trim(), members: String(parts[1] || '').trim() };
-        return { role: '', members: line };
-    });
+    return String(text || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            const parts = line.split(/[:：]/, 2);
+            if (parts.length === 2) {
+                return { role: String(parts[0] || '').trim(), members: String(parts[1] || '').trim() };
+            }
+            return { role: '', members: line };
+        });
 }
 
 function normalizedPerformanceDayAssignments(item) {
     const rows = Array.isArray(item?.assignments_rows) ? item.assignments_rows : [];
     if (rows.length) {
-        return rows.map((row) => ({ role: String(row?.role || row?.duty || '').trim(), members: String(row?.members || row?.name || '').trim() })).filter((row) => row.role || row.members);
+        return rows.map((row) => ({
+            role: String(row?.role || row?.duty || '').trim(),
+            members: String(row?.members || row?.name || '').trim()
+        })).filter((row) => row.role || row.members);
     }
     return parseAssignmentTextRows(item?.assignments || item?.duties || '');
 }
 
 function assignmentRowsToText(rows) {
-    return (rows || []).filter((row) => String(row?.role || '').trim() || String(row?.members || '').trim()).map((row) => {
-        const role = String(row?.role || '').trim();
-        const members = String(row?.members || '').trim();
-        return role ? `${role}: ${members}`.trim() : members;
-    }).filter(Boolean).join('\n');
+    return (rows || [])
+        .filter((row) => String(row?.role || '').trim() || String(row?.members || '').trim())
+        .map((row) => {
+            const role = String(row?.role || '').trim();
+            const members = String(row?.members || '').trim();
+            return role ? `${role}: ${members}`.trim() : members;
+        })
+        .filter(Boolean)
+        .join('\n');
 }
 
 function emptyCostumeDetail() {
-    return { male: { upper: '', lower: '', other: '' }, female: { upper: '', lower: '', other: '' } };
+    return {
+        male: { upper: '', lower: '', other: '' },
+        female: { upper: '', lower: '', other: '' }
+    };
 }
 
 function normalizedCostumeDetail(item) {
@@ -150,19 +176,23 @@ function normalizedCostumeDetail(item) {
         male: {
             upper: String(detail?.male?.upper || detail?.male?.top || detail?.male_upper || '').trim(),
             lower: String(detail?.male?.lower || detail?.male?.bottom || detail?.male_lower || '').trim(),
-            other: String(detail?.male?.other || detail?.male_other || '').trim(),
+            other: String(detail?.male?.other || detail?.male_other || '').trim()
         },
         female: {
             upper: String(detail?.female?.upper || detail?.female?.top || detail?.female_upper || '').trim(),
             lower: String(detail?.female?.lower || detail?.female?.bottom || detail?.female_lower || '').trim(),
-            other: String(detail?.female?.other || detail?.female_other || '').trim(),
-        },
+            other: String(detail?.female?.other || detail?.female_other || '').trim()
+        }
     };
     const hasStructured = Object.values(normalized.male).some(Boolean) || Object.values(normalized.female).some(Boolean);
     if (hasStructured) return normalized;
+
     const legacy = String(item?.costume || '').trim();
     if (!legacy) return emptyCostumeDetail();
-    return { male: { upper: '', lower: '', other: legacy }, female: { upper: '', lower: '', other: legacy } };
+    return {
+        male: { upper: '', lower: '', other: legacy },
+        female: { upper: '', lower: '', other: legacy }
+    };
 }
 
 function costumeDetailFromForm() {
@@ -170,13 +200,13 @@ function costumeDetailFromForm() {
         male: {
             upper: String($('performanceDayCostumeMaleUpper')?.value || '').trim(),
             lower: String($('performanceDayCostumeMaleLower')?.value || '').trim(),
-            other: String($('performanceDayCostumeMaleOther')?.value || '').trim(),
+            other: String($('performanceDayCostumeMaleOther')?.value || '').trim()
         },
         female: {
             upper: String($('performanceDayCostumeFemaleUpper')?.value || '').trim(),
             lower: String($('performanceDayCostumeFemaleLower')?.value || '').trim(),
-            other: String($('performanceDayCostumeFemaleOther')?.value || '').trim(),
-        },
+            other: String($('performanceDayCostumeFemaleOther')?.value || '').trim()
+        }
     };
 }
 
@@ -186,8 +216,16 @@ function hasCostumeDetail(detail) {
 
 function costumeDetailToLegacyText(detail) {
     const formatOne = (label, value) => (value ? `${label}: ${value}` : '');
-    const male = [formatOne('上', detail?.male?.upper), formatOne('下', detail?.male?.lower), formatOne('その他', detail?.male?.other)].filter(Boolean).join(' / ');
-    const female = [formatOne('上', detail?.female?.upper), formatOne('下', detail?.female?.lower), formatOne('その他', detail?.female?.other)].filter(Boolean).join(' / ');
+    const male = [
+        formatOne('上', detail?.male?.upper),
+        formatOne('下', detail?.male?.lower),
+        formatOne('その他', detail?.male?.other)
+    ].filter(Boolean).join(' / ');
+    const female = [
+        formatOne('上', detail?.female?.upper),
+        formatOne('下', detail?.female?.lower),
+        formatOne('その他', detail?.female?.other)
+    ].filter(Boolean).join(' / ');
     return [male ? `男性(${male})` : '', female ? `女性(${female})` : ''].filter(Boolean).join('\n');
 }
 
@@ -201,8 +239,18 @@ function costumeDetailHtml(detail) {
                     <tr><th style="width: 90px;">区分</th><th>上</th><th>下</th><th>その他</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td>男性</td><td>${escapeHtml(detail?.male?.upper || '')}</td><td>${escapeHtml(detail?.male?.lower || '')}</td><td>${escapeHtml(detail?.male?.other || '')}</td></tr>
-                    <tr><td>女性</td><td>${escapeHtml(detail?.female?.upper || '')}</td><td>${escapeHtml(detail?.female?.lower || '')}</td><td>${escapeHtml(detail?.female?.other || '')}</td></tr>
+                    <tr>
+                        <td>男性</td>
+                        <td>${escapeHtml(detail?.male?.upper || '')}</td>
+                        <td>${escapeHtml(detail?.male?.lower || '')}</td>
+                        <td>${escapeHtml(detail?.male?.other || '')}</td>
+                    </tr>
+                    <tr>
+                        <td>女性</td>
+                        <td>${escapeHtml(detail?.female?.upper || '')}</td>
+                        <td>${escapeHtml(detail?.female?.lower || '')}</td>
+                        <td>${escapeHtml(detail?.female?.other || '')}</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -264,5 +312,112 @@ function assignmentRowsHtml(rows) {
 
 function timelineRowsHtml(rows) {
     if (!rows.length) return '<div class="small text-muted mt-1">未登録</div>';
-    return `<div class="table-responsive mt-1"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th style="width:20%;">時間</th><th>内容</th><th style="width:16%;">所要(分)</th></tr></thead><tbody>${rows.map((row) => { const start = normalizeClockText(row?.start_time || ''); const end = normalizeClockText(row?.end_time || ''); const timeText = start && end ? `${start}-${end}` : (start || end || ''); return `<tr><td>${escapeHtml(timeText)}</td><td>${escapeHtml(String(row?.content || '').trim())}</td><td>${escapeHtml(String(row?.duration_minutes || '').trim())}</td></tr>`; }).join('')}</tbody></table></div>`;
+    return `
+        <div class="table-responsive mt-1">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light"><tr><th style="width:35%;">項目</th><th style="width:25%;">時刻</th><th>備考</th></tr></thead>
+                <tbody>
+                    ${rows.map((row) => {
+        const start = normalizeClockText(row?.start_time || '');
+        const end = normalizeClockText(row?.end_time || '');
+        const timeText = start && end ? `${start}-${end}` : (start || end || '');
+        const label = String(row?.label || row?.content || row?.section || '').trim();
+        const note = String(row?.note || '').trim();
+        return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(timeText)}</td><td>${escapeHtml(note)}</td></tr>`;
+    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function performanceDayPartNames(performance) {
+    const seen = new Set();
+    return normalizePerformancePieces(performance?.pieces || [])
+        .map((piece) => String(piece?.part || '').trim())
+        .filter((part) => part && !seen.has(part) && seen.add(part));
+}
+
+function normalizePartRehearsalMinutes(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{1,3}$/.test(text)) return '';
+    return text.padStart(3, '0');
+}
+
+function performanceDayTimelineStartValue(row) {
+    const kind = String(row?.kind || row?.type || '').trim();
+    const rawStart = row?.start_time || row?.start || '';
+    // Part rehearsal rows store minutes, not clock text.
+    if (kind === 'part_rehearsal') return normalizePartRehearsalMinutes(rawStart);
+    return normalizeClockText(rawStart);
+}
+
+function performanceDayTimelineLabel(row) {
+    const kind = String(row?.kind || row?.type || '').trim();
+    const part = String(row?.part || row?.section || '').trim();
+    const label = String(row?.label || row?.content || row?.title || '').trim();
+    if (label) return label;
+    if (kind === 'open_time') return '開場時間';
+    if (kind === 'rehearsal_start_time') return 'リハーサル開始時刻';
+    if (kind === 'performance_start_time') return '開演時間';
+    if (kind === 'part_rehearsal' && part) return `${part}のリハ時間`;
+    return part;
+}
+
+function performanceDayTimelineRowEntries(performance, timelineRows = []) {
+    const existing = new Map();
+    (Array.isArray(timelineRows) ? timelineRows : []).forEach((row) => {
+        const kind = String(row?.kind || row?.type || '').trim();
+        const part = String(row?.part || row?.section || '').trim();
+        const label = performanceDayTimelineLabel(row);
+        const key = kind === 'part_rehearsal' && part ? `part:${part}` : kind || label;
+        if (key) existing.set(key, performanceDayTimelineStartValue(row));
+    });
+    return [
+        { key: 'open_time', kind: 'open_time', label: '開場時間', section: '基本' },
+        { key: 'rehearsal_start_time', kind: 'rehearsal_start_time', label: 'リハーサル開始時刻', section: '基本' },
+        ...performanceDayPartNames(performance).map((part) => ({ key: `part:${part}`, kind: 'part_rehearsal', part, label: `${part}のリハ時間`, section: part })),
+        { key: 'performance_start_time', kind: 'performance_start_time', label: '開演時間', section: '基本' },
+    ].map((row) => ({ ...row, start_time: existing.get(row.key) || '' }));
+}
+
+function renderPerformanceDayPartRehearsalRows(performance, timelineRows = []) {
+    const container = $('performanceDayPartRehearsalRows');
+    if (!container) return;
+    const targetPerformance = performance || appState.performances.find((perf) => String(perf.id || '') === String($('performanceDayInfoPerformance')?.value || '')) || null;
+    const rows = performanceDayTimelineRowEntries(targetPerformance, timelineRows);
+    const partRows = rows.filter((row) => row.kind === 'part_rehearsal');
+    if (!partRows.length) {
+        container.innerHTML = '<div class="col-12"><div class="small text-muted">この演奏会には部が登録されていません</div></div>';
+        return;
+    }
+    container.innerHTML = partRows.map((row) => `
+        <div class="col-md-6 col-lg-4">
+            <label class="form-label" for="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}">${escapeHtml(row.label || '')}</label>
+            <input type="text" inputmode="numeric" pattern="\\d{1,3}" maxlength="3" class="form-control performance-day-part-rehearsal-time" id="performanceDayPartTime_${escapeHtml(cssSafeId(row.part || 'part'))}" data-performance-day-part="${escapeHtml(row.part || '')}" value="${escapeHtml(normalizePartRehearsalMinutes(row.start_time || ''))}" placeholder="000">
+        </div>
+    `).join('');
+    container.querySelectorAll('.performance-day-part-rehearsal-time').forEach((input) => {
+        input.addEventListener('blur', () => {
+            input.value = normalizePartRehearsalMinutes(input.value || '');
+        });
+    });
+}
+
+function collectPerformanceDayPartRehearsalRows() {
+    const container = $('performanceDayPartRehearsalRows');
+    if (!container) return [];
+    return [...container.querySelectorAll('.performance-day-part-rehearsal-time')].map((input) => {
+        const part = String(input.dataset.performanceDayPart || '').trim();
+        return {
+            kind: 'part_rehearsal',
+            part,
+            section: part,
+            label: `${part}のリハ時間`,
+            content: `${part}のリハ時間`,
+            start_time: normalizePartRehearsalMinutes(input.value || ''),
+            end_time: '',
+            duration_minutes: '',
+        };
+    }).filter((row) => row.part);
 }

@@ -116,8 +116,7 @@ async function saveOrgMembershipFee() {
     } else {
         await saveExtra('org_settings', payload);
     }
-    await loadExtraData();
+    await loadExtraData(['orgSettings']);
     showAlert('団費を保存しました', 'success');
     renderPaymentAdmin();
 }
-

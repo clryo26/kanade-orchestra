@@ -1,0 +1,217 @@
+﻿const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const ROOT = path.resolve(__dirname, '../..');
+const BOOTSTRAP_SOURCE = fs.readFileSync(
+    path.join(ROOT, 'src/static/js/modules/bootstrap_loader.js'),
+    'utf8'
+);
+
+function createBootstrapSandbox() {
+    const appState = {
+        absences: [],
+        eventResponses: [],
+        dateAdjustments: [],
+        dateAdjustmentResponses: [],
+        sheetLibrary: [],
+        payments: [],
+        castings: [],
+        pieceInfos: [],
+        practiceInstructions: [],
+        performanceDayInfos: [],
+        desiredPieces: [],
+        promotions: [],
+        albums: [],
+        partSettings: [],
+        venueSettings: [],
+        flyerDistributions: [],
+        flyerDistributionAssignments: [],
+        orgSettings: [],
+        snsSettings: [],
+        connectionSettings: [],
+    };
+
+    const request = vi.fn(async (url) => {
+        if (url === '/api/sheets') return { files: [] };
+        return [{ sourceUrl: url }];
+    });
+
+    const sandbox = {
+        window: null,
+        globalThis: null,
+        document: {
+            addEventListener: vi.fn(),
+        },
+        console: {
+            warn: vi.fn(),
+            error: vi.fn(),
+            log: vi.fn(),
+        },
+        request,
+        requestJson: vi.fn(),
+        showAlert: vi.fn(),
+        setLoadingBar: vi.fn(),
+        clearLoadingBar: vi.fn(),
+
+        refreshPartSelectOptions: vi.fn(),
+        refreshVenueOptions: vi.fn(),
+        applyOrgSettings: vi.fn(),
+        renderMemberExtraViews: vi.fn(),
+        renderSheetAdmin: vi.fn(),
+        renderPaymentAdmin: vi.fn(),
+        renderPartManagement: vi.fn(),
+        renderVenueManagement: vi.fn(),
+        renderFlyerDistributionManagement: vi.fn(),
+        renderCastingAdmin: vi.fn(),
+        renderPracticeInstructionAdmin: vi.fn(),
+        renderPerformanceDayInfoAdmin: vi.fn(),
+        renderOrgManagement: vi.fn(),
+        renderSnsManagement: vi.fn(),
+        renderConnectionSettingsManagement: vi.fn(),
+    };
+
+    sandbox.window = sandbox;
+    sandbox.globalThis = sandbox;
+    sandbox.portalRuntimeContext = {
+        appState,
+        getById: vi.fn(() => null),
+        dbCache: {
+            getEntry: vi.fn(),
+            delete: vi.fn(),
+        },
+    };
+
+    vm.runInNewContext(BOOTSTRAP_SOURCE, sandbox);
+
+    return { sandbox, appState, request };
+}
+
+describe('performance-day module regression', () => {
+    test('runtime loads split modules without the legacy implementation file', () => {
+        const indexHtml = fs.readFileSync(
+            path.join(ROOT, 'src/index.html'),
+            'utf8'
+        );
+        const appJs = fs.readFileSync(
+            path.join(ROOT, 'src/static/js/app.js'),
+            'utf8'
+        );
+
+        expect(indexHtml).toContain(
+            '/static/js/modules/performance_day/helpers.js'
+        );
+        expect(indexHtml).toContain(
+            '/static/js/modules/performance_day/render.js'
+        );
+        expect(indexHtml).toContain(
+            '/static/js/modules/performance_day/events.js'
+        );
+        expect(indexHtml).not.toMatch(
+            /\/static\/js\/modules\/performance_day\.js(?:\?|["'])/
+        );
+
+        expect(appJs).toContain(
+            '/static/js/modules/performance_day/helpers.js'
+        );
+        expect(appJs).toContain(
+            '/static/js/modules/performance_day/render.js'
+        );
+        expect(appJs).toContain(
+            '/static/js/modules/performance_day/events.js'
+        );
+        expect(appJs).not.toContain(
+            "'/static/js/modules/performance_day.js'"
+        );
+    });
+
+    test('split event module uses the currently rendered time and part rehearsal fields', () => {
+        const eventsSource = fs.readFileSync(
+            path.join(
+                ROOT,
+                'src/static/js/modules/performance_day/events.js'
+            ),
+            'utf8'
+        );
+
+        expect(eventsSource).toContain('performanceDayOpenTime');
+        expect(eventsSource).toContain(
+            'performanceDayRehearsalStartTime'
+        );
+        expect(eventsSource).toContain('performanceDayStartTime');
+        expect(eventsSource).toContain(
+            'collectPerformanceDayPartRehearsalRows'
+        );
+        expect(eventsSource).not.toContain('performanceDayTimeline');
+    });
+});
+
+
+describe('mutation reload call sites', () => {
+    test('runtime mutation modules use targeted extra-data reloads', () => {
+        const runtimeFiles = [
+            'src/static/js/modules/absences.js',
+            'src/static/js/modules/admin_system/api.js',
+            'src/static/js/modules/admin_system.js',
+            'src/static/js/modules/albums.js',
+            'src/static/js/modules/date_piece_promotion/api.js',
+            'src/static/js/modules/date_piece_promotion/events.js',
+            'src/static/js/modules/date_piece_promotion/render_piece_practice.js',
+            'src/static/js/modules/events.js',
+            'src/static/js/modules/members/events.js',
+            'src/static/js/modules/members.js',
+            'src/static/js/modules/payments.js',
+            'src/static/js/modules/performance_day/events.js',
+            'src/static/js/modules/portal_views.js',
+            'src/static/js/modules/practice_casting/api.js',
+            'src/static/js/modules/sns.js',
+        ];
+
+        const emptyCalls = [];
+
+        for (const relativePath of runtimeFiles) {
+            const source = fs.readFileSync(
+                path.join(ROOT, relativePath),
+                'utf8'
+            );
+
+            if (/\bloadExtraData\s*\(\s*\)/.test(source)) {
+                emptyCalls.push(relativePath);
+            }
+        }
+
+        expect(emptyCalls).toEqual([]);
+    });
+});
+
+describe('targeted extra-data reload', () => {
+    test('requested collection reload sends only its own GET request', async () => {
+        const { sandbox, appState, request } =
+            createBootstrapSandbox();
+
+        await sandbox.loadExtraData(['desiredPieces']);
+
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledWith(
+            '/api/extra/desired_pieces'
+        );
+        expect(appState.desiredPieces).toEqual([
+            { sourceUrl: '/api/extra/desired_pieces' },
+        ]);
+    });
+
+    test('omitting collection names preserves the full reload behavior', async () => {
+        const { sandbox, request } = createBootstrapSandbox();
+
+        await sandbox.loadExtraData();
+
+        expect(request).toHaveBeenCalledTimes(20);
+        expect(request).toHaveBeenCalledWith(
+            '/api/extra/absences'
+        );
+        expect(request).toHaveBeenCalledWith('/api/sheets');
+        expect(request).toHaveBeenCalledWith(
+            '/api/extra/connection_settings'
+        );
+    });
+});

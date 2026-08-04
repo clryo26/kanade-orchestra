@@ -16,7 +16,7 @@ async function ensurePartSettingsMigrated() {
     for (const [index, name] of names.entries()) {
         await saveExtra('part_settings', { name, display_order: index + 1 });
     }
-    await loadExtraData();
+    await loadExtraData(['partSettings']);
 }
 
 // Part settings render/API moved to

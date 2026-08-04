@@ -17,7 +17,7 @@ function bindDateAdjustmentCreateEvents() {
         }
 
         await saveExtra('date_adjustments', built.payload);
-        await loadExtraData();
+        await loadExtraData(['dateAdjustments']);
         showAlert('日程調整を作成しました', 'success');
     }));
 }
@@ -107,7 +107,7 @@ function bindDateAdjustmentDetailEvents(options) {
             }
         }
 
-        await loadExtraData();
+        await loadExtraData(['dateAdjustmentResponses']);
         renderDateAdjustmentDetail(adjustment.id);
         showAlert('回答を保存しました', 'success');
     }));
@@ -129,7 +129,7 @@ function bindDateAdjustmentDetailEvents(options) {
         const relatedResponses = appState.dateAdjustmentResponses.filter((item) => String(item.adjustment_id || '') === String(adjustment.id || ''));
         await Promise.all(relatedResponses.filter((item) => item.id).map((item) => request(`/api/extra/date_adjustment_responses/${encodeURIComponent(item.id)}`, { method: 'DELETE' })));
         await request(`/api/extra/date_adjustments/${encodeURIComponent(adjustment.id)}`, { method: 'DELETE' });
-        await loadExtraData();
+        await loadExtraData(['dateAdjustments', 'dateAdjustmentResponses']);
         renderDateAdjustmentView();
         showAlert('日程調整を削除しました', 'success');
     }));

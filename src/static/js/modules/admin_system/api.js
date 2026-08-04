@@ -35,7 +35,7 @@ async function movePartSetting(partId, direction) {
             display_order: current.display_order || index + 1
         }))
     ]);
-    await loadExtraData();
+    await loadExtraData(['partSettings']);
 }
 
 async function savePartSetting() {
@@ -61,7 +61,7 @@ async function savePartSetting() {
         await saveExtra('part_settings', payload);
     }
     clearPartSettingForm();
-    await loadExtraData();
+    await loadExtraData(['partSettings']);
     showAlert('パートを保存しました', 'success');
 }
 
@@ -69,7 +69,7 @@ async function deletePartSetting(partId) {
     if (!partId || !confirmDelete()) return;
     await request(`/api/extra/part_settings/${encodeURIComponent(partId)}`, { method: 'DELETE' });
     clearPartSettingForm();
-    await loadExtraData();
+    await loadExtraData(['partSettings']);
     showAlert('パートを削除しました', 'success');
 }
 
@@ -95,7 +95,7 @@ async function saveVenueSetting(kind = 'practice') {
     if (id) await request(`/api/extra/venue_settings/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
     else await saveExtra('venue_settings', payload);
     clearVenueSettingForm(kind);
-    await loadExtraData();
+    await loadExtraData(['venueSettings']);
     showAlert('会場を保存しました', 'success');
 }
 
@@ -103,7 +103,7 @@ async function deleteVenueSetting(venueId) {
     if (!venueId || !confirmDelete()) return;
     await request(`/api/extra/venue_settings/${encodeURIComponent(venueId)}`, { method: 'DELETE' });
     clearVenueSettingForm();
-    await loadExtraData();
+    await loadExtraData(['venueSettings']);
     showAlert('会場を削除しました', 'success');
 }
 
@@ -133,7 +133,7 @@ async function saveFlyerDistributionSetting() {
     if (id) await request(`/api/extra/flyer_distributions/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
     else await saveExtra('flyer_distributions', payload);
     clearFlyerDistributionForm();
-    await loadExtraData();
+    await loadExtraData(['flyerDistributions']);
     renderFlyerDistributionManagement();
     showAlert('チラシ配布先を保存しました', 'success');
 }
@@ -142,7 +142,7 @@ async function deleteFlyerDistributionSetting(itemId) {
     if (!itemId || !confirmDelete()) return;
     await request(`/api/extra/flyer_distributions/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
     clearFlyerDistributionForm();
-    await loadExtraData();
+    await loadExtraData(['flyerDistributions']);
     renderFlyerDistributionManagement();
     showAlert('チラシ配布先を削除しました', 'success');
 }
@@ -179,7 +179,7 @@ async function saveOrgSetting() {
     } else {
         await saveExtra('org_settings', payload);
     }
-    await loadExtraData();
+    await loadExtraData(['orgSettings']);
     showAlert('団体情報を保存しました', 'success');
 }
 
@@ -205,6 +205,6 @@ async function saveConnectionSetting() {
     } else {
         await saveExtra('connection_settings', payload);
     }
-    await loadExtraData();
+    await loadExtraData(['connectionSettings']);
     showAlert('接続先情報を保存しました', 'success');
 }

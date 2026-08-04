@@ -40,7 +40,7 @@ async function saveSnsSetting() {
     } else {
         await saveExtra('sns_settings', payload);
     }
-    await loadExtraData();
+    await loadExtraData(['snsSettings']);
     showAlert('SNS情報を保存しました', 'success');
 }
 
@@ -63,4 +63,3 @@ function renderSnsView() {
         </div>
     `;
 }
-

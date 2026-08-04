@@ -666,9 +666,8 @@ async function savePaymentStatus() {
     const saved = id
         ? await request(`/api/extra/payments/${encodeURIComponent(id)}`, jsonOptions('PUT', payload))
         : await saveExtra('payments', payload);
-    await loadExtraData();
+    await loadExtraData(['payments']);
     renderPaymentView();
     fillPaymentForm(saved, memberId);
     showAlert('支払状況を保存しました', 'success');
 }
-

@@ -292,7 +292,7 @@ async function saveFlyerDistributionAssignment(button) {
     } else {
         await saveExtra('flyer_distribution_assignments', payload);
     }
-    await loadExtraData();
+    await loadExtraData(['flyerDistributionAssignments']);
     renderFlyerDistributionView();
     showAlert('チラシ配布情報を保存しました', 'success');
 }
@@ -304,7 +304,7 @@ async function deleteFlyerDistributionAssignment(button) {
     if (!assignmentId) return;
     if (!confirmDelete()) return;
     await request(`/api/extra/flyer_distribution_assignments/${encodeURIComponent(assignmentId)}`, { method: 'DELETE' });
-    await loadExtraData();
+    await loadExtraData(['flyerDistributionAssignments']);
     renderFlyerDistributionView();
     showAlert('チラシ配布情報を削除しました', 'success');
 }

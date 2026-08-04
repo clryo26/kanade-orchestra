@@ -52,7 +52,7 @@ async function saveDesiredPiece() {
     if (id) await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
     else await saveExtra('desired_pieces', payload);
     clearDesiredPieceForm();
-    await loadExtraData();
+    await loadExtraData(['desiredPieces']);
     showAlert('演奏希望曲を保存しました', 'success');
 }
 
@@ -66,14 +66,14 @@ async function toggleDesiredPieceVote(id) {
         votes.push({ member_id: appState.currentUserMemberId || '', name });
     }
     await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', { ...item, votes }));
-    await loadExtraData();
+    await loadExtraData(['desiredPieces']);
 }
 
 async function deleteDesiredPiece(id) {
     if (!id || !confirmDelete()) return;
     await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, { method: 'DELETE' });
     clearDesiredPieceForm();
-    await loadExtraData();
+    await loadExtraData(['desiredPieces']);
     showAlert('演奏希望曲を削除しました', 'success');
 }
 
@@ -104,7 +104,7 @@ async function savePromotion() {
     if (id) await request(`/api/extra/promotions/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
     else await saveExtra('promotions', payload);
     clearPromotionForm();
-    await loadExtraData();
+    await loadExtraData(['promotions']);
     showAlert('宣伝を保存しました', 'success');
 }
 
@@ -112,6 +112,6 @@ async function deletePromotion(id) {
     if (!id || !confirmDelete()) return;
     await request(`/api/extra/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' });
     clearPromotionForm();
-    await loadExtraData();
+    await loadExtraData(['promotions']);
     showAlert('宣伝を削除しました', 'success');
 }
