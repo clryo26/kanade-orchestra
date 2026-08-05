@@ -7,7 +7,7 @@ var $ = window.portalRuntimeContext.getById;
 function renderPerformanceDayInfoView() {
     const container = $('memberPerformanceDayInfo');
     if (!container) return;
-    const rows = sortedPerformanceDayInfoRows();
+    const rows = sortedPerformanceDayInfoRows().filter((item) => isUpcomingPerformanceDate(item.performanceDate));
     if (!rows.length) {
         container.innerHTML = '<p class="text-muted mb-0">本番情報はまだ登録されていません</p>';
         return;

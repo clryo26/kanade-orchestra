@@ -374,6 +374,31 @@ body {
     padding-left: 0.15rem;
 }
 
+.casting-details > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+    font-weight: 700;
+    color: var(--brand-dark);
+}
+.casting-details > summary::-webkit-details-marker { display: none; }
+.casting-details > summary::before {
+    content: "▼";
+    font-size: 0.75rem;
+    margin-right: 0.25rem;
+}
+.casting-details:not([open]) > summary::before { content: "▶"; }
+.casting-details-date {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: #667085;
+}
+
+
 .schedule-performance-group {
     border-bottom: 1px solid var(--line);
     margin-bottom: 1rem;

@@ -413,6 +413,20 @@ def test_bootstrap_reads_from_db_mode_for_members_and_extras(client, backend_env
         "org_settings": [{"id": 1, "name": "Kanade"}],
         "sns_settings": [],
         "connection_settings": [],
+        # 管理者デバイスを追加: payments全件を確認するため管理者権限が必要
+        "auth_devices": [
+            {
+                "id": 1,
+                "device_id": "db-mode-admin-dev",
+                "member_id": 10,
+                "member_name": "Db Member",
+                "permission": "管理者",
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "authenticated_at": "2026-06-29T00:00:00",
+                "last_seen_at": "2026-06-29T00:00:00",
+            }
+        ],
     }
 
     monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
@@ -420,7 +434,7 @@ def test_bootstrap_reads_from_db_mode_for_members_and_extras(client, backend_env
     monkeypatch.setattr(backend_env, "storage_enabled", lambda: False)
     backend_env._memory_cache.clear()
 
-    response = client.get("/api/bootstrap-lite")
+    response = client.get("/api/bootstrap-lite", headers={"X-Device-Id": "db-mode-admin-dev"})
 
     assert response.status_code == 200
     payload = response.json()

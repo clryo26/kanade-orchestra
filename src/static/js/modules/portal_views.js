@@ -153,10 +153,12 @@ function sortedFlyerDistributionFacilities() {
 }
 
 function sortedPerformancesForFlyerDistribution() {
-    return [...(appState.performances || [])].sort((a, b) =>
-        String(a.date || '').localeCompare(String(b.date || ''))
-        || String(a.title || '').localeCompare(String(b.title || ''), 'ja')
-    );
+    return [...(appState.performances || [])]
+        .filter((perf) => isUpcomingPerformanceDate(perf.date))
+        .sort((a, b) =>
+            String(a.date || '').localeCompare(String(b.date || ''))
+            || String(a.title || '').localeCompare(String(b.title || ''), 'ja')
+        );
 }
 
 function flyerDistributionMemberOptionsHtml(selected = '') {

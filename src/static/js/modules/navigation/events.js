@@ -4,6 +4,10 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+// ===== Album lazy loading state =====
+var lastSelectedMemberTab = null;
+var isAlbumsLoadingForMemberTab = false;
+
 function openPortalDrawer() {
     renderPortalDrawerMenu();
     const drawer = $('portalDrawer');
@@ -104,8 +108,39 @@ function bindNavigation() {
     document.querySelectorAll('#adminPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('adminPanel', button.dataset.tab));
     });
+    // Member panel tabs: special handling for member-album lazy loading
     document.querySelectorAll('#memberPanel [data-tab]').forEach((button) => {
-        button.addEventListener('click', () => switchTab('memberPanel', button.dataset.tab));
+        button.addEventListener('click', () => {
+            const tabName = button.dataset.tab;
+            lastSelectedMemberTab = tabName;
+
+            if (tabName !== 'member-album') {
+                switchTab('memberPanel', tabName);
+                return;
+            }
+
+            if (isAlbumsLoadingForMemberTab) {
+                return;
+            }
+
+            isAlbumsLoadingForMemberTab = true;
+            ensureAlbumsLoaded()
+                .then(function () {
+                    if (lastSelectedMemberTab !== 'member-album') {
+                        return;
+                    }
+
+                    renderAlbumView();
+                    switchTab('memberPanel', 'member-album');
+                })
+                .catch(function (err) {
+                    console.warn('[Album] Failed to load:', err);
+                    showAlert('アルバム機能を読み込めませんでした。もう一度お試しください。', 'warning');
+                })
+                .finally(function () {
+                    isAlbumsLoadingForMemberTab = false;
+                });
+        });
     });
     document.querySelectorAll('#systemPanel [data-tab]').forEach((button) => {
         button.addEventListener('click', () => switchTab('systemPanel', button.dataset.tab));

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Any
+
+from fastapi import APIRouter, Header, HTTPException, Request
 
 from ..core.compat_gateway import get_memory_cache_instance
 from ..core.storage_gateway import load_json_data
-from ..services.auth_service import public_member_list
+from ..services.auth_service import device_auth_record, personal_payment_list, public_member_list
 from ..services.file_service import format_duration
 from ..services.json_collection_service import list_auth_devices
 from ..services import bootstrap_service, meta_service
@@ -27,7 +29,21 @@ def _sheet_payload() -> list[dict[str, object]]:
 
 
 @router.get("/api/bootstrap-lite", response_model=None)
-async def get_bootstrap_lite_data(request: Request):
+async def get_bootstrap_lite_data(
+    request: Request,
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+):
+    # オプション認証: 401/403は未認証扱い、それ以外は再送出
+    device: dict[str, Any] | None = None
+    if x_device_id:
+        try:
+            device = device_auth_record(x_device_id)
+        except HTTPException as exc:
+            if exc.status_code in {401, 403}:
+                pass
+            else:
+                raise
+
     etag = bootstrap_service.combined_collection_etag(
         (
             "performances",
@@ -48,6 +64,7 @@ async def get_bootstrap_lite_data(request: Request):
     data = await bootstrap_service.bootstrap_lite_payload(
         load_json_data=load_json_data,
         public_member_list=public_member_list,
+        personal_payment_list=lambda payments: personal_payment_list(payments, device),
         cloud_run_revision=meta_service.cloud_run_revision,
     )
     return bootstrap_service.bootstrap_response(request, data, etag)

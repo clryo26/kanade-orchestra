@@ -89,16 +89,17 @@ function renderMemberViews() {
 
 function renderMemberPerformances() {
     const container = $('memberPerfInfo');
-    if (!appState.performances.length) {
+    const upcomingPerformances = appState.performances.filter((perf) => isUpcomingPerformanceDate(perf.date));
+    if (!upcomingPerformances.length) {
         container.innerHTML = '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
         return;
     }
-    const nextPerf = nextPerformance() || [...appState.performances].filter((perf) => perf.date).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
+    const nextPerf = nextPerformance() || [...upcomingPerformances].sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
     const countdown = nextPerf ? daysUntil(nextPerf.date) : null;
     const countdownLabel = countdown === 0
         ? '本番当日！頑張りましょう！！'
         : `本番まであと${countdown}日！`;
-    container.innerHTML = `${nextPerf && countdown !== null ? `<div class="countdown-banner">${countdownLabel}</div>` : ''}` + appState.performances.map((perf) => `
+    container.innerHTML = `${nextPerf && countdown !== null ? `<div class="countdown-banner">${countdownLabel}</div>` : ''}` + upcomingPerformances.map((perf) => `
         <article class="info-block">
             <h5>${escapeHtml(perf.title)}</h5>
             <p>${escapeHtml(formatDateWithWeekday(perf.date))} ${escapeHtml(formatClockTime(perf.open_time))}開場 / ${escapeHtml(formatClockTime(perf.start_time))}開演</p>
@@ -124,7 +125,9 @@ function renderMemberExtraViews(options = {}) {
     renderDesiredPieceView();
     renderManualView();
     renderPromotionView();
-    renderAlbumView();
+    if (typeof renderAlbumView === 'function') {
+        renderAlbumView();
+    }
     renderConcertRecordView();
     renderSnsView();
 }

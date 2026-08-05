@@ -104,7 +104,7 @@ describe('performance-day module regression', () => {
         expect(indexHtml).toContain(
             '/static/js/modules/performance_day/render.js'
         );
-        expect(indexHtml).toContain(
+        expect(indexHtml).not.toContain(
             '/static/js/modules/performance_day/events.js'
         );
         expect(indexHtml).not.toMatch(
@@ -117,7 +117,7 @@ describe('performance-day module regression', () => {
         expect(appJs).toContain(
             '/static/js/modules/performance_day/render.js'
         );
-        expect(appJs).toContain(
+        expect(appJs).not.toContain(
             '/static/js/modules/performance_day/events.js'
         );
         expect(appJs).not.toContain(

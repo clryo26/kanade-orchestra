@@ -35,6 +35,7 @@ async def bootstrap_lite_payload(
     *,
     load_json_data: Callable[[str], list[dict[str, Any]]],
     public_member_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    personal_payment_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
     extra_names = (
@@ -47,6 +48,7 @@ async def bootstrap_lite_payload(
         "connection_settings",
     )
     extras = {name: load_json_data(name) for name in extra_names}
+    extras["payments"] = personal_payment_list(extras["payments"])
     return {
         "performances": load_json_data("performances"),
         "schedules": load_json_data("schedules"),
