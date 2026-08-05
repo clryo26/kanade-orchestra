@@ -19,7 +19,7 @@ async function _runAuthAndStart() {
     try {
         const authResult = await isPortalAuthenticated();
         if (authResult.status === 'authenticated') {
-            if (window.portalStartup) window.portalStartup.setMessage('チE�Eタを読み込んでぁE��ぁE..');
+            if (window.portalStartup) window.portalStartup.setMessage('データを読み込んでいます..');
             await enterPortal();
             // enterPortal成功時にportalStartup.ready()が呼ばれる
         } else if (authResult.status === 'unauthenticated') {
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Phase 2計測: DOM解析完亁E
     if (window.portalStartup) window.portalStartup.mark('DOM_INTERACTIVE');
 
-    if (window.portalStartup) window.portalStartup.setMessage('起動してぁE��ぁE..');
+    if (window.portalStartup) window.portalStartup.setMessage('起動しています..');
 
     // Phase 2計測: IndexedDB初期化開姁E
     if (window.portalStartup) window.portalStartup.mark('IDB_START');

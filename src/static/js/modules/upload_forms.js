@@ -27,7 +27,7 @@ function bindForms() {
     if ($('perfFlyerFile')) $('perfFlyerFile').addEventListener('change', previewPerformanceFlyer);
     if ($('savePerformanceDayInfoBtn')) $('savePerformanceDayInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePerformanceDayInfo()));
     if ($('exportPerformanceDayInfoExcelBtn')) $('exportPerformanceDayInfoExcelBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '出力中...', () => exportPerformanceDayInfoExcel()));
-    if ($('clearPerformanceDayInfoBtn')) $('clearPerformanceDayInfoBtn').addEventListener('click', clearPerformanceDayInfoForm);
+    if ($('clearPerformanceDayInfoBtn')) $('clearPerformanceDayInfoBtn').addEventListener('click', () => clearPerformanceDayInfoForm());
     if ($('deletePerformanceDayInfoBtn')) $('deletePerformanceDayInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePerformanceDayInfo()));
     if ($('addPerformanceDayAssignmentRowBtn')) $('addPerformanceDayAssignmentRowBtn').addEventListener('click', addPerformanceDayAssignmentRow);
     if ($('performanceDayInfoPerformance')) $('performanceDayInfoPerformance').addEventListener('change', () => {

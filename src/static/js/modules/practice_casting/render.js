@@ -225,7 +225,18 @@ function renderCastingAdminList() {
 
 function renderCastingView() {
     const c = $('memberCastingInfo'); if (!c) return;
-    c.innerHTML = appState.performances.map((perf) => {
+    const today = window.portalRuntimeContext.today();
+    const sorted = [...appState.performances]
+        .filter((perf) => isValidPerformanceDate(perf.date))
+        .sort((a, b) => {
+            const aFuture = a.date >= today;
+            const bFuture = b.date >= today;
+            if (aFuture !== bFuture) return aFuture ? -1 : 1;
+            const dir = aFuture ? 1 : -1;
+            return String(a.date).localeCompare(String(b.date)) * dir
+                || String(a.title || '').localeCompare(String(b.title || ''), 'ja');
+        });
+    c.innerHTML = sorted.map((perf, idx) => {
         const rows = appState.castings.filter((x) => String(x.performance_id || '') === String(perf.id));
         const castingContent = rows.length ? rows.map((r) => {
             const partMap = new Map();
@@ -258,6 +269,7 @@ function renderCastingView() {
             }).join('');
             return `<div class="info-block mb-3"><strong class="d-block mb-2">${escapeHtml(r.piece || '')}</strong><table class="table table-sm table-borderless mb-0 casting-table"><tbody>${tableRows}</tbody></table></div>`;
         }).join('') : '<p class="text-muted">乗り番表は未登録です</p>';
-        return `<section class="mb-3"><h5>${escapeHtml(perf.title)}</h5>${castingContent}</section>`;
+        const openAttr = idx === 0 ? ' open' : '';
+        return `<details class="casting-details mb-3"${openAttr}><summary class="casting-details-summary">${escapeHtml(perf.title || '')}<span class="casting-details-date">${escapeHtml(formatDateWithWeekday(perf.date || ''))}</span></summary>${castingContent}</details>`;
     }).join('');
 }

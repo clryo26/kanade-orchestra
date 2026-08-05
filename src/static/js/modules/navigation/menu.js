@@ -149,6 +149,13 @@ function openPortalMenuTab(tabName) {
         ? window.FrontendTestableLogic.portalMenuStatePatch(tabName)
         : (defaultPatch[tabName] || {});
     Object.assign(appState, patch);
+    if (tabName === 'member-album') {
+        const albumTabButton = document.querySelector('#memberPanel [data-tab="member-album"]');
+        if (albumTabButton) {
+            albumTabButton.click();
+            return;
+        }
+    }
     showMemberTab(tabName);
 }
 

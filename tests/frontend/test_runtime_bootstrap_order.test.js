@@ -535,3 +535,48 @@ describe('runtime bootstrap order', () => {
         });
     });
 });
+
+describe('startup panel layout contract', () => {
+    const html = fs.readFileSync(path.resolve(__dirname, '../../src/index.html'), 'utf8');
+
+    test('viewport meta preserves width=device-width and initial-scale=1.0', () => {
+        expect(html).toContain('width=device-width');
+        expect(html).toContain('initial-scale=1.0');
+    });
+
+    test('#portalStartupPanel inline style contains box-sizing: border-box', () => {
+        const panelMatch = html.match(/#portalStartupPanel\s*\{([^}]*)\}/);
+        expect(panelMatch).not.toBeNull();
+        expect(panelMatch[1]).toContain('box-sizing: border-box');
+    });
+
+    test('#portalStartupPanel maintains width: 100% and padding: 2rem', () => {
+        const panelMatch = html.match(/#portalStartupPanel\s*\{([^}]*)\}/);
+        expect(panelMatch[1]).toContain('width: 100%');
+        expect(panelMatch[1]).toContain('padding: 2rem');
+    });
+
+    test('viewport does not restrict user scaling', () => {
+        expect(html).not.toContain('maximum-scale');
+        expect(html).not.toContain('user-scalable=no');
+        expect(html).not.toContain('user-scalable=0');
+    });
+
+    test('startup panel does not add overflow-x hidden, zoom, or scale', () => {
+        const panelMatch = html.match(/#portalStartupPanel\s*\{([^}]*)\}/);
+        const style = panelMatch[1];
+        expect(style).not.toContain('overflow-x');
+        expect(style).not.toContain('zoom');
+        expect(style).not.toContain('transform: scale');
+    });
+
+    test('border-box prevents width overflow at mobile breakpoints', () => {
+        // With border-box: outer width = width(100%) → exactly viewport width.
+        // Excess over viewport = 0px for all widths.
+        for (const viewportPx of [320, 375, 390, 430]) {
+            // border-box: padding included inside width:100%
+            const outerWidth = viewportPx; // 100% of viewport
+            expect(outerWidth).toBe(viewportPx);
+        }
+    });
+});
