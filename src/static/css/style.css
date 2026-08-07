@@ -622,6 +622,7 @@ body {
 .portal-home {
     display: grid;
     gap: 1rem;
+    min-width: 0;
 }
 
 .portal-home-section {
@@ -629,6 +630,7 @@ body {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 1rem;
+    min-width: 0;
 }
 
 .portal-home-heading {
@@ -674,6 +676,7 @@ body {
 .portal-menu-groups {
     display: grid;
     gap: 1.25rem;
+    min-width: 0;
 }
 
 .portal-home-actions {
@@ -683,6 +686,10 @@ body {
     gap: 0.5rem;
     margin-top: 1rem;
     padding-top: 1rem;
+}
+
+.portal-menu-group {
+    min-width: 0;
 }
 
 .portal-menu-group h3 {
@@ -697,6 +704,7 @@ body {
     gap: 0.75rem;
     grid-template-columns: repeat(auto-fill, 168px);
     justify-content: start;
+    min-width: 0;
 }
 
 .portal-menu-button {
@@ -991,6 +999,8 @@ body.album-photo-viewer-open {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+    width: 100%;
 }
 .portal-announcement-link {
     color: inherit;
@@ -1001,6 +1011,11 @@ body.album-photo-viewer-open {
 }
 .portal-announcement-title {
     font-weight: 400;
+    flex: 1 1 0%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .portal-announcement-one-line .portal-announcement-title {
     overflow: hidden;
@@ -1031,12 +1046,15 @@ body.album-photo-viewer-open {
 @media (max-width: 768px) {
     .portal-home-announcement-mobile-line {
         overflow: hidden;
+    min-width: 0;
     }
     .portal-home-announcement-mobile-line .portal-announcement-one-line {
-        display: block;
+        display: flex;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        min-width: 0;
+        width: 100%;
     }
     #systemReadinessTab .table th,
     #systemReadinessTab .table td {

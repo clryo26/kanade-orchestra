@@ -154,6 +154,65 @@ test.describe('UI CSS reliability smoke', () => {
     monitor.assertNoClientErrors();
   });
 
+  test('mobile home layout keeps scrollWidth within viewport even with long announcements', async ({ page }) => {
+    const monitor = attachErrorMonitor(page);
+    await page.setViewportSize({ width: 277, height: 844 });
+    await installPortalApiMocks(page, {
+      permission: '\u4e00\u822c',
+      bootstrapOverrides: {
+        announcements: [{
+          id: 1,
+          date: '2026-08-07',
+          title: 'This is a very long announcement title that should stay inside the mobile home card without pushing the page sideways',
+          content: 'Short body',
+        }],
+      },
+    });
+    await page.goto('/');
+    await loginAsMember(page);
+
+    await expect(page.locator('#memberHomeTab')).toBeVisible();
+    await expect(page.locator('#memberHomeTab .portal-home')).toBeVisible();
+
+    const homeLayout = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const scrollWidth = document.documentElement.scrollWidth;
+      const home = document.querySelector('#memberHomeTab .portal-home');
+      const section = document.querySelector('#memberHomeTab .portal-home-section');
+      const menuGrid = document.querySelector('#memberHomeTab .portal-menu-grid');
+      const announcementLine = document.querySelector('#portalHomeAnnouncementList .portal-home-announcement-mobile-line');
+      const announcementTitle = document.querySelector('#portalHomeAnnouncementList .portal-announcement-title');
+
+      const rect = (element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          left: box.left,
+          right: box.right,
+          width: box.width,
+        };
+      };
+
+      return {
+        viewportWidth,
+        scrollWidth,
+        home: rect(home),
+        section: rect(section),
+        menuGrid: rect(menuGrid),
+        announcementLine: rect(announcementLine),
+        announcementTitle: rect(announcementTitle),
+      };
+    });
+
+    expect(homeLayout.scrollWidth).toBeLessThanOrEqual(homeLayout.viewportWidth);
+    expect(homeLayout.home.right).toBeLessThanOrEqual(homeLayout.viewportWidth + 1);
+    expect(homeLayout.section.right).toBeLessThanOrEqual(homeLayout.viewportWidth + 1);
+    expect(homeLayout.menuGrid.right).toBeLessThanOrEqual(homeLayout.viewportWidth + 1);
+    expect(homeLayout.announcementLine.right).toBeLessThanOrEqual(homeLayout.viewportWidth + 1);
+    expect(homeLayout.announcementTitle.right).toBeLessThanOrEqual(homeLayout.viewportWidth + 1);
+
+    monitor.assertNoClientErrors();
+  });
+
   test('mobile absence controls keep readable size and viewport width after selecting and editing', async ({ page }) => {
     const monitor = attachErrorMonitor(page);
     await page.setViewportSize({ width: 390, height: 844 });
