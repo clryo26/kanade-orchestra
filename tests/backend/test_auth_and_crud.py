@@ -547,7 +547,7 @@ def test_member_password_is_hashed_and_hidden_in_admin_api(client, backend_env, 
 
     listed = client.get("/api/members")
     assert listed.status_code == 200
-    assert listed.json()[0]["password"] == ""
+    assert "password" not in listed.json()[0]
     assert listed.json()[0]["password_set"] is True
 
 

@@ -117,7 +117,7 @@ async def bootstrap_core_payload(
 async def bootstrap_payload(
     *,
     load_json_data: Callable[[str], list[dict[str, Any]]],
-    public_member_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    public_member_payload: Callable[[dict[str, Any]], dict[str, Any]],
     recording_payload: Callable[[], dict[str, list[dict[str, Any]]]],
     sheet_payload: Callable[[], list[dict[str, Any]]],
     list_auth_devices: Callable[[], Awaitable[list[dict[str, Any]]]],
@@ -152,7 +152,7 @@ async def bootstrap_payload(
         "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
         "events": load_json_data("events"),
-        "members": public_member_list(load_json_data("members")),
+        "members": [public_member_payload(member) for member in load_json_data("members")],
         "recordings": recording_payload(),
         "sheets": {"files": sheet_payload()},
         "extras": {**extras, "promotions": _public_promotions(extras["promotions"])},

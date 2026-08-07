@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from ..core.auth_dependencies import get_admin_device_auth, get_device_auth
-from ..models.schemas import Member
+from ..models.schemas import Member, MemberSummary
 from ..services import member_service
 from ..services.extra_collection_helpers import read_json_body
 from ..services.image_asset_service import serve_stored_image
@@ -66,9 +66,17 @@ async def _read_member_profile_payload(request: Request) -> tuple[dict[str, Any]
     return await read_json_body(request), None
 
 
-@router.get("/api/members", response_model=list[Member])
+@router.get("/api/members", response_model=list[MemberSummary])
 async def get_members() -> list[dict[str, Any]]:
     return member_service.list_members()
+
+
+@router.get("/api/members/{member_id}", response_model=None)
+async def get_member(
+    member_id: int,
+    device: dict[str, Any] = Depends(get_device_auth),
+) -> dict[str, Any]:
+    return member_service.get_member(member_id, device)
 
 
 @router.post("/api/members", response_model=Member)
@@ -118,6 +126,7 @@ async def reset_member_password(
     _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
 ) -> dict[str, Any]:
     return member_service.reset_member_password(member_id)
+
 
 @router.delete("/api/members/{member_id}")
 async def delete_member(

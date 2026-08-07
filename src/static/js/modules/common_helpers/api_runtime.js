@@ -124,6 +124,9 @@ function clearPortalAuthState() {
     appState.currentUserHiddenUser = false;
     appState.currentUserIsRecordingManager = false;
     appState.currentUserIsSheetManager = false;
+    appState.memberDetailRecords = {};
+    appState.memberDetailLoadStates = {};
+    appState.memberDetailLoadPromises = {};
 }
 
 function applyPortalAuthDevice(device) {
@@ -189,6 +192,16 @@ async function tryRecoverPortalSession(deviceId) {
 
 function mutationRelatedCacheKeys(url) {
     const keys = new Set(['/api/bootstrap-lite', '/api/bootstrap-core', '/api/bootstrap']);
+    if (url.startsWith('/api/members/')) {
+        const path = url.split('?')[0];
+        keys.add('/api/members');
+        keys.add(path);
+        const memberMatch = path.match(/^\/api\/members\/(\d+)(?:\/.*)?$/);
+        if (memberMatch) {
+            keys.add(`/api/members/${memberMatch[1]}`);
+        }
+        return [...keys];
+    }
     if (url.startsWith('/api/extra/')) {
         keys.add(url.split('?')[0]);
         if (url.includes('/sheet_library') || url.includes('/date_adjust') || url.includes('/practice_instruction')) keys.add('/api/sheets');

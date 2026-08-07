@@ -5,7 +5,12 @@ from typing import Any
 from fastapi import UploadFile
 
 from ..repositories.member_repository import MemberRepository
-from .auth_service import prepare_member_payload, public_member_list, public_member_payload
+from .auth_service import (
+    prepare_member_payload,
+    public_member_list,
+    public_member_payload,
+    public_member_public_profile_payload,
+)
 from .image_asset_service import delete_stored_image, is_data_image, store_data_image, store_uploaded_image
 
 _repo = MemberRepository()
@@ -41,9 +46,21 @@ def list_members() -> list[dict[str, Any]]:
     return public_member_list(_repo.list_all())
 
 
-def get_member(member_id: int) -> dict[str, Any]:
+def _can_view_private_member_detail(viewer_device: dict[str, Any] | None, member: dict[str, Any]) -> bool:
+    if not viewer_device:
+        return False
+    viewer_member_id = str(viewer_device.get("member_id") or "")
+    if viewer_member_id and viewer_member_id == str(member.get("id") or ""):
+        return True
+    permission = str(viewer_device.get("permission") or "").strip()
+    return permission in {"管理者", "システム管理者", "admin", "system admin", "sysadmin", "system_admin"}
+
+
+def get_member(member_id: int, viewer_device: dict[str, Any] | None = None) -> dict[str, Any]:
     _, member = _repo.find_by_id(member_id)
-    return public_member_payload(member)
+    if _can_view_private_member_detail(viewer_device, member):
+        return public_member_payload(member)
+    return public_member_public_profile_payload(member)
 
 
 def get_member_record(member_id: int) -> dict[str, Any]:

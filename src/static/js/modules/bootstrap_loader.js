@@ -414,7 +414,6 @@ function renderEssentialViews() {
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
-    renderMemberIntros();
     renderMemberExtraViews();
     renderPartManagement();
     renderSchedulePerformanceOptions();
@@ -583,7 +582,7 @@ function applyBootstrapData(data) {
         schedules: collectionOrCurrent('schedules'),
         announcements: collectionOrCurrent('announcements'),
         events: collectionOrCurrent('events'),
-        members: collectionOrCurrent('members'),
+        members: normalizeMemberSummaryCollection(collectionOrCurrent('members')),
         recordings: data.recordings?.files || appState.recordings || [],
         absences: extraOrCurrent('absences', 'absences'),
         eventResponses: extraOrCurrent('event_responses', 'eventResponses'),
@@ -642,7 +641,7 @@ async function loadEvents() {
 }
 
 async function loadMembers() {
-    appState.members = await request('/api/members');
+    appState.members = normalizeMemberSummaryCollection(await request('/api/members'));
     renderMembers();
     renderPaymentAdmin();
 }
@@ -669,7 +668,6 @@ function renderInitialViews(options = {}) {
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
-    renderMemberIntros();
     renderMemberExtraViews({ includeHeavyLists });
     renderAuthDevices();
     renderPartManagement();
@@ -692,6 +690,24 @@ function renderBackgroundViews(options = {}) {
     renderSchedulePerformanceOptions();
     updateSchedulePieceOptions();
     renderPortalHome();
+}
+
+function normalizeMemberSummaryCollection(members) {
+    return (members || []).map((member) => ({
+        id: member.id ?? '',
+        name: member.name || '',
+        last_name: member.last_name || '',
+        first_name: member.first_name || '',
+        maiden_name: member.maiden_name || '',
+        last_name_kana: member.last_name_kana || '',
+        first_name_kana: member.first_name_kana || '',
+        part: member.part || '',
+        photo_url: member.photo_url || '',
+        password_set: Boolean(member.password_set),
+        permission: member.permission || '荳闊ｬ',
+        joined_at: member.joined_at || '',
+        system_access_until: member.system_access_until || '',
+    }));
 }
 
 // loadRecordings moved to feature module.

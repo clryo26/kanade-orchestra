@@ -7,7 +7,12 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from ..core.compat_gateway import get_memory_cache_instance
 from ..core.storage_gateway import load_json_data
-from ..services.auth_service import device_auth_record, personal_payment_list, public_member_list
+from ..services.auth_service import (
+    device_auth_record,
+    personal_payment_list,
+    public_member_list,
+    public_member_payload,
+)
 from ..services.file_service import format_duration
 from ..services.json_collection_service import list_auth_devices
 from ..services import bootstrap_service, meta_service
@@ -116,7 +121,7 @@ async def get_bootstrap_data(request: Request):
     )
     data = await bootstrap_service.bootstrap_payload(
         load_json_data=load_json_data,
-        public_member_list=public_member_list,
+        public_member_payload=public_member_payload,
         recording_payload=_recording_payload,
         sheet_payload=_sheet_payload,
         list_auth_devices=_list_auth_devices,

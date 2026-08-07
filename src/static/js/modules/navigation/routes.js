@@ -295,6 +295,7 @@ async function switchTab(panelId, tabName, renderOnShow = true) {
     }
     if (renderOnShow && tabName === 'event') renderEvents();
     if (renderOnShow && tabName === 'member') renderMembers();
+    if (renderOnShow && tabName === 'member-intro') await showMemberIntroView();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'payment-admin') renderPaymentAdmin();
     if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();

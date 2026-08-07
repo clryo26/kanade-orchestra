@@ -27,12 +27,11 @@ function renderMembers() {
                     </span>
                 </div>
             `;
-            item.addEventListener('click', () => selectMember(member.id));
+            item.addEventListener('click', () => void selectMember(member.id));
             list.appendChild(item);
         });
     }
     if (!appState.suppressDerivedRender) {
-        renderMemberIntros();
         renderMemberExtraViews();
     }
 }
@@ -44,7 +43,10 @@ function renderMemberIntros() {
         container.innerHTML = '<p class="text-muted mb-0">団員情報はまだありません</p>';
         return;
     }
-    const grouped = groupBy(sortedMembersByPartAndKana(appState.members), 'part');
+    const grouped = groupBy(
+        sortedMembersByPartAndKana(appState.members).map((member) => publicMemberDetailById(member.id) || member),
+        'part',
+    );
     const entries = Object.entries(grouped);
     const nav = `<div class="member-part-nav mb-3">${entries.map(([part]) => {
         const id = `intro-part-${cssSafeId(part || 'none')}`;
@@ -74,15 +76,22 @@ function renderMemberIntros() {
         </section>`;
     }).join('');
     container.querySelectorAll('.member-profile-edit-btn').forEach((button) => {
-        button.addEventListener('click', () => showOwnProfileEditForm(button.dataset.memberId || ''));
+        button.addEventListener('click', () => void showOwnProfileEditForm(button.dataset.memberId || ''));
     });
+}
+
+async function showMemberIntroView() {
+    const container = $('memberIntroInfo');
+    if (!container) return;
+    container.innerHTML = '<p class="text-muted mb-0">隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ縺ｧ縺・..</p>';
+    await ensureMemberIntroDataLoaded();
+    renderMemberIntros();
 }
 
 function renderMemberViews() {
     renderMemberPerformances();
     renderMemberSchedules();
     renderAnnouncements();
-    renderMemberIntros();
     renderPortalHome();
     renderMemberExtraViews({ includeHeavyLists: false });
 }
