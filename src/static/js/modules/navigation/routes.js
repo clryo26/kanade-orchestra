@@ -211,6 +211,9 @@ function showSystemPanel() {
         await ensureAdminEnvironmentManagementLoaded()
             .then(function () { return refreshSystemEnvironmentMenuVisibility(); })
             .catch(function (err) { console.warn('[\u74b0\u5883\u7ba1\u7406] \u30b9\u30af\u30ea\u30d7\u30c8\u306e\u30ed\u30fc\u30c9\u306b\u5931\u6557\u3057\u307e\u3057\u305f', err); });
+        if (!(appState.connectionSettings || []).length) {
+            await loadExtraData(['connectionSettings']);
+        }
         renderOrgManagement();
         renderSnsManagement();
         renderConnectionSettingsManagement();
@@ -249,7 +252,7 @@ function showMemberTab(tabName, shouldRender = true) {
     })();
 }
 
-function switchTab(panelId, tabName, renderOnShow = true) {
+async function switchTab(panelId, tabName, renderOnShow = true) {
     if (panelId === 'memberPanel' && isExtraRestrictedMemberTab(tabName)) {
         tabName = 'member-home';
     }
@@ -272,10 +275,14 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
     recordAccessLog(panelId, tabName);
+    if (renderOnShow) {
+        await ensureDeferredTabDataLoaded(tabName);
+    }
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
     if (renderOnShow && tabName === 'member-flyer-distribution') renderFlyerDistributionView();
     if (renderOnShow && tabName === 'member-performance-day') renderPerformanceDayInfoView();
     if (renderOnShow && tabName === 'member-manual') renderManualView();
+    if (renderOnShow && tabName === 'member-album') renderAlbumView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
     if (renderOnShow && tabName === 'member-sheet') ensureSheetsLoaded();
     if (renderOnShow && tabName === 'member-date-adjustment') renderDateAdjustmentView();
@@ -288,10 +295,21 @@ function switchTab(panelId, tabName, renderOnShow = true) {
     }
     if (renderOnShow && tabName === 'event') renderEvents();
     if (renderOnShow && tabName === 'member') renderMembers();
+    if (renderOnShow && tabName === 'member-intro') await showMemberIntroView();
     if (renderOnShow && tabName === 'sheet-admin') ensureSheetsLoaded().then(renderSheetAdmin);
     if (renderOnShow && tabName === 'payment-admin') renderPaymentAdmin();
     if (renderOnShow && tabName === 'payment-setting') renderPaymentAdmin();
-    if (renderOnShow && tabName === 'venue-admin') renderVenueManagement();
+    if (renderOnShow && tabName === 'venue-admin') {
+        if ((appState.venueSettings || []).length) {
+            renderVenueManagement();
+        } else {
+            loadExtraData(['venueSettings'])
+                .then(renderVenueManagement)
+                .catch(function (err) {
+                    console.warn('[会場設定] 遅延読込に失敗しました', err);
+                });
+        }
+    }
     if (renderOnShow && tabName === 'flyer-distribution-admin') renderFlyerDistributionManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'performance-day-admin') renderPerformanceDayInfoAdmin();

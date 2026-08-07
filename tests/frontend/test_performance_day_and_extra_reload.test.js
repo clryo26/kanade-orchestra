@@ -57,6 +57,7 @@ function createBootstrapSandbox() {
         refreshPartSelectOptions: vi.fn(),
         refreshVenueOptions: vi.fn(),
         applyOrgSettings: vi.fn(),
+        renderEvents: vi.fn(),
         renderMemberExtraViews: vi.fn(),
         renderSheetAdmin: vi.fn(),
         renderPaymentAdmin: vi.fn(),
@@ -69,6 +70,7 @@ function createBootstrapSandbox() {
         renderOrgManagement: vi.fn(),
         renderSnsManagement: vi.fn(),
         renderConnectionSettingsManagement: vi.fn(),
+        renderAuthDevices: vi.fn(),
     };
 
     sandbox.window = sandbox;
@@ -213,5 +215,140 @@ describe('targeted extra-data reload', () => {
         expect(request).toHaveBeenCalledWith(
             '/api/extra/connection_settings'
         );
+    });
+
+    test('deferred tab loading maps each tab to only the needed collections', async () => {
+        const cases = [
+            ['member-event', ['/api/events', '/api/extra/event_responses']],
+            ['member-absence', ['/api/extra/absences']],
+            ['member-date-adjustment', ['/api/extra/date_adjustments', '/api/extra/date_adjustment_responses']],
+            ['member-practice-instruction', ['/api/extra/piece_infos', '/api/extra/practice_instructions']],
+            ['member-performance-day', ['/api/extra/performance_day_infos']],
+            ['member-casting', ['/api/extra/castings']],
+            ['member-album', ['/api/extra/albums']],
+            ['member-flyer-distribution', ['/api/extra/flyer_distributions', '/api/extra/flyer_distribution_assignments']],
+            ['flyer-distribution-admin', ['/api/extra/flyer_distributions']],
+            ['payment-admin', ['/api/extra/payments']],
+            ['payment-setting', ['/api/extra/payments']],
+            ['member-desired-piece', ['/api/extra/desired_pieces']],
+            ['member-promotion', ['/api/extra/promotions']],
+            ['venue-admin', ['/api/extra/venue_settings']],
+            ['system-connection', ['/api/extra/connection_settings']],
+            ['system-auth', ['/api/auth/devices']],
+        ];
+
+        for (const [tabName, expectedUrls] of cases) {
+            const { sandbox, request } = createBootstrapSandbox();
+
+            await sandbox.ensureDeferredTabDataLoaded(tabName);
+
+            const actualUrls = request.mock.calls.map(([url]) => url);
+            expect(actualUrls).toEqual(expectedUrls);
+        }
+    });
+
+    test('successful deferred load is not repeated for the same tab, but failures can be retried', async () => {
+        const retryRequest = vi.fn(async (url) => {
+            if (url === '/api/extra/promotions' && retryRequest.mock.calls.length === 1) {
+                throw new Error('temporary failure');
+            }
+            return [{ sourceUrl: url }];
+        });
+
+        const { sandbox } = createBootstrapSandbox();
+        sandbox.request.mockImplementation(retryRequest);
+
+        await sandbox.ensureDeferredTabDataLoaded('member-promotion');
+        expect(retryRequest).toHaveBeenCalledTimes(1);
+
+        await sandbox.ensureDeferredTabDataLoaded('member-promotion');
+        expect(retryRequest).toHaveBeenCalledTimes(2);
+
+        await sandbox.ensureDeferredTabDataLoaded('member-promotion');
+        expect(retryRequest).toHaveBeenCalledTimes(2);
+    });
+
+    test('payment admin loads only on demand and retries after a failure', async () => {
+        const retryRequest = vi.fn(async (url) => {
+            if (url === '/api/extra/payments' && retryRequest.mock.calls.length === 1) {
+                throw new Error('temporary failure');
+            }
+            return [{ sourceUrl: url }];
+        });
+
+        const { sandbox } = createBootstrapSandbox();
+        sandbox.request.mockImplementation(retryRequest);
+
+        await sandbox.ensureDeferredTabDataLoaded('payment-admin');
+        expect(retryRequest).toHaveBeenCalledTimes(1);
+
+        await sandbox.ensureDeferredTabDataLoaded('payment-admin');
+        expect(retryRequest).toHaveBeenCalledTimes(2);
+
+        await sandbox.ensureDeferredTabDataLoaded('payment-setting');
+        expect(retryRequest).toHaveBeenCalledTimes(2);
+    });
+
+    test('payment admin concurrent opens reuse the same in-flight request', async () => {
+        const deferred = {};
+        deferred.promise = new Promise((resolve) => {
+            deferred.resolve = resolve;
+        });
+        const networkCalls = [];
+        const inflight = new Map();
+        const request = vi.fn(async (url) => {
+            if (inflight.has(url)) return inflight.get(url);
+            networkCalls.push(url);
+            const promise = deferred.promise.finally(() => {
+                inflight.delete(url);
+            });
+            inflight.set(url, promise);
+            return promise;
+        });
+
+        const { sandbox } = createBootstrapSandbox();
+        sandbox.request.mockImplementation(request);
+
+        const first = sandbox.ensureDeferredTabDataLoaded('payment-admin');
+        const second = sandbox.ensureDeferredTabDataLoaded('payment-setting');
+
+        await Promise.resolve();
+
+        expect(networkCalls).toEqual(['/api/extra/payments']);
+
+        deferred.resolve([{ sourceUrl: '/api/extra/payments' }]);
+        await Promise.all([first, second]);
+    });
+
+    test('flyer distribution tab loads both collections and retries a missing list only', async () => {
+        const retryRequest = vi.fn(async (url) => {
+            if (url === '/api/extra/flyer_distributions' && retryRequest.mock.calls.length === 1) {
+                throw new Error('temporary failure');
+            }
+            return [{ sourceUrl: url }];
+        });
+
+        const { sandbox } = createBootstrapSandbox();
+        sandbox.request.mockImplementation(retryRequest);
+
+        await sandbox.ensureDeferredTabDataLoaded('member-flyer-distribution');
+        expect(retryRequest.mock.calls.map(([url]) => url)).toEqual([
+            '/api/extra/flyer_distributions',
+            '/api/extra/flyer_distribution_assignments',
+        ]);
+
+        await sandbox.ensureDeferredTabDataLoaded('member-flyer-distribution');
+        expect(retryRequest.mock.calls.map(([url]) => url)).toEqual([
+            '/api/extra/flyer_distributions',
+            '/api/extra/flyer_distribution_assignments',
+            '/api/extra/flyer_distributions',
+        ]);
+
+        await sandbox.ensureDeferredTabDataLoaded('flyer-distribution-admin');
+        expect(retryRequest.mock.calls.map(([url]) => url)).toEqual([
+            '/api/extra/flyer_distributions',
+            '/api/extra/flyer_distribution_assignments',
+            '/api/extra/flyer_distributions',
+        ]);
     });
 });

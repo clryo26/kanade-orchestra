@@ -547,7 +547,7 @@ def test_member_password_is_hashed_and_hidden_in_admin_api(client, backend_env, 
 
     listed = client.get("/api/members")
     assert listed.status_code == 200
-    assert listed.json()[0]["password"] == ""
+    assert "password" not in listed.json()[0]
     assert listed.json()[0]["password_set"] is True
 
 
@@ -799,7 +799,6 @@ def test_general_member_can_update_only_own_profile(
         "/api/members/1/profile",
         headers={"X-Device-Id": "dev-general-profile"},
         json={
-            "photo_url": "data:image/png;base64,profile",
             "joined_at": "2026-08",
             "introducer": "Introducer",
             "role": "Role",
@@ -811,7 +810,7 @@ def test_general_member_can_update_only_own_profile(
 
     assert response.status_code == 200
     stored = backend_env.load_json_data("members")[0]
-    assert stored["photo_url"] == "data:image/png;base64,profile"
+    assert stored["photo_url"] == ""
     assert stored["joined_at"] == "2026-08"
     assert stored["introducer"] == "Introducer"
     assert stored["role"] == "Role"

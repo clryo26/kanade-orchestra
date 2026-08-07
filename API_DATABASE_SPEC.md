@@ -50,6 +50,14 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - GET /api/bootstrap-lite
 - GET /api/bootstrap-core
 - GET /api/bootstrap
+- 画像系 bootstrap レスポンスでは `photo_url` / `flyer_image` / `image_url` を画像配信 API の URL に正規化する。
+- 画像配信 API は `GET /api/members/{member_id}/photo`、`GET /api/performances/{performance_id}/flyer-image`、`GET /api/extra/promotions/{promotion_id}/image` を使用する。
+- `bootstrap-lite` は初期表示用の軽量レスポンスとして `performances` / `schedules` / `announcements` / `members` / `extras.payments` / `extras.part_settings` / `extras.org_settings` / `extras.sns_settings` を返し、`extras.connection_settings` / `extras.flyer_distributions` / `extras.flyer_distribution_assignments` は返さない。
+- `extras.payments` は bootstrap-lite では現在端末の持ち主の記録だけを返し、`/api/extra/payments` は管理者向けの全件取得に用いる。
+- `flyer_distributions` と `flyer_distribution_assignments` はチラシ配布画面でのみ取得する。
+- `performances` の公開レスポンスでは一覧表示に不要な `created_at` / `updated_at` を返さない。
+- 画像本体は bootstrap レスポンスに埋め込まず、`photo_url` / `flyer_image` / `image_url` は画像配信 API の URL を返す。
+- 画像配信 API は `GET /api/members/{member_id}/photo`、`GET /api/performances/{performance_id}/flyer-image`、`GET /api/extra/promotions/{promotion_id}/image` を使用する。
 
 ### 3.4 基本 CRUD
 

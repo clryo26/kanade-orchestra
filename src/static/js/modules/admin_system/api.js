@@ -165,7 +165,7 @@ async function saveOrgSetting() {
         return;
     }
     const iconFile = $('orgIconFile')?.files?.[0];
-    const iconUrl = iconFile ? await fileToDataUrl(iconFile) : (current.icon_url || current.iconUrl || '');
+    const iconUrl = current.icon_url || current.iconUrl || '';
     const payload = {
         name,
         organization_name: name,
@@ -174,11 +174,17 @@ async function saveOrgSetting() {
         icon_url: iconUrl,
         membership_fee_amount: integerAmountNumber(current.membership_fee_amount || 0)
     };
-    if (current.id) {
-        await request(`/api/extra/org_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));
-    } else {
-        await saveExtra('org_settings', payload);
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, String(value ?? ''));
+    });
+    if (iconFile) {
+        formData.append('icon_url_file', iconFile);
     }
+    await request(current.id ? `/api/extra/org_settings/${encodeURIComponent(current.id)}` : '/api/extra/org_settings', {
+        method: current.id ? 'PUT' : 'POST',
+        body: formData,
+    });
     await loadExtraData(['orgSettings']);
     showAlert('団体情報を保存しました', 'success');
 }

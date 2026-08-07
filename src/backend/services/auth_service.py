@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from ..auth_helpers import find_member_by_login_name, member_access_expired, member_display_name
 from ..services.auth_session_fallback import fallback_auth_device
+from ..services.image_asset_service import ensure_public_image_url
 from ..services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 from .storage_service import load_json_data
 from ..db.database import db_data_enabled
@@ -40,8 +41,14 @@ def prepare_member_payload(member: Any, current: dict[str, Any] | None = None) -
     return payload
 
 
-def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
+def _public_member_payload_base(member: dict[str, Any]) -> dict[str, Any]:
     payload = dict(member)
+    member_id = int(payload.get("id") or 0)
+    if member_id:
+        payload["photo_url"] = ensure_public_image_url(
+            payload.get("photo_url") or "",
+            route_path=f"/api/members/{member_id}/photo",
+        )
 
     for key in [
         "name",
@@ -53,7 +60,6 @@ def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
         "maiden_name_kana",
         "part",
         "photo_url",
-        "password",
         "permission",
         "joined_at",
         "system_access_until",
@@ -70,18 +76,53 @@ def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
         "is_founder",
         "is_recording_manager",
         "is_sheet_manager",
-        "password_set",
     ]:
         payload[key] = bool(payload.get(key))
 
     payload["password_set"] = bool(payload.get("password"))
-    payload["password"] = ""
-
+    payload.pop("password", None)
+    payload.pop("created_at", None)
+    payload.pop("updated_at", None)
     return payload
 
 
+def public_member_summary_payload(member: dict[str, Any]) -> dict[str, Any]:
+    payload = _public_member_payload_base(member)
+    for key in [
+        "maiden_name_kana",
+        "is_founder",
+        "is_recording_manager",
+        "is_sheet_manager",
+        "introducer",
+        "role",
+        "instrument_history",
+        "past_orchestras",
+        "comment",
+    ]:
+        payload.pop(key, None)
+    return payload
+
+
+def public_member_public_profile_payload(member: dict[str, Any]) -> dict[str, Any]:
+    payload = _public_member_payload_base(member)
+    for key in [
+        "maiden_name_kana",
+        "is_recording_manager",
+        "is_sheet_manager",
+        "permission",
+        "system_access_until",
+        "password_set",
+    ]:
+        payload.pop(key, None)
+    return payload
+
+
+def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
+    return _public_member_payload_base(member)
+
+
 def public_member_list(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [public_member_payload(member) for member in members]
+    return [public_member_summary_payload(member) for member in members]
 
 
 def device_auth_record(device_id: str) -> dict[str, Any]:
@@ -146,20 +187,20 @@ def personal_payment_list(
     payments: list[dict[str, Any]],
     device: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    """管理者なら全件、一般団員なら本人分のみ、未認証(device=None)なら空を返す。"""
+    """bootstrap-lite ??????????????????????????"""
     if device is None:
         return []
-    if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
-        return payments
+
     member_id = str(device.get("member_id") or "")
     if member_id:
-        # member_idがある場合はIDのみで照合（同姓同名の別人を除外）
-        return [p for p in payments if str(p.get("member_id") or "") == member_id]
+        return [payment for payment in payments if str(payment.get("member_id") or "") == member_id]
+
     member_name = str(device.get("member_name") or "")
     if member_name:
-        # member_idがない旧データのみ氏名で照合
-        return [p for p in payments if p.get("name") == member_name]
+        return [payment for payment in payments if payment.get("name") == member_name]
+
     return []
+
 
 def normalized_permission(member: dict[str, Any]) -> str:
     # role未設定データは既存互換として一般団員相当で扱う。

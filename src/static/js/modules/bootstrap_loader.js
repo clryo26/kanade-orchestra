@@ -236,6 +236,80 @@ function renderLoadingPlaceholders() {
     });
 }
 
+const deferredPortalDataFlags = {
+    events: false,
+    absences: false,
+    eventResponses: false,
+    dateAdjustments: false,
+    dateAdjustmentResponses: false,
+    payments: false,
+    castings: false,
+    pieceInfos: false,
+    practiceInstructions: false,
+    performanceDayInfos: false,
+    albums: false,
+    flyerDistributions: false,
+    flyerDistributionAssignments: false,
+    desiredPieces: false,
+    promotions: false,
+    venueSettings: false,
+    connectionSettings: false,
+    authDevices: false,
+};
+
+function markDeferredPortalDataLoaded(name) {
+    if (Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)) {
+        deferredPortalDataFlags[name] = true;
+    }
+}
+
+function isDeferredPortalDataLoaded(name) {
+    return Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)
+        ? deferredPortalDataFlags[name] === true
+        : false;
+}
+
+async function ensureDeferredTabDataLoaded(tabName) {
+    const extraLoads = [];
+    const queueExtraLoad = (names) => {
+        const requested = names.filter((name) => !isDeferredPortalDataLoaded(name));
+        if (requested.length) {
+            extraLoads.push(loadExtraData(requested));
+        }
+    };
+
+    if (tabName === 'event' && !isDeferredPortalDataLoaded('events')) {
+        extraLoads.push(loadEvents());
+    }
+    if (tabName === 'member-event') {
+        if (!isDeferredPortalDataLoaded('events')) {
+            extraLoads.push(loadEvents());
+        }
+        queueExtraLoad(['eventResponses']);
+    }
+    if (tabName === 'member-absence') queueExtraLoad(['absences']);
+    if (tabName === 'member-date-adjustment') queueExtraLoad(['dateAdjustments', 'dateAdjustmentResponses']);
+    if (tabName === 'member-piece-info') queueExtraLoad(['pieceInfos']);
+    if (tabName === 'member-practice-instruction') queueExtraLoad(['practiceInstructions', 'pieceInfos']);
+    if (tabName === 'member-performance-day' || tabName === 'performance-day-admin') queueExtraLoad(['performanceDayInfos']);
+    if (tabName === 'member-casting' || tabName === 'casting-admin') queueExtraLoad(['castings']);
+    if (tabName === 'member-album') queueExtraLoad(['albums']);
+    if (tabName === 'member-flyer-distribution') queueExtraLoad(['flyerDistributions', 'flyerDistributionAssignments']);
+    if (tabName === 'flyer-distribution-admin') queueExtraLoad(['flyerDistributions']);
+    if (tabName === 'payment-admin' || tabName === 'payment-setting') queueExtraLoad(['payments']);
+    if (tabName === 'member-desired-piece') queueExtraLoad(['desiredPieces']);
+    if (tabName === 'member-promotion') queueExtraLoad(['promotions']);
+    if (tabName === 'venue-admin') queueExtraLoad(['venueSettings']);
+    if (tabName === 'system-connection') queueExtraLoad(['connectionSettings']);
+    if (tabName === 'system-auth' && !isDeferredPortalDataLoaded('authDevices')) {
+        extraLoads.push(loadAuthManagement());
+    }
+
+    if (extraLoads.length) {
+        await Promise.all(extraLoads);
+    }
+}
+
 async function reloadPortalForRevision(latestRevision) {
     const reloadUrl = new URL(window.location.href);
     reloadUrl.searchParams.set('_portal_revision', latestRevision);
@@ -340,7 +414,6 @@ function renderEssentialViews() {
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
-    renderMemberIntros();
     renderMemberExtraViews();
     renderPartManagement();
     renderSchedulePerformanceOptions();
@@ -509,7 +582,7 @@ function applyBootstrapData(data) {
         schedules: collectionOrCurrent('schedules'),
         announcements: collectionOrCurrent('announcements'),
         events: collectionOrCurrent('events'),
-        members: collectionOrCurrent('members'),
+        members: normalizeMemberSummaryCollection(collectionOrCurrent('members')),
         recordings: data.recordings?.files || appState.recordings || [],
         absences: extraOrCurrent('absences', 'absences'),
         eventResponses: extraOrCurrent('event_responses', 'eventResponses'),
@@ -563,11 +636,12 @@ async function loadAnnouncements() {
 
 async function loadEvents() {
     appState.events = await request('/api/events');
+    markDeferredPortalDataLoaded('events');
     renderEvents();
 }
 
 async function loadMembers() {
-    appState.members = await request('/api/members');
+    appState.members = normalizeMemberSummaryCollection(await request('/api/members'));
     renderMembers();
     renderPaymentAdmin();
 }
@@ -594,7 +668,6 @@ function renderInitialViews(options = {}) {
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
-    renderMemberIntros();
     renderMemberExtraViews({ includeHeavyLists });
     renderAuthDevices();
     renderPartManagement();
@@ -619,6 +692,24 @@ function renderBackgroundViews(options = {}) {
     renderPortalHome();
 }
 
+function normalizeMemberSummaryCollection(members) {
+    return (members || []).map((member) => ({
+        id: member.id ?? '',
+        name: member.name || '',
+        last_name: member.last_name || '',
+        first_name: member.first_name || '',
+        maiden_name: member.maiden_name || '',
+        last_name_kana: member.last_name_kana || '',
+        first_name_kana: member.first_name_kana || '',
+        part: member.part || '',
+        photo_url: member.photo_url || '',
+        password_set: Boolean(member.password_set),
+        permission: member.permission || '荳闊ｬ',
+        joined_at: member.joined_at || '',
+        system_access_until: member.system_access_until || '',
+    }));
+}
+
 // loadRecordings moved to feature module.
 
 // ensureRecordingsLoaded moved to feature module.
@@ -626,6 +717,7 @@ function renderBackgroundViews(options = {}) {
 async function loadAuthManagement() {
     const devices = await request('/api/auth/devices');
     appState.authDevices = devices || [];
+    markDeferredPortalDataLoaded('authDevices');
     renderAuthDevices();
 }
 
@@ -747,6 +839,7 @@ async function loadExtraData(collectionNames = null) {
         const stateKey = stateTargets[key];
         if (stateKey) {
             appState[stateKey] = value || [];
+            markDeferredPortalDataLoaded(stateKey);
         }
     });
 

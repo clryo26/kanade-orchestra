@@ -142,18 +142,28 @@ def test_member_with_id_does_not_use_name_fallback(two_member_env):
     assert payments[0]["member_id"] == 1
 
 
-# --- admin: all payments ---
+# --- admin: own payment in bootstrap-lite, all payments in payment-admin ---
 
-def test_admin_receives_all_payments(two_member_client):
+def test_admin_receives_own_payment_only_in_bootstrap_lite(two_member_client):
     resp = two_member_client.get("/api/bootstrap-lite", headers={"X-Device-Id": "dev-admin"})
     assert resp.status_code == 200
-    assert len(resp.json()["extras"]["payments"]) == 3
+    payments = resp.json()["extras"]["payments"]
+    assert len(payments) == 1
+    assert payments[0]["member_id"] == 3
 
 
-def test_system_admin_receives_all_payments(two_member_client):
+def test_system_admin_receives_own_payment_only_in_bootstrap_lite(two_member_client):
     resp = two_member_client.get("/api/bootstrap-lite", headers={"X-Device-Id": "dev-sysadmin"})
     assert resp.status_code == 200
-    assert len(resp.json()["extras"]["payments"]) == 3
+    payments = resp.json()["extras"]["payments"]
+    assert len(payments) == 1
+    assert payments[0]["member_id"] == 3
+
+
+def test_admin_payment_admin_view_receives_all_payments(two_member_client):
+    resp = two_member_client.get("/api/extra/payments", headers={"X-Device-Id": "dev-admin"})
+    assert resp.status_code == 200
+    assert len(resp.json()) == 3
 
 
 # --- no payment record: empty list ---

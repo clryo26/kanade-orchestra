@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from ..core.auth_dependencies import get_device_auth
 from ..services.extra_collection_helpers import read_json_body
 from ..services import album_service, extra_service
+from ..services.image_asset_service import serve_stored_image
 
 router = APIRouter()
 
@@ -23,7 +24,11 @@ async def create_extra_item(
     request: Request,
     device: dict[str, Any] = Depends(get_device_auth),
 ) -> dict[str, Any]:
-    return extra_service.create_item(name, await read_json_body(request), device)
+    if request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raw_body = dict(await request.form())
+    else:
+        raw_body = await read_json_body(request)
+    return await extra_service.create_item(name, raw_body, device)
 
 
 @router.put("/api/extra/{name}/{item_id}")
@@ -33,7 +38,11 @@ async def update_extra_item(
     request: Request,
     device: dict[str, Any] = Depends(get_device_auth),
 ) -> dict[str, Any]:
-    return extra_service.update_item(name, item_id, await read_json_body(request), device)
+    if request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raw_body = dict(await request.form())
+    else:
+        raw_body = await read_json_body(request)
+    return await extra_service.update_item(name, item_id, raw_body, device)
 
 
 @router.delete("/api/extra/{name}/{item_id}")
@@ -73,3 +82,27 @@ async def delete_album_photo(
     device: dict[str, Any] = Depends(get_device_auth),
 ) -> dict[str, str]:
     return album_service.delete_album_photo(album_id, photo_id, device)
+
+
+@router.get("/api/extra/promotions/{promotion_id}/image")
+async def get_promotion_image(promotion_id: int) -> Response:
+    try:
+        promotion = extra_service.get_item_raw("promotions", promotion_id)
+    except Exception:
+        promotion = {}
+    return serve_stored_image(
+        promotion.get("image_url") or "",
+        object_prefix=f"promotion-images/{promotion_id}/image",
+    )
+
+
+@router.get("/api/extra/org_settings/{setting_id}/icon")
+async def get_org_setting_icon(setting_id: int) -> Response:
+    try:
+        setting = extra_service.get_item_raw("org_settings", setting_id)
+    except Exception:
+        setting = {}
+    return serve_stored_image(
+        setting.get("icon_url") or "",
+        object_prefix=f"org-settings/{setting_id}/icon",
+    )

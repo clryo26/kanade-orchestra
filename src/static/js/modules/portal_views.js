@@ -21,14 +21,16 @@ function renderConcertRecordView() {
 
 // renderMemberIntros moved to feature module.
 
-function showOwnProfileEditForm(memberId) {
-    const member = appState.members.find((item) => String(item.id || '') === String(memberId));
+async function showOwnProfileEditForm(memberId) {
+    const member = memberDetailById(memberId) || memberSummaryById(memberId);
     const container = $('memberIntroInfo');
     if (!member || !container || String(member.id || '') !== String(appState.currentUserMemberId || '')) {
         showAlert('編集できるプロフィールが見つかりません', 'warning');
         return;
     }
-    const joinedAtMonth = joinedAtMonthInputValue(member.joined_at);
+    await loadMemberDetail(memberId);
+    const detail = memberDetailById(memberId) || member;
+    const joinedAtMonth = joinedAtMonthInputValue(detail.joined_at);
     container.innerHTML = `
         <div class="card">
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -47,23 +49,23 @@ function showOwnProfileEditForm(memberId) {
                     </div>
                     <div class="col-md-4">
                         <label class="form-label" for="profileIntroducer">紹介者</label>
-                        <input type="text" class="form-control" id="profileIntroducer" value="${escapeHtml(member.introducer || '')}">
+                        <input type="text" class="form-control" id="profileIntroducer" value="${escapeHtml(detail.introducer || '')}">
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="profileRole">役割</label>
-                        <input type="text" class="form-control" id="profileRole" value="${escapeHtml(member.role || '')}">
+                        <input type="text" class="form-control" id="profileRole" value="${escapeHtml(detail.role || '')}">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="profileInstrumentHistory">楽器歴</label>
-                        <textarea class="form-control" id="profileInstrumentHistory" rows="4">${escapeHtml(member.instrument_history || '')}</textarea>
+                        <textarea class="form-control" id="profileInstrumentHistory" rows="4">${escapeHtml(detail.instrument_history || '')}</textarea>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="profilePastOrchestras">過去所属オケ</label>
-                        <textarea class="form-control" id="profilePastOrchestras" rows="4">${escapeHtml(member.past_orchestras || '')}</textarea>
+                        <textarea class="form-control" id="profilePastOrchestras" rows="4">${escapeHtml(detail.past_orchestras || '')}</textarea>
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="profileComment">コメント</label>
-                        <textarea class="form-control" id="profileComment" rows="4">${escapeHtml(member.comment || '')}</textarea>
+                        <textarea class="form-control" id="profileComment" rows="4">${escapeHtml(detail.comment || '')}</textarea>
                     </div>
                 </div>
                 <div class="d-flex flex-wrap gap-2 mt-3">
@@ -73,19 +75,19 @@ function showOwnProfileEditForm(memberId) {
             </div>
         </div>
     `;
-    $('profileSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveOwnProfile(member.id)));
-    $('profileEditCancelBtn')?.addEventListener('click', renderMemberIntros);
-    $('profileEditCancelBtnBottom')?.addEventListener('click', renderMemberIntros);
+    $('profileSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveOwnProfile(detail.id)));
+    $('profileEditCancelBtn')?.addEventListener('click', () => void showMemberIntroView());
+    $('profileEditCancelBtnBottom')?.addEventListener('click', () => void showMemberIntroView());
 }
 
 async function saveOwnProfile(memberId) {
-    const current = appState.members.find((item) => String(item.id || '') === String(memberId));
+    const current = memberDetailById(memberId) || memberSummaryById(memberId);
     if (!current || String(current.id || '') !== String(appState.currentUserMemberId || '')) {
         showAlert('編集できるプロフィールが見つかりません', 'warning');
         return;
     }
     const photoFile = $('profilePhotoFile')?.files?.[0];
-    const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current.photo_url || '');
+    const photoUrl = current.photo_url || '';
     const payload = {
         photo_url: photoUrl,
         joined_at: $('profileJoinedAt')?.value || '',
@@ -95,8 +97,24 @@ async function saveOwnProfile(memberId) {
         past_orchestras: $('profilePastOrchestras')?.value.trim() || '',
         comment: $('profileComment')?.value.trim() || ''
     };
-    await request(`/api/members/${encodeURIComponent(memberId)}/profile`, jsonOptions('PUT', payload));
-    await loadMembers();
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, String(value ?? ''));
+    });
+    if (photoFile) {
+        formData.append('photo_file', photoFile);
+    }
+    const updatedMember = await request(`/api/members/${encodeURIComponent(memberId)}/profile`, {
+        method: 'PUT',
+        body: formData,
+    });
+    if (updatedMember) {
+        upsertMemberSummary(updatedMember);
+        storeMemberDetailRecord(updatedMember.id, updatedMember, 'loaded');
+    }
+    renderMembers();
+    renderPaymentAdmin();
+    renderMemberIntros();
     showAlert('プロフィールを保存しました', 'success');
 }
 
@@ -384,7 +402,7 @@ function renderPerformanceFlyerPreview(src) {
 async function previewPerformanceFlyer(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
-    const dataUrl = await fileToDataUrl(file);
-    if ($('perfFlyerImage')) $('perfFlyerImage').value = dataUrl;
-    renderPerformanceFlyerPreview(dataUrl);
+    const objectUrl = URL.createObjectURL(file);
+    if ($('perfFlyerImage')) $('perfFlyerImage').value = $('perfFlyerImage').value || '';
+    renderPerformanceFlyerPreview(objectUrl);
 }

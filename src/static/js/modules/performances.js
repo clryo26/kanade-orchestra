@@ -19,7 +19,7 @@ var uploadPieceOptionsCompat = function uploadPieceOptionsCompat(performance) {
 
 async function savePerformance() {
     const flyerFile = $('perfFlyerFile')?.files?.[0];
-    const flyerImage = flyerFile ? await fileToDataUrl(flyerFile) : ($('perfFlyerImage')?.value || '');
+    const flyerImage = $('perfFlyerImage')?.value || '';
     const id = $('perfId').value;
     const currentPerformance = id
         ? appState.performances.find((perf) => String(perf.id || '') === String(id))
@@ -42,7 +42,18 @@ async function savePerformance() {
         return;
     }
 
-    await request(id ? `/api/performances/${id}` : '/api/performances', jsonOptions(id ? 'PUT' : 'POST', payload));
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        const serialized = key === 'pieces' ? JSON.stringify(value ?? []) : String(value ?? '');
+        formData.append(key, serialized);
+    });
+    if (flyerFile) {
+        formData.append('flyer_file', flyerFile);
+    }
+    await request(id ? `/api/performances/${id}` : '/api/performances', {
+        method: id ? 'PUT' : 'POST',
+        body: formData,
+    });
     clearPerformanceForm();
     await loadPerformances();
     showAlert('演奏会情報を保存しました', 'success');

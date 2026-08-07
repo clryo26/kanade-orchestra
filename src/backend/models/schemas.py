@@ -112,6 +112,22 @@ class Member(BaseModel):
     updated_at: str | None = None
 
 
+class MemberSummary(BaseModel):
+    id: int | None = None
+    name: str = ""
+    last_name: str = ""
+    first_name: str = ""
+    maiden_name: str = ""
+    last_name_kana: str = ""
+    first_name_kana: str = ""
+    part: str = ""
+    photo_url: str = ""
+    password_set: bool = False
+    permission: str = "荳闊ｬ"
+    joined_at: str = ""
+    system_access_until: str = ""
+
+
 class MemberProfileUpdate(BaseModel):
     photo_url: str = ""
     joined_at: str = ""

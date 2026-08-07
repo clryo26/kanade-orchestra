@@ -33,6 +33,7 @@ function createSandbox({
         document: {
             addEventListener: vi.fn(),
         },
+        requestIdleCallback: vi.fn((callback) => callback()),
         console: {
             warn: vi.fn(),
             error: vi.fn(),
@@ -223,6 +224,25 @@ describe('bootstrap-lite stale-while-revalidate', () => {
         expect(sandbox.applyBootstrapData).toHaveBeenCalledTimes(1);
         expect(sandbox.applyBootstrapData).toHaveBeenCalledWith(latestData);
         expect(sandbox.portalStartup.ready).not.toHaveBeenCalled();
+    });
+
+    test('background load does not prefetch deferred collections', async () => {
+        const { sandbox } = createSandbox({
+            requestImpl: async () => ({ extras: {} }),
+        });
+
+        await sandbox.loadFullDataInBackground();
+
+        expect(sandbox.request).toHaveBeenCalledTimes(1);
+        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap-core', {});
+        expect(
+            sandbox.request.mock.calls.some(
+                ([url]) => String(url || '').startsWith('/api/extra/')
+            )
+        ).toBe(false);
+        expect(
+            sandbox.request.mock.calls.some(([url]) => url === '/api/events')
+        ).toBe(false);
     });
 
     test('cached preview is not used before portal authentication is verified', async () => {

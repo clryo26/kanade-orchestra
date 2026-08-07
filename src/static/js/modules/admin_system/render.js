@@ -203,7 +203,7 @@ function renderOrgManagement() {
 async function previewOrgIcon() {
     const file = $('orgIconFile')?.files?.[0];
     if (!file || !$('orgIconPreview')) return;
-    $('orgIconPreview').src = await fileToDataUrl(file);
+    $('orgIconPreview').src = URL.createObjectURL(file);
 }
 
 function clearOrgSettingForm() {

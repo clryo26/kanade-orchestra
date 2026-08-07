@@ -159,6 +159,10 @@
 - /api/bootstrap-lite
 - /api/bootstrap-core
 - /api/bootstrap
+- bootstrap-lite は初期表示用の軽量レスポンスとして performances / schedules / announcements / members / extras.payments / extras.part_settings / extras.org_settings / extras.sns_settings を返し、extras.connection_settings / extras.flyer_distributions / extras.flyer_distribution_assignments は返さない。
+- bootstrap-lite の payments は現在端末の持ち主の記録だけを返し、管理者の全件支払一覧は payment-admin か payment-setting を開いた時に `/api/extra/payments` で取得する。
+- チラシ配布の一覧と割当は member-flyer-distribution または flyer-distribution-admin を開いた時に on-demand 取得する。
+- public performances は一覧表示に不要な created_at / updated_at を返さない。
 
 ### 6.3 基本 CRUD
 
@@ -440,7 +444,7 @@ IndexedDB に保存
   "start_time": "18:30",
   "venue": "NHKホール",
   "conductor": "指揮者名",
-  "flyer_image": "data:image/jpeg;base64,...",
+  "flyer_image": "/api/performances/1/flyer-image?ext=jpg",
   "pieces": [
     {
       "id": 1,
@@ -502,7 +506,7 @@ IndexedDB に保存
   "first_name_kana": "タロウ",
   "maiden_name_kana": "サトウ",
   "part": "Violin I",
-  "photo_url": "data:image/jpeg;base64,...",
+  "photo_url": "/api/members/1/photo?ext=jpg",
   "is_founder": true,
   "is_recording_manager": true,
   "is_sheet_manager": false,

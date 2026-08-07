@@ -56,14 +56,149 @@ def test_db_mode_bootstrap_core_and_full_read_from_db(client, backend_env, monke
     core = client.get("/api/bootstrap-core")
     assert core.status_code == 200
     core_payload = core.json()
-    assert core_payload["members"][0]["name"] == "Admin"
-    assert core_payload["extras"]["piece_infos"][0]["piece"] == "Sym"
+    assert core_payload["extras"] == {}
+    assert "events" not in core_payload
+    assert "members" not in core_payload
+    assert "auth_devices" not in core_payload
+
+    lite = client.get("/api/bootstrap-lite")
+    assert lite.status_code == 200
+    lite_payload = lite.json()
+    assert "connection_settings" not in lite_payload["extras"]
+    assert "flyer_distributions" not in lite_payload["extras"]
+    assert "flyer_distribution_assignments" not in lite_payload["extras"]
+    assert isinstance(lite_payload["extras"]["payments"], list)
 
     full = client.get("/api/bootstrap")
     assert full.status_code == 200
     full_payload = full.json()
     assert full_payload["events"][0]["title"] == "Event-1"
     assert full_payload["extras"]["promotions"][0]["title"] == "Promo"
+    assert "flyer_distributions" in full_payload["extras"]
+    assert "flyer_distribution_assignments" in full_payload["extras"]
+
+
+def test_db_mode_member_summary_and_detail_split(client, backend_env, monkeypatch):
+    db_store = {
+        "members": [
+            {
+                "id": 1,
+                "name": "Admin",
+                "last_name": "Admin",
+                "first_name": "",
+                "maiden_name": "",
+                "last_name_kana": "admin",
+                "first_name_kana": "",
+                "maiden_name_kana": "",
+                "part": "Vn",
+                "photo_url": "data:image/png;base64,ZmFrZQ==",
+                "password": "pw-admin",
+                "permission": "admin",
+                "is_founder": True,
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "joined_at": "2026-01",
+                "system_access_until": "2026-12",
+                "introducer": "Teacher",
+                "role": "Leader",
+                "instrument_history": "Piano",
+                "past_orchestras": "Old Orchestra",
+                "comment": "Detail comment",
+            },
+            {
+                "id": 2,
+                "name": "User",
+                "last_name": "User",
+                "first_name": "",
+                "maiden_name": "",
+                "last_name_kana": "user",
+                "first_name_kana": "",
+                "maiden_name_kana": "",
+                "part": "Va",
+                "photo_url": "data:image/png;base64,ZmFrZQ==",
+                "password": "pw-user",
+                "permission": "general",
+                "is_founder": False,
+                "is_recording_manager": False,
+                "is_sheet_manager": False,
+                "joined_at": "2026-02",
+                "system_access_until": "",
+                "introducer": "Friend",
+                "role": "Member",
+                "instrument_history": "Viola",
+                "past_orchestras": "School Orchestra",
+                "comment": "Public comment",
+            }
+        ],
+        "auth_devices": [
+            {
+                "id": 1,
+                "device_id": "dev-admin",
+                "member_id": 1,
+                "member_name": "Admin",
+                "member_part": "Vn",
+                "permission": "admin",
+                "authenticated_at": "2026-06-29T00:00:00",
+                "last_seen_at": "2026-06-29T00:00:00",
+            },
+            {
+                "id": 2,
+                "device_id": "dev-user",
+                "member_id": 2,
+                "member_name": "User",
+                "member_part": "Va",
+                "permission": "general",
+                "authenticated_at": "2026-06-29T00:00:00",
+                "last_seen_at": "2026-06-29T00:00:00",
+            }
+        ],
+        "performances": [],
+        "schedules": [],
+        "announcements": [],
+        "events": [],
+        "absences": [],
+        "org_settings": [],
+    }
+    _enable_db_mode(backend_env, monkeypatch, db_store)
+
+    bootstrap = client.get("/api/bootstrap")
+    assert bootstrap.status_code == 200
+    bootstrap_payload = bootstrap.json()
+    assert bootstrap_payload["members"][0]["photo_url"].startswith("/api/members/1/photo")
+    assert bootstrap_payload["members"][0]["introducer"] == "Teacher"
+    assert bootstrap_payload["members"][0]["comment"] == "Detail comment"
+
+    member_list = client.get("/api/members")
+    assert member_list.status_code == 200
+    member_summary = member_list.json()[0]
+    assert member_summary["photo_url"].startswith("/api/members/1/photo")
+    assert "introducer" not in member_summary
+    assert "comment" not in member_summary
+
+    detail = client.get("/api/members/1", headers={"X-Device-Id": "dev-admin"})
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["photo_url"].startswith("/api/members/1/photo")
+    assert detail_payload["introducer"] == "Teacher"
+    assert detail_payload["comment"] == "Detail comment"
+    assert detail_payload["password_set"] is True
+
+    public_detail = client.get("/api/members/1", headers={"X-Device-Id": "dev-user"})
+    assert public_detail.status_code == 200
+    public_payload = public_detail.json()
+    assert public_payload["photo_url"].startswith("/api/members/1/photo")
+    assert public_payload["introducer"] == "Teacher"
+    assert public_payload["comment"] == "Detail comment"
+    assert "permission" not in public_payload
+    assert "system_access_until" not in public_payload
+    assert "password_set" not in public_payload
+
+    self_detail = client.get("/api/members/2", headers={"X-Device-Id": "dev-user"})
+    assert self_detail.status_code == 200
+    self_payload = self_detail.json()
+    assert self_payload["introducer"] == "Friend"
+    assert self_payload["permission"] == "general"
+    assert self_payload["password_set"] is True
 
 
 def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkeypatch):
