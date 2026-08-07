@@ -50,6 +50,8 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - GET /api/bootstrap-lite
 - GET /api/bootstrap-core
 - GET /api/bootstrap
+- 画像本体は bootstrap レスポンスに埋め込まず、`photo_url` / `flyer_image` / `image_url` は画像配信 API の URL を返す。
+- 画像配信 API は `GET /api/members/{member_id}/photo`、`GET /api/performances/{performance_id}/flyer-image`、`GET /api/extra/promotions/{promotion_id}/image` を使用する。
 
 ### 3.4 基本 CRUD
 

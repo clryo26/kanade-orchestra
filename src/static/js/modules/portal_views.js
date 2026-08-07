@@ -85,7 +85,7 @@ async function saveOwnProfile(memberId) {
         return;
     }
     const photoFile = $('profilePhotoFile')?.files?.[0];
-    const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current.photo_url || '');
+    const photoUrl = current.photo_url || '';
     const payload = {
         photo_url: photoUrl,
         joined_at: $('profileJoinedAt')?.value || '',
@@ -95,7 +95,17 @@ async function saveOwnProfile(memberId) {
         past_orchestras: $('profilePastOrchestras')?.value.trim() || '',
         comment: $('profileComment')?.value.trim() || ''
     };
-    await request(`/api/members/${encodeURIComponent(memberId)}/profile`, jsonOptions('PUT', payload));
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, String(value ?? ''));
+    });
+    if (photoFile) {
+        formData.append('photo_file', photoFile);
+    }
+    await request(`/api/members/${encodeURIComponent(memberId)}/profile`, {
+        method: 'PUT',
+        body: formData,
+    });
     await loadMembers();
     showAlert('プロフィールを保存しました', 'success');
 }
@@ -384,7 +394,7 @@ function renderPerformanceFlyerPreview(src) {
 async function previewPerformanceFlyer(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
-    const dataUrl = await fileToDataUrl(file);
-    if ($('perfFlyerImage')) $('perfFlyerImage').value = dataUrl;
-    renderPerformanceFlyerPreview(dataUrl);
+    const objectUrl = URL.createObjectURL(file);
+    if ($('perfFlyerImage')) $('perfFlyerImage').value = $('perfFlyerImage').value || '';
+    renderPerformanceFlyerPreview(objectUrl);
 }

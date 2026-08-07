@@ -440,7 +440,7 @@ IndexedDB に保存
   "start_time": "18:30",
   "venue": "NHKホール",
   "conductor": "指揮者名",
-  "flyer_image": "data:image/jpeg;base64,...",
+  "flyer_image": "/api/performances/1/flyer-image?ext=jpg",
   "pieces": [
     {
       "id": 1,
@@ -502,7 +502,7 @@ IndexedDB に保存
   "first_name_kana": "タロウ",
   "maiden_name_kana": "サトウ",
   "part": "Violin I",
-  "photo_url": "data:image/jpeg;base64,...",
+  "photo_url": "/api/members/1/photo?ext=jpg",
   "is_founder": true,
   "is_recording_manager": true,
   "is_sheet_manager": false,

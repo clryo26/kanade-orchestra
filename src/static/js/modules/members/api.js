@@ -7,7 +7,7 @@ var $ = window.portalRuntimeContext.getById;
 async function saveMember() {
     const current = appState.members.find((member) => String(member.id) === String($('memberId').value));
     const photoFile = $('memberPhotoFile')?.files?.[0];
-    const photoUrl = photoFile ? await fileToDataUrl(photoFile) : (current?.photo_url || '');
+    const photoUrl = current?.photo_url || '';
     const lastName = $('memberLastName') ? $('memberLastName').value.trim() : '';
     const firstName = $('memberFirstName') ? $('memberFirstName').value.trim() : '';
     const payload = {
@@ -49,7 +49,17 @@ async function saveMember() {
         payload.system_access_until = '';
     }
     const id = $('memberId').value;
-    await request(id ? `/api/members/${id}` : '/api/members', jsonOptions(id ? 'PUT' : 'POST', payload));
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value ?? ''));
+    });
+    if (photoFile) {
+        formData.append('photo_file', photoFile);
+    }
+    await request(id ? `/api/members/${id}` : '/api/members', {
+        method: id ? 'PUT' : 'POST',
+        body: formData,
+    });
     clearMemberForm();
     await loadMembers();
     showAlert('団員情報を保存しました', 'success');

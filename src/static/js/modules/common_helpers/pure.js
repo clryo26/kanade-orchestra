@@ -36,7 +36,6 @@ function compactCalendarDate(date, time = '') { const ymd = String(date || '').r
 function nextAllDayDate(date) { if (!date) return ''; const value = new Date(`${date}T00:00:00`); value.setDate(value.getDate() + 1); const y = value.getFullYear(); const m = String(value.getMonth() + 1).padStart(2, '0'); const d = String(value.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; }
 function icsEscape(value) { return String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(',', '\\,').replaceAll(';', '\\;'); }
 function icsDateTime(date, time = '') { const compact = compactCalendarDate(date, time); return time ? compact : compact; }
-function fileToDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.addEventListener('load', () => resolve(String(reader.result || ''))); reader.addEventListener('error', () => reject(reader.error || new Error('画像を読み込めませんでした'))); reader.readAsDataURL(file); }); }
 function partSortIndex(partName) { const index = currentPartNames().indexOf(String(partName || '')); return index === -1 ? 9999 : index; }
 function cssSafeId(value) { return encodeURIComponent(String(value || 'none')).replace(/%/g, ''); }
 function paymentMonthValue(monthText) { if (!monthText || !/^\d{4}-\d{2}$/.test(String(monthText))) return null; const [year, month] = String(monthText).split('-').map(Number); return year * 12 + month; }

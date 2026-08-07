@@ -80,7 +80,7 @@ async function deleteDesiredPiece(id) {
 async function previewPromotionImage(event) {
     const file = event?.target?.files?.[0];
     if (!file || !$('promotionImagePreview')) return;
-    const dataUrl = await fileToDataUrl(file);
+    const dataUrl = URL.createObjectURL(file);
     $('promotionImagePreview').innerHTML = `<img src="${escapeHtml(dataUrl)}" class="img-fluid rounded border" alt="宣伝画像プレビュー">`;
 }
 
@@ -93,7 +93,7 @@ async function savePromotion() {
     const id = $('promotionId')?.value || '';
     const current = appState.promotions.find((item) => String(item.id || '') === String(id));
     const imageFile = $('promotionImageFile')?.files?.[0];
-    const imageUrl = imageFile ? await fileToDataUrl(imageFile) : (current?.image_url || '');
+    const imageUrl = current?.image_url || '';
     const payload = {
         title,
         summary: $('promotionSummary')?.value.trim() || '',
@@ -101,8 +101,17 @@ async function savePromotion() {
         member_id: current?.member_id || appState.currentUserMemberId || '',
         registered_by: current?.registered_by || currentUserMemberName()
     };
-    if (id) await request(`/api/extra/promotions/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
-    else await saveExtra('promotions', payload);
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, String(value ?? ''));
+    });
+    if (imageFile) {
+        formData.append('image_url_file', imageFile);
+    }
+    await request(id ? `/api/extra/promotions/${encodeURIComponent(id)}` : '/api/extra/promotions', {
+        method: id ? 'PUT' : 'POST',
+        body: formData,
+    });
     clearPromotionForm();
     await loadExtraData(['promotions']);
     showAlert('宣伝を保存しました', 'success');

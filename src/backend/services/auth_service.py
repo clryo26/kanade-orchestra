@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from ..auth_helpers import find_member_by_login_name, member_access_expired, member_display_name
 from ..services.auth_session_fallback import fallback_auth_device
+from ..services.image_asset_service import ensure_public_image_url
 from ..services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 from .storage_service import load_json_data
 from ..db.database import db_data_enabled
@@ -42,6 +43,12 @@ def prepare_member_payload(member: Any, current: dict[str, Any] | None = None) -
 
 def public_member_payload(member: dict[str, Any]) -> dict[str, Any]:
     payload = dict(member)
+    member_id = int(payload.get("id") or 0)
+    if member_id:
+        payload["photo_url"] = ensure_public_image_url(
+            payload.get("photo_url") or "",
+            route_path=f"/api/members/{member_id}/photo",
+        )
 
     for key in [
         "name",
