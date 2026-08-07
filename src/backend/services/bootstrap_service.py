@@ -21,6 +21,9 @@ def _public_performances(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 payload.get("flyer_image") or "",
                 route_path=f"/api/performances/{performance_id}/flyer-image",
             )
+        # 公開 bootstrap では一覧表示に使わない監査系タイムスタンプを返さない。
+        payload.pop("created_at", None)
+        payload.pop("updated_at", None)
         public_items.append(payload)
     return public_items
 
@@ -85,11 +88,8 @@ async def bootstrap_lite_payload(
     extra_names = (
         "payments",
         "part_settings",
-        "flyer_distributions",
-        "flyer_distribution_assignments",
         "org_settings",
         "sns_settings",
-        "connection_settings",
     )
     extras = {name: load_json_data(name) for name in extra_names}
     extras["org_settings"] = _public_org_settings(extras["org_settings"])

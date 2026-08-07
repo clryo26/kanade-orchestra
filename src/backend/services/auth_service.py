@@ -153,20 +153,20 @@ def personal_payment_list(
     payments: list[dict[str, Any]],
     device: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    """管理者なら全件、一般団員なら本人分のみ、未認証(device=None)なら空を返す。"""
+    """bootstrap-lite ??????????????????????????"""
     if device is None:
         return []
-    if str(device.get("permission") or "") in {"管理者", "システム管理者"}:
-        return payments
+
     member_id = str(device.get("member_id") or "")
     if member_id:
-        # member_idがある場合はIDのみで照合（同姓同名の別人を除外）
-        return [p for p in payments if str(p.get("member_id") or "") == member_id]
+        return [payment for payment in payments if str(payment.get("member_id") or "") == member_id]
+
     member_name = str(device.get("member_name") or "")
     if member_name:
-        # member_idがない旧データのみ氏名で照合
-        return [p for p in payments if p.get("name") == member_name]
+        return [payment for payment in payments if payment.get("name") == member_name]
+
     return []
+
 
 def normalized_permission(member: dict[str, Any]) -> str:
     # role未設定データは既存互換として一般団員相当で扱う。

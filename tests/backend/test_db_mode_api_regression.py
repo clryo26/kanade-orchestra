@@ -61,11 +61,21 @@ def test_db_mode_bootstrap_core_and_full_read_from_db(client, backend_env, monke
     assert "members" not in core_payload
     assert "auth_devices" not in core_payload
 
+    lite = client.get("/api/bootstrap-lite")
+    assert lite.status_code == 200
+    lite_payload = lite.json()
+    assert "connection_settings" not in lite_payload["extras"]
+    assert "flyer_distributions" not in lite_payload["extras"]
+    assert "flyer_distribution_assignments" not in lite_payload["extras"]
+    assert isinstance(lite_payload["extras"]["payments"], list)
+
     full = client.get("/api/bootstrap")
     assert full.status_code == 200
     full_payload = full.json()
     assert full_payload["events"][0]["title"] == "Event-1"
     assert full_payload["extras"]["promotions"][0]["title"] == "Promo"
+    assert "flyer_distributions" in full_payload["extras"]
+    assert "flyer_distribution_assignments" in full_payload["extras"]
 
 
 def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkeypatch):

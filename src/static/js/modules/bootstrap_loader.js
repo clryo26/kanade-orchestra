@@ -242,11 +242,13 @@ const deferredPortalDataFlags = {
     eventResponses: false,
     dateAdjustments: false,
     dateAdjustmentResponses: false,
+    payments: false,
     castings: false,
     pieceInfos: false,
     practiceInstructions: false,
     performanceDayInfos: false,
     albums: false,
+    flyerDistributions: false,
     flyerDistributionAssignments: false,
     desiredPieces: false,
     promotions: false,
@@ -292,7 +294,9 @@ async function ensureDeferredTabDataLoaded(tabName) {
     if (tabName === 'member-performance-day' || tabName === 'performance-day-admin') queueExtraLoad(['performanceDayInfos']);
     if (tabName === 'member-casting' || tabName === 'casting-admin') queueExtraLoad(['castings']);
     if (tabName === 'member-album') queueExtraLoad(['albums']);
-    if (tabName === 'member-flyer-distribution') queueExtraLoad(['flyerDistributionAssignments']);
+    if (tabName === 'member-flyer-distribution') queueExtraLoad(['flyerDistributions', 'flyerDistributionAssignments']);
+    if (tabName === 'flyer-distribution-admin') queueExtraLoad(['flyerDistributions']);
+    if (tabName === 'payment-admin' || tabName === 'payment-setting') queueExtraLoad(['payments']);
     if (tabName === 'member-desired-piece') queueExtraLoad(['desiredPieces']);
     if (tabName === 'member-promotion') queueExtraLoad(['promotions']);
     if (tabName === 'venue-admin') queueExtraLoad(['venueSettings']);

@@ -90,6 +90,8 @@ def test_bootstrap_rewrites_inline_image_fields(client, backend_env, monkeypatch
 
     assert payload["members"][0]["photo_url"].startswith("/api/members/1/photo")
     assert payload["performances"][0]["flyer_image"].startswith("/api/performances/1/flyer-image")
+    assert "created_at" not in payload["performances"][0]
+    assert "updated_at" not in payload["performances"][0]
     assert payload["extras"]["promotions"][0]["image_url"].startswith("/api/extra/promotions/1/image")
     assert "data:image" not in response.text
 
