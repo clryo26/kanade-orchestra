@@ -24,7 +24,7 @@ async function saveMember() {
         is_recording_manager: $('memberIsRecordingManager') ? $('memberIsRecordingManager').checked : false,
         is_sheet_manager: $('memberIsSheetManager') ? $('memberIsSheetManager').checked : false,
         password: '',
-        permission: $('memberPermission') ? $('memberPermission').value : '荳闊ｬ',
+        permission: $('memberPermission') ? $('memberPermission').value : '一般',
         joined_at: $('memberJoinedAt') ? $('memberJoinedAt').value : '',
         system_access_until: $('memberSystemAccessUntil') ? $('memberSystemAccessUntil').value : '',
         introducer: $('memberIntroducer') ? $('memberIntroducer').value.trim() : '',
@@ -34,18 +34,18 @@ async function saveMember() {
         comment: $('memberComment').value.trim(),
     };
     if (!payload.last_name || !payload.first_name) {
-        showAlert('蟋薙→蜷阪ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞', 'warning');
+        showAlert('姓と名を入力してください', 'warning');
         return;
     }
     if (!payload.part) {
-        showAlert('繝代・繝医ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞', 'warning');
+        showAlert('パートを選択してください', 'warning');
         return;
     }
-    if (payload.permission === '繧ｨ繧ｭ繧ｹ繝医Λ' && !payload.system_access_until) {
-        showAlert('繧ｨ繧ｭ繧ｹ繝医Λ縺ｮ蝣ｴ蜷医・繧ｷ繧ｹ繝・Β蛻ｩ逕ｨ邨ゆｺ・律繧貞・蜉帙＠縺ｦ縺上□縺輔＞', 'warning');
+    if (payload.permission === 'エキストラ' && !payload.system_access_until) {
+        showAlert('エキストラの場合はシステム利用期限を入力してください', 'warning');
         return;
     }
-    if (payload.permission !== '繧ｨ繧ｭ繧ｹ繝医Λ') {
+    if (payload.permission !== 'エキストラ') {
         payload.system_access_until = '';
     }
     const id = $('memberId').value;
@@ -67,13 +67,13 @@ async function saveMember() {
     clearMemberForm();
     renderMembers();
     renderPaymentAdmin();
-    showAlert('蝗｣蜩｡諠・ｱ繧剃ｿ晏ｭ倥＠縺ｾ縺励◆', 'success');
+    showAlert('団員情報を保存しました', 'success');
 }
 
 async function resetMemberPassword() {
     const id = $('memberId').value;
     if (!id) {
-        showAlert('繝代せ繝ｯ繝ｼ繝峨ｒ繝ｪ繧ｻ繝・ヨ縺吶ｋ蝗｣蜩｡繧剃ｸ隕ｧ縺九ｉ驕ｸ謚槭＠縺ｦ縺上□縺輔＞', 'warning');
+        showAlert('パスワードをリセットする団員を一覧から選択してください', 'warning');
         return;
     }
 
@@ -94,7 +94,7 @@ async function resetMemberPassword() {
 async function deleteMember() {
     const id = $('memberId').value;
     if (!id) {
-        showAlert('蜑企勁縺吶ｋ蝗｣蜩｡繧剃ｸ隕ｧ縺九ｉ驕ｸ謚槭＠縺ｦ縺上□縺輔＞', 'warning');
+        showAlert('削除する団員を一覧から選択してください', 'warning');
         return;
     }
     if (!confirmDelete()) return;
@@ -103,5 +103,5 @@ async function deleteMember() {
     clearMemberSummaryAndDetail(id);
     renderMembers();
     renderPaymentAdmin();
-    showAlert('蝗｣蜩｡諠・ｱ繧貞炎髯､縺励∪縺励◆', 'success');
+    showAlert('団員情報を削除しました', 'success');
 }

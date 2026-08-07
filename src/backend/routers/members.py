@@ -36,7 +36,7 @@ async def _read_member_payload(request: Request) -> tuple[dict[str, Any], Upload
             "is_recording_manager": _as_bool(form.get("is_recording_manager")),
             "is_sheet_manager": _as_bool(form.get("is_sheet_manager")),
             "password": str(form.get("password") or "").strip(),
-            "permission": str(form.get("permission") or "").strip() or "荳闊ｬ",
+            "permission": str(form.get("permission") or "").strip() or "一般",
             "joined_at": str(form.get("joined_at") or "").strip(),
             "system_access_until": str(form.get("system_access_until") or "").strip(),
             "introducer": str(form.get("introducer") or "").strip(),
