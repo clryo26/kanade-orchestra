@@ -34,8 +34,8 @@ function renderAbsenceView() {
             const rows = abs.length ? abs.map((absence) => {
                 const own = absenceBelongsToCurrentUser(absence);
                 return `<div class="absence-row d-flex flex-wrap justify-content-between align-items-center gap-2 py-1">
-                    <span>${escapeHtml(absenceEntryLabel(absence))}</span>
-                    ${own ? `<span class="d-flex gap-2"><button class="btn btn-sm btn-outline-primary absence-edit-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger absence-delete-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">削除</button></span>` : ''}
+                    <span class="absence-row-label">${escapeHtml(absenceEntryLabel(absence))}</span>
+                    ${own ? `<span class="absence-row-actions d-flex gap-2"><button class="btn btn-sm btn-outline-primary absence-edit-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger absence-delete-btn" type="button" data-absence-id="${escapeHtml(String(absence.id || ''))}">削除</button></span>` : ''}
                 </div>`;
             }).join('') : '出欠連絡なし';
             return `<div class="info-block"><strong>${escapeHtml(formatDateWithWeekday(schedule.date))} ${escapeHtml(scheduleTimeLabel(schedule))}</strong><div class="small text-muted">${escapeHtml(schedule.venue || '')}</div><div class="mt-1">${rows}</div></div>`;

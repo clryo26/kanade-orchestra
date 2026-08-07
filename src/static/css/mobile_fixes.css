@@ -1,0 +1,46 @@
+.absence-row-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.absence-row-actions {
+    flex: 0 0 auto;
+}
+
+.recording-continuous-check {
+    width: 100%;
+}
+
+.recording-continuous-check .form-check-input {
+    float: none;
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.recording-continuous-check .form-check-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+@media (max-width: 768px) {
+    .recording-continuous-check {
+        padding: 0.45rem 0.75rem;
+    }
+
+    #memberAbsenceTab .form-control,
+    #memberAbsenceTab .form-select,
+    #memberAbsenceTab input[type="date"],
+    #memberAbsenceTab input[type="time"],
+    #memberAbsenceTab input[type="datetime-local"],
+    #memberAbsenceTab input[type="number"],
+    #memberAbsenceTab input[type="search"],
+    #memberAbsenceTab textarea,
+    #sheetAdminTab .form-control-sm,
+    #sheetAdminTab .form-select-sm,
+    #performanceDayAdminTab .form-control-sm,
+    #performanceDayAdminTab .form-select-sm,
+    #castingAdminTab .form-control-sm,
+    #castingAdminTab .form-select-sm {
+        font-size: 16px;
+    }
+}
