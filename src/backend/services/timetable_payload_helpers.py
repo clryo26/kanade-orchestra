@@ -307,7 +307,7 @@ def parse_timeline_text_rows(text: str, performance: dict[str, Any]) -> list[dic
                     diff += 24 * 60
                 duration_minutes = str(diff)
         else:
-            match = re.match(r"^(\d{1,2}:\d{2})\s+(\d{1,3})\s*(?:分|蛻・)\s+(.+)$", line)
+            match = re.match(r"^(\d{1,2}:\d{2})\s+(\d{1,3})\s*分?\s+(.+)$", line)
             if match:
                 start_time = normalize_clock_text(match.group(1))
                 duration_minutes = match.group(2).strip()
@@ -501,8 +501,8 @@ def build_timetable_workbook_bytes(
     else:
         timeline_rows = base_timeline_rows
     assignment_rows = parse_assignment_rows(info)
-    default_mc = choose_assignment_value(assignment_rows, ["mc", "蜿ｸ莨・"])
-    default_reception = choose_assignment_value(assignment_rows, ["蜿嶺ｻ・", "繝√こ繝・ヨ"])
+    default_mc = choose_assignment_value(assignment_rows, ["mc", "司会"])
+    default_reception = choose_assignment_value(assignment_rows, ["受付", "チケット"])
     default_setting = choose_assignment_value(assignment_rows, ["セッティング", "設営", "舞台"])
     assignment_note = compact_assignment_text(
         assignment_rows,

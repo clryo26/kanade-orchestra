@@ -71,7 +71,7 @@ function normalizeMemberSummary(member) {
     });
     summary.id = source.id ?? summary.id ?? '';
     summary.password_set = Boolean(source.password_set);
-    summary.permission = String(source.permission || '荳闊ｬ');
+    summary.permission = String(source.permission || '一般');
     summary.joined_at = String(source.joined_at || '');
     summary.system_access_until = String(source.system_access_until || '');
     summary.photo_url = String(source.photo_url || '');
@@ -226,7 +226,7 @@ async function ensureMemberIntroDataLoaded() {
     const settled = await Promise.allSettled(pending);
     const failed = settled.filter((item) => item.status === 'rejected').length;
     if (failed && typeof showAlert === 'function') {
-        showAlert('蝗｣蜩｡邏ｹ莉・蜀崎ｩｦ陦後・繝・・繧ｿ繝ｼ蜿門ｾ励↓螟ｱ謨励＠縺ｾ縺励◆縲よｽｭ陦後∪縺溘・繝医Λ繧ｳ繝輔ぃ繝ｼ繝舌・縺ｧ蜿門ｾ励し繝ｼ繝・を蜿門ｾ後〒縺阪∪縺吶・', 'warning');
+        showAlert('団員紹介の読み込みに失敗しました。もう一度お試しください。', 'warning');
     }
     return failed === 0;
 }

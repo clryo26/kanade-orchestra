@@ -135,7 +135,7 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
     assert_extra_collection_permission(name, device, payload=normalized_body)
     if (
         name in {"desired_pieces", "promotions"}
-        and str(device.get("permission") or "") not in {"邂｡逅・・", "繧ｷ繧ｹ繝・Β邂｡逅・・"}
+        and str(device.get("permission") or "") not in {"管理者", "システム管理者"}
     ):
         normalized_body["member_id"] = device.get("member_id") or ""
         normalized_body["registered_by"] = device.get("member_name") or ""
@@ -181,7 +181,7 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
     assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
     if (
         name in {"desired_pieces", "promotions"}
-        and str(device.get("permission") or "") not in {"邂｡逅・・", "繧ｷ繧ｹ繝・Β邂｡逅・・"}
+        and str(device.get("permission") or "") not in {"管理者", "システム管理者"}
     ):
         normalized_body["member_id"] = current.get("member_id") or device.get("member_id") or ""
         normalized_body["registered_by"] = current.get("registered_by") or device.get("member_name") or ""

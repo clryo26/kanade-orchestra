@@ -704,7 +704,7 @@ function normalizeMemberSummaryCollection(members) {
         part: member.part || '',
         photo_url: member.photo_url || '',
         password_set: Boolean(member.password_set),
-        permission: member.permission || '荳闊ｬ',
+        permission: member.permission || '一般',
         joined_at: member.joined_at || '',
         system_access_until: member.system_access_until || '',
     }));

@@ -67,7 +67,7 @@ function syncMemberPermissionFields() {
     const permission = $('memberPermission')?.value || '一般';
     const accessUntil = $('memberSystemAccessUntil');
     if (!accessUntil) return;
-    const isExtra = permission === '繧ｨ繧ｭ繧ｹ繝医Λ';
+    const isExtra = permission === 'エキストラ';
     accessUntil.disabled = !isExtra;
     accessUntil.required = isExtra;
     if (!isExtra) accessUntil.value = '';

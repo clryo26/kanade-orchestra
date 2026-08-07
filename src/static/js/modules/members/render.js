@@ -83,7 +83,7 @@ function renderMemberIntros() {
 async function showMemberIntroView() {
     const container = $('memberIntroInfo');
     if (!container) return;
-    container.innerHTML = '<p class="text-muted mb-0">隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ縺ｧ縺・..</p>';
+    container.innerHTML = '<p class="text-muted mb-0">読み込み中です...</p>';
     await ensureMemberIntroDataLoaded();
     renderMemberIntros();
 }

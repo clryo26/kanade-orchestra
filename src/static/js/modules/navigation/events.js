@@ -39,7 +39,7 @@ async function enterPortal() {
             appState.essentialDataLoaded = true;
         } catch (error) {
             clearLoadingBar();
-            showAlert(error.message || 'チE�Eタの読み込みに失敗しました', 'danger');
+            showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
             throw error; // 呼出允E_runAuthAndStart筁Eへ伝播
         }
     } else {
