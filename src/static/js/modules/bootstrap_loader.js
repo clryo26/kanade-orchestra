@@ -236,6 +236,76 @@ function renderLoadingPlaceholders() {
     });
 }
 
+const deferredPortalDataFlags = {
+    events: false,
+    absences: false,
+    eventResponses: false,
+    dateAdjustments: false,
+    dateAdjustmentResponses: false,
+    castings: false,
+    pieceInfos: false,
+    practiceInstructions: false,
+    performanceDayInfos: false,
+    albums: false,
+    flyerDistributionAssignments: false,
+    desiredPieces: false,
+    promotions: false,
+    venueSettings: false,
+    connectionSettings: false,
+    authDevices: false,
+};
+
+function markDeferredPortalDataLoaded(name) {
+    if (Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)) {
+        deferredPortalDataFlags[name] = true;
+    }
+}
+
+function isDeferredPortalDataLoaded(name) {
+    return Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)
+        ? deferredPortalDataFlags[name] === true
+        : false;
+}
+
+async function ensureDeferredTabDataLoaded(tabName) {
+    const extraLoads = [];
+    const queueExtraLoad = (names) => {
+        const requested = names.filter((name) => !isDeferredPortalDataLoaded(name));
+        if (requested.length) {
+            extraLoads.push(loadExtraData(requested));
+        }
+    };
+
+    if (tabName === 'event' && !isDeferredPortalDataLoaded('events')) {
+        extraLoads.push(loadEvents());
+    }
+    if (tabName === 'member-event') {
+        if (!isDeferredPortalDataLoaded('events')) {
+            extraLoads.push(loadEvents());
+        }
+        queueExtraLoad(['eventResponses']);
+    }
+    if (tabName === 'member-absence') queueExtraLoad(['absences']);
+    if (tabName === 'member-date-adjustment') queueExtraLoad(['dateAdjustments', 'dateAdjustmentResponses']);
+    if (tabName === 'member-piece-info') queueExtraLoad(['pieceInfos']);
+    if (tabName === 'member-practice-instruction') queueExtraLoad(['practiceInstructions', 'pieceInfos']);
+    if (tabName === 'member-performance-day' || tabName === 'performance-day-admin') queueExtraLoad(['performanceDayInfos']);
+    if (tabName === 'member-casting' || tabName === 'casting-admin') queueExtraLoad(['castings']);
+    if (tabName === 'member-album') queueExtraLoad(['albums']);
+    if (tabName === 'member-flyer-distribution') queueExtraLoad(['flyerDistributionAssignments']);
+    if (tabName === 'member-desired-piece') queueExtraLoad(['desiredPieces']);
+    if (tabName === 'member-promotion') queueExtraLoad(['promotions']);
+    if (tabName === 'venue-admin') queueExtraLoad(['venueSettings']);
+    if (tabName === 'system-connection') queueExtraLoad(['connectionSettings']);
+    if (tabName === 'system-auth' && !isDeferredPortalDataLoaded('authDevices')) {
+        extraLoads.push(loadAuthManagement());
+    }
+
+    if (extraLoads.length) {
+        await Promise.all(extraLoads);
+    }
+}
+
 async function reloadPortalForRevision(latestRevision) {
     const reloadUrl = new URL(window.location.href);
     reloadUrl.searchParams.set('_portal_revision', latestRevision);
@@ -563,6 +633,7 @@ async function loadAnnouncements() {
 
 async function loadEvents() {
     appState.events = await request('/api/events');
+    markDeferredPortalDataLoaded('events');
     renderEvents();
 }
 
@@ -626,6 +697,7 @@ function renderBackgroundViews(options = {}) {
 async function loadAuthManagement() {
     const devices = await request('/api/auth/devices');
     appState.authDevices = devices || [];
+    markDeferredPortalDataLoaded('authDevices');
     renderAuthDevices();
 }
 
@@ -747,6 +819,7 @@ async function loadExtraData(collectionNames = null) {
         const stateKey = stateTargets[key];
         if (stateKey) {
             appState[stateKey] = value || [];
+            markDeferredPortalDataLoaded(stateKey);
         }
     });
 

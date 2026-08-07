@@ -167,14 +167,13 @@ describe('albums lazy loading', () => {
         // Verify .then() block has guard pattern (if NOT member-album, return)
         expect(source).toContain('.then(function');
         expect(source).toContain("if (lastSelectedMemberTab !== 'member-album')");
-        expect(source).toContain('renderAlbumView()');
         expect(source).toContain("switchTab('memberPanel', 'member-album')");
 
-        // Verify the guard comes before render
+        // Verify the guard comes before the switch
         const thenIndex = source.indexOf('.then(function');
         const guardIndex = source.indexOf("if (lastSelectedMemberTab !== 'member-album')", thenIndex);
-        const renderIndex = source.indexOf('renderAlbumView()', thenIndex);
-        expect(guardIndex).toBeLessThan(renderIndex);
+        const switchIndex = source.indexOf("switchTab('memberPanel', 'member-album')", thenIndex);
+        expect(guardIndex).toBeLessThan(switchIndex);
     });
 
     test('events.js non-member-album handler calls switchTab immediately', () => {
@@ -351,8 +350,8 @@ describe('albums lazy loading', () => {
 
     test('[navigation] member-album handler checks lastSelectedMemberTab before switchTab', () => {
         const source = readSource('src/static/js/modules/navigation/events.js');
-        // Verify the guard pattern: if selection is NOT album, return early (don't render or switch)
-        expect(source).toMatch(/\.then\(function\s*\(\)\s*{\s*if\s*\(\s*lastSelectedMemberTab\s*!==\s*['"]member-album['"]\s*\)\s*{\s*return\s*;\s*}\s*renderAlbumView\(\)\s*;\s*switchTab\(['"]memberPanel['"],\s*['"]member-album['"]\)/);
+        // Verify the guard pattern: if selection is NOT album, return early then switch tab after load
+        expect(source).toMatch(/\.then\(function\s*\(\)\s*{\s*if\s*\(\s*lastSelectedMemberTab\s*!==\s*['"]member-album['"]\s*\)\s*{\s*return\s*;\s*}\s*return\s*switchTab\(['"]memberPanel['"],\s*['"]member-album['"]\);?\s*}\)/);
     });
 
     test('[navigation] non-member-album tabs call switchTab immediately without loader', () => {
@@ -375,23 +374,16 @@ describe('albums lazy loading', () => {
     });
 
     test('[navigation] renderAlbumView only called when lastSelectedMemberTab is member-album', () => {
-        const source = readSource('src/static/js/modules/navigation/events.js');
-        // Verify there's exactly one renderAlbumView call in member handler
-        const memberHandlerStart = source.indexOf("document.querySelectorAll('#memberPanel [data-tab]')");
-        const memberHandlerEnd = source.indexOf("document.querySelectorAll('#systemPanel [data-tab]')");
-        const memberHandler = source.substring(memberHandlerStart, memberHandlerEnd);
+        const eventsSource = readSource('src/static/js/modules/navigation/events.js');
+        const eventsMemberHandlerStart = eventsSource.indexOf("document.querySelectorAll('#memberPanel [data-tab]')");
+        const eventsMemberHandlerEnd = eventsSource.indexOf("document.querySelectorAll('#systemPanel [data-tab]')");
+        const eventsMemberHandler = eventsSource.substring(eventsMemberHandlerStart, eventsMemberHandlerEnd);
 
-        const renderCalls = memberHandler.split('renderAlbumView()').length - 1;
-        expect(renderCalls).toBe(1);
+        expect(eventsMemberHandler).not.toContain('renderAlbumView()');
+        expect(eventsMemberHandler).toContain("if (lastSelectedMemberTab !== 'member-album')");
 
-        // Verify it's inside the guard pattern
-        expect(memberHandler).toContain("if (lastSelectedMemberTab !== 'member-album')");
-        expect(memberHandler).toContain('renderAlbumView()');
-
-        // Verify guard comes before render
-        const guardIndex = memberHandler.indexOf("if (lastSelectedMemberTab !== 'member-album')");
-        const renderIndex = memberHandler.indexOf('renderAlbumView()');
-        expect(guardIndex).toBeLessThan(renderIndex);
+        const routesSource = readSource('src/static/js/modules/navigation/routes.js');
+        expect(routesSource).toContain("if (renderOnShow && tabName === 'member-album') renderAlbumView();");
     });
 
     test('[navigation] loader completion checks if selection still member-album', () => {

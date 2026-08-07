@@ -16,7 +16,7 @@ def _enable_db_mode(backend_env, monkeypatch, db_store):
     backend_env._memory_cache.clear()
 
 
-def test_bootstrap_core_rewrites_inline_image_fields(client, backend_env, monkeypatch):
+def test_bootstrap_rewrites_inline_image_fields(client, backend_env, monkeypatch):
     db_store = {
         "performances": [
             {
@@ -84,7 +84,7 @@ def test_bootstrap_core_rewrites_inline_image_fields(client, backend_env, monkey
     }
     _enable_db_mode(backend_env, monkeypatch, db_store)
 
-    response = client.get("/api/bootstrap-core")
+    response = client.get("/api/bootstrap")
     assert response.status_code == 200
     payload = response.json()
 

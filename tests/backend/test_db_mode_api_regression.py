@@ -56,8 +56,10 @@ def test_db_mode_bootstrap_core_and_full_read_from_db(client, backend_env, monke
     core = client.get("/api/bootstrap-core")
     assert core.status_code == 200
     core_payload = core.json()
-    assert core_payload["members"][0]["name"] == "Admin"
-    assert core_payload["extras"]["piece_infos"][0]["piece"] == "Sym"
+    assert core_payload["extras"] == {}
+    assert "events" not in core_payload
+    assert "members" not in core_payload
+    assert "auth_devices" not in core_payload
 
     full = client.get("/api/bootstrap")
     assert full.status_code == 200

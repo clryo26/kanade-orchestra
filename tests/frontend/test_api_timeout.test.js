@@ -313,4 +313,66 @@ describe('request cache fallback control', () => {
             request('/api/bootstrap-lite', { _allowCacheFallback: false })
         ).rejects.toThrow();
     });
+
+    test('concurrent GET requests share the same in-flight promise and retry after failure', async () => {
+        let resolveCacheEntry;
+        const cacheEntryPromise = new Promise((resolve) => {
+            resolveCacheEntry = resolve;
+        });
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockReturnValue(cacheEntryPromise);
+
+        let resolveFetch;
+        const sharedPromise = new Promise((resolve) => {
+            resolveFetch = resolve;
+        });
+        let resolveFetchStart;
+        const fetchStarted = new Promise((resolve) => {
+            resolveFetchStart = resolve;
+        });
+        let fetchCallCount = 0;
+        sandbox.fetch = vi.fn().mockImplementation(() => {
+            fetchCallCount += 1;
+            resolveFetchStart();
+            return sharedPromise;
+        });
+
+        const first = request('/api/bootstrap-core');
+        const second = request('/api/bootstrap-core');
+
+        resolveCacheEntry(null);
+        await fetchStarted;
+
+        expect(fetchCallCount).toBe(1);
+
+        resolveFetch({
+            ok: true,
+            status: 200,
+            headers: {
+                get: (name) => (name === 'content-type' ? 'application/json' : null),
+            },
+            json: async () => ({ ok: true }),
+        });
+
+        await expect(first).resolves.toEqual({ ok: true });
+        await expect(second).resolves.toEqual({ ok: true });
+        expect(sandbox.portalRuntimeContext.inFlightGetRequests.size).toBe(0);
+    });
+
+    test('failed GET clears in-flight state so the next call retries', async () => {
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue(null);
+        sandbox.fetch = vi.fn()
+            .mockRejectedValueOnce(new TypeError('temporary failure'))
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                headers: {
+                    get: (name) => (name === 'content-type' ? 'application/json' : null),
+                },
+                json: async () => ({ ok: true }),
+            });
+
+        await expect(request('/api/bootstrap-core')).rejects.toThrow();
+        await expect(request('/api/bootstrap-core')).resolves.toEqual({ ok: true });
+        expect(sandbox.fetch).toHaveBeenCalledTimes(2);
+    });
 });

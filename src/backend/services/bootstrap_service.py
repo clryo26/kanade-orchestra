@@ -106,42 +106,10 @@ async def bootstrap_lite_payload(
 
 async def bootstrap_core_payload(
     *,
-    load_json_data: Callable[[str], list[dict[str, Any]]],
-    public_member_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
-    list_auth_devices: Callable[[], Awaitable[list[dict[str, Any]]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
-    extra_names = (
-        "absences",
-        "event_responses",
-        "date_adjustments",
-        "date_adjustment_responses",
-        "payments",
-        "castings",
-        "piece_infos",
-        "practice_instructions",
-        "performance_day_infos",
-        "albums",
-        "part_settings",
-        "venue_settings",
-        "flyer_distributions",
-        "flyer_distribution_assignments",
-        "org_settings",
-        "sns_settings",
-        "connection_settings",
-        "desired_pieces",
-        "promotions",
-    )
-    extras = {name: load_json_data(name) for name in extra_names}
-    extras["org_settings"] = _public_org_settings(extras["org_settings"])
     return {
-        "performances": _public_performances(load_json_data("performances")),
-        "schedules": load_json_data("schedules"),
-        "announcements": load_json_data("announcements"),
-        "events": load_json_data("events"),
-        "members": public_member_list(load_json_data("members")),
-        "extras": {**extras, "promotions": _public_promotions(extras["promotions"])},
-        "auth_devices": await list_auth_devices(),
+        "extras": {},
         "cloudRunRevision": cloud_run_revision(),
     }
 

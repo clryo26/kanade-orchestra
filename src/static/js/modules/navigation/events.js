@@ -129,9 +129,7 @@ function bindNavigation() {
                     if (lastSelectedMemberTab !== 'member-album') {
                         return;
                     }
-
-                    renderAlbumView();
-                    switchTab('memberPanel', 'member-album');
+                    return switchTab('memberPanel', 'member-album');
                 })
                 .catch(function (err) {
                     console.warn('[Album] Failed to load:', err);

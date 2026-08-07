@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -72,41 +73,9 @@ async def get_bootstrap_lite_data(
 
 @router.get("/api/bootstrap-core", response_model=None)
 async def get_bootstrap_core_data(request: Request):
-    etag = bootstrap_service.combined_collection_etag(
-        (
-            "performances",
-            "schedules",
-            "announcements",
-            "events",
-            "members",
-            "auth_devices",
-            "absences",
-            "event_responses",
-            "date_adjustments",
-            "date_adjustment_responses",
-            "payments",
-            "castings",
-            "piece_infos",
-            "practice_instructions",
-            "performance_day_infos",
-            "albums",
-            "part_settings",
-            "venue_settings",
-            "flyer_distributions",
-            "flyer_distribution_assignments",
-            "org_settings",
-            "sns_settings",
-            "connection_settings",
-            "desired_pieces",
-            "promotions",
-        ),
-        load_json_data,
-        lambda name: get_memory_cache_instance().etag(name) or "",
-    )
+    revision = meta_service.cloud_run_revision()
+    etag = hashlib.sha256(revision.encode("utf-8")).hexdigest()
     data = await bootstrap_service.bootstrap_core_payload(
-        load_json_data=load_json_data,
-        public_member_list=public_member_list,
-        list_auth_devices=_list_auth_devices,
         cloud_run_revision=meta_service.cloud_run_revision,
     )
     return bootstrap_service.bootstrap_response(request, data, etag)
