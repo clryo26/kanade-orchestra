@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from src.backend.services import meta_service
+
 
 def test_cloud_run_revision_prefers_k_revision(backend_env, monkeypatch):
     monkeypatch.setenv("K_REVISION", "kanade-orchestra-00060-hsf")
@@ -89,3 +91,51 @@ def test_manifest_endpoint_uses_environment_title(client, backend_env, monkeypat
     assert response.status_code == 200
     assert response.json()["name"] == expected_title
     assert response.json()["short_name"] == expected_title
+
+
+def test_index_html_static_asset_urls_append_revision_only_for_local_assets():
+    html = """
+    <html>
+      <head>
+        <link rel="stylesheet" href="/static/css/style.css?v=20260701-1">
+        <link rel="stylesheet" href="/static/css/mobile_fixes.css">
+        <script src="/static/js/main.js?v=20260630-6"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+      </head>
+    </html>
+    """
+
+    rewritten = meta_service.rewrite_index_html_static_asset_urls(html, "kanade-00042-abc")
+
+    assert '/static/css/style.css?v=20260701-1&rev=kanade-00042-abc' in rewritten
+    assert '/static/css/mobile_fixes.css?rev=kanade-00042-abc' in rewritten
+    assert '/static/js/main.js?v=20260630-6&rev=kanade-00042-abc' in rewritten
+    assert 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js' in rewritten
+
+
+def test_index_html_static_asset_urls_do_not_change_without_revision():
+    html = '<link rel="stylesheet" href="/static/css/style.css?v=20260701-1">'
+
+    assert meta_service.rewrite_index_html_static_asset_urls(html, "") == html
+
+
+def test_root_returns_html_and_revision_busts_static_assets(client, monkeypatch):
+    monkeypatch.setenv("K_REVISION", "kanade-00042-abc")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "&rev=kanade-00042-abc" in response.text
+    assert "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" in response.text
+
+
+def test_root_without_revision_keeps_existing_html(client, monkeypatch):
+    monkeypatch.delenv("K_REVISION", raising=False)
+    monkeypatch.delenv("CLOUD_RUN_REVISION", raising=False)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "&rev=" not in response.text
