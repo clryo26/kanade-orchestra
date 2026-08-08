@@ -112,3 +112,43 @@ jobs:
             --image "${IMAGE_WITH_DIGEST}" \
             --set-env-vars "${ENV_VARS}" \
             --quiet
+
+      - name: Promote latest production revision to 100% traffic
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          PROD_CLOUD_RUN_SERVICE: ${{ vars.PROD_CLOUD_RUN_SERVICE }}
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "${PROD_CLOUD_RUN_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --to-latest \
+            --quiet
+
+          service_json="$(gcloud run services describe "${PROD_CLOUD_RUN_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format=json)"
+          export SERVICE_JSON="${service_json}"
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          service = json.loads(os.environ["SERVICE_JSON"])
+          status = service.get("status", {})
+          latest_ready_revision = status.get("latestReadyRevisionName")
+          traffic = status.get("traffic", [])
+
+          if not latest_ready_revision:
+              sys.exit("latestReadyRevisionName is missing after production promotion")
+          if len(traffic) != 1:
+              sys.exit("Production traffic is not concentrated into a single revision")
+          traffic_entry = traffic[0]
+          if traffic_entry.get("revisionName") != latest_ready_revision:
+              sys.exit("Production traffic revision does not match latestReadyRevisionName")
+          if traffic_entry.get("percent") != 100:
+              sys.exit("Production traffic is not 100% assigned to the latest ready revision")
+          PY

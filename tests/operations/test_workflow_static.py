@@ -177,6 +177,41 @@ def test_missing_prod_db_url_fails(tmp_path):
 @pytest.mark.parametrize(
     "token",
     [
+        "gcloud run services update-traffic",
+        "gcloud run services describe",
+        "latestReadyRevisionName",
+        'traffic_entry.get("percent") != 100',
+    ],
+)
+def test_promote_production_traffic_promotion_tokens_fails(tmp_path, token):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    production_path = workflow_dir / "promote-production.yml"
+    content = production_path.read_text(encoding="utf-8")
+    production_path.write_text(content.replace(token, "removed-traffic-promotion-token"), encoding="utf-8")
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("required token missing" in error for error in errors)
+
+
+def test_promote_production_traffic_promotion_phrase_fails(tmp_path):
+    module = _load_module()
+    workflow_dir, verify_script = _copy_fixture(tmp_path)
+    _replace(
+        workflow_dir / "promote-production.yml",
+        "Promote latest production revision to 100% traffic",
+        "Promote production",
+    )
+
+    errors = module.run_checks(workflow_dir, verify_script)
+
+    assert any("required policy phrase missing" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
         "PROD_DB_HOST",
         "PROD_DB_NAME",
         "PROD_DB_USER",
