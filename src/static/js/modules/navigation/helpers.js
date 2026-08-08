@@ -58,7 +58,8 @@ const ACCESS_LOG_MENU_LABELS = {
     'system-environment': '環境管理',
     'system-readiness': '運用Readyチェック',
     'system-access-log': 'アクセスログ',
-    'system-database': 'データベース'
+    'system-database': 'データベース',
+    'system-improvement-suggestion': '改善案管理'
 };
 
 function isExtraUser() {
@@ -128,6 +129,7 @@ function toPascalTab(value) {
         'system-readiness': 'systemReadiness',
         'system-access-log': 'systemAccessLog',
         'system-database': 'systemDatabase',
+        'system-improvement-suggestion': 'systemImprovementSuggestion',
     };
     return map[value] || value;
 }

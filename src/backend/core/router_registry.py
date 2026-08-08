@@ -32,6 +32,7 @@ def register_routes(app: FastAPI) -> FastAPI:
     announcements_router = _import_router("..routers.announcements", "routers.announcements")
     events_router = _import_router("..routers.events", "routers.events")
     maintenance_router = _import_router("..routers.maintenance", "routers.maintenance")
+    improvement_suggestions_router = _import_router("..routers.improvement_suggestions", "routers.improvement_suggestions")
     members_router = _import_router("..routers.members", "routers.members")
     meta_router = _import_router("..routers.meta", "routers.meta")
     performances_router = _import_router("..routers.performances", "routers.performances")
@@ -53,6 +54,7 @@ def register_routes(app: FastAPI) -> FastAPI:
         system_router,
         access_logs_router,
         maintenance_router,
+        improvement_suggestions_router,
         bootstrap_router,
         meta_router,
         auth_router,

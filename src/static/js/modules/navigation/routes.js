@@ -100,6 +100,61 @@ function _albumsReady() {
         typeof deleteAlbumPhoto === 'function';
 }
 
+var improvementSuggestionsLoadPromise = null;
+
+function _improvementSuggestionsReady() {
+    return typeof window.showImprovementSuggestions === 'function' &&
+        typeof window.loadImprovementSuggestions === 'function';
+}
+
+function ensureImprovementSuggestionsLoaded() {
+    if (_improvementSuggestionsReady()) {
+        return Promise.resolve();
+    }
+    if (improvementSuggestionsLoadPromise) {
+        return improvementSuggestionsLoadPromise;
+    }
+
+    improvementSuggestionsLoadPromise = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = '/static/js/modules/improvement_suggestions.js?v=20260808-2';
+        script.async = true;
+
+        script.addEventListener('load', function () {
+            if (_improvementSuggestionsReady()) {
+                resolve();
+                return;
+            }
+            improvementSuggestionsLoadPromise = null;
+            reject(new Error('Improvement suggestion functions are unavailable'));
+        }, { once: true });
+
+        script.addEventListener('error', function () {
+            improvementSuggestionsLoadPromise = null;
+            reject(new Error('Improvement suggestion script failed to load'));
+        }, { once: true });
+
+        document.head.appendChild(script);
+    });
+
+    return improvementSuggestionsLoadPromise;
+}
+
+async function requestImprovementSuggestions() {
+    try {
+        await ensureImprovementSuggestionsLoaded();
+        await window.showImprovementSuggestions();
+    } catch (err) {
+        console.warn('[improvement-suggestions] load failed', err);
+        if (typeof showAlert === 'function') {
+            showAlert(
+                '\u6539\u5584\u6848\u6a5f\u80fd\u306e\u8aad\u8fbc\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u518d\u5ea6\u958b\u3044\u3066\u304f\u3060\u3055\u3044\u3002',
+                'warning'
+            );
+        }
+    }
+}
+
 function ensureAlbumsLoaded() {
     if (_albumsReady()) {
         return Promise.resolve();
@@ -171,6 +226,7 @@ function requestAdminPanel() {
 function showAdminPanel(role = 'admin') {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('adminPanel').hidden = false;
+    if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
     updateOtherEnvironmentLink();
     $('memberPanel').hidden = true;
     if ($('systemPanel')) $('systemPanel').hidden = true;
@@ -201,9 +257,20 @@ function showSystemPanel() {
             showAlert('管理機能の読込に失敗しました。再度開いてください。', 'warning');
             return;
         }
+        try {
+            await ensureImprovementSuggestionsLoaded();
+        } catch (err) {
+            console.warn('[improvement-suggestions] load failed', err);
+            showAlert(
+                '\u6539\u5584\u6848\u7ba1\u7406\u6a5f\u80fd\u306e\u8aad\u8fbc\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u518d\u5ea6\u958b\u3044\u3066\u304f\u3060\u3055\u3044\u3002',
+                'warning'
+            );
+            return;
+        }
         if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
         $('memberPanel').hidden = true;
         $('adminPanel').hidden = true;
+        if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
         $('systemPanel').hidden = false;
         localStorage.setItem('userRole', 'system-admin');
         await ensurePartSettingsMigrated();
@@ -243,6 +310,7 @@ function showMemberTab(tabName, shouldRender = true) {
         }
         if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
         $('memberPanel').hidden = false;
+        if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
         $('adminPanel').hidden = true;
         if ($('systemPanel')) $('systemPanel').hidden = true;
         localStorage.setItem('userRole', 'member');

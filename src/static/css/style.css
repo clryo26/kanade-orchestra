@@ -1175,3 +1175,49 @@ body.album-photo-viewer-open {
 @keyframes portal-spin {
     to { transform: rotate(360deg); }
 }
+/* PC footer: revision and low-emphasis improvement suggestion entry point. */
+.desktop-revision-footer {
+    display: none;
+}
+
+@media (min-width: 768px) {
+    .portal-drawer .revision-inline {
+        display: none !important;
+    }
+
+    .desktop-revision-footer {
+        position: fixed;
+        left: 10px;
+        bottom: 6px;
+        z-index: 1020;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.82);
+        color: #6c757d;
+        font-size: 0.72rem;
+        line-height: 1.2;
+        backdrop-filter: blur(2px);
+    }
+
+    .desktop-improvement-link {
+        appearance: none;
+        border: 0;
+        border-left: 1px solid rgba(108, 117, 125, 0.35);
+        background: transparent;
+        color: #6c757d;
+        padding: 0 0 0 8px;
+        font: inherit;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        cursor: pointer;
+    }
+
+    .desktop-improvement-link:hover,
+    .desktop-improvement-link:focus-visible {
+        color: #495057;
+        text-decoration-style: solid;
+    }
+}
