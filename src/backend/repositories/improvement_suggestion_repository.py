@@ -110,4 +110,4 @@ class ImprovementSuggestionRepository:
                     "DELETE FROM improvement_suggestions WHERE organization_id = %s AND id = %s",
                     (organization_id, item_id),
                 )
-                return cur.rowcount > 0
+                return int(cur.rowcount) > 0

@@ -32,9 +32,13 @@ def _clean_status(value: str) -> str:
 
 def _member_id(device: dict[str, Any]) -> int | None:
     raw = device.get("member_id")
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, (int, str)):
+        return None
     try:
-        return int(raw) if raw not in (None, "") else None
-    except (TypeError, ValueError):
+        return int(raw)
+    except ValueError:
         return None
 
 
