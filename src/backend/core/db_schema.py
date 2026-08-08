@@ -223,6 +223,8 @@ DB_COLLECTION_COLUMNS = {
         "genre",
         "formation",
         "notes",
+        "reference_audio_url",
+        "reference_score_url",
         "member_id",
         "registered_by",
         "created_at",

@@ -24,6 +24,9 @@ const initialPortalAppState = {
     pieceInfos: [],
     practiceInstructions: [],
     desiredPieces: [],
+    desiredPieceFilters: {
+        genre: '',
+    },
     promotions: [],
     performanceDayInfos: [],
     albums: [],

@@ -449,6 +449,8 @@
   - genre TEXT DEFAULT '' （任意）
   - formation TEXT DEFAULT '' （任意）
   - notes TEXT DEFAULT '' （任意）
+  - reference_audio_url TEXT DEFAULT '' （任意）
+  - reference_score_url TEXT DEFAULT '' （任意）
   - member_id BIGINT （任意）
   - registered_by TEXT DEFAULT '' （任意）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）

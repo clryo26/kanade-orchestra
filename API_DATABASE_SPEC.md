@@ -333,6 +333,23 @@ practice_instructions:
 
 - 認証済み団員なら登録・編集・削除可
 
+desired_pieces:
+
+- title
+- piece
+- composer
+- duration
+- genre
+- formation
+- notes
+- reference_audio_url
+- reference_score_url
+
+隱榊庄:
+
+- 参考音源はYouTube URLで保存する
+- 参考スコアはPDF 1ファイルで保存する
+
 connection_settings:
 
 - google_project_id

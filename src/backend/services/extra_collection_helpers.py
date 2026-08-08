@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 from fastapi import HTTPException, Request
@@ -83,6 +84,8 @@ def _desired_piece_vote_only_update(
         "genre",
         "formation",
         "notes",
+        "reference_audio_url",
+        "reference_score_url",
         "member_id",
         "registered_by",
     }
@@ -120,8 +123,16 @@ def _desired_piece_vote_only_update(
 def parse_extra_upsert_request(raw_body: dict[str, Any]) -> ExtraUpsertRequest:
     payload = raw_body
     expected_updated_at = ""
-    if isinstance(raw_body.get("payload"), dict):
-        payload = dict(raw_body.get("payload") or {})
+    raw_payload = raw_body.get("payload")
+    if isinstance(raw_payload, dict):
+        payload = dict(raw_payload or {})
+        expected_updated_at = str(raw_body.get("expected_updated_at") or "")
+    elif isinstance(raw_payload, str) and raw_payload.strip():
+        try:
+            parsed_payload = json.loads(raw_payload)
+        except Exception:
+            parsed_payload = {}
+        payload = dict(parsed_payload) if isinstance(parsed_payload, dict) else {}
         expected_updated_at = str(raw_body.get("expected_updated_at") or "")
     else:
         payload = dict(raw_body or {})
