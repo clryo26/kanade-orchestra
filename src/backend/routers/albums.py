@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from ..core.auth_dependencies import get_device_auth
 from ..services.extra_collection_helpers import read_json_body
 from ..services import album_service, extra_service
+from ..services.desired_piece_asset_service import desired_piece_reference_score_response
 from ..services.image_asset_service import serve_stored_image
 
 router = APIRouter()
@@ -106,3 +107,8 @@ async def get_org_setting_icon(setting_id: int) -> Response:
         setting.get("icon_url") or "",
         object_prefix=f"org-settings/{setting_id}/icon",
     )
+
+
+@router.get("/api/extra/desired_pieces/{item_id}/reference_score")
+async def get_desired_piece_reference_score(item_id: int) -> Response:
+    return desired_piece_reference_score_response(item_id)

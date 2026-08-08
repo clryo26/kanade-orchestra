@@ -1,9 +1,7 @@
 // Date/piece/promotion API actions split from modules/date_piece_promotion.js.
 // Keep global names for legacy non-module loading.
 
-var appState = (typeof window.getAppState === 'function')
-    ? window.getAppState()
-    : window.portalRuntimeContext.appState;
+var appState = (typeof window.getAppState === 'function') ? window.getAppState() : window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
 async function savePerformanceFee(performanceId) {
@@ -34,23 +32,43 @@ async function savePerformanceFee(performanceId) {
 
 async function saveDesiredPiece() {
     const title = $('desiredPieceTitle')?.value.trim() || '';
-    if (!title) { showAlert('曲名を入力してください', 'warning'); return; }
+    if (!title) {
+        showAlert('曲名を入力してください', 'warning');
+        return;
+    }
     const member = currentUserMember();
     const id = $('desiredPieceId')?.value || '';
     const current = appState.desiredPieces.find((item) => String(item.id || '') === String(id));
+    const referenceScoreFile = $('desiredPieceReferenceScoreFile')?.files?.[0];
     const payload = {
         title,
         composer: $('desiredPieceComposer')?.value.trim() || '',
         duration: $('desiredPieceDuration')?.value.trim() || '',
         genre: $('desiredPieceGenre')?.value || 'クラシック',
         formation: $('desiredPieceFormation')?.value.trim() || '',
+        reference_audio_url: $('desiredPieceReferenceAudioUrl')?.value.trim() || '',
+        reference_score_url: current?.reference_score_url || '',
         notes: $('desiredPieceNotes')?.value.trim() || '',
         member_id: current?.member_id || member?.id || appState.currentUserMemberId || '',
         registered_by: current?.registered_by || currentUserMemberName(),
         votes: desiredPieceVotes(current || [])
     };
-    if (id) await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
-    else await saveExtra('desired_pieces', payload);
+    if (referenceScoreFile) {
+        const formData = new FormData();
+        formData.append('payload', JSON.stringify(payload));
+        if (current?.updated_at) {
+            formData.append('expected_updated_at', current.updated_at);
+        }
+        formData.append('reference_score_file', referenceScoreFile);
+        await request(id ? `/api/extra/desired_pieces/${encodeURIComponent(id)}` : '/api/extra/desired_pieces', {
+            method: id ? 'PUT' : 'POST',
+            body: formData,
+        });
+    } else if (id) {
+        await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+    } else {
+        await saveExtra('desired_pieces', payload);
+    }
     clearDesiredPieceForm();
     await loadExtraData(['desiredPieces']);
     showAlert('演奏希望曲を保存しました', 'success');

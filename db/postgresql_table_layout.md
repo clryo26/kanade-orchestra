@@ -12,7 +12,7 @@
 ## 2. テーブル群
 
 - Core master: performances, performance_pieces, schedules, announcements, events, members, auth_devices
-- Extra collections: absences, event_responses, date_adjustments, date_adjustment_candidates, date_adjustment_responses, piece_infos, practice_instructions, performance_day_infos, castings, casting_members, casting_extras, payments, payment_performance_fees, desired_pieces, desired_piece_votes, promotions, albums, album_photos
+- Extra collections: absences, event_responses, date_adjustments, date_adjustment_candidates, date_adjustment_responses, piece_infos, practice_instructions, performance_day_infos, castings, casting_members, casting_extras, payments, payment_performance_fees, desired_pieces, desired_piece_votes, promotions, albums, album_photos, concert_record_videos
 - Settings: part_settings, venue_settings, flyer_distributions, flyer_distribution_assignments, org_settings, sns_settings, connection_settings
 - File metadata: drive_files, recording_metadata, sheet_library
 

@@ -250,6 +250,7 @@ const deferredPortalDataFlags = {
     albums: false,
     flyerDistributions: false,
     flyerDistributionAssignments: false,
+    concertRecordVideos: false,
     desiredPieces: false,
     promotions: false,
     venueSettings: false,
@@ -295,6 +296,7 @@ async function ensureDeferredTabDataLoaded(tabName) {
     if (tabName === 'member-casting' || tabName === 'casting-admin') queueExtraLoad(['castings']);
     if (tabName === 'member-album') queueExtraLoad(['albums']);
     if (tabName === 'member-flyer-distribution') queueExtraLoad(['flyerDistributions', 'flyerDistributionAssignments']);
+    if (tabName === 'member-concert-record' || tabName === 'concert-record-admin') queueExtraLoad(['concertRecordVideos']);
     if (tabName === 'flyer-distribution-admin') queueExtraLoad(['flyerDistributions']);
     if (tabName === 'payment-admin' || tabName === 'payment-setting') queueExtraLoad(['payments']);
     if (tabName === 'member-desired-piece') queueExtraLoad(['desiredPieces']);
@@ -493,6 +495,7 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         venueSettings,
         flyerDistributions,
         flyerDistributionAssignments,
+        concertRecordVideos,
         orgSettings,
         snsSettings,
         connectionSettings,
@@ -522,6 +525,7 @@ async function legacyBootstrapData(includeHeavyLists = true) {
         request('/api/extra/venue_settings'),
         request('/api/extra/flyer_distributions'),
         request('/api/extra/flyer_distribution_assignments'),
+        request('/api/extra/concert_record_videos'),
         request('/api/extra/org_settings'),
         request('/api/extra/sns_settings'),
         request('/api/extra/connection_settings'),
@@ -552,6 +556,7 @@ async function legacyBootstrapData(includeHeavyLists = true) {
             venue_settings: venueSettings,
             flyer_distributions: flyerDistributions,
             flyer_distribution_assignments: flyerDistributionAssignments,
+            concert_record_videos: concertRecordVideos,
             org_settings: orgSettings,
             sns_settings: snsSettings,
             connection_settings: connectionSettings,
@@ -601,6 +606,7 @@ function applyBootstrapData(data) {
         venueSettings: extraOrCurrent('venue_settings', 'venueSettings'),
         flyerDistributions: extraOrCurrent('flyer_distributions', 'flyerDistributions'),
         flyerDistributionAssignments: extraOrCurrent('flyer_distribution_assignments', 'flyerDistributionAssignments'),
+        concertRecordVideos: extraOrCurrent('concert_record_videos', 'concertRecordVideos'),
         orgSettings: extraOrCurrent('org_settings', 'orgSettings'),
         snsSettings: extraOrCurrent('sns_settings', 'snsSettings'),
         connectionSettings: extraOrCurrent('connection_settings', 'connectionSettings'),
@@ -740,6 +746,7 @@ async function loadExtraData(collectionNames = null) {
         ['venueSettings', '/api/extra/venue_settings'],
         ['flyerDistributions', '/api/extra/flyer_distributions'],
         ['flyerDistributionAssignments', '/api/extra/flyer_distribution_assignments'],
+        ['concertRecordVideos', '/api/extra/concert_record_videos'],
         ['orgSettings', '/api/extra/org_settings'],
         ['snsSettings', '/api/extra/sns_settings'],
         ['connectionSettings', '/api/extra/connection_settings']
@@ -825,6 +832,7 @@ async function loadExtraData(collectionNames = null) {
         venueSettings: 'venueSettings',
         flyerDistributions: 'flyerDistributions',
         flyerDistributionAssignments: 'flyerDistributionAssignments',
+        concertRecordVideos: 'concertRecordVideos',
         orgSettings: 'orgSettings',
         snsSettings: 'snsSettings',
         connectionSettings: 'connectionSettings'

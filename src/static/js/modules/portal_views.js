@@ -13,10 +13,42 @@ function joinedAtMonthInputValue(value) {
 function renderConcertRecordView() {
     const container = $('memberConcertRecordInfo');
     if (!container) return;
-    const youtubeUrl = currentSnsSetting().youtube_url || '';
-    container.innerHTML = youtubeUrl
-        ? `<a class="btn btn-outline-primary btn-lg sns-link-button" href="${escapeHtml(youtubeUrl)}" target="_blank" rel="noopener noreferrer">YouTube</a>`
-        : '<p class="text-muted mb-0">YouTubeリンクはまだ登録されていません</p>';
+    const performances = (appState.performances || []).filter((performance) =>
+        (appState.concertRecordVideos || []).some((video) => String(video.performance_id || '') === String(performance.id || ''))
+    );
+    if (!performances.length) {
+        container.innerHTML = '<p class="text-muted mb-0">演奏会記録はまだ登録されていません</p>';
+        return;
+    }
+    container.innerHTML = performances.map((performance) => {
+        const videos = [...(appState.concertRecordVideos || [])]
+            .filter((video) => String(video.performance_id || '') === String(performance.id || ''))
+            .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id || 0) - Number(b.id || 0));
+        return `
+            <section class="info-block">
+                <h5 class="mb-1">${escapeHtml(performance.title || '演奏会')}</h5>
+                <div class="small text-muted mb-3">${escapeHtml(formatDateWithWeekday(performance.date || ''))}</div>
+                <div class="row g-3">
+                    ${videos.map((video) => `
+                        <div class="col-12 col-md-6 col-xl-4">
+                            <div class="card h-100">
+                                ${video.thumbnail_url
+                                    ? `<img src="${escapeHtml(video.thumbnail_url)}" alt="${escapeHtml(video.title || performance.title || 'YouTube動画')}" class="card-img-top" loading="lazy">`
+                                    : `<div class="bg-light border-bottom d-flex align-items-center justify-content-center text-muted" style="aspect-ratio: 16 / 9;">サムネイルなし</div>`
+                                }
+                                <div class="card-body d-flex flex-column">
+                                    <h6 class="card-title">${escapeHtml(video.title || performance.title || 'YouTube動画')}</h6>
+                                    <div class="mt-auto">
+                                        <a class="btn btn-outline-primary btn-lg concert-record-link-button" href="${escapeHtml(video.youtube_url || '')}" target="_blank" rel="noopener noreferrer">視聴する</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </section>
+        `;
+    }).join('');
 }
 
 // renderMemberIntros moved to feature module.

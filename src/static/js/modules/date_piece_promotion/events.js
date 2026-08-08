@@ -1,6 +1,27 @@
 // Date adjustment event handlers split from modules/date_piece_promotion.js.
 // Keep global names for compatibility with legacy non-module loading.
 
+function showDesiredPieceReferenceScore(id) {
+    const item = appState.desiredPieces.find((piece) => String(piece.id || '') === String(id));
+    if (!item) {
+        showAlert('参考スコアを表示する曲が見つかりません', 'warning');
+        return;
+    }
+
+    const viewUrl = String(item.reference_score_url || '').trim();
+    if (!viewUrl) {
+        showAlert('参考スコアはまだ登録されていません', 'warning');
+        return;
+    }
+
+    const title = $('sheetViewerTitle');
+    const download = $('sheetViewerDownload');
+    if (title) title.textContent = item.title || item.piece || '参考スコア';
+    if (download) download.href = viewUrl;
+    switchTab('memberPanel', 'member-sheet-viewer', false);
+    renderPdfViewer(viewUrl);
+}
+
 function bindDateAdjustmentCreateEvents() {
     $('dateAdjustmentAddCandidateBtn')?.addEventListener('click', () => {
         const rows = $('dateAdjustmentCandidateRows');

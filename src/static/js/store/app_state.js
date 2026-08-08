@@ -24,6 +24,9 @@ const initialPortalAppState = {
     pieceInfos: [],
     practiceInstructions: [],
     desiredPieces: [],
+    desiredPieceFilters: {
+        genre: '',
+    },
     promotions: [],
     performanceDayInfos: [],
     albums: [],
@@ -31,6 +34,7 @@ const initialPortalAppState = {
     venueSettings: [],
     flyerDistributions: [],
     flyerDistributionAssignments: [],
+    concertRecordVideos: [],
     orgSettings: [],
     snsSettings: [],
     connectionSettings: [],

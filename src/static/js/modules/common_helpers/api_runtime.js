@@ -100,6 +100,7 @@ function apiTargetLabel(url) {
             desired_pieces: '希望曲',
             promotions: '宣伝情報',
             albums: 'アルバム',
+            concert_record_videos: '記録動画',
         };
         return labels[extra[1]] || extra[1];
     }

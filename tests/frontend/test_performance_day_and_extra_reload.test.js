@@ -207,7 +207,7 @@ describe('targeted extra-data reload', () => {
 
         await sandbox.loadExtraData();
 
-        expect(request).toHaveBeenCalledTimes(20);
+        expect(request).toHaveBeenCalledTimes(21);
         expect(request).toHaveBeenCalledWith(
             '/api/extra/absences'
         );
@@ -232,6 +232,8 @@ describe('targeted extra-data reload', () => {
             ['payment-setting', ['/api/extra/payments']],
             ['member-desired-piece', ['/api/extra/desired_pieces']],
             ['member-promotion', ['/api/extra/promotions']],
+            ['member-concert-record', ['/api/extra/concert_record_videos']],
+            ['concert-record-admin', ['/api/extra/concert_record_videos']],
             ['venue-admin', ['/api/extra/venue_settings']],
             ['system-connection', ['/api/extra/connection_settings']],
             ['system-auth', ['/api/auth/devices']],

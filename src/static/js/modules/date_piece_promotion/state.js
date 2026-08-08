@@ -27,21 +27,32 @@ function desiredPieceIsOwner(item) {
 }
 
 function clearDesiredPieceForm() {
-    ['desiredPieceId', 'desiredPieceTitle', 'desiredPieceComposer', 'desiredPieceDuration', 'desiredPieceFormation', 'desiredPieceNotes'].forEach((id) => { if ($(id)) $(id).value = ''; });
+    ['desiredPieceId', 'desiredPieceTitle', 'desiredPieceComposer', 'desiredPieceDuration', 'desiredPieceFormation', 'desiredPieceNotes', 'desiredPieceReferenceAudioUrl'].forEach((id) => {
+        if ($(id)) $(id).value = '';
+    });
     if ($('desiredPieceGenre')) $('desiredPieceGenre').value = 'クラシック';
+    if ($('desiredPieceReferenceScoreFile')) $('desiredPieceReferenceScoreFile').value = '';
+    if ($('desiredPieceReferenceScoreStatus')) $('desiredPieceReferenceScoreStatus').textContent = '';
 }
 
 function fillDesiredPieceForm(id) {
     const item = appState.desiredPieces.find((piece) => String(piece.id || '') === String(id));
     if (!item) return;
-    $('desiredPieceId').value = item.id || '';
-    $('desiredPieceTitle').value = item.title || item.piece || '';
-    $('desiredPieceComposer').value = item.composer || '';
-    $('desiredPieceDuration').value = item.duration || '';
-    $('desiredPieceGenre').value = item.genre || 'クラシック';
-    $('desiredPieceFormation').value = item.formation || '';
-    $('desiredPieceNotes').value = item.notes || '';
-    $('desiredPieceTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if ($('desiredPieceId')) $('desiredPieceId').value = item.id || '';
+    if ($('desiredPieceTitle')) $('desiredPieceTitle').value = item.title || item.piece || '';
+    if ($('desiredPieceComposer')) $('desiredPieceComposer').value = item.composer || '';
+    if ($('desiredPieceDuration')) $('desiredPieceDuration').value = item.duration || '';
+    if ($('desiredPieceGenre')) $('desiredPieceGenre').value = item.genre || 'クラシック';
+    if ($('desiredPieceFormation')) $('desiredPieceFormation').value = item.formation || '';
+    if ($('desiredPieceReferenceAudioUrl')) $('desiredPieceReferenceAudioUrl').value = item.reference_audio_url || '';
+    if ($('desiredPieceNotes')) $('desiredPieceNotes').value = item.notes || '';
+    if ($('desiredPieceReferenceScoreFile')) $('desiredPieceReferenceScoreFile').value = '';
+    if ($('desiredPieceReferenceScoreStatus')) {
+        $('desiredPieceReferenceScoreStatus').textContent = item.reference_score_url
+            ? '参考スコアPDFを登録済みです'
+            : '参考スコアPDFは未登録です';
+    }
+    if ($('desiredPieceTitle')) $('desiredPieceTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function promotionIsOwner(item) {

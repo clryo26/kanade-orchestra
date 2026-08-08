@@ -449,6 +449,8 @@
   - genre TEXT DEFAULT '' （任意）
   - formation TEXT DEFAULT '' （任意）
   - notes TEXT DEFAULT '' （任意）
+  - reference_audio_url TEXT DEFAULT '' （任意）
+  - reference_score_url TEXT DEFAULT '' （任意）
   - member_id BIGINT （任意）
   - registered_by TEXT DEFAULT '' （任意）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
@@ -720,6 +722,26 @@
   - download_url TEXT DEFAULT '' （任意）
   - size_bytes BIGINT （任意）
   - mime_type TEXT DEFAULT '' （任意）
+  - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
+### 2.33 concert_record_videos
+- 用途: 演奏会記録の YouTube 動画
+- PK: id
+- FK: performance_id -> performances.id (ON DELETE CASCADE)
+- UNIQUE/CHECK: UNIQUE (organization_id, performance_id, sort_order)
+- INDEX:
+  - idx_concert_record_videos_org_id (organization_id)
+  - idx_concert_record_videos_org_id_id (organization_id, id)
+  - idx_concert_record_videos_performance_id (performance_id)
+- 列レイアウト:
+  - id BIGINT IDENTITY PK （必須）
+  - organization_id TEXT NOT NULL DEFAULT 'default' （必須）
+  - performance_id BIGINT NOT NULL （必須）
+  - youtube_url TEXT NOT NULL DEFAULT '' （必須）
+  - title TEXT NOT NULL DEFAULT '' （必須）
+  - thumbnail_url TEXT NOT NULL DEFAULT '' （必須）
+  - sort_order INTEGER NOT NULL DEFAULT 0 （必須）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 

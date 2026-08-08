@@ -114,6 +114,7 @@ const BOOTSTRAP_DATA = {
     performance_day_infos: [],
     desired_pieces: [],
     promotions: [],
+    concert_record_videos: [],
     albums: [],
     part_settings: PART_SETTINGS,
     venue_settings: [{ id: 1, name: '市民センター', type: 'practice' }],

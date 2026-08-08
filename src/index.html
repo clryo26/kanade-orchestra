@@ -103,6 +103,7 @@
         <section id="adminPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="performance" type="button">演奏会情報</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="concert-record-admin" type="button">記録管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="performance-day-admin" type="button">本番情報管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="schedule" type="button">練習予定</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="announcement" type="button">お知らせ</button>
@@ -239,6 +240,31 @@
                             <button class="btn btn-danger" id="deletePerfBtn" type="button">削除</button>
                         </div>
                         <ul class="list-group" id="perfListItems"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 記録管理 -->
+            <div id="concertRecordAdminTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">記録管理</div>
+                    <div class="card-body">
+                        <input type="hidden" id="concertRecordVideoId">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label" for="concertRecordPerformance">演奏会</label>
+                                <select class="form-select" id="concertRecordPerformance"></select>
+                            </div>
+                            <div class="col-md-7">
+                                <label class="form-label" for="concertRecordYoutubeUrl">YouTube URL</label>
+                                <input type="url" class="form-control" id="concertRecordYoutubeUrl" placeholder="https://www.youtube.com/watch?v=...">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button class="btn btn-success" id="concertRecordSaveBtn" type="button">登録</button>
+                            <button class="btn btn-outline-secondary" id="concertRecordCancelBtn" type="button" hidden>キャンセル</button>
+                        </div>
+                        <div id="concertRecordAdminList"></div>
                     </div>
                 </div>
             </div>
@@ -901,10 +927,6 @@
                                 <label class="form-label" for="snsXUrl">X</label>
                                 <input type="url" class="form-control" id="snsXUrl" placeholder="https://x.com/...">
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="snsYoutubeUrl">YouTube</label>
-                                <input type="url" class="form-control" id="snsYoutubeUrl" placeholder="https://www.youtube.com/...">
-                            </div>
                         </div>
                         <div class="d-flex flex-wrap gap-2">
                             <button class="btn btn-success" id="saveSnsSettingBtn" type="button">保存</button>
@@ -1303,6 +1325,7 @@
     <script src="/static/js/modules/admin_system/diagnostics.js?v=20260802-1"></script>
     <script src="/static/js/modules/admin_system.js?v=20260630-6"></script>
     <script src="/static/js/modules/portal_views.js?v=20260802-1"></script>
+    <script src="/static/js/modules/concert_record.js?v=20260808-1"></script>
     <script src="/static/js/modules/performance_day/helpers.js?v=20260701-1"></script>
     <script src="/static/js/modules/performance_day/render.js?v=20260701-1"></script>
     <script src="/static/js/modules/practice_casting/helpers.js?v=20260701-1"></script>

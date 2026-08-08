@@ -15,7 +15,6 @@ function renderSnsManagement() {
     if ($('snsFacebookUrl')) $('snsFacebookUrl').value = sns.facebook_url || '';
     if ($('snsInstagramUrl')) $('snsInstagramUrl').value = sns.instagram_url || '';
     if ($('snsXUrl')) $('snsXUrl').value = sns.x_url || '';
-    if ($('snsYoutubeUrl')) $('snsYoutubeUrl').value = sns.youtube_url || '';
 }
 
 
@@ -23,7 +22,6 @@ function clearSnsSettingForm() {
     if ($('snsFacebookUrl')) $('snsFacebookUrl').value = '';
     if ($('snsInstagramUrl')) $('snsInstagramUrl').value = '';
     if ($('snsXUrl')) $('snsXUrl').value = '';
-    if ($('snsYoutubeUrl')) $('snsYoutubeUrl').value = '';
 }
 
 
@@ -32,8 +30,7 @@ async function saveSnsSetting() {
     const payload = {
         facebook_url: $('snsFacebookUrl')?.value.trim() || '',
         instagram_url: $('snsInstagramUrl')?.value.trim() || '',
-        x_url: $('snsXUrl')?.value.trim() || '',
-        youtube_url: $('snsYoutubeUrl')?.value.trim() || ''
+        x_url: $('snsXUrl')?.value.trim() || ''
     };
     if (current.id) {
         await request(`/api/extra/sns_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));
