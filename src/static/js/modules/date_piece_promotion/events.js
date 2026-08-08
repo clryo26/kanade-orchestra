@@ -18,6 +18,7 @@ function showDesiredPieceReferenceScore(id) {
     const download = $('sheetViewerDownload');
     if (title) title.textContent = item.title || item.piece || '参考スコア';
     if (download) download.href = viewUrl;
+    if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').hidden = true;
     switchTab('memberPanel', 'member-sheet-viewer', false);
     renderPdfViewer(viewUrl);
 }

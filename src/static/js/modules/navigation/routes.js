@@ -252,12 +252,25 @@ function showMemberTab(tabName, shouldRender = true) {
     })();
 }
 
+function updateMemberTabHistory(tabName) {
+    const normalizedTabName = String(tabName || '');
+    if (!normalizedTabName) return;
+    const currentTab = String(appState.currentMemberTab || '');
+    if (currentTab && currentTab !== normalizedTabName) {
+        appState.previousMemberTab = currentTab;
+    }
+    appState.currentMemberTab = normalizedTabName;
+}
+
 async function switchTab(panelId, tabName, renderOnShow = true) {
     if (panelId === 'memberPanel' && isExtraRestrictedMemberTab(tabName)) {
         tabName = 'member-home';
     }
     const panel = $(panelId);
     if (!panel) return;
+    if (panelId === 'memberPanel') {
+        updateMemberTabHistory(tabName);
+    }
     const toolbar = panel.querySelector('.toolbar');
     if (toolbar && panelId === 'memberPanel') {
         toolbar.hidden = tabName === 'member-home';

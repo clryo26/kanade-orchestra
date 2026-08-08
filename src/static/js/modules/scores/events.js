@@ -32,6 +32,7 @@ function showSheetViewer(sheetId) {
     const download = $('sheetViewerDownload');
     if (title) title.textContent = displayNameWithoutExtension(sheet.name || '楽譜表示');
     if (download) download.href = sheet.download_url || sheet.url || viewUrl;
+    if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').hidden = false;
     switchTab('memberPanel', 'member-sheet-viewer', false);
     renderPdfViewer(viewUrl);
 }

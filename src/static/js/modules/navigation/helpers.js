@@ -198,7 +198,7 @@ function setupPortalHome() {
                             <button class="btn btn-sm btn-outline-primary" id="sheetViewerZoomIn" type="button">拡大</button>
                             <a class="btn btn-sm btn-primary" id="sheetViewerDownload" href="#" download>DL</a>
                             <button class="btn btn-sm btn-outline-secondary" id="sheetViewerBackBtn" type="button">楽譜ライブラリに戻る</button>
-                            <button class="btn btn-sm btn-outline-primary" id="sheetViewerMenuBtn" type="button">メニューに戻る</button>
+                            <button class="btn btn-sm btn-outline-primary" id="sheetViewerMenuBtn" type="button">戻る</button>
                         </div>
                     </div>
                     <div class="card-body sheet-viewer-body">

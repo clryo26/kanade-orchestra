@@ -68,7 +68,7 @@ function bindNavigation() {
     });
     if ($('sheetViewerMenuBtn')) $('sheetViewerMenuBtn').addEventListener('click', () => {
         clearSheetViewer();
-        showMemberPanel();
+        showMemberTab(appState.previousMemberTab || 'member-home');
     });
     if ($('sheetViewerZoomOut')) $('sheetViewerZoomOut').addEventListener('click', () => zoomSheetViewer(-0.15));
     if ($('sheetViewerZoomIn')) $('sheetViewerZoomIn').addEventListener('click', () => zoomSheetViewer(0.15));
