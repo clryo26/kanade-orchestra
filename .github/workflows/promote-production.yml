@@ -62,6 +62,16 @@ jobs:
       - name: Setup gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Configure Docker for Artifact Registry
+        shell: bash
+        env:
+          ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+        run: |
+          set -euo pipefail
+          GAR_LOCATION="${ARTIFACT_REGISTRY_LOCATION:-$GCP_REGION}"
+          gcloud auth configure-docker "${GAR_LOCATION}-docker.pkg.dev" --quiet
+
       - name: Resolve currently deployed test image
         id: test_image
         shell: bash
@@ -83,6 +93,19 @@ jobs:
             exit 1
           fi
           echo "image_with_digest=${CURRENT_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Apply DB migrations to production
+        shell: bash
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          IMAGE_WITH_DIGEST: ${{ steps.test_image.outputs.image_with_digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e DB_URL="${PROD_DB_URL}" \
+            -v "${GITHUB_WORKSPACE}/scripts:/app/scripts:ro" \
+            "${IMAGE_WITH_DIGEST}" \
+            .venv/bin/python scripts/migrate_db.py
 
       - name: Promote same digest to production Cloud Run
         shell: bash

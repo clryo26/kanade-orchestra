@@ -8,11 +8,15 @@ const uiSource = fs.readFileSync(path.join(root, 'src/static/js/modules/improvem
 const css = fs.readFileSync(path.join(root, 'src/static/css/style.css'), 'utf8');
 
 describe('improvement suggestion UI contract', () => {
-  it('places revision and improvement entry point in the PC footer', () => {
-    expect(indexHtml).toContain('desktop-revision-footer');
+  it('places revision and improvement entry point below the drawer actions on all devices', () => {
+    expect(indexHtml).toContain('id="portalManualBtn"');
+    expect(indexHtml).toContain('id="portalLogoutBtn"');
+    expect(indexHtml).toContain('id="portalReloadBtn"');
+    expect(indexHtml).toContain('id="revisionNumber"');
     expect(indexHtml).toContain('data-improvement-suggestion-open');
-    expect(css).toContain('@media (min-width: 768px)');
-    expect(css).toContain('.portal-drawer .revision-inline');
+    expect(indexHtml).not.toContain('desktop-revision-footer');
+    expect(css).not.toContain('.desktop-revision-footer');
+    expect(css).not.toMatch(/\.portal-drawer\s+\.revision-inline\s*\{[^}]*display:\s*none\s*!important;/s);
   });
 
   it('classifies 修正中 as pending and 対応済 as completed', () => {
