@@ -128,6 +128,7 @@ function showSheetViewer(sheetId) {
     const download = $('sheetViewerDownload');
     if (title) title.textContent = displayNameWithoutExtension(sheet.name || '楽譜表示');
     if (download) download.href = sheet.download_url || sheet.url || viewUrl;
+    if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').hidden = false;
     switchTab('memberPanel', 'member-sheet-viewer', false);
     renderPdfViewer(viewUrl);
 }
@@ -487,4 +488,3 @@ function sheetZipUrl(performanceId, piece = '', part = '') {
 
 // 楽譜管理画面の入口。
 // 演奏会・曲目選択の状態を保ちながら一覧と操作部品を組み直す。
-

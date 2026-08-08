@@ -42,6 +42,8 @@ const initialPortalAppState = {
     currentPlayButton: null,
     currentRecordingItem: null,
     continuousPlayback: false,
+    currentMemberTab: '',
+    previousMemberTab: '',
     dataLoaded: false,
     recordingsLoaded: false,
     sheetsLoaded: false,
