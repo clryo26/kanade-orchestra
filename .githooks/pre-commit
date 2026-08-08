@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE_DIR = ROOT / ".ai-gate" / "evidence"
+
+
+def changed_files() -> list[str]:
+    proc = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return sorted(
+        line.strip().replace("\\", "/")
+        for line in proc.stdout.splitlines()
+        if line.strip()
+    )
+
+
+def content_hash(files: list[str]) -> str:
+    h = hashlib.sha256()
+    for rel in files:
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        p = ROOT / rel
+        if p.is_file():
+            h.update(p.read_bytes())
+        else:
+            h.update(b"<deleted>")
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def main() -> int:
+    files = changed_files()
+    if not files:
+        print("AI pre-commit gate: no staged files")
+        return 0
+
+    if not EVIDENCE_DIR.is_dir():
+        print("AI pre-commit gate: REJECT - evidence directory missing", file=sys.stderr)
+        return 2
+
+    for evidence_path in sorted(EVIDENCE_DIR.glob("*.json"), reverse=True):
+        try:
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if evidence.get("gate") != "PASS":
+            continue
+        if evidence.get("files") != files:
+            continue
+        if evidence.get("content_hash") != content_hash(files):
+            continue
+        print(f"AI pre-commit gate: PASS ({evidence_path.name})")
+        return 0
+
+    print(
+        "AI pre-commit gate: REJECT - staged content has no matching validated evidence",
+        file=sys.stderr,
+    )
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
