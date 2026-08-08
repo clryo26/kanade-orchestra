@@ -68,11 +68,16 @@ TARGET_WORKFLOWS = {
             "WIF_PROVIDER",
             "PROD_DB_URL",
             "DB_URL=${PROD_DB_URL}",
+            "gcloud run services update-traffic",
+            "gcloud run services describe",
+            "latestReadyRevisionName",
+            'traffic_entry.get("percent") != 100',
         ],
         "required_phrases": [
             "tested_image_digest",
             "does not match current test Cloud Run image digest",
             "gcloud run deploy",
+            "Promote latest production revision to 100% traffic",
         ],
     },
     "sync-prod-to-test.yml": {
