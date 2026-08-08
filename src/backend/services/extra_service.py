@@ -106,12 +106,15 @@ def _concert_record_performance_exists(performance_id: int) -> bool:
 
 
 def _concert_record_target_sort_order(payload: dict[str, Any], current: dict[str, Any] | None) -> int | None:
-    raw_sort_order = payload.get("sort_order")
+    raw_sort_order: Any = payload.get("sort_order")
     if raw_sort_order in (None, ""):
         if current is None:
             return None
+        current_sort_order: Any = current.get("sort_order")
+        if current_sort_order in (None, ""):
+            return None
         try:
-            return int(current.get("sort_order") or 0) or None
+            return int(current_sort_order) or None
         except (TypeError, ValueError):
             return None
     try:
