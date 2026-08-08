@@ -135,6 +135,19 @@ jobs:
           echo "image_with_digest=${IMAGE_WITH_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "build_timestamp=${BUILD_TIMESTAMP}" >> "$GITHUB_OUTPUT"
 
+      - name: Apply DB migrations to test
+        shell: bash
+        env:
+          TEST_DB_URL: ${{ secrets.TEST_DB_URL }}
+          IMAGE_URI: ${{ steps.image.outputs.image_uri }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e DB_URL="${TEST_DB_URL}" \
+            -v "${GITHUB_WORKSPACE}/scripts:/app/scripts:ro" \
+            "${IMAGE_URI}" \
+            .venv/bin/python scripts/migrate_db.py
+
       - name: Deploy tested image to test Cloud Run
         shell: bash
         env:
