@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -76,3 +77,29 @@ def health_payload(storage_configured: bool, db_expected: bool, db_configured: b
 
 def index_file_path(base_dir: Path) -> Path:
     return base_dir / "index.html"
+
+
+_INDEX_STATIC_ASSET_PATTERN = re.compile(
+    r'(?P<prefix>(?:src|href)=["\'])'
+    r'(?P<path>/static/(?:(?:js)|(?:css))/[^"\'?]+)'
+    r'(?P<query>\?[^"\']*)?'
+    r'(?P<suffix>["\'])'
+)
+
+
+def rewrite_index_html_static_asset_urls(html: str, revision: str) -> str:
+    revision_value = str(revision or "").strip()
+    if not revision_value:
+        return html
+
+    def replace(match: re.Match[str]) -> str:
+        path = match.group("path")
+        query = match.group("query") or ""
+        suffix = match.group("suffix")
+        if "rev=" in query:
+            return match.group(0)
+        if query:
+            return f'{match.group("prefix")}{path}{query}&rev={revision_value}{suffix}'
+        return f'{match.group("prefix")}{path}?rev={revision_value}{suffix}'
+
+    return _INDEX_STATIC_ASSET_PATTERN.sub(replace, html)

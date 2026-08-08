@@ -91,12 +91,24 @@ async def web_manifest() -> Response:
 
 @router.get("/")
 async def root() -> FileResponse:
-    return FileResponse(
-        meta_service.index_file_path(BASE_DIR),
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-        },
+    index_path = meta_service.index_file_path(BASE_DIR)
+    revision = meta_service.cloud_run_revision()
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+    }
+    if not revision:
+        return FileResponse(
+            index_path,
+            headers=headers,
+        )
+
+    html = index_path.read_text(encoding="utf-8")
+    rewritten_html = meta_service.rewrite_index_html_static_asset_urls(html, revision)
+    return Response(
+        content=rewritten_html,
+        media_type="text/html",
+        headers=headers,
     )
 
 
