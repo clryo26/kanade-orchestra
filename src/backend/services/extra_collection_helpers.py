@@ -19,6 +19,7 @@ EXTRA_COLLECTIONS = {
     "practice_instructions",
     "performance_day_infos",
     "albums",
+    "concert_record_videos",
     "part_settings",
     "venue_settings",
     "flyer_distributions",
@@ -40,6 +41,7 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "flyer_distributions",
     "org_settings",
     "sns_settings",
+    "concert_record_videos",
     "connection_settings",
 }
 
@@ -276,4 +278,9 @@ async def read_json_body(request: Request) -> dict[str, Any]:
 def collection_items(name: str, load_json_data_func: Callable[[str], list[dict[str, Any]]]) -> list[dict[str, Any]]:
     if name not in EXTRA_COLLECTIONS:
         raise HTTPException(status_code=404, detail="Collection not found")
-    return load_json_data_func(name)
+    items = load_json_data_func(name)
+    if name == "concert_record_videos":
+        from .concert_record_video_service import sort_concert_record_videos
+
+        return sort_concert_record_videos(items)
+    return items

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import unquote
+
 import pytest
 
 
@@ -14,6 +16,7 @@ TARGET_COLLECTIONS = (
     "venue_settings",
     "flyer_distributions",
     "flyer_distribution_assignments",
+    "concert_record_videos",
     "org_settings",
     "sns_settings",
     "connection_settings",
@@ -109,6 +112,8 @@ def _create_payload(collection_name: str) -> dict:
             "website_url": "https://site.example",
             "extra_links": [{"label": "blog", "url": "https://blog.example"}],
         }
+    if collection_name == "concert_record_videos":
+        return {"performance_id": 1, "youtube_url": "https://youtu.be/abcdefghijk"}
     if collection_name == "connection_settings":
         return {
             "google_project_id": "proj",
@@ -141,10 +146,47 @@ def _create_payload(collection_name: str) -> dict:
 def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatch, collection_name):
     db_store = {name: [] for name in backend_env.JSON_COLLECTION_TABLES.keys()}
     _seed_admin(db_store)
+    if collection_name == "concert_record_videos":
+        db_store["performances"] = [
+            {"id": 1, "title": "Concert", "date": "2026-07-01", "open_time": "17:00", "start_time": "18:00", "venue": "Hall", "conductor": "Cond"},
+        ]
     _enable_db_mode(backend_env, monkeypatch, db_store)
 
     headers = {"X-Device-Id": "dev-admin"}
     create_payload = _create_payload(collection_name)
+
+    if collection_name == "concert_record_videos":
+        from src.backend.services import youtube_validation_service
+
+        class FakeOEmbedResponse:
+            status = 200
+
+            def __init__(self, title):
+                self._title = title
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    '{"title":"%s","thumbnail_url":"https://img.example/%s.jpg"}'
+                    % (self._title, self._title.replace(" ", "-").lower())
+                ).encode("utf-8")
+
+        def fake_urlopen(request, timeout=5):
+            url = request.full_url if hasattr(request, "full_url") else str(request)
+            target = url.split("url=", 1)[-1]
+            target = target.split("&format=", 1)[0]
+            normalized = youtube_validation_service.normalize_youtube_url(
+                unquote(target)
+            )
+            title = "【福岡奏オーケストラ】Video %s" % normalized.video_id[:3]
+            return FakeOEmbedResponse(title)
+
+        monkeypatch.setattr(youtube_validation_service, "urlopen", fake_urlopen)
 
     created = client.post(f"/api/extra/{collection_name}", headers=headers, json=create_payload)
     assert created.status_code == 200
@@ -181,6 +223,8 @@ def test_db_mode_extra_collection_crud_roundtrip(client, backend_env, monkeypatc
         updated_payload["event_name"] = "Concert 2026 Updated"
     elif collection_name == "performance_day_infos":
         updated_payload["assignments"] = "受付: 佐藤"
+    elif collection_name == "concert_record_videos":
+        updated_payload["youtube_url"] = "https://www.youtube.com/watch?v=lmnopqrstuv"
 
     updated = client.put(f"/api/extra/{collection_name}/{item_id}", headers=headers, json=updated_payload)
     assert updated.status_code == 200

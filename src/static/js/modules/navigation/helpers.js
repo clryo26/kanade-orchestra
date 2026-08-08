@@ -14,6 +14,7 @@ const EXTRA_RESTRICTED_MEMBER_TABS = new Set([
 const ACCESS_LOG_MENU_LABELS = {
     upload: '録音管理',
     performance: '演奏会情報管理',
+    'concert-record-admin': '記録管理',
     'performance-day-admin': '本番情報管理',
     schedule: '練習予定管理',
     announcement: 'お知らせ管理',
@@ -82,6 +83,7 @@ function toPascalTab(value) {
     const map = {
         upload: 'upload',
         performance: 'performance',
+        'concert-record-admin': 'concertRecordAdmin',
         'performance-day-admin': 'performanceDayAdmin',
         schedule: 'schedule',
         announcement: 'announcement',

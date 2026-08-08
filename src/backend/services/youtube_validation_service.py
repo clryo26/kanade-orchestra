@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import socket
 from dataclasses import dataclass
 from typing import Any
@@ -23,6 +24,14 @@ _YOUTUBE_HOSTS = {
 class YouTubeLookupResult:
     video_id: str
     canonical_url: str
+
+
+@dataclass(frozen=True)
+class YouTubeMetadataResult:
+    video_id: str
+    canonical_url: str
+    title: str
+    thumbnail_url: str
 
 
 def _extract_video_id_from_query(url: str) -> str:
@@ -85,17 +94,12 @@ def _youtube_oembed_request(url: str) -> Any:
     return urlopen(request, timeout=5)
 
 
-def validate_youtube_url(url: str) -> str:
-    text = str(url or "").strip()
-    if not text:
-        return ""
-
-    lookup = normalize_youtube_url(text)
+def _youtube_oembed_payload(url: str) -> dict[str, Any]:
     try:
-        with _youtube_oembed_request(lookup.canonical_url) as response:
+        with _youtube_oembed_request(url) as response:
             if getattr(response, "status", 200) >= 400:
                 raise HTTPException(status_code=503, detail="YouTube動画の存在確認に失敗しました")
-            response.read()
+            raw_body = response.read()
     except HTTPError as exc:
         if exc.code in {404, 410}:
             raise HTTPException(status_code=400, detail="指定されたYouTube動画が見つかりません") from exc
@@ -104,4 +108,36 @@ def validate_youtube_url(url: str) -> str:
         raise HTTPException(status_code=503, detail="YouTube動画の存在確認に失敗しました") from exc
     except (URLError, TimeoutError, socket.timeout, ValueError) as exc:
         raise HTTPException(status_code=503, detail="YouTube動画の存在確認に失敗しました") from exc
-    return lookup.canonical_url
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="YouTube動画の存在確認に失敗しました") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=503, detail="YouTube動画の存在確認に失敗しました")
+    return payload
+
+
+def fetch_youtube_metadata(url: str) -> YouTubeMetadataResult:
+    text = str(url or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="参考音源のURLが空です")
+
+    lookup = normalize_youtube_url(text)
+    payload = _youtube_oembed_payload(lookup.canonical_url)
+    title = str(payload.get("title") or "").strip().replace("【福岡奏オーケストラ】", "").strip()
+    thumbnail_url = str(payload.get("thumbnail_url") or "").strip()
+    return YouTubeMetadataResult(
+        video_id=lookup.video_id,
+        canonical_url=lookup.canonical_url,
+        title=title,
+        thumbnail_url=thumbnail_url,
+    )
+
+
+def validate_youtube_url(url: str) -> str:
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    return fetch_youtube_metadata(text).canonical_url

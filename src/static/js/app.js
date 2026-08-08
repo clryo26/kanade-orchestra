@@ -36,6 +36,7 @@
         '/static/js/modules/admin_system/diagnostics.js',
         '/static/js/modules/admin_system.js',
         '/static/js/modules/portal_views.js',
+        '/static/js/modules/concert_record.js',
         '/static/js/modules/performance_day/helpers.js',
         '/static/js/modules/performance_day/render.js',
         '/static/js/modules/practice_casting/helpers.js',

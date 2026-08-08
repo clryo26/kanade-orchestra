@@ -281,6 +281,7 @@ async function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
     if (renderOnShow && tabName === 'member-flyer-distribution') renderFlyerDistributionView();
     if (renderOnShow && tabName === 'member-performance-day') renderPerformanceDayInfoView();
+    if (renderOnShow && tabName === 'member-concert-record') renderConcertRecordView();
     if (renderOnShow && tabName === 'member-manual') renderManualView();
     if (renderOnShow && tabName === 'member-album') renderAlbumView();
     if (renderOnShow && tabName === 'member-recording') ensureRecordingsLoaded();
@@ -313,6 +314,7 @@ async function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'flyer-distribution-admin') renderFlyerDistributionManagement();
     if (renderOnShow && tabName === 'casting-admin') renderCastingAdmin();
     if (renderOnShow && tabName === 'performance-day-admin') renderPerformanceDayInfoAdmin();
+    if (renderOnShow && tabName === 'concert-record-admin') renderConcertRecordAdminView();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();

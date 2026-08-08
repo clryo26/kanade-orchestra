@@ -73,6 +73,35 @@ def save_generic_json_collection(name: str, data: list[dict[str, Any]]) -> None:
             )
 
 
+def _stabilize_concert_record_video_sort_orders(cur: Any, tenant_id: str) -> None:
+    cur.execute(
+        psql.SQL(
+            "SELECT id, performance_id, sort_order FROM {} WHERE organization_id = %s "
+            "ORDER BY performance_id, sort_order, id"
+        ).format(psql.Identifier("concert_record_videos")),
+        (tenant_id,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return
+
+    by_performance: dict[Any, list[tuple[int, int]]] = {}
+    for row_id, performance_id, sort_order in rows:
+        by_performance.setdefault(performance_id, []).append((int(row_id), int(sort_order or 0)))
+
+    temp_updates: list[tuple[int, int]] = []
+    for group_rows in by_performance.values():
+        max_sort_order = max(sort_order for _, sort_order in group_rows)
+        temp_sort_order = max_sort_order + len(group_rows) + 1
+        for index, (row_id, _) in enumerate(group_rows):
+            temp_updates.append((temp_sort_order + index, row_id))
+
+    cur.executemany(
+        psql.SQL("UPDATE {} SET sort_order = %s WHERE id = %s").format(psql.Identifier("concert_record_videos")),
+        temp_updates,
+    )
+
+
 def load_json_data(name: str) -> list[dict[str, Any]]:
     table_name = JSON_COLLECTION_TABLES.get(name)
     if not table_name:
@@ -87,6 +116,14 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
                 by_performance.setdefault(piece.get("performance_id"), []).append(piece)
             for item in items:
                 item["pieces"] = by_performance.get(item.get("id"), [])
+        elif name == "concert_record_videos":
+            items.sort(
+                key=lambda item: (
+                    int(item.get("performance_id") or 0),
+                    int(item.get("sort_order") or 0),
+                    int(item.get("id") or 0),
+                )
+            )
         elif name == "date_adjustments":
             candidates = db_fetch_all(conn, "date_adjustment_candidates", order_by="sort_order")
             by_adjustment: dict[Any, list[dict[str, Any]]] = {}
@@ -245,6 +282,9 @@ def replace_collection(name: str, data: list[dict[str, Any]]) -> None:
                     cur.execute(psql.SQL("DELETE FROM {} WHERE organization_id = %s").format(psql.Identifier(table_name)), (tenant_id,))
                 else:
                     cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
+
+            if table_name == "concert_record_videos":
+                _stabilize_concert_record_video_sort_orders(cur, tenant_id)
 
             db_upsert_rows(cur, table_name, columns, rows)
             for child_table, child_rows in db_child_rows_for_collection(name, rows).items():

@@ -130,6 +130,7 @@ PUT は以下を許容:
 - connection_settings
 - desired_pieces
 - promotions
+- concert_record_videos
 
 ### 3.2 アクセスログ API
 

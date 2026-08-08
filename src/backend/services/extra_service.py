@@ -17,9 +17,14 @@ from .desired_piece_asset_service import (
     trim_reference_score_files,
     upload_reference_score_file,
 )
+from .concert_record_video_service import (
+    append_concert_record_sort_order,
+    clean_concert_record_title,
+    performance_concert_record_videos,
+)
 from .image_asset_service import delete_stored_image, ensure_public_image_url, is_data_image, store_data_image, store_uploaded_image
 from .storage_service import load_json_data, save_json_data
-from .youtube_validation_service import validate_youtube_url
+from .youtube_validation_service import fetch_youtube_metadata, validate_youtube_url
 from .timetable_payload_helpers import normalize_extra_for_collection
 from ..utils.concurrency import ensure_expected_updated_at
 from ..utils.collection_utils import find_item, next_id
@@ -82,6 +87,82 @@ def _desired_piece_reference_score_file(raw_body: dict[str, Any]) -> UploadFile 
     if file_obj is not None and hasattr(file_obj, "read"):
         return file_obj
     return None
+
+
+def _concert_record_performance_id(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _concert_record_performance_exists(performance_id: int) -> bool:
+    if performance_id <= 0:
+        return False
+    return any(
+        _concert_record_performance_id(performance.get("id")) == performance_id
+        for performance in load_json_data("performances")
+    )
+
+
+def _concert_record_target_sort_order(payload: dict[str, Any], current: dict[str, Any] | None) -> int | None:
+    raw_sort_order = payload.get("sort_order")
+    if raw_sort_order in (None, ""):
+        if current is None:
+            return None
+        try:
+            return int(current.get("sort_order") or 0) or None
+        except (TypeError, ValueError):
+            return None
+    try:
+        return int(raw_sort_order)
+    except (TypeError, ValueError):
+        return None
+
+
+def _concert_record_group(items: list[dict[str, Any]], performance_id: int) -> list[dict[str, Any]]:
+    return performance_concert_record_videos(items, performance_id)
+
+
+def _concert_record_resequence_group(
+    items: list[dict[str, Any]],
+    performance_id: int,
+    current: dict[str, Any] | None = None,
+    target_sort_order: int | None = None,
+) -> None:
+    group = _concert_record_group(items, performance_id)
+    if not group:
+        return
+
+    if current is not None and current in group:
+        group.remove(current)
+        if target_sort_order is None:
+            target_index = len(group)
+        else:
+            target_index = max(0, min(len(group), target_sort_order - 1))
+        group.insert(target_index, current)
+
+    for index, item in enumerate(group, start=1):
+        item["sort_order"] = index
+
+
+def _concert_record_validate_payload(
+    payload: dict[str, Any],
+    current: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    performance_id = _concert_record_performance_id(payload.get("performance_id"))
+    if not _concert_record_performance_exists(performance_id):
+        raise HTTPException(status_code=400, detail="演奏会を選択してください")
+
+    metadata = fetch_youtube_metadata(str(payload.get("youtube_url") or ""))
+    normalized = dict(payload)
+    normalized["performance_id"] = performance_id
+    normalized["youtube_url"] = metadata.canonical_url
+    normalized["title"] = clean_concert_record_title(metadata.title)
+    normalized["thumbnail_url"] = str(metadata.thumbnail_url or "")
+    if current is not None:
+        normalized["sort_order"] = _concert_record_target_sort_order(normalized, current)
+    return normalized
 
 
 def _prepare_desired_piece_payload(
@@ -223,6 +304,9 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
         item_id=next_id(items),
     )
     desired_piece_score_stored_name: str | None = None
+    if name == "concert_record_videos":
+        payload = _concert_record_validate_payload(payload, None)
+        payload["sort_order"] = append_concert_record_sort_order(items, payload["performance_id"])
     if name == "desired_pieces":
         payload, desired_piece_score_stored_name = _prepare_desired_piece_payload(
             int(payload.get("id") or 0),
@@ -230,6 +314,8 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
             raw_body,
             None,
         )
+    if name == "sns_settings":
+        payload["youtube_url"] = str(payload.get("youtube_url") or "")
     image_field = _image_field_name(name)
     image_source = str(payload.get(image_field) or "") if image_field else ""
     uploaded_image_url = ""
@@ -246,6 +332,8 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
                 image_file if image_file and hasattr(image_file, "read") else None,
             )
             payload[image_field] = uploaded_image_url
+        if name == "concert_record_videos":
+            _concert_record_resequence_group(items, int(payload.get("performance_id") or 0), payload)
         save_json_data(name, items)
         if name == "desired_pieces" and desired_piece_score_stored_name:
             trim_reference_score_files(int(payload.get("id") or 0), desired_piece_score_stored_name)
@@ -282,6 +370,7 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
         current=current,
     )
     desired_piece_score_stored_name: str | None = None
+    concert_record_old_performance_id = _concert_record_performance_id(current.get("performance_id")) if name == "concert_record_videos" else 0
     if name == "desired_pieces":
         _desired_piece_validate_title_lock(current, payload, device)
         payload, desired_piece_score_stored_name = _prepare_desired_piece_payload(
@@ -290,6 +379,19 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
             raw_body,
             current,
         )
+    if name == "concert_record_videos":
+        payload = _concert_record_validate_payload(payload, current)
+        target_performance_id = int(payload.get("performance_id") or 0)
+        if target_performance_id == concert_record_old_performance_id:
+            target_sort_order = _concert_record_target_sort_order(payload, current)
+            payload["sort_order"] = target_sort_order or int(current.get("sort_order") or 0)
+        else:
+            payload["sort_order"] = append_concert_record_sort_order(
+                [item for item in items if int(item.get("id") or 0) != item_id],
+                target_performance_id,
+            )
+    if name == "sns_settings":
+        payload["youtube_url"] = str(payload.get("youtube_url") or current.get("youtube_url") or "")
     image_field = _image_field_name(name)
     image_source = str(payload.get(image_field) or "") if image_field else ""
     old_image_url = str(current.get(image_field) or "") if image_field else ""
@@ -308,9 +410,13 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
             )
             payload[image_field] = uploaded_image_url
             items[index] = payload
-        save_json_data(name, items)
+        if name == "concert_record_videos":
+            if concert_record_old_performance_id and concert_record_old_performance_id != int(payload.get("performance_id") or 0):
+                _concert_record_resequence_group(items, concert_record_old_performance_id)
+            _concert_record_resequence_group(items, int(payload.get("performance_id") or 0), payload, _concert_record_target_sort_order(payload, current))
         if name == "desired_pieces" and desired_piece_score_stored_name:
             trim_reference_score_files(item_id, desired_piece_score_stored_name)
+        save_json_data(name, items)
     except Exception:
         if uploaded_image_url and uploaded_image_url != old_image_url:
             _delete_collection_image(name, item_id, uploaded_image_url)
@@ -334,4 +440,7 @@ def delete_item(name: str, item_id: int, device: dict[str, Any]) -> None:
         _delete_collection_image(name, item_id, str(current.get(_image_field_name(name)) or ""))
     if name == "desired_pieces":
         delete_reference_score_files(item_id)
-    save_json_data(name, [item for item in items if item.get("id") != item_id])
+    remaining_items = [item for item in items if item.get("id") != item_id]
+    if name == "concert_record_videos":
+        _concert_record_resequence_group(remaining_items, _concert_record_performance_id(current.get("performance_id")))
+    save_json_data(name, remaining_items)

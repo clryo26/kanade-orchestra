@@ -725,6 +725,26 @@
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 
+### 2.33 concert_record_videos
+- 用途: 演奏会記録の YouTube 動画
+- PK: id
+- FK: performance_id -> performances.id (ON DELETE CASCADE)
+- UNIQUE/CHECK: UNIQUE (organization_id, performance_id, sort_order)
+- INDEX:
+  - idx_concert_record_videos_org_id (organization_id)
+  - idx_concert_record_videos_org_id_id (organization_id, id)
+  - idx_concert_record_videos_performance_id (performance_id)
+- 列レイアウト:
+  - id BIGINT IDENTITY PK （必須）
+  - organization_id TEXT NOT NULL DEFAULT 'default' （必須）
+  - performance_id BIGINT NOT NULL （必須）
+  - youtube_url TEXT NOT NULL DEFAULT '' （必須）
+  - title TEXT NOT NULL DEFAULT '' （必須）
+  - thumbnail_url TEXT NOT NULL DEFAULT '' （必須）
+  - sort_order INTEGER NOT NULL DEFAULT 0 （必須）
+  - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+  - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
 ## 3. 補足
 
 - `practice_instructions.performance_instruction` は現行UIでは未使用。移行第2段階で削除候補。

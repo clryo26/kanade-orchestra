@@ -34,6 +34,7 @@ const initialPortalAppState = {
     venueSettings: [],
     flyerDistributions: [],
     flyerDistributionAssignments: [],
+    concertRecordVideos: [],
     orgSettings: [],
     snsSettings: [],
     connectionSettings: [],

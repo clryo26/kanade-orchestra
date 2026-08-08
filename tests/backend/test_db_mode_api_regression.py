@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from urllib.parse import unquote
 
 pytestmark = pytest.mark.db_profile
 
@@ -401,6 +402,8 @@ def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkey
 
 
 def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, monkeypatch):
+    from src.backend.services import youtube_validation_service
+
     db_store = {
         "members": [
             {
@@ -447,6 +450,7 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
         "albums": [],
         "part_settings": [],
         "venue_settings": [],
+        "concert_record_videos": [],
         "org_settings": [],
         "sns_settings": [],
         "connection_settings": [],
@@ -457,6 +461,33 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
     }
     _enable_db_mode(backend_env, monkeypatch, db_store)
     headers = {"X-Device-Id": "dev-admin"}
+
+    def fake_urlopen(request, timeout=5):
+        url = request.full_url if hasattr(request, "full_url") else str(request)
+        target = unquote(url.split("url=", 1)[-1].split("&format=", 1)[0])
+        normalized = youtube_validation_service.normalize_youtube_url(target)
+
+        class FakeOEmbedResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    '{"title":"%s","thumbnail_url":"https://img.example/%s.jpg"}'
+                    % (
+                        "【福岡奏オーケストラ】DB Video",
+                        normalized.video_id,
+                    )
+                ).encode("utf-8")
+
+        return FakeOEmbedResponse()
+
+    monkeypatch.setattr(youtube_validation_service, "urlopen", fake_urlopen)
 
     payloads = {
         "absences": {"schedule_id": 20, "member_id": 1, "name": "Admin", "status": "ng", "note": "late"},
@@ -477,6 +508,7 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
         "albums": {"event_name": "Concert Album", "created_by_member_id": 1, "created_by_member_name": "Admin"},
         "part_settings": {"name": "Violin", "display_order": 1, "is_active": True},
         "venue_settings": {"name": "Hall", "for_practice": True, "for_performance": True, "sort_order": 1},
+        "concert_record_videos": {"performance_id": 10, "youtube_url": "https://youtu.be/abcdefghijk"},
         "org_settings": {"name": "Kanade Orchestra", "short_name": "Kanade", "membership_fee_amount": 1000},
         "sns_settings": {"x_url": "https://example.com/x", "extra_links": [{"label": "Web", "url": "https://example.com"}]},
         "connection_settings": {"google_cloud_storage_bucket": "bucket", "google_cloud_storage_data_prefix": "app-data"},
