@@ -933,3 +933,14 @@ def test_postgresql_18_path_check_after_backup_invocation_fails(tmp_path):
     errors = module.run_checks(workflow_dir, verify_script)
 
     assert any("PATH resolution must precede backup" in error for error in errors)
+
+def test_promote_production_allows_zero_percent_tagged_revision():
+    content = Path(".github/workflows/promote-production.yml").read_text(encoding="utf-8")
+
+    assert "if len(traffic) != 1:" not in content
+    assert "positive_traffic = [" in content
+    assert 'if int(entry.get("percent") or 0) > 0' in content
+    assert "if len(positive_traffic) != 1:" in content
+    assert "traffic_entry = positive_traffic[0]" in content
+    assert 'if traffic_entry.get("revisionName") != latest_ready_revision:' in content
+    assert 'if traffic_entry.get("percent") != 100:' in content

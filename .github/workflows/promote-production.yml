@@ -167,9 +167,15 @@ jobs:
 
           if not latest_ready_revision:
               sys.exit("latestReadyRevisionName is missing after production promotion")
-          if len(traffic) != 1:
-              sys.exit("Production traffic is not concentrated into a single revision")
-          traffic_entry = traffic[0]
+
+          positive_traffic = [
+              entry for entry in traffic
+              if int(entry.get("percent") or 0) > 0
+          ]
+          if len(positive_traffic) != 1:
+              sys.exit("Production traffic is not concentrated into a single positive-percent revision")
+
+          traffic_entry = positive_traffic[0]
           if traffic_entry.get("revisionName") != latest_ready_revision:
               sys.exit("Production traffic revision does not match latestReadyRevisionName")
           if traffic_entry.get("percent") != 100:
