@@ -143,9 +143,7 @@ function renderMenuGroups(container) {
     const improvementButton = container.querySelector('[data-drawer-action="improvement"]');
     if (improvementButton) improvementButton.addEventListener('click', () => {
         closePortalDrawer();
-        if (typeof window.showImprovementSuggestions === 'function') {
-            void window.showImprovementSuggestions();
-        }
+        void requestImprovementSuggestions();
     });
 
     updateCloudRunRevision();

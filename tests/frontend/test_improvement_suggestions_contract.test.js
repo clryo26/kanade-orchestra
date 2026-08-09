@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const menuSource = fs.readFileSync(path.join(root, 'src/static/js/modules/navigation/menu.js'), 'utf8');
+const routesSource = fs.readFileSync(path.join(root, 'src/static/js/modules/navigation/routes.js'), 'utf8');
 const uiSource = fs.readFileSync(path.join(root, 'src/static/js/modules/improvement_suggestions.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'src/static/css/style.css'), 'utf8');
 
@@ -27,8 +28,11 @@ describe('improvement suggestion UI contract', () => {
     expect(metaBlock.indexOf('revision-inline')).toBeLessThan(metaBlock.indexOf('data-drawer-action="improvement"'));
 
     expect(menuSource).toContain("container.querySelector('[data-drawer-action=\"improvement\"]')");
-    expect(menuSource).toContain("typeof window.showImprovementSuggestions === 'function'");
-    expect(menuSource).toContain('void window.showImprovementSuggestions()');
+    expect(menuSource).toContain('void requestImprovementSuggestions()');
+    expect(menuSource).not.toContain("typeof window.showImprovementSuggestions === 'function'");
+    expect(routesSource).toContain('async function requestImprovementSuggestions()');
+    expect(routesSource).toContain('await ensureImprovementSuggestionsLoaded()');
+    expect(routesSource).toContain('await window.showImprovementSuggestions()');
     expect(css).not.toContain('.desktop-revision-footer');
     expect(css).not.toMatch(/\.portal-drawer\s+\.revision-inline\s*\{[^}]*display:\s*none\s*!important;/s);
   });
