@@ -42,6 +42,20 @@ describe('improvement suggestion UI contract', () => {
     expect(uiSource).toContain("item.status === '対応済'");
   });
 
+  it('hides submitter names from the member list while keeping them in system management', () => {
+    const memberStart = uiSource.indexOf('function memberCard(item, completed)');
+    const memberEnd = uiSource.indexOf('function renderMemberLists()', memberStart);
+    const memberBlock = uiSource.slice(memberStart, memberEnd);
+    expect(memberBlock).not.toContain('item.registered_by');
+    expect(memberBlock).toContain('formatDateTime(item.created_at)');
+
+    const systemStart = uiSource.indexOf('function renderSystemList()');
+    const systemEnd = uiSource.indexOf('async function loadSuggestions()', systemStart);
+    const systemBlock = uiSource.slice(systemStart, systemEnd);
+    expect(systemBlock).toContain('<th>登録者</th>');
+    expect(systemBlock).toContain('escapeText(item.registered_by)');
+  });
+
   it('provides system improvement management controls', () => {
     expect(uiSource).toContain('改善案管理');
     expect(uiSource).toContain('systemImprovementSuggestionResolution');
