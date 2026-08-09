@@ -113,30 +113,9 @@ function Install-PublishGuard {
         [System.IO.File]::WriteAllText($tokenPath, $token, $utf8NoBom)
     }
 
-    $managedHooksDirGit = $managedHooksDir.Replace("\", "/")
-    $configuredHooksPathRaw = (& git -C $Repo config --local --get core.hooksPath)
-    $configuredHooksPath = ([string]$configuredHooksPathRaw).Trim()
+    $managedHooksConfigPath = ".git/kanade-hooks"
 
-    $usesLegacyHooksPath = [string]::Equals(
-        $configuredHooksPath.Replace("\", "/"),
-        ".githooks",
-        [System.StringComparison]::OrdinalIgnoreCase
-    )
-    $usesManagedHooksPath = [string]::Equals(
-        $configuredHooksPath.Replace("\", "/"),
-        $managedHooksDirGit,
-        [System.StringComparison]::OrdinalIgnoreCase
-    )
-
-    if (
-        -not [string]::IsNullOrWhiteSpace($configuredHooksPath) -and
-        -not $usesLegacyHooksPath -and
-        -not $usesManagedHooksPath
-    ) {
-        throw "[AI-WORKFLOW-GATE] Unexpected core.hooksPath detected. Refusing to replace it."
-    }
-
-    & git -C $Repo config --local core.hooksPath $managedHooksDirGit
+    & git -C $Repo config --local core.hooksPath $managedHooksConfigPath
     if ($LASTEXITCODE -ne 0) {
         throw "[AI-WORKFLOW-GATE] Failed to activate managed Git hooks."
     }
@@ -144,7 +123,7 @@ function Install-PublishGuard {
     $effectiveHooksPath = ([string](& git -C $Repo config --local --get core.hooksPath)).Trim().Replace("\", "/")
     if (-not [string]::Equals(
         $effectiveHooksPath,
-        $managedHooksDirGit,
+        $managedHooksConfigPath,
         [System.StringComparison]::OrdinalIgnoreCase
     )) {
         throw "[AI-WORKFLOW-GATE] Managed Git hooks path verification failed."
