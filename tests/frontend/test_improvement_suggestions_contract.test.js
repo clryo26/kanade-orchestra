@@ -56,6 +56,24 @@ describe('improvement suggestion UI contract', () => {
     expect(systemBlock).toContain('escapeText(item.registered_by)');
   });
 
+  it('provides system laboratory PDF editor controls without Create behavior', () => {
+    expect(uiSource).toContain('data-tab="system-laboratory"');
+    expect(uiSource).toContain('id="system-laboratoryTab"');
+    expect(uiSource).toContain('data-tab="system-pdf-editor"');
+    expect(uiSource).toContain('id="system-pdf-editorTab"');
+    expect(uiSource).toContain('id="pdfEditorFileInput"');
+    expect(uiSource).toContain('accept="application/pdf,.pdf"');
+    expect(uiSource).not.toContain('id="pdfEditorFileInput" type="file" multiple');
+    expect(uiSource).toContain('selectedFiles.length !== 1');
+    expect(uiSource).toContain("formData.append('file', file)");
+    expect(uiSource).toContain('pdf-editor-part-select');
+    expect(uiSource).toContain('pdf-editor-create-btn');
+    expect(uiSource).not.toContain("querySelectorAll('.pdf-editor-create-btn')");
+    expect(uiSource).not.toContain("querySelector('.pdf-editor-create-btn')");
+    expect(uiSource).not.toContain('function createPdfEditor');
+    expect(uiSource).not.toContain('function createPdf');
+  });
+
   it('provides system improvement management controls', () => {
     expect(uiSource).toContain('改善案管理');
     expect(uiSource).toContain('systemImprovementSuggestionResolution');

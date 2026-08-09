@@ -282,9 +282,181 @@
         }
     }
 
+
+    function pdfEditorStatus(message) {
+        var status = $('pdfEditorStatus');
+        if (!status) return;
+        status.hidden = false;
+        status.textContent = String(message || '');
+    }
+
+    function formatPdfEditorFileSize(size) {
+        var bytes = Number(size || 0);
+        if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+        if (bytes < 1024) return Math.round(bytes) + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function pdfPartOptionsHtml() {
+        if (typeof partSelectOptionsHtml === 'function') return partSelectOptionsHtml('');
+        return '<option value="">選択してください</option>';
+    }
+
+    function renderPdfEditorList(files) {
+        var target = $('pdfEditorList');
+        if (!target) return;
+        if (!Array.isArray(files) || !files.length) {
+            target.innerHTML = '<p class="text-muted mb-0">登録済みPDFはありません。</p>';
+            return;
+        }
+        target.innerHTML = '<div class="list-group">' + files.map(function (item) {
+            return '<div class="list-group-item"><div class="d-flex flex-column flex-md-row align-items-md-center gap-2">' +
+                '<div class="flex-grow-1"><div class="fw-semibold text-break">' + escapeText(item.name || 'PDF') + '</div>' +
+                '<div class="text-muted small">' + escapeText(formatPdfEditorFileSize(item.size)) + '</div></div>' +
+                '<div class="d-flex align-items-center gap-2 ms-md-auto">' +
+                '<select class="form-select form-select-sm pdf-editor-part-select" aria-label="パート">' + pdfPartOptionsHtml() + '</select>' +
+                '<button class="btn btn-sm btn-outline-primary pdf-editor-create-btn" type="button">作成</button>' +
+                '</div></div></div>';
+        }).join('') + '</div>';
+    }
+
+    async function pdfEditorApi(path, options) {
+        var requestOptions = Object.assign({}, options || {});
+        requestOptions.headers = Object.assign({}, deviceHeaders(false), requestOptions.headers || {});
+        var response = await fetch(path, requestOptions);
+        if (!response.ok) {
+            var detail = '';
+            try {
+                var body = await response.json();
+                detail = body.detail || '';
+            } catch (_) {}
+            throw new Error(detail || 'PDF編集処理に失敗しました');
+        }
+        return response.json();
+    }
+
+    async function loadPdfEditorFiles() {
+        pdfEditorStatus('登録済みPDFを読み込んでいます...');
+        var result = await pdfEditorApi('/api/system/pdf-editor/files');
+        var files = Array.isArray(result.files) ? result.files : [];
+        renderPdfEditorList(files);
+        pdfEditorStatus(files.length + '件のPDFを表示しています。');
+    }
+
+    async function registerPdfEditorFile() {
+        var input = $('pdfEditorFileInput');
+        var button = $('pdfEditorRegisterBtn');
+        if (!input || !button) return;
+        var selectedFiles = Array.from(input.files || []);
+        if (selectedFiles.length !== 1) {
+            if (typeof showAlert === 'function') showAlert('登録するPDFファイルを1件選択してください。', 'warning');
+            return;
+        }
+        var file = selectedFiles[0];
+        if (!String(file.name || '').toLowerCase().endsWith('.pdf')) {
+            if (typeof showAlert === 'function') showAlert('PDFファイルを選択してください。', 'warning');
+            return;
+        }
+        var originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = '登録中...';
+        try {
+            var formData = new FormData();
+            formData.append('file', file);
+            await pdfEditorApi('/api/system/pdf-editor/files', { method: 'POST', body: formData });
+            input.value = '';
+            await loadPdfEditorFiles();
+            if (typeof showAlert === 'function') showAlert('PDFを登録しました。', 'success');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+
+    async function renderPdfEditor() {
+        await loadPdfEditorFiles();
+    }
+
+    function showPdfEditorError(error) {
+        console.warn('[PDF編集]', error);
+        pdfEditorStatus(error && error.message ? error.message : 'PDF編集処理に失敗しました');
+        if (typeof showAlert === 'function') showAlert(error && error.message ? error.message : 'PDF編集処理に失敗しました', 'warning');
+    }
+
+    function ensurePdfEditorPanel() {
+        var panel = $('systemPanel');
+        if (!panel) return;
+        var toolbar = panel.querySelector('.toolbar');
+        if (toolbar && !toolbar.querySelector('[data-tab="system-laboratory"]')) {
+            toolbar.insertAdjacentHTML('beforeend', '<button class="btn btn-sm btn-outline-primary" data-tab="system-laboratory" type="button">実験室</button>');
+        }
+        if (!$('system-laboratoryTab')) {
+            panel.insertAdjacentHTML('beforeend', `
+                <div id="system-laboratoryTab" class="tab-content" hidden>
+                    <div class="card">
+                        <div class="card-header">実験室</div>
+                        <div class="card-body">
+                            <button class="btn btn-primary" data-tab="system-pdf-editor" type="button">PDF編集</button>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+        if (!$('system-pdf-editorTab')) {
+            panel.insertAdjacentHTML('beforeend', `
+                <div id="system-pdf-editorTab" class="tab-content" hidden>
+                    <div class="card">
+                        <div class="card-header">PDF編集</div>
+                        <div class="card-body">
+                            <div class="row g-2 align-items-end mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label" for="pdfEditorFileInput">PDFファイル</label>
+                                    <input class="form-control" id="pdfEditorFileInput" type="file" accept="application/pdf,.pdf">
+                                </div>
+                                <div class="col-md-4">
+                                    <button class="btn btn-primary w-100" id="pdfEditorRegisterBtn" type="button">登録</button>
+                                </div>
+                            </div>
+                            <div id="pdfEditorStatus" class="text-muted small mb-2" hidden></div>
+                            <div id="pdfEditorList"></div>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+
+        var laboratoryButton = toolbar ? toolbar.querySelector('[data-tab="system-laboratory"]') : null;
+        if (laboratoryButton && laboratoryButton.dataset.pdfLaboratoryBound !== 'true') {
+            laboratoryButton.dataset.pdfLaboratoryBound = 'true';
+            laboratoryButton.addEventListener('click', function () {
+                if (typeof switchTab === 'function') switchTab('systemPanel', 'system-laboratory', false);
+            });
+        }
+
+        var laboratoryTab = $('system-laboratoryTab');
+        var pdfEditorButton = laboratoryTab ? laboratoryTab.querySelector('[data-tab="system-pdf-editor"]') : null;
+        if (pdfEditorButton && pdfEditorButton.dataset.pdfEditorBound !== 'true') {
+            pdfEditorButton.dataset.pdfEditorBound = 'true';
+            pdfEditorButton.addEventListener('click', function () {
+                if (typeof switchTab === 'function') switchTab('systemPanel', 'system-pdf-editor', false);
+                renderPdfEditor().catch(showPdfEditorError);
+            });
+        }
+
+        var registerButton = $('pdfEditorRegisterBtn');
+        if (registerButton && registerButton.dataset.pdfEditorRegisterBound !== 'true') {
+            registerButton.dataset.pdfEditorRegisterBound = 'true';
+            registerButton.addEventListener('click', function () {
+                registerPdfEditorFile().catch(showPdfEditorError);
+            });
+        }
+    }
+
     function init() {
         ensureMemberPanel();
         ensureSystemPanel();
+        ensurePdfEditorPanel();
         document.querySelectorAll('[data-improvement-suggestion-open]').forEach(function (button) {
             button.addEventListener('click', showImprovementSuggestions);
         });
