@@ -155,7 +155,7 @@
             : '';
         return '<div class="border rounded p-3 mb-2">' +
             '<div class="d-flex justify-content-between gap-2"><strong>' + escapeText(item.suggestion) + '</strong><span class="badge text-bg-secondary">' + escapeText(item.status) + '</span></div>' +
-            '<div class="text-muted small mt-1">' + escapeText(item.registered_by || '') + ' / ' + escapeText(formatDateTime(item.created_at)) + '</div>' +
+            '<div class="text-muted small mt-1">' + escapeText(formatDateTime(item.created_at)) + '</div>' +
             extra + '</div>';
     }
 
