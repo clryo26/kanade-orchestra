@@ -96,7 +96,10 @@ function renderMenuGroups(container) {
                 <button class="btn btn-outline-primary" data-drawer-action="manual" type="button">マニュアル</button>
                 <button class="btn btn-outline-danger" data-drawer-action="logout" type="button">ログアウト</button>
                 <button class="btn btn-outline-success" data-drawer-action="reload" type="button">更新</button>
+            </div>
+            <div class="portal-drawer-meta d-flex align-items-center justify-content-end gap-2 mt-2">
                 <span class="revision-inline">Rev. <span data-revision-number>${escapeHtml(currentRevisionText())}</span></span>
+                <button class="desktop-improvement-link" data-drawer-action="improvement" type="button">改善案</button>
             </div>
         </section>
     `;
@@ -135,6 +138,14 @@ function renderMenuGroups(container) {
         event.stopPropagation();
         setLoadingBar('更新中...');
         void refreshPortalWithRevisionCheck();
+    });
+
+    const improvementButton = container.querySelector('[data-drawer-action="improvement"]');
+    if (improvementButton) improvementButton.addEventListener('click', () => {
+        closePortalDrawer();
+        if (typeof window.showImprovementSuggestions === 'function') {
+            void window.showImprovementSuggestions();
+        }
     });
 
     updateCloudRunRevision();
