@@ -309,7 +309,11 @@ def syntax_check(rel: str, *, cwd: Path) -> None:
         load_utf8_json(cwd / rel)
 
 
-def test_argv(test: dict[str, Any]) -> list[str]:
+def test_argv(
+    test: dict[str, Any],
+    *,
+    cwd: Path | None = None,
+) -> list[str]:
     if not isinstance(test, dict):
         raise GateReject("required test descriptor must be object")
 
@@ -339,7 +343,19 @@ def test_argv(test: dict[str, Any]) -> list[str]:
         ]
         if any(not p.endswith(".js") for p in checked):
             raise GateReject("vitest paths must end with .js")
-        return local_node_bin_argv("vitest", "vitest", "run", *checked)
+        argv = local_node_bin_argv("vitest", "vitest", "run")
+        if cwd is not None:
+            config = ROOT / "vitest.config.js"
+            if not config.is_file():
+                raise GateReject(f"Vitest config not found: {config}")
+            argv.extend([
+                "--root",
+                str(cwd),
+                "--config",
+                str(config),
+            ])
+        argv.extend(checked)
+        return argv
 
     if kind == "node_check":
         rel = safe_rel_path(test.get("path"), roots=("src/", "tests/"))
@@ -601,7 +617,7 @@ def verify_change_against_contract(
     test_results: list[dict[str, Any]] = []
     if run_tests:
         for descriptor in contract.get("required_tests", []):
-            argv = test_argv(descriptor)
+            argv = test_argv(descriptor, cwd=cwd)
             proc = run(argv, cwd=cwd, capture=False)
             test_results.append({
                 "kind": descriptor["kind"],
