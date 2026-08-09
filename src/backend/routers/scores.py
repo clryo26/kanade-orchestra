@@ -50,7 +50,7 @@ def _list_pdf_editor_files() -> list[dict[str, Any]]:
     if not PDF_EDITOR_LOCAL_DIR.exists():
         return []
 
-    items: list[dict[str, Any]] = []
+    items = []
     for path in PDF_EDITOR_LOCAL_DIR.rglob("*.pdf"):
         if not path.is_file():
             continue
