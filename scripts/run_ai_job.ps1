@@ -25,7 +25,8 @@ if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
 function Install-PublishGuard {
     param([Parameter(Mandatory = $true)][string]$Repo)
 
-    $marker = "# KANADE_AI_PUBLISH_GUARD_V1"
+    $marker = "# KANADE_AI_PUBLISH_GUARD_V2"
+    $preCommitBridgeMarker = "# KANADE_AI_PRE_COMMIT_BRIDGE_V1"
     $tokenEnvName = "KANADE_AI_PUBLISH_TOKEN"
     $tokenFileName = "kanade-ai-publish-token"
 
@@ -46,12 +47,19 @@ function Install-PublishGuard {
         $commonDir = [System.IO.Path]::GetFullPath((Join-Path $Repo $commonDirText))
     }
 
-    $hooksDir = Join-Path $commonDir "hooks"
-    $hookPath = Join-Path $hooksDir "pre-push"
-    $tokenPath = Join-Path $commonDir $tokenFileName
-    [System.IO.Directory]::CreateDirectory($hooksDir) | Out-Null
+    $trackedPreCommitPath = Join-Path $Repo ".githooks\pre-commit"
+    if (-not (Test-Path -LiteralPath $trackedPreCommitPath -PathType Leaf)) {
+        throw "[AI-WORKFLOW-GATE] Required tracked pre-commit hook is missing: .githooks/pre-commit"
+    }
 
-    $hookLines = @(
+    $managedHooksDir = Join-Path $commonDir "kanade-hooks"
+    $prePushHookPath = Join-Path $managedHooksDir "pre-push"
+    $preCommitHookPath = Join-Path $managedHooksDir "pre-commit"
+    $legacyPrePushHookPath = Join-Path (Join-Path $commonDir "hooks") "pre-push"
+    $tokenPath = Join-Path $commonDir $tokenFileName
+    [System.IO.Directory]::CreateDirectory($managedHooksDir) | Out-Null
+
+    $prePushLines = @(
         "#!/bin/sh",
         $marker,
         "TOKEN_FILE=`"`$(git rev-parse --git-common-dir 2>/dev/null)/$tokenFileName`"",
@@ -66,17 +74,33 @@ function Install-PublishGuard {
         "fi",
         "exit 0"
     )
-    $expectedHook = ($hookLines -join "`n") + "`n"
+    $expectedPrePush = ($prePushLines -join "`n") + "`n"
 
-    if (Test-Path -LiteralPath $hookPath -PathType Leaf) {
-        $existingHook = [System.IO.File]::ReadAllText($hookPath)
-        if (-not $existingHook.Contains($marker)) {
-            throw "[AI-WORKFLOW-GATE] Existing unmanaged pre-push hook detected. Refusing to overwrite it."
+    $preCommitBridgeLines = @(
+        "#!/bin/sh",
+        $preCommitBridgeMarker,
+        'REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 2',
+        'exec "$REPO_ROOT/.githooks/pre-commit" "$@"'
+    )
+    $expectedPreCommitBridge = ($preCommitBridgeLines -join "`n") + "`n"
+
+    if (Test-Path -LiteralPath $prePushHookPath -PathType Leaf) {
+        $existingPrePush = [System.IO.File]::ReadAllText($prePushHookPath)
+        if (-not $existingPrePush.Contains($marker)) {
+            throw "[AI-WORKFLOW-GATE] Existing unmanaged managed-directory pre-push hook detected. Refusing to overwrite it."
+        }
+    }
+
+    if (Test-Path -LiteralPath $preCommitHookPath -PathType Leaf) {
+        $existingPreCommit = [System.IO.File]::ReadAllText($preCommitHookPath)
+        if (-not $existingPreCommit.Contains($preCommitBridgeMarker)) {
+            throw "[AI-WORKFLOW-GATE] Existing unmanaged managed-directory pre-commit hook detected. Refusing to overwrite it."
         }
     }
 
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    [System.IO.File]::WriteAllText($hookPath, $expectedHook, $utf8NoBom)
+    [System.IO.File]::WriteAllText($prePushHookPath, $expectedPrePush, $utf8NoBom)
+    [System.IO.File]::WriteAllText($preCommitHookPath, $expectedPreCommitBridge, $utf8NoBom)
 
     if (Test-Path -LiteralPath $tokenPath -PathType Leaf) {
         $token = [System.IO.File]::ReadAllText($tokenPath).Trim()
@@ -87,6 +111,50 @@ function Install-PublishGuard {
     else {
         $token = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")).ToLowerInvariant()
         [System.IO.File]::WriteAllText($tokenPath, $token, $utf8NoBom)
+    }
+
+    $managedHooksDirGit = $managedHooksDir.Replace("\", "/")
+    $configuredHooksPathRaw = (& git -C $Repo config --local --get core.hooksPath)
+    $configuredHooksPath = ([string]$configuredHooksPathRaw).Trim()
+
+    $usesLegacyHooksPath = [string]::Equals(
+        $configuredHooksPath.Replace("\", "/"),
+        ".githooks",
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+    $usesManagedHooksPath = [string]::Equals(
+        $configuredHooksPath.Replace("\", "/"),
+        $managedHooksDirGit,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+
+    if (
+        -not [string]::IsNullOrWhiteSpace($configuredHooksPath) -and
+        -not $usesLegacyHooksPath -and
+        -not $usesManagedHooksPath
+    ) {
+        throw "[AI-WORKFLOW-GATE] Unexpected core.hooksPath detected. Refusing to replace it."
+    }
+
+    & git -C $Repo config --local core.hooksPath $managedHooksDirGit
+    if ($LASTEXITCODE -ne 0) {
+        throw "[AI-WORKFLOW-GATE] Failed to activate managed Git hooks."
+    }
+
+    $effectiveHooksPath = ([string](& git -C $Repo config --local --get core.hooksPath)).Trim().Replace("\", "/")
+    if (-not [string]::Equals(
+        $effectiveHooksPath,
+        $managedHooksDirGit,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "[AI-WORKFLOW-GATE] Managed Git hooks path verification failed."
+    }
+
+    if (Test-Path -LiteralPath $legacyPrePushHookPath -PathType Leaf) {
+        $legacyHook = [System.IO.File]::ReadAllText($legacyPrePushHookPath)
+        if ($legacyHook.Contains("# KANADE_AI_PUBLISH_GUARD_V1")) {
+            Remove-Item -LiteralPath $legacyPrePushHookPath -Force
+        }
     }
 
     return $token
