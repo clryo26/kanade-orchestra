@@ -688,7 +688,7 @@ def apply_change(job: JobPaths, plan: dict[str, Any], *, allow_state_change: boo
         temp_root = Path(temp) / "worktree"
 
         add = run(
-            [executable("git"), "worktree", "add", "--detach", str(temp_root), "HEAD"],
+            [executable("git"), "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(temp_root), "HEAD"],
             cwd=ROOT,
         )
         if add.returncode != 0:
@@ -699,7 +699,7 @@ def apply_change(job: JobPaths, plan: dict[str, Any], *, allow_state_change: boo
             patch_copy.write_bytes(patch_bytes)
 
             check = run(
-                [executable("git"), "apply", "--check", str(patch_copy)],
+                [executable("git"), "-c", "core.autocrlf=false", "apply", "--check", str(patch_copy)],
                 cwd=temp_root,
             )
             if check.returncode != 0:
@@ -708,7 +708,7 @@ def apply_change(job: JobPaths, plan: dict[str, Any], *, allow_state_change: boo
                 )
 
             applied = run(
-                [executable("git"), "apply", str(patch_copy)],
+                [executable("git"), "-c", "core.autocrlf=false", "apply", str(patch_copy)],
                 cwd=temp_root,
             )
             if applied.returncode != 0:
@@ -726,7 +726,7 @@ def apply_change(job: JobPaths, plan: dict[str, Any], *, allow_state_change: boo
             verified_diff = Path(temp) / "verified.patch"
             with verified_diff.open("wb") as fh:
                 proc = subprocess.run(
-                    [executable("git"), "diff", "--binary", "HEAD"],
+                    [executable("git"), "-c", "core.autocrlf=false", "diff", "--binary", "HEAD"],
                     cwd=temp_root,
                     stdout=fh,
                 )
@@ -734,7 +734,7 @@ def apply_change(job: JobPaths, plan: dict[str, Any], *, allow_state_change: boo
                 raise GateReject("failed to produce verified patch")
 
             real_check = run(
-                [executable("git"), "apply", "--check", str(verified_diff)],
+                [executable("git"), "-c", "core.autocrlf=false", "apply", "--check", str(verified_diff)],
                 cwd=ROOT,
             )
             if real_check.returncode != 0:
@@ -743,7 +743,7 @@ def apply_change(job: JobPaths, plan: dict[str, Any], *, allow_state_change: boo
                 )
 
             real_apply = run(
-                [executable("git"), "apply", str(verified_diff)],
+                [executable("git"), "-c", "core.autocrlf=false", "apply", str(verified_diff)],
                 cwd=ROOT,
             )
             if real_apply.returncode != 0:
