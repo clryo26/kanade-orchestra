@@ -98,6 +98,46 @@ def executable(name: str) -> str:
     return path
 
 
+def local_node_bin_argv(package_name: str, bin_name: str, *args: str) -> list[str]:
+    package_json = ROOT / "node_modules" / package_name / "package.json"
+    if not package_json.is_file():
+        raise GateReject(f"required Node package not found: {package_name}")
+
+    package = load_utf8_json(package_json)
+    bin_value = package.get("bin")
+    if isinstance(bin_value, str):
+        rel = bin_value
+    elif isinstance(bin_value, dict):
+        rel = bin_value.get(bin_name)
+    else:
+        rel = None
+
+    if not isinstance(rel, str) or not rel:
+        raise GateReject(f"Node package bin not found: {package_name}:{bin_name}")
+
+    cli = (package_json.parent / rel).resolve()
+    package_root = package_json.parent.resolve()
+    try:
+        cli.relative_to(package_root)
+    except ValueError as exc:
+        raise GateReject(f"Node package bin escapes package root: {package_name}:{bin_name}") from exc
+
+    if not cli.is_file():
+        raise GateReject(f"Node package bin file not found: {cli}")
+
+    return [executable("node"), str(cli), *args]
+
+
+def npm_argv(*args: str) -> list[str]:
+    npm = Path(executable("npm"))
+    if npm.suffix.lower() in {".cmd", ".bat"}:
+        cli = npm.parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
+        if not cli.is_file():
+            raise GateReject(f"npm CLI file not found: {cli}")
+        return [executable("node"), str(cli), *args]
+    return [str(npm), *args]
+
+
 def load_utf8_json(path: Path) -> dict[str, Any]:
     try:
         raw = path.read_bytes()
@@ -299,13 +339,7 @@ def test_argv(test: dict[str, Any]) -> list[str]:
         ]
         if any(not p.endswith(".js") for p in checked):
             raise GateReject("vitest paths must end with .js")
-        npx = executable("npx")
-        if os.name == "nt" and Path(npx).suffix.lower() in {".cmd", ".bat"}:
-            comspec = os.environ.get("COMSPEC") or shutil.which("cmd.exe")
-            if not comspec:
-                raise GateReject("cmd.exe required to launch npx on Windows")
-            return [comspec, "/d", "/s", "/c", npx, "vitest", "run", *checked]
-        return [npx, "vitest", "run", *checked]
+        return local_node_bin_argv("vitest", "vitest", "run", *checked)
 
     if kind == "node_check":
         rel = safe_rel_path(test.get("path"), roots=("src/", "tests/"))
@@ -323,21 +357,13 @@ def test_argv(test: dict[str, Any]) -> list[str]:
         return [sys.executable, "-m", "pytest", "tests/operations/test_workflow_static.py", "-q"]
 
     if kind == "frontend_full":
-        npx = executable("npm")
-        if os.name == "nt" and Path(npx).suffix.lower() in {".cmd", ".bat"}:
-            comspec = os.environ.get("COMSPEC") or shutil.which("cmd.exe")
-            return [comspec, "/d", "/s", "/c", npx, "run", "test:frontend"]
-        return [npx, "run", "test:frontend"]
+        return npm_argv("run", "test:frontend")
 
     if kind == "backend_full":
         return [sys.executable, "-m", "pytest", "-q"]
 
     if kind == "qa_local":
-        npm = executable("npm")
-        if os.name == "nt" and Path(npm).suffix.lower() in {".cmd", ".bat"}:
-            comspec = os.environ.get("COMSPEC") or shutil.which("cmd.exe")
-            return [comspec, "/d", "/s", "/c", npm, "run", "qa:local"]
-        return [npm, "run", "qa:local"]
+        return npm_argv("run", "qa:local")
 
     raise GateReject(f"internal error: unhandled test kind {kind}")
 
