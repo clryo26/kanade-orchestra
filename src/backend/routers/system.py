@@ -16,6 +16,7 @@ from ..core import assert_db_ready
 from ..core.auth_dependencies import get_production_operation_auth, get_system_admin_device_auth
 from ..services import system_service
 from ..services import production_ops_service
+from ..services import member_service
 
 router = APIRouter()
 
@@ -26,6 +27,10 @@ class RolePermissionUpdate(BaseModel):
     enabled: bool = True
 
 
+class SystemPermissionGrant(BaseModel):
+    permission: str
+
+
 class PromoteRequest(BaseModel):
     target_git_sha: str
     target_image_digest: str = ""
@@ -33,6 +38,24 @@ class PromoteRequest(BaseModel):
 
 class ProdToTestSyncRequest(BaseModel):
     target_git_sha: str = ""
+
+
+@router.get("/api/system/members")
+async def list_system_permission_members(
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
+) -> list[dict[str, Any]]:
+    return member_service.list_members()
+
+
+@router.put("/api/system/members/{member_id}/permission")
+async def grant_system_member_permission(
+    member_id: int,
+    body: SystemPermissionGrant,
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
+) -> dict[str, Any]:
+    if body.permission != member_service.SYSTEM_ADMIN_PERMISSION:
+        raise HTTPException(status_code=400, detail="Invalid system permission")
+    return member_service.grant_system_permission(member_id)
 
 
 @router.get("/api/system/database/tables")

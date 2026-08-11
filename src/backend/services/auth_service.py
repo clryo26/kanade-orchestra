@@ -146,10 +146,22 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Device is not authenticated")
     member_id = device.get("member_id")
     if member_id is not None:
-        members = load_json_data("members")
+        # Auth devices are sessions. Resolve a linked member's current
+        # authorization state so a changed permission cannot remain cached.
+        # Hidden system-admin credentials intentionally have no member_id.
+        members = db_load_json_data("members") if db_data_enabled() else load_json_data("members")
         member = next((value for value in members if value.get("id") == member_id), None)
-        if member and member_access_expired(member):
-            raise HTTPException(status_code=403, detail="Member access expired")
+        if member:
+            if member_access_expired(member):
+                raise HTTPException(status_code=403, detail="Member access expired")
+            device = {
+                **device,
+                "member_name": member_display_name(member),
+                "permission": normalized_permission(member),
+                "system_access_until": member.get("system_access_until") or "",
+                "is_recording_manager": bool(member.get("is_recording_manager")),
+                "is_sheet_manager": bool(member.get("is_sheet_manager")),
+            }
     return cast(dict[str, Any], device)
 
 

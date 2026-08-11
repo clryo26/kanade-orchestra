@@ -397,6 +397,11 @@ async function switchTab(panelId, tabName, renderOnShow = true) {
     if (renderOnShow && tabName === 'performance-day-admin') renderPerformanceDayInfoAdmin();
     if (renderOnShow && tabName === 'concert-record-admin') renderConcertRecordAdminView();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
+    if (renderOnShow && tabName === 'system-permission-management') {
+        ensureSystemPermissionManagementLoaded()
+            .then(function () { return renderSystemPermissionManagement(); })
+            .catch(function (err) { console.warn('System permission management failed to load', err); });
+    }
     if (renderOnShow && tabName === 'system-sns') renderSnsManagement();
     if (renderOnShow && tabName === 'system-connection') renderConnectionSettingsManagement();
     if (renderOnShow && tabName === 'system-environment') {

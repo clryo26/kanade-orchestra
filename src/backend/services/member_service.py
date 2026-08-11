@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from ..repositories.member_repository import MemberRepository
 from .auth_service import (
@@ -14,6 +14,9 @@ from .auth_service import (
 from .image_asset_service import delete_stored_image, is_data_image, store_data_image, store_uploaded_image
 
 _repo = MemberRepository()
+
+MEMBER_PERMISSIONS = {"一般", "エキストラ", "管理者", "システム管理者"}
+SYSTEM_ADMIN_PERMISSION = "システム管理者"
 
 
 def _member_photo_route(member_id: int) -> str:
@@ -70,6 +73,9 @@ def get_member_record(member_id: int) -> dict[str, Any]:
 
 async def create_member(member_payload: dict[str, Any], photo_file: UploadFile | None = None) -> dict[str, Any]:
     prepared = prepare_member_payload(member_payload)
+    _validate_member_permission(prepared)
+    if prepared["permission"] == SYSTEM_ADMIN_PERMISSION:
+        raise HTTPException(status_code=400, detail="System admin permission can only be granted from system permission management")
     photo_source = str(prepared.get("photo_url") or "")
     if photo_file is not None or is_data_image(photo_source):
         prepared["photo_url"] = ""
@@ -96,6 +102,9 @@ async def update_member(member_id: int, member_payload: dict[str, Any], photo_fi
     _, current = _repo.find_by_id(member_id)
     old_photo_url = str(current.get("photo_url") or "")
     prepared = prepare_member_payload(member_payload, current)
+    _validate_member_permission(prepared)
+    if current.get("permission") != SYSTEM_ADMIN_PERMISSION and prepared["permission"] == SYSTEM_ADMIN_PERMISSION:
+        raise HTTPException(status_code=400, detail="System admin permission can only be granted from system permission management")
     photo_source = str(prepared.get("photo_url") or "")
     try:
         uploaded_photo_url = await _persist_member_photo(member_id, photo_source, photo_file)
@@ -108,6 +117,19 @@ async def update_member(member_id: int, member_payload: dict[str, Any], photo_fi
         raise
     if old_photo_url and old_photo_url != str(updated.get("photo_url") or ""):
         _delete_member_photo(member_id, old_photo_url)
+    return public_member_payload(updated)
+
+
+def _validate_member_permission(member: dict[str, Any]) -> None:
+    permission = str(member.get("permission") or "").strip()
+    if permission not in MEMBER_PERMISSIONS:
+        raise HTTPException(status_code=400, detail="Invalid member permission")
+    member["permission"] = permission
+
+
+def grant_system_permission(member_id: int) -> dict[str, Any]:
+    """Grant the existing system-admin permission without editing other member roles."""
+    updated = _repo.update(member_id, lambda current: {**current, "permission": SYSTEM_ADMIN_PERMISSION})
     return public_member_payload(updated)
 
 

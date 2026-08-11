@@ -596,7 +596,7 @@
                                     <option value="一般">一般</option>
                                     <option value="エキストラ">エキストラ</option>
                                     <option value="管理者">管理者</option>
-                                    <option value="システム管理者">システム管理者</option>
+                                    <option value="システム管理者" disabled>システム管理者</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
@@ -861,6 +861,7 @@
         <section id="systemPanel" class="panel" hidden>
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="system-auth" type="button">認証端末管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-permission-management" type="button">権限管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-org" type="button">団体情報管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
@@ -876,6 +877,17 @@
                     <div class="card-header">認証端末管理</div>
                     <div class="card-body">
                     <div id="authDeviceListItems"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemPermissionManagementTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">権限管理</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">登録済み団員にシステム管理者権限を新規付与します。一般・エキストラ・管理者などの権限変更は団員登録から行ってください。</p>
+                        <div id="systemPermissionManagementStatus" class="text-muted small mb-2" hidden></div>
+                        <div id="systemPermissionManagementList"></div>
                     </div>
                 </div>
             </div>
