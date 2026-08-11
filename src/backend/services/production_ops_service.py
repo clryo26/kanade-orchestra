@@ -12,6 +12,10 @@ from ..core.storage_gateway import load_json_data, save_json_data
 
 HISTORY_COLLECTION = "production_operation_histories"
 _MAX_HISTORY = 200
+_PROD_TO_TEST_SYNC_SCOPE = "full"
+_PROD_TO_TEST_MAINTENANCE_CONFIRMATION = (
+    "kanade-orchestra/asia-northeast2/kanade-orchestra-test"
+)
 
 
 def _env_value(name: str) -> str:
@@ -120,13 +124,30 @@ def _dispatch_sync_prod_to_test_workflow(
     target_git_sha: str,
     dry_run: bool,
 ) -> str:
+    inputs = {
+        "operation_id": operation_id,
+        "target_git_sha": target_git_sha,
+        "dry_run": "true" if dry_run else "false",
+    }
+    if not dry_run:
+        expected_test_revision = (
+            _env_value("K_REVISION") or _env_value("CLOUD_RUN_REVISION")
+        )
+        if not expected_test_revision:
+            raise RuntimeError(
+                "current test Cloud Run revision is required for production-to-test sync"
+            )
+        inputs.update(
+            {
+                "sync_scope": _PROD_TO_TEST_SYNC_SCOPE,
+                "expected_test_revision": expected_test_revision,
+                "maintenance_confirmation": _PROD_TO_TEST_MAINTENANCE_CONFIRMATION,
+            }
+        )
+
     return _dispatch_github_workflow_inputs(
         config=_sync_github_dispatch_config(),
-        inputs={
-            "operation_id": operation_id,
-            "target_git_sha": target_git_sha,
-            "dry_run": "true" if dry_run else "false",
-        },
+        inputs=inputs,
     )
 
 
@@ -538,7 +559,7 @@ def request_sync_prod_to_test(*, device: dict[str, Any], target_git_sha: str) ->
         }
 
     operation_id = str(uuid4())
-    dry_run = True
+    dry_run = False
     execution_backend = _env_value("PRODUCTION_OPERATION_EXECUTOR") or "unimplemented"
     if not _execution_backend_implemented():
         failure = "PRODUCTION_OPERATION_EXECUTOR=github-actions is required"
