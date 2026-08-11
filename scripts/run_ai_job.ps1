@@ -9,6 +9,21 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Write-FailureNextAction {
+    Write-Host ""
+    Write-Host "NEXT_ACTION_REQUIRED=1"
+    Write-Host "NEXT_ACTION_INSTRUCTION=Paste the complete output into ChatGPT. Do not run another repository-changing operation until a concrete next step is provided."
+    Write-Host "NEXT_ACTION_EXPECTED_RESULT=The failure is reviewed and the next required concrete operation is provided."
+    Write-Host "NEXT_ACTION_STATE_CHANGE=false"
+}
+
+trap {
+    Write-Host ""
+    Write-Host $_.Exception.Message
+    Write-FailureNextAction
+    exit 1
+}
+
 # Resolve repository root from this script's own installed location.
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $repo) {
@@ -150,14 +165,13 @@ if ($AllowStateChange) {
     $args += "--allow-state-change"
 }
 
-$previousPublishToken = [Environment]::GetEnvironmentVariable("KANADE_AI_PUBLISH_TOKEN", "Process")
-$publishTokenWasSet = $null -ne $previousPublishToken
+$runnerTokenEnvName = "KANADE_AI_RUNNER_TOKEN"
+$previousRunnerToken = [Environment]::GetEnvironmentVariable($runnerTokenEnvName, "Process")
+$runnerTokenWasSet = $null -ne $previousRunnerToken
 
-if ($AllowStateChange) {
-    $publishToken = Install-PublishGuard -Repo $repo
-    [Environment]::SetEnvironmentVariable("KANADE_AI_PUBLISH_TOKEN", $publishToken, "Process")
-    Write-Host "PUBLISH_GUARD=ACTIVE"
-}
+$runnerToken = Install-PublishGuard -Repo $repo
+[Environment]::SetEnvironmentVariable($runnerTokenEnvName, $runnerToken, "Process")
+Write-Host "PUBLISH_GUARD=ACTIVE"
 
 Push-Location $repo
 try {
@@ -167,13 +181,11 @@ try {
 finally {
     Pop-Location
 
-    if ($AllowStateChange) {
-        if ($publishTokenWasSet) {
-            [Environment]::SetEnvironmentVariable("KANADE_AI_PUBLISH_TOKEN", $previousPublishToken, "Process")
-        }
-        else {
-            [Environment]::SetEnvironmentVariable("KANADE_AI_PUBLISH_TOKEN", $null, "Process")
-        }
+    if ($runnerTokenWasSet) {
+        [Environment]::SetEnvironmentVariable($runnerTokenEnvName, $previousRunnerToken, "Process")
+    }
+    else {
+        [Environment]::SetEnvironmentVariable($runnerTokenEnvName, $null, "Process")
     }
 }
 

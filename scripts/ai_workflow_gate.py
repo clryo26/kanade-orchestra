@@ -67,6 +67,7 @@ def run(
     cwd: Path | None = None,
     capture: bool = True,
     check: bool = False,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if not argv:
         raise GateReject("internal error: empty argv")
@@ -78,9 +79,10 @@ def run(
             encoding="utf-8",
             errors="strict",
             capture_output=True,
+            env=env,
         )
     else:
-        proc = subprocess.run(argv, cwd=cwd or ROOT)
+        proc = subprocess.run(argv, cwd=cwd or ROOT, env=env)
     if check and proc.returncode != 0:
         out = ""
         if capture:
@@ -171,6 +173,63 @@ def reject_forbidden_keys(value: Any, where: str = "$") -> None:
     elif isinstance(value, list):
         for i, child in enumerate(value):
             reject_forbidden_keys(child, f"{where}[{i}]")
+
+
+def validate_next_action(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise GateReject("plan.next_action required")
+
+    allowed_keys = {"instruction", "expected_result", "state_change"}
+    extra = sorted(set(value) - allowed_keys)
+    if extra:
+        raise GateReject(f"unsupported next_action keys: {extra}")
+
+    instruction = value.get("instruction")
+    expected_result = value.get("expected_result")
+    state_change = value.get("state_change")
+
+    if not isinstance(instruction, str) or not instruction.strip():
+        raise GateReject("plan.next_action.instruction required")
+    if not isinstance(expected_result, str) or not expected_result.strip():
+        raise GateReject("plan.next_action.expected_result required")
+    if not isinstance(state_change, bool):
+        raise GateReject("plan.next_action.state_change must be boolean")
+
+    for field_name, text in (
+        ("instruction", instruction),
+        ("expected_result", expected_result),
+    ):
+        if "\n" in text or "\r" in text:
+            raise GateReject(f"plan.next_action.{field_name} must be one line")
+        if len(text) > 500:
+            raise GateReject(f"plan.next_action.{field_name} is too long")
+
+    return value
+
+
+def print_next_action(plan: dict[str, Any]) -> None:
+    next_action = validate_next_action(plan.get("next_action"))
+    print("NEXT_ACTION_REQUIRED=1")
+    print(f"NEXT_ACTION_INSTRUCTION={next_action['instruction']}")
+    print(f"NEXT_ACTION_EXPECTED_RESULT={next_action['expected_result']}")
+    print(
+        "NEXT_ACTION_STATE_CHANGE="
+        + ("true" if next_action["state_change"] else "false")
+    )
+
+
+def print_failure_next_action() -> None:
+    print("NEXT_ACTION_REQUIRED=1", file=sys.stderr)
+    print(
+        "NEXT_ACTION_INSTRUCTION=Paste the complete output into ChatGPT. "
+        "Do not run another repository-changing operation until a concrete next step is provided.",
+        file=sys.stderr,
+    )
+    print(
+        "NEXT_ACTION_EXPECTED_RESULT=The failure is reviewed and the next required concrete operation is provided.",
+        file=sys.stderr,
+    )
+    print("NEXT_ACTION_STATE_CHANGE=false", file=sys.stderr)
 
 
 def safe_rel_path(value: Any, *, roots: tuple[str, ...]) -> str:
@@ -487,6 +546,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
         "operation",
         "contract_id",
         "commit_message",
+        "next_action",
     }
     extra = sorted(set(plan) - allowed_keys)
     if extra:
@@ -512,10 +572,49 @@ def validate_plan(plan: dict[str, Any]) -> None:
     }:
         raise GateReject("plan.operation is not approved")
 
+    validate_next_action(plan.get("next_action"))
+
 
 def repo_clean(*, cwd: Path) -> bool:
     proc = run([executable("git"), "status", "--porcelain"], cwd=cwd)
     return not proc.stdout.strip()
+
+
+def publish_guard_token() -> str:
+    proc = run(
+        [executable("git"), "rev-parse", "--git-common-dir"],
+        cwd=ROOT,
+        capture=True,
+        check=True,
+    )
+    common_dir_raw = proc.stdout.strip()
+    if not common_dir_raw:
+        raise GateReject("Git common directory is empty")
+
+    common_dir = Path(common_dir_raw)
+    if not common_dir.is_absolute():
+        common_dir = (ROOT / common_dir).resolve()
+
+    token_path = common_dir / "kanade-ai-publish-token"
+    try:
+        token = token_path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError as exc:
+        raise GateReject(
+            "publish guard token is missing; run through scripts/run_ai_job.ps1"
+        ) from exc
+
+    if re.fullmatch(r"[0-9a-f]{64}", token) is None:
+        raise GateReject("publish guard token is invalid")
+    return token
+
+
+def require_runner_authorization() -> None:
+    expected = publish_guard_token()
+    actual = os.environ.get("KANADE_AI_RUNNER_TOKEN", "")
+    if not actual or actual != expected:
+        raise GateReject(
+            "state-changing AI jobs must run through scripts/run_ai_job.ps1"
+        )
 
 
 def is_gate_runtime_path(rel: str) -> bool:
@@ -914,7 +1013,9 @@ def deploy_test(plan: dict[str, Any], *, allow_state_change: bool) -> None:
             raise GateReject("pwsh not found")
         argv = [pwsh, "-NoLogo", "-NoProfile", "-File", str(script)]
 
-    proc = run(argv, cwd=ROOT, capture=False)
+    deploy_env = os.environ.copy()
+    deploy_env["KANADE_AI_PUBLISH_TOKEN"] = publish_guard_token()
+    proc = run(argv, cwd=ROOT, capture=False, env=deploy_env)
     if proc.returncode != 0:
         raise GateReject(f"deploy_test failed ({proc.returncode})")
 
@@ -961,6 +1062,9 @@ def main() -> int:
             plan = load_utf8_json(paths.plan)
             validate_plan(plan)
 
+            if ns.allow_state_change:
+                require_runner_authorization()
+
             op = plan["operation"]
             if op == "inspect":
                 inspect(plan)
@@ -979,12 +1083,20 @@ def main() -> int:
             else:
                 raise GateReject(f"unsupported operation: {op}")
 
+            print_next_action(plan)
+
         return 0
 
     except GateReject as exc:
         print("AI_WORKFLOW_GATE=REJECT", file=sys.stderr)
         print(str(exc), file=sys.stderr)
+        print_failure_next_action()
         return 2
+    except Exception as exc:  # pragma: no cover - fail-closed safety net
+        print("AI_WORKFLOW_GATE=ERROR", file=sys.stderr)
+        print(str(exc), file=sys.stderr)
+        print_failure_next_action()
+        return 3
 
 
 if __name__ == "__main__":
