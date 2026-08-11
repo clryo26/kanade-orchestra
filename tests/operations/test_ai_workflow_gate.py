@@ -126,6 +126,11 @@ def test_apply_change_requires_state_change_flag(tmp_path):
             "purpose": "must require explicit state change",
             "operation": "apply_change",
             "contract_id": "demo",
+            "next_action": {
+                "instruction": "Do not apply any repository change.",
+                "expected_result": "The missing state-change flag is rejected before applying changes.",
+                "state_change": False,
+            },
         },
         contract=contract,
         patch="",
@@ -143,6 +148,11 @@ def test_inspect_job_passes(tmp_path):
             "job_id": "inspect-pass",
             "purpose": "read current git state",
             "operation": "inspect",
+            "next_action": {
+                "instruction": "Continue with the next reviewed read-only step.",
+                "expected_result": "Inspect succeeds and returns a concrete next-action contract.",
+                "state_change": False,
+            },
         },
     )
     result = run_job(job)
