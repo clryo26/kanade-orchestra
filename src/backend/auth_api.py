@@ -215,6 +215,18 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
         if member and member_access_expired(member):
             delete_auth_device_record(device_id)
             return {"authenticated": False}
+        if member:
+            # Keep the browser session payload aligned with members, the
+            # authorization source of truth for linked member accounts.
+            item = {
+                **item,
+                "member_name": member_display_name(member),
+                "member_part": member_part(member),
+                "permission": normalized_permission(member),
+                "system_access_until": member.get("system_access_until") or "",
+                "is_recording_manager": bool(member.get("is_recording_manager")),
+                "is_sheet_manager": bool(member.get("is_sheet_manager")),
+            }
 
     item["last_seen_at"] = datetime.now().isoformat()
     try:

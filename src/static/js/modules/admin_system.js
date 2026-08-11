@@ -54,6 +54,34 @@ function ensureAdminDatabaseViewerLoaded() {
     return adminDatabaseViewerLoadPromise;
 }
 
+// This feature is loaded only after navigation has confirmed system-admin access.
+var systemPermissionManagementLoadPromise = null;
+function ensureSystemPermissionManagementLoaded() {
+    if (typeof renderSystemPermissionManagement === 'function' && typeof grantSystemPermission === 'function') {
+        return Promise.resolve();
+    }
+    if (systemPermissionManagementLoadPromise) return systemPermissionManagementLoadPromise;
+    systemPermissionManagementLoadPromise = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = '/static/js/modules/admin_system/permission_management.js?v=20260811-1';
+        script.async = true;
+        script.addEventListener('load', function () {
+            if (typeof renderSystemPermissionManagement === 'function' && typeof grantSystemPermission === 'function') {
+                resolve();
+            } else {
+                systemPermissionManagementLoadPromise = null;
+                reject(new Error('System permission management loaded but required functions are not defined'));
+            }
+        }, { once: true });
+        script.addEventListener('error', function () {
+            systemPermissionManagementLoadPromise = null;
+            reject(new Error('System permission management script failed to load'));
+        }, { once: true });
+        document.head.appendChild(script);
+    });
+    return systemPermissionManagementLoadPromise;
+}
+
 // ===== 環境管理 =====
 // Environment management moved to modules/admin_system/environment_management.js.
 // Loaded on demand when the system panel is opened by a system admin.
