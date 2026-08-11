@@ -216,6 +216,58 @@ def test_promote_queues_github_actions_dispatch(client, monkeypatch):
     assert dispatched == {"git_sha": "queued-sha", "image_digest": "sha256:queued"}
 
 
+def test_sync_dispatch_real_execution_includes_required_workflow_inputs(monkeypatch):
+    monkeypatch.setenv("K_REVISION", "kanade-orchestra-test-00999-test")
+    monkeypatch.delenv("CLOUD_RUN_REVISION", raising=False)
+
+    from src.backend.services import production_ops_service as service
+
+    dispatched: dict[str, str] = {}
+
+    def fake_dispatch_inputs(*, config: dict[str, str], inputs: dict[str, str]) -> str:
+        dispatched.update(inputs)
+        return "sync-prod-to-test.yml"
+
+    monkeypatch.setattr(service, "_dispatch_github_workflow_inputs", fake_dispatch_inputs)
+
+    result = service._dispatch_sync_prod_to_test_workflow(
+        operation_id="operation-real-sync",
+        target_git_sha="sha-real-sync",
+        dry_run=False,
+    )
+
+    assert result == "sync-prod-to-test.yml"
+    assert dispatched == {
+        "operation_id": "operation-real-sync",
+        "target_git_sha": "sha-real-sync",
+        "dry_run": "false",
+        "sync_scope": "full",
+        "expected_test_revision": "kanade-orchestra-test-00999-test",
+        "maintenance_confirmation": "kanade-orchestra/asia-northeast2/kanade-orchestra-test",
+    }
+
+
+def test_sync_real_execution_rejects_missing_test_revision(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN", "token-for-test")
+    monkeypatch.setenv("SYNC_PROD_TO_TEST_WORKFLOW", "sync-prod-to-test.yml")
+    monkeypatch.setenv("SYNC_PROD_TO_TEST_REF", "main")
+    monkeypatch.delenv("K_REVISION", raising=False)
+    monkeypatch.delenv("CLOUD_RUN_REVISION", raising=False)
+    _seed(client, device_id="dev-system", permission="システム管理者")
+    headers = {"X-Device-Id": "dev-system"}
+
+    response = _sync(client, headers, "sync-missing-revision-sha")
+
+    assert response.status_code == 503
+    sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
+    assert sync_items
+    assert sync_items[0].get("execution_status") == "failed"
+    assert "current test Cloud Run revision is required" in sync_items[0].get("failure_reason", "")
+
+
 def test_sync_queues_github_actions_dispatch_with_operation_inputs(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("PRODUCTION_OPERATION_EXECUTOR", "github-actions")
@@ -254,7 +306,7 @@ def test_sync_queues_github_actions_dispatch_with_operation_inputs(client, monke
     assert dispatched == {
         "operation_id": history.get("operation_id"),
         "target_git_sha": "sync-queued-sha",
-        "dry_run": True,
+        "dry_run": False,
     }
 
     sync_items = client.get("/api/system/sync/history", headers=headers).json().get("items") or []
