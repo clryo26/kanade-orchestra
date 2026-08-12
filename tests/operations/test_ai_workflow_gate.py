@@ -11,16 +11,26 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "scripts" / "ai_workflow_gate.py"
 
 
-def make_job(tmp_path: Path, *, plan: dict, contract: dict | None = None, patch: str | None = None) -> Path:
+def make_job(
+    tmp_path: Path,
+    *,
+    plan: dict,
+    contract: dict | None = None,
+    operations: dict | None = None,
+) -> Path:
     files: dict[str, bytes] = {
-        "plan.json": (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        "plan.json": (
+            json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
     }
     if contract is not None:
         files["contract.json"] = (
             json.dumps(contract, ensure_ascii=False, indent=2) + "\n"
         ).encode("utf-8")
-    if patch is not None:
-        files["change.patch"] = patch.encode("utf-8")
+    if operations is not None:
+        files["operations.json"] = (
+            json.dumps(operations, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
 
     manifest = {
         "version": 1,
@@ -82,6 +92,28 @@ def test_rejects_unknown_zip_member(tmp_path):
     assert "unexpected file(s)" in result.stderr
 
 
+def test_rejects_change_patch_member(tmp_path):
+    job = make_job(
+        tmp_path,
+        plan={
+            "version": 1,
+            "job_id": "reject-patch",
+            "purpose": "patch files must be physically rejected",
+            "operation": "inspect",
+            "next_action": {
+                "instruction": "Do not apply repository changes.",
+                "expected_result": "The patch member is rejected.",
+                "state_change": False,
+            },
+        },
+    )
+    with zipfile.ZipFile(job, "a") as zf:
+        zf.writestr("change.patch", "forbidden")
+    result = run_job(job)
+    assert result.returncode == 2
+    assert "unexpected file(s)" in result.stderr
+
+
 def test_rejects_hash_tampering(tmp_path):
     job = make_job(
         tmp_path,
@@ -118,6 +150,30 @@ def test_apply_change_requires_state_change_flag(tmp_path):
         "required_tests": [],
         "assertions": [],
     }
+    operations = {
+        "format_version": 1,
+        "project": "kanade-orchestra",
+        "purpose": "demo",
+        "base_commit": "0" * 40,
+        "target_branch": "demo",
+        "operations": [
+            {
+                "path": "src/index.html",
+                "operation": "replace_exact",
+                "expected_sha256": "0" * 64,
+                "expected_occurrences": 1,
+                "old": "a",
+                "new": "b",
+            }
+        ],
+        "post_checks": [
+            "encoding_eol",
+            "syntax",
+            "contract",
+            "diff",
+            "tests",
+        ],
+    }
     job = make_job(
         tmp_path,
         plan={
@@ -133,7 +189,7 @@ def test_apply_change_requires_state_change_flag(tmp_path):
             },
         },
         contract=contract,
-        patch="",
+        operations=operations,
     )
     result = run_job(job)
     assert result.returncode == 2
