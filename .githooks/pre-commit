@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,38 @@ def main() -> int:
             continue
         if evidence.get("gate") != "PASS":
             continue
+        if evidence.get("runner_version") != 4:
+            continue
+        if evidence.get("source_operation") not in {"apply_change", "policy_update"}:
+            continue
+
+        runner_token = os.environ.get("KANADE_AI_RUNNER_TOKEN", "")
+        if (
+            len(runner_token) != 64
+            or any(ch not in "0123456789abcdef" for ch in runner_token)
+        ):
+            continue
+
+        signature = evidence.get("evidence_signature")
+        if not isinstance(signature, str):
+            continue
+
+        unsigned = dict(evidence)
+        unsigned.pop("evidence_signature", None)
+        canonical = json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        expected_signature = hashlib.blake2b(
+            canonical,
+            key=bytes.fromhex(runner_token),
+            digest_size=32,
+        ).hexdigest()
+        if signature != expected_signature:
+            continue
+
         if evidence.get("files") != files:
             continue
         if evidence.get("content_hash") != content_hash(files):

@@ -132,3 +132,23 @@ def test_write_evidence_is_keyed_and_signed(tmp_path, monkeypatch):
     ).hexdigest()
 
     assert signature == expected
+
+
+
+def test_gate_has_no_cr_at_eol_compatibility():
+    gate_source = Path("scripts/ai_workflow_gate.py").read_text(encoding="utf-8")
+    assert "cr-at-eol" not in gate_source
+
+
+def test_pre_commit_requires_v4_signed_evidence_and_runner_token():
+    hook = Path(".githooks/pre-commit").read_text(encoding="utf-8")
+
+    assert "KANADE_AI_RUNNER_TOKEN" in hook
+    assert 'evidence.get("runner_version") != 4' in hook
+    assert (
+        'evidence.get("source_operation") not in '
+        '{"apply_change", "policy_update"}'
+    ) in hook
+    assert 'signature = evidence.get("evidence_signature")' in hook
+    assert "hashlib.blake2b(" in hook
+    assert "key=bytes.fromhex(runner_token)" in hook
