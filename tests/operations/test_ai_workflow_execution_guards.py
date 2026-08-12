@@ -135,9 +135,13 @@ def test_write_evidence_is_keyed_and_signed(tmp_path, monkeypatch):
 
 
 
-def test_gate_has_no_cr_at_eol_compatibility():
+def test_gate_supports_cr_at_eol_for_all_diff_checks():
     gate_source = Path("scripts/ai_workflow_gate.py").read_text(encoding="utf-8")
-    assert "cr-at-eol" not in gate_source
+    compatible_setting = '"core.whitespace=trailing-space,space-before-tab,cr-at-eol",'
+    legacy_setting = '"core.whitespace=trailing-space,space-before-tab",'
+
+    assert gate_source.count(compatible_setting) == 4
+    assert legacy_setting not in gate_source
 
 
 def test_pre_commit_requires_v4_signed_evidence_and_runner_token():
