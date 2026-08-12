@@ -152,3 +152,90 @@ def test_pre_commit_requires_v4_signed_evidence_and_runner_token():
     assert 'signature = evidence.get("evidence_signature")' in hook
     assert "hashlib.blake2b(" in hook
     assert "key=bytes.fromhex(runner_token)" in hook
+
+
+
+def test_evidence_for_job_requires_valid_signature(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "EVIDENCE_DIR", tmp_path)
+    monkeypatch.setattr(gate, "publish_guard_token", lambda: "a" * 64)
+
+    unsigned = {
+        "version": 1,
+        "runner_version": 4,
+        "source_operation": "policy_update",
+        "job_id": "signed-job",
+        "contract_id": "contract",
+        "goal": "goal",
+        "files": ["src/index.html"],
+        "content_hash": "b" * 64,
+        "integrity": {},
+        "tests": [],
+        "gate": "PASS",
+    }
+    canonical = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    signature = hashlib.blake2b(
+        canonical,
+        key=bytes.fromhex("a" * 64),
+        digest_size=32,
+    ).hexdigest()
+    payload = dict(unsigned)
+    payload["evidence_signature"] = signature
+
+    evidence_path = tmp_path / "signed-job.json"
+    evidence_path.write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    evidence = gate.evidence_for_job("signed-job")
+    assert evidence["evidence_signature"] == signature
+
+    payload["evidence_signature"] = "0" * 64
+    evidence_path.write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    with pytest.raises(gate.GateReject, match="evidence signature is invalid"):
+        gate.evidence_for_job("signed-job")
+
+
+def test_evidence_for_job_rejects_unsigned_legacy_shape(
+    tmp_path,
+    monkeypatch,
+):
+    import json
+
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "EVIDENCE_DIR", tmp_path)
+    monkeypatch.setattr(gate, "publish_guard_token", lambda: "a" * 64)
+
+    legacy = {
+        "version": 1,
+        "job_id": "bootstrap-json-only-gate-v4-20260812",
+        "contract_id": "bootstrap-json-only-gate-v4",
+        "files": [
+            "scripts/ai_workflow_gate.py",
+            "tests/operations/test_ai_workflow_gate.py",
+        ],
+        "content_hash": "b" * 64,
+        "gate": "PASS",
+    }
+    (tmp_path / "legacy.json").write_text(
+        json.dumps(legacy, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        gate.GateReject,
+        match="evidence was not created by JSON-only runner version 4",
+    ):
+        gate.evidence_for_job("legacy")

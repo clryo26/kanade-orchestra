@@ -2721,27 +2721,39 @@ def evidence_for_job(job_id: str) -> dict[str, Any]:
     if evidence.get("gate") != "PASS":
         raise GateReject("evidence gate is not PASS")
 
-    if (
-        evidence.get("runner_version") == 4
-        and evidence.get("source_operation")
-        in {"apply_change", "policy_update"}
-    ):
-        return evidence
+    if evidence.get("runner_version") != 4:
+        raise GateReject(
+            "evidence was not created by JSON-only runner version 4"
+        )
+    if evidence.get("source_operation") not in {
+        "apply_change",
+        "policy_update",
+    }:
+        raise GateReject(
+            "evidence source operation is not committable"
+        )
 
-    files = evidence.get("files")
-    if (
-        evidence.get("job_id") == BOOTSTRAP_LEGACY_JOB_ID
-        and evidence.get("contract_id")
-        == BOOTSTRAP_LEGACY_CONTRACT_ID
-        and isinstance(files, list)
-        and set(files) == BOOTSTRAP_LEGACY_FILES
-        and len(files) == len(BOOTSTRAP_LEGACY_FILES)
-    ):
-        return evidence
+    signature = evidence.get("evidence_signature")
+    if not isinstance(signature, str):
+        raise GateReject("evidence signature is missing")
 
-    raise GateReject(
-        "evidence was not created by JSON-only runner version 4"
-    )
+    unsigned = dict(evidence)
+    unsigned.pop("evidence_signature", None)
+    canonical = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    expected_signature = hashlib.blake2b(
+        canonical,
+        key=bytes.fromhex(publish_guard_token()),
+        digest_size=32,
+    ).hexdigest()
+    if signature != expected_signature:
+        raise GateReject("evidence signature is invalid")
+
+    return evidence
 
 
 def commit_validated_change(
