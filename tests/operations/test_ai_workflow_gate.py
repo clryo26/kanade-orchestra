@@ -215,3 +215,11 @@ def test_inspect_job_passes(tmp_path):
     assert result.returncode == 0
     assert "AI_WORKFLOW_GATE=PASS" in result.stdout
     assert "OPERATION=inspect" in result.stdout
+
+
+def test_existing_evidence_commit_and_hook_guards_remain_content_bound():
+    source = RUNNER.read_text(encoding="utf-8"); hook = (ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+    assert 'source_operation="validate_existing_change"' in source
+    assert 'current changed files differ from validated evidence' in source
+    assert 'current content hash differs from validated evidence' in source
+    assert '"validate_existing_change"' in hook
