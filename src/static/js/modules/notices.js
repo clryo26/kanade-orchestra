@@ -510,6 +510,9 @@ renderPortalHome = function renderPortalHomeWithNewNotices() {
     if (noticeContainer) renderPortalNoticeHome(noticeContainer);
 };
 
+// Used by the bootstrap lazy loader to confirm the integration hooks are ready.
+window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__ = true;
+
 if (typeof ACCESS_LOG_MENU_LABELS !== 'undefined') {
     ACCESS_LOG_MENU_LABELS.announcement = 'メンテナンス情報';
     ACCESS_LOG_MENU_LABELS['member-announce'] = 'メンテナンス情報';

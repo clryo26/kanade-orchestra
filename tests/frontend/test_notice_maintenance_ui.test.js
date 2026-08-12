@@ -57,11 +57,16 @@ describe('maintenance information and new notice board separation', () => {
         expect(notices).toContain('一覧に戻る');
     });
 
-    it('loads the new integration after legacy announcements and registers its backend router', () => {
-        const legacyIndex = index.indexOf('/static/js/modules/announcements.js');
-        const noticesIndex = index.indexOf('/static/js/modules/notices.js');
-        expect(legacyIndex).toBeGreaterThanOrEqual(0);
-        expect(noticesIndex).toBeGreaterThan(legacyIndex);
+    it('lazy-loads the new integration before portal UI binding and registers its backend router', () => {
+        const portalViews = read('src/static/js/modules/portal_views.js');
+        expect(index).not.toContain('/static/js/modules/notices.js');
+        expect(portalViews).toContain('function ensurePortalNoticesModuleLoaded()');
+        expect(portalViews).toContain("script.src = '/static/js/modules/notices.js?v=20260812-2'");
+        expect(portalViews.indexOf('ensurePortalNoticesModuleLoaded()'))
+            .toBeLessThan(portalViews.indexOf("const announceContainer = $('portalHomeAnnouncements');"));
+        expect(portalViews).toContain('portalNoticesModuleLoadPromise');
+        expect(portalViews).toContain('setupPortalHome();');
+        expect(notices).toContain('window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__ = true;');
         expect(bootstrap).toContain('from .notices import router as notices_router');
         expect(bootstrap).toContain('router.include_router(notices_router)');
     });
