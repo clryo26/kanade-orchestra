@@ -60,7 +60,7 @@ def main() -> int:
             continue
         if evidence.get("runner_version") != 4:
             continue
-        if evidence.get("source_operation") not in {"apply_change", "policy_update", "validate_existing_change"}:
+        if evidence.get("source_operation") not in {"apply_change", "policy_update"}:
             continue
 
         runner_token = os.environ.get("KANADE_AI_RUNNER_TOKEN", "")

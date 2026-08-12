@@ -19,12 +19,14 @@ def make_job(
     operations: dict | None = None,
 ) -> Path:
     files: dict[str, bytes] = {
-        "plan.json": (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        "plan.json": (
+            json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
     }
     if contract is not None:
-        files["contract.json"] = (json.dumps(contract, ensure_ascii=False, indent=2) + "\n").encode(
-            "utf-8"
-        )
+        files["contract.json"] = (
+            json.dumps(contract, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
     if operations is not None:
         files["operations.json"] = (
             json.dumps(operations, ensure_ascii=False, indent=2) + "\n"
@@ -32,11 +34,14 @@ def make_job(
 
     manifest = {
         "version": 1,
-        "sha256": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
+        "sha256": {
+            name: hashlib.sha256(data).hexdigest()
+            for name, data in files.items()
+        },
     }
-    files["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode(
-        "utf-8"
-    )
+    files["manifest.json"] = (
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8")
 
     job = tmp_path / "job.zip"
     with zipfile.ZipFile(job, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -210,12 +215,3 @@ def test_inspect_job_passes(tmp_path):
     assert result.returncode == 0
     assert "AI_WORKFLOW_GATE=PASS" in result.stdout
     assert "OPERATION=inspect" in result.stdout
-
-
-def test_existing_evidence_commit_and_hook_guards_remain_content_bound():
-    source = RUNNER.read_text(encoding="utf-8")
-    hook = (ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
-    assert 'source_operation="validate_existing_change"' in source
-    assert "current changed files differ from validated evidence" in source
-    assert "current content hash differs from validated evidence" in source
-    assert '"validate_existing_change"' in hook

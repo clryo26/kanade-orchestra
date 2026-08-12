@@ -703,7 +703,7 @@ def verify_change_against_contract(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
+            "core.whitespace=trailing-space,space-before-tab",
             "diff",
             "--check",
             base_ref,
@@ -959,7 +959,7 @@ def commit_validated_change(plan: dict[str, Any], *, allow_state_change: bool) -
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
+            "core.whitespace=trailing-space,space-before-tab",
             "diff",
             "--cached",
             "--check",
@@ -2344,7 +2344,7 @@ def verify_change_against_contract(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
+            "core.whitespace=trailing-space,space-before-tab",
             "diff",
             "--check",
             base_ref,
@@ -2394,7 +2394,7 @@ def write_evidence(
     verification: dict[str, Any],
     source_operation: str,
 ) -> Path:
-    if source_operation not in {"apply_change", "policy_update", "validate_existing_change"}:
+    if source_operation not in {"apply_change", "policy_update"}:
         raise GateReject(
             "committable evidence cannot be created by "
             f"{source_operation!r}"
@@ -2647,13 +2647,7 @@ def apply_structured_change(
 def validate_existing_change(
     job: JobPaths,
     plan: dict[str, Any],
-    *,
-    allow_state_change: bool,
 ) -> None:
-    if not allow_state_change:
-        raise GateReject(
-            "validate_existing_change requires --allow-state-change"
-        )
     if job.contract is None:
         raise GateReject(
             "validate_existing_change requires contract.json"
@@ -2676,15 +2670,11 @@ def validate_existing_change(
         run_tests=True,
     )
 
-    evidence = write_evidence(
-        job_id=plan["job_id"], contract=contract, verification=verification,
-        source_operation="validate_existing_change",
-    )
     print("AI_WORKFLOW_GATE=PASS")
     print("RUNNER_VERSION=4")
     print("OPERATION=validate_existing_change")
     print(f"JOB_ID={plan['job_id']}")
-    print(f"EVIDENCE={evidence.relative_to(ROOT)}")
+    print("COMMIT_EVIDENCE=NOT_CREATED")
     print_verification_summary(verification)
 
 
@@ -2741,7 +2731,6 @@ def evidence_for_job(job_id: str) -> dict[str, Any]:
     if evidence.get("source_operation") not in {
         "apply_change",
         "policy_update",
-        "validate_existing_change",
     }:
         raise GateReject(
             "evidence source operation is not committable"
@@ -2812,7 +2801,7 @@ def commit_validated_change(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
+            "core.whitespace=trailing-space,space-before-tab",
             "diff",
             "--cached",
             "--check",
@@ -3006,7 +2995,6 @@ def main() -> int:
             state_changing = operation in {
                 "apply_change",
                 "policy_update",
-                "validate_existing_change",
                 "commit_validated_change",
                 "deploy_test",
             }
@@ -3020,9 +3008,7 @@ def main() -> int:
             if operation == "inspect":
                 inspect(plan)
             elif operation == "validate_existing_change":
-                validate_existing_change(
-                    job, plan, allow_state_change=ns.allow_state_change,
-                )
+                validate_existing_change(job, plan)
             elif operation == "apply_change":
                 apply_structured_change(
                     job,
@@ -3297,7 +3283,6 @@ def main() -> int:
             state_changing = operation in {
                 "apply_change",
                 "policy_update",
-                "validate_existing_change",
                 "commit_validated_change",
                 "publish_branch",
                 "deploy_test",
@@ -3312,9 +3297,7 @@ def main() -> int:
             if operation == "inspect":
                 inspect(plan)
             elif operation == "validate_existing_change":
-                validate_existing_change(
-                    job, plan, allow_state_change=ns.allow_state_change,
-                )
+                validate_existing_change(job, plan)
             elif operation == "apply_change":
                 apply_structured_change(
                     job,
