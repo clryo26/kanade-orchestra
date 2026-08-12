@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# ruff: noqa: F811, F541
+
 import argparse
 import hashlib
 import json
