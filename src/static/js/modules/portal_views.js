@@ -158,7 +158,54 @@ async function saveOwnProfile(memberId) {
 
 // renderMemberViews moved to feature module.
 
+// The notice integration wraps setupPortalHome/renderPortalHome. This portal
+// view is already loaded before navigation can render the home screen, so it
+// is the narrowest place to load the optional integration without growing the
+// static initial script bundle.
+var portalNoticesModuleLoadPromise = null;
+
+function ensurePortalNoticesModuleLoaded() {
+    if (window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__) {
+        return Promise.resolve();
+    }
+    if (portalNoticesModuleLoadPromise) {
+        return portalNoticesModuleLoadPromise;
+    }
+
+    portalNoticesModuleLoadPromise = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = '/static/js/modules/notices.js?v=20260812-2';
+        script.async = true;
+        script.addEventListener('load', function () {
+            if (window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__) {
+                resolve();
+                return;
+            }
+            portalNoticesModuleLoadPromise = null;
+            reject(new Error('Portal notices module loaded but initialization hooks are unavailable'));
+        }, { once: true });
+        script.addEventListener('error', function () {
+            portalNoticesModuleLoadPromise = null;
+            reject(new Error('Portal notices module failed to load'));
+        }, { once: true });
+        document.head.appendChild(script);
+    });
+    return portalNoticesModuleLoadPromise;
+}
+
 function renderPortalHome() {
+    if (!window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__) {
+        ensurePortalNoticesModuleLoaded()
+            .then(function () {
+                // notices.js replaces these functions only after its hooks exist.
+                setupPortalHome();
+                renderPortalHome();
+            })
+            .catch(function (error) {
+                console.warn('[portal-notices] script load failed', error);
+            });
+        return;
+    }
     const announceContainer = $('portalHomeAnnouncements');
     const countdownContainer = $('portalHomeCountdown');
     const menuContainer = $('portalHomeMenu');

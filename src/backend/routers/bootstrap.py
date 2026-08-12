@@ -18,8 +18,10 @@ from ..services.json_collection_service import list_auth_devices
 from ..services import bootstrap_service, meta_service
 from ..services.recording_asset_service import recording_payload
 from ..services.sheet_asset_service import sheet_payload
+from .notices import router as notices_router
 
 router = APIRouter()
+router.include_router(notices_router)
 
 
 async def _list_auth_devices() -> list[dict[str, object]]:
