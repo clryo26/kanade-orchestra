@@ -1144,6 +1144,7 @@ PROTECTED_GATE_PATHS = {
     "scripts/ai_workflow_gate.py",
     "scripts/run_ai_job.ps1",
     ".githooks/pre-commit",
+    ".github/workflows/ai-workflow-gate.yml",
     "tests/operations/test_ai_workflow_gate.py",
     "tests/operations/test_ai_workflow_execution_guards.py",
 }
