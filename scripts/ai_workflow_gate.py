@@ -2341,7 +2341,7 @@ def verify_change_against_contract(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
+            "core.whitespace=trailing-space,space-before-tab",
             "diff",
             "--check",
             base_ref,
@@ -2399,7 +2399,7 @@ def write_evidence(
 
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     path = EVIDENCE_DIR / f"{job_id}.json"
-    payload = {
+    unsigned_payload = {
         "version": 1,
         "runner_version": 4,
         "source_operation": source_operation,
@@ -2412,6 +2412,19 @@ def write_evidence(
         "tests": verification["tests"],
         "gate": "PASS",
     }
+    canonical = json.dumps(
+        unsigned_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    signature = hashlib.blake2b(
+        canonical,
+        key=bytes.fromhex(publish_guard_token()),
+        digest_size=32,
+    ).hexdigest()
+    payload = dict(unsigned_payload)
+    payload["evidence_signature"] = signature
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

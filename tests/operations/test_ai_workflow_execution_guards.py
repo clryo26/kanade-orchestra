@@ -94,3 +94,41 @@ def test_publish_token_is_scoped_to_deploy_subprocess():
     assert 'deploy_env["KANADE_AI_PUBLISH_TOKEN"] = publish_guard_token()' in gate_source
     assert "run(argv, cwd=ROOT, capture=False, env=deploy_env)" in gate_source
     assert "require_runner_authorization()" in gate_source
+
+
+
+def test_write_evidence_is_keyed_and_signed(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "EVIDENCE_DIR", tmp_path)
+    monkeypatch.setattr(gate, "publish_guard_token", lambda: "a" * 64)
+
+    path = gate.write_evidence(
+        job_id="signed-evidence",
+        contract={"id": "contract", "goal": "goal"},
+        verification={
+            "files": ["src/index.html"],
+            "content_hash": "b" * 64,
+            "integrity": {},
+            "tests": [],
+        },
+        source_operation="policy_update",
+    )
+
+    evidence = json.loads(path.read_text(encoding="utf-8"))
+    signature = evidence.pop("evidence_signature")
+    canonical = json.dumps(
+        evidence,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    expected = hashlib.blake2b(
+        canonical,
+        key=bytes.fromhex("a" * 64),
+        digest_size=32,
+    ).hexdigest()
+
+    assert signature == expected
