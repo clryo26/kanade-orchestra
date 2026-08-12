@@ -61,7 +61,7 @@ def _payload() -> dict[str, Any]:
     }
 
 
-def test_insert_access_log_uses_identity_and_limits_current_tenant(monkeypatch):
+def test_insert_access_log_uses_identity_and_current_tenant_without_retention_delete(monkeypatch):
     connection = _FakeConnection(inserted_id=321)
     connect_calls: list[tuple[str, bool]] = []
 
@@ -74,7 +74,7 @@ def test_insert_access_log_uses_identity_and_limits_current_tenant(monkeypatch):
     monkeypatch.setattr(access_log_repository, "get_current_tenant_id", lambda: "tenant-a")
     monkeypatch.setattr(access_log_repository, "table_has_organization_id", lambda _conn, _table: True)
 
-    result = access_log_repository.insert_access_log(_payload(), max_items=2000)
+    result = access_log_repository.insert_access_log(_payload())
 
     assert result["id"] == 321
     assert "organization_id" not in result
@@ -82,14 +82,11 @@ def test_insert_access_log_uses_identity_and_limits_current_tenant(monkeypatch):
     assert connection.commit_count == 1
 
     executions = connection.cursor_instance.executions
-    assert len(executions) == 2
+    assert len(executions) == 1
 
     insert_params = executions[0][1]
     assert 999 not in insert_params
     assert insert_params[-1] == "tenant-a"
-
-    delete_params = executions[1][1]
-    assert delete_params == ("tenant-a", "tenant-a", 2000)
 
 
 def test_insert_access_log_supports_legacy_table_without_organization_id(monkeypatch):
@@ -104,18 +101,15 @@ def test_insert_access_log_supports_legacy_table_without_organization_id(monkeyp
     monkeypatch.setattr(access_log_repository, "get_current_tenant_id", lambda: "tenant-a")
     monkeypatch.setattr(access_log_repository, "table_has_organization_id", lambda _conn, _table: False)
 
-    result = access_log_repository.insert_access_log(_payload(), max_items=0)
+    result = access_log_repository.insert_access_log(_payload())
 
     assert result["id"] == 654
     assert connection.commit_count == 1
 
     executions = connection.cursor_instance.executions
-    assert len(executions) == 2
+    assert len(executions) == 1
 
     insert_params = executions[0][1]
     assert 999 not in insert_params
     assert "tenant-a" not in insert_params
     assert "untrusted-tenant" not in insert_params
-
-    delete_params = executions[1][1]
-    assert delete_params == (1,)
