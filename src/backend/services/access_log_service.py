@@ -51,3 +51,50 @@ def trim_access_logs(items: list[dict[str, Any]], max_items: int = 2000) -> list
 def list_access_logs(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     safe_limit = min(max(int(limit or 200), 1), 1000)
     return sorted(items, key=_access_log_sort_key, reverse=True)[:safe_limit]
+
+
+def search_access_logs(
+    items: list[dict[str, Any]],
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    member_id: int | None = None,
+    member_part: str = "",
+    page: int = 1,
+) -> dict[str, Any]:
+    page_size = 100
+    from_timestamp = date_from.timestamp() if date_from is not None else None
+    to_timestamp = date_to.timestamp() if date_to is not None else None
+    normalized_part = str(member_part or "").strip()
+    normalized_member_id = str(member_id) if member_id is not None else ""
+
+    filtered: list[dict[str, Any]] = []
+    for item in items:
+        timestamp = _access_log_sort_key(item)[0]
+        if from_timestamp is not None and timestamp < from_timestamp:
+            continue
+        if to_timestamp is not None and timestamp >= to_timestamp:
+            continue
+        if normalized_member_id and str(item.get("member_id") or "") != normalized_member_id:
+            continue
+        if normalized_part and str(item.get("member_part") or "") != normalized_part:
+            continue
+        filtered.append(item)
+
+    filtered.sort(
+        key=lambda item: (*_access_log_sort_key(item), int(item.get("id") or 0)),
+        reverse=True,
+    )
+    total = len(filtered)
+    total_pages = max((total + page_size - 1) // page_size, 1)
+    safe_page = min(max(int(page or 1), 1), total_pages)
+    start = (safe_page - 1) * page_size
+    end = start + page_size
+
+    return {
+        "items": filtered[start:end],
+        "page": safe_page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }

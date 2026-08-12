@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -8,11 +9,11 @@ from ..core.auth_dependencies import get_device_auth, get_system_admin_device_au
 from ..core.dependency import get_memory_cache
 from ..core.storage_gateway import load_json_data, save_json_data
 from ..db.database import db_data_enabled
-from ..repositories.access_log_repository import insert_access_log
+from ..repositories.access_log_repository import insert_access_log, query_access_logs
 from ..services import access_log_service
 from ..services.extra_collection_helpers import read_json_body
-from ..utils.datetime_utils import next_updated_at
 from ..utils.collection_utils import next_id
+from ..utils.datetime_utils import next_updated_at
 
 router = APIRouter()
 
@@ -55,8 +56,28 @@ async def create_access_log(
 
 @router.get("/api/system/access-logs")
 async def list_access_logs(
-    limit: int = 200,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    member_id: int | None = None,
+    member_part: str = "",
+    page: int = 1,
     _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
+    if db_data_enabled():
+        return query_access_logs(
+            date_from=date_from,
+            date_to=date_to,
+            member_id=member_id,
+            member_part=member_part,
+            page=page,
+        )
+
     items = load_json_data("access_logs")
-    return access_log_service.list_access_logs(items, limit)
+    return access_log_service.search_access_logs(
+        items,
+        date_from=date_from,
+        date_to=date_to,
+        member_id=member_id,
+        member_part=member_part,
+        page=page,
+    )

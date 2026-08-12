@@ -410,7 +410,38 @@ async function switchTab(panelId, tabName, renderOnShow = true) {
             .catch(function (err) { console.warn('[\u74b0\u5883\u7ba1\u7406] \u30b9\u30af\u30ea\u30d7\u30c8\u306e\u30ed\u30fc\u30c9\u306b\u5931\u6557\u3057\u307e\u3057\u305f', err); });
     }
     if (renderOnShow && tabName === 'system-readiness') renderReadinessDashboard();
-    if (renderOnShow && tabName === 'system-access-log') renderAccessLogView();
+    if (renderOnShow && tabName === 'system-access-log') {
+        if (typeof prepareAccessLogView !== 'function') {
+            if (!window.accessLogAdminLoadPromise) {
+                window.accessLogAdminLoadPromise = new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = '/static/js/modules/admin_system/access_logs.js?v=20260812-1';
+                    script.async = true;
+                    script.addEventListener('load', () => {
+                        if (typeof prepareAccessLogView === 'function') {
+                            resolve();
+                        } else {
+                            window.accessLogAdminLoadPromise = null;
+                            reject(new Error('Access log module loaded but required functions are not defined'));
+                        }
+                    }, { once: true });
+                    script.addEventListener('error', () => {
+                        window.accessLogAdminLoadPromise = null;
+                        reject(new Error('Access log module failed to load'));
+                    }, { once: true });
+                    document.head.appendChild(script);
+                });
+            }
+            try {
+                await window.accessLogAdminLoadPromise;
+            } catch (error) {
+                console.warn('[access-log] script load failed', error);
+                showAlert('アクセスログ機能の読込に失敗しました。再度開いてください。', 'warning');
+                return;
+            }
+        }
+        prepareAccessLogView();
+    }
     if (renderOnShow && tabName === 'system-database') {
         ensureAdminDatabaseViewerLoaded()
             .then(function () { renderDatabaseView(); })
