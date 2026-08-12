@@ -3055,5 +3055,295 @@ def apply_change(*_args: Any, **_kwargs: Any) -> None:
     raise GateReject("legacy change.patch apply path is disabled")
 
 
+def validate_plan(plan: dict[str, Any]) -> None:
+    reject_forbidden_keys(plan)
+
+    allowed_keys = {
+        "version",
+        "job_id",
+        "purpose",
+        "operation",
+        "contract_id",
+        "commit_message",
+        "target_branch",
+        "expected_head",
+        "remote",
+        "next_action",
+    }
+    extra = sorted(set(plan) - allowed_keys)
+    if extra:
+        raise GateReject(f"unsupported plan keys: {extra}")
+
+    if plan.get("version") != 1:
+        raise GateReject("plan.version must be 1")
+
+    job_id = plan.get("job_id")
+    if (
+        not isinstance(job_id, str)
+        or re.fullmatch(r"[A-Za-z0-9._-]{1,80}", job_id) is None
+    ):
+        raise GateReject("plan.job_id invalid")
+
+    purpose = plan.get("purpose")
+    if not isinstance(purpose, str) or not purpose.strip():
+        raise GateReject("plan.purpose required")
+
+    allowed_operations = {
+        "inspect",
+        "validate_existing_change",
+        "apply_change",
+        "policy_update",
+        "commit_validated_change",
+        "publish_branch",
+        "deploy_test",
+    }
+    operation = plan.get("operation")
+    if operation not in allowed_operations:
+        raise GateReject("plan.operation is not approved")
+
+    publish_keys = {
+        "target_branch",
+        "expected_head",
+        "remote",
+    }
+    present_publish_keys = publish_keys.intersection(plan)
+    if operation == "publish_branch":
+        missing = sorted(publish_keys - set(plan))
+        if missing:
+            raise GateReject(
+                f"publish_branch missing plan keys: {missing}"
+            )
+    elif present_publish_keys:
+        raise GateReject(
+            "publish-only plan keys are not allowed for "
+            f"{operation}: {sorted(present_publish_keys)}"
+        )
+
+    validate_next_action(plan.get("next_action"))
+
+
+def publish_branch(
+    plan: dict[str, Any],
+    *,
+    allow_state_change: bool,
+) -> None:
+    if not allow_state_change:
+        raise GateReject(
+            "publish_branch requires --allow-state-change"
+        )
+    if not repo_clean(cwd=ROOT):
+        raise GateReject(
+            "worktree must be clean before publish_branch"
+        )
+
+    remote = plan.get("remote")
+    if remote != "origin":
+        raise GateReject(
+            "publish_branch only permits remote 'origin'"
+        )
+
+    target_branch = plan.get("target_branch")
+    if not isinstance(target_branch, str) or not target_branch:
+        raise GateReject("publish_branch target_branch is invalid")
+    if target_branch in {"main", "master"}:
+        raise GateReject(
+            "publish_branch refuses protected base branch"
+        )
+
+    branch_check = run(
+        [
+            executable("git"),
+            "check-ref-format",
+            "--branch",
+            target_branch,
+        ],
+        cwd=ROOT,
+    )
+    if branch_check.returncode != 0:
+        raise GateReject(
+            f"publish_branch target branch is invalid: "
+            f"{target_branch!r}"
+        )
+
+    current_branch = git_branch(cwd=ROOT)
+    if current_branch != target_branch:
+        raise GateReject(
+            "publish_branch current branch mismatch: "
+            f"expected {target_branch}, got {current_branch}"
+        )
+
+    expected_head = plan.get("expected_head")
+    if (
+        not isinstance(expected_head, str)
+        or re.fullmatch(r"[0-9a-f]{40}", expected_head) is None
+    ):
+        raise GateReject("publish_branch expected_head is invalid")
+
+    current_head = git_head(cwd=ROOT)
+    if current_head != expected_head:
+        raise GateReject(
+            "publish_branch HEAD mismatch: "
+            f"expected {expected_head}, got {current_head}"
+        )
+
+    remote_url_proc = run(
+        [
+            executable("git"),
+            "config",
+            "--get",
+            "remote.origin.url",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    remote_url = remote_url_proc.stdout.strip()
+    expected_remote_url = (
+        "https://github.com/clryo26/kanade-orchestra.git"
+    )
+    if remote_url != expected_remote_url:
+        raise GateReject(
+            "publish_branch origin URL mismatch: "
+            f"expected {expected_remote_url}, got {remote_url}"
+        )
+
+    remote_ref = f"refs/heads/{target_branch}"
+    push_env = os.environ.copy()
+    push_env["KANADE_AI_PUBLISH_TOKEN"] = publish_guard_token()
+    push_proc = run(
+        [
+            executable("git"),
+            "push",
+            "origin",
+            f"HEAD:{remote_ref}",
+        ],
+        cwd=ROOT,
+        capture=False,
+        env=push_env,
+    )
+    if push_proc.returncode != 0:
+        raise GateReject(
+            f"publish_branch git push failed "
+            f"({push_proc.returncode})"
+        )
+
+    verify_proc = run(
+        [
+            executable("git"),
+            "ls-remote",
+            "--heads",
+            "origin",
+            remote_ref,
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    remote_heads: list[str] = []
+    for line in verify_proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == remote_ref:
+            remote_heads.append(parts[0])
+
+    if remote_heads != [expected_head]:
+        raise GateReject(
+            "publish_branch remote verification failed: "
+            f"expected {[expected_head]}, got {remote_heads}"
+        )
+
+    print("AI_WORKFLOW_GATE=PASS")
+    print("RUNNER_VERSION=4")
+    print("OPERATION=publish_branch")
+    print(f"JOB_ID={plan['job_id']}")
+    print(f"PUBLISHED_BRANCH={target_branch}")
+    print(f"PUBLISHED_HEAD={expected_head}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("job_zip", type=Path)
+    parser.add_argument(
+        "--allow-state-change",
+        action="store_true",
+    )
+    ns = parser.parse_args()
+
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="kanade-job-v4-"
+        ) as temp:
+            job = extract_job(
+                ns.job_zip.resolve(),
+                Path(temp),
+            )
+            plan = load_utf8_json(job.plan)
+            validate_plan(plan)
+
+            operation = plan["operation"]
+            state_changing = operation in {
+                "apply_change",
+                "policy_update",
+                "commit_validated_change",
+                "publish_branch",
+                "deploy_test",
+            }
+            if state_changing:
+                if not ns.allow_state_change:
+                    raise GateReject(
+                        f"{operation} requires --allow-state-change"
+                    )
+                require_runner_authorization()
+
+            if operation == "inspect":
+                inspect(plan)
+            elif operation == "validate_existing_change":
+                validate_existing_change(job, plan)
+            elif operation == "apply_change":
+                apply_structured_change(
+                    job,
+                    plan,
+                    allow_state_change=ns.allow_state_change,
+                    policy_update=False,
+                )
+            elif operation == "policy_update":
+                apply_structured_change(
+                    job,
+                    plan,
+                    allow_state_change=ns.allow_state_change,
+                    policy_update=True,
+                )
+            elif operation == "commit_validated_change":
+                commit_validated_change(
+                    plan,
+                    allow_state_change=ns.allow_state_change,
+                )
+            elif operation == "publish_branch":
+                publish_branch(
+                    plan,
+                    allow_state_change=ns.allow_state_change,
+                )
+            elif operation == "deploy_test":
+                deploy_test(
+                    plan,
+                    allow_state_change=ns.allow_state_change,
+                )
+            else:
+                raise GateReject(
+                    f"unsupported operation: {operation}"
+                )
+
+            print_next_action(plan)
+        return 0
+
+    except GateReject as exc:
+        print("AI_WORKFLOW_GATE=REJECT", file=sys.stderr)
+        print(str(exc), file=sys.stderr)
+        print_failure_next_action()
+        return 2
+    except Exception as exc:
+        print("AI_WORKFLOW_GATE=ERROR", file=sys.stderr)
+        print(str(exc), file=sys.stderr)
+        print_failure_next_action()
+        return 3
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

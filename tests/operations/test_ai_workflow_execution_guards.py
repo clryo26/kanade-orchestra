@@ -239,3 +239,186 @@ def test_evidence_for_job_rejects_unsigned_legacy_shape(
         match="evidence was not created by JSON-only runner version 4",
     ):
         gate.evidence_for_job("legacy")
+
+
+
+def test_validate_plan_allows_publish_branch_only_with_publish_keys():
+    gate = _load_gate()
+
+    plan = {
+        "version": 1,
+        "job_id": "publish-branch-test",
+        "purpose": "Publish validated branch",
+        "operation": "publish_branch",
+        "target_branch": "feat/example",
+        "expected_head": "1" * 40,
+        "remote": "origin",
+        "next_action": {
+            "instruction": "Inspect publish result.",
+            "expected_result": "Remote branch matches expected HEAD.",
+            "state_change": False,
+        },
+    }
+    gate.validate_plan(plan)
+
+    invalid = dict(plan)
+    invalid.pop("expected_head")
+    with pytest.raises(
+        gate.GateReject,
+        match="publish_branch missing plan keys",
+    ):
+        gate.validate_plan(invalid)
+
+    inspect_plan = {
+        "version": 1,
+        "job_id": "inspect-with-publish-key",
+        "purpose": "Inspect",
+        "operation": "inspect",
+        "target_branch": "feat/example",
+        "next_action": {
+            "instruction": "Inspect result.",
+            "expected_result": "Repository state is shown.",
+            "state_change": False,
+        },
+    }
+    with pytest.raises(
+        gate.GateReject,
+        match="publish-only plan keys are not allowed",
+    ):
+        gate.validate_plan(inspect_plan)
+
+
+def test_publish_branch_scopes_token_and_verifies_remote(monkeypatch):
+    from types import SimpleNamespace
+
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        gate,
+        "git_branch",
+        lambda **_kwargs: "feat/example",
+    )
+    monkeypatch.setattr(
+        gate,
+        "git_head",
+        lambda **_kwargs: "1" * 40,
+    )
+    monkeypatch.setattr(
+        gate,
+        "publish_guard_token",
+        lambda: "a" * 64,
+    )
+    monkeypatch.setattr(gate, "executable", lambda name: name)
+
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((list(argv), dict(kwargs)))
+        if argv[1:3] == ["check-ref-format", "--branch"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[1:4] == ["config", "--get", "remote.origin.url"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    "https://github.com/clryo26/"
+                    "kanade-orchestra.git\n"
+                ),
+                stderr="",
+            )
+        if argv[1:3] == ["push", "origin"]:
+            assert (
+                kwargs["env"]["KANADE_AI_PUBLISH_TOKEN"]
+                == "a" * 64
+            )
+            assert "--force" not in argv
+            assert "--force-with-lease" not in argv
+            assert argv[-1] == "HEAD:refs/heads/feat/example"
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[1:3] == ["ls-remote", "--heads"]:
+            assert "env" not in kwargs
+            return SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    ("1" * 40)
+                    + "\trefs/heads/feat/example\n"
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected git argv: {argv!r}")
+
+    monkeypatch.setattr(gate, "run", fake_run)
+
+    gate.publish_branch(
+        {
+            "job_id": "publish-branch-test",
+            "target_branch": "feat/example",
+            "expected_head": "1" * 40,
+            "remote": "origin",
+        },
+        allow_state_change=True,
+    )
+
+    assert any(
+        call[0][1:3] == ["push", "origin"]
+        for call in calls
+    )
+    assert any(
+        call[0][1:3] == ["ls-remote", "--heads"]
+        for call in calls
+    )
+
+
+def test_publish_branch_rejects_base_branch_and_head_mismatch(
+    monkeypatch,
+):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+
+    with pytest.raises(
+        gate.GateReject,
+        match="refuses protected base branch",
+    ):
+        gate.publish_branch(
+            {
+                "job_id": "publish-main",
+                "target_branch": "main",
+                "expected_head": "1" * 40,
+                "remote": "origin",
+            },
+            allow_state_change=True,
+        )
+
+    monkeypatch.setattr(gate, "executable", lambda name: name)
+    monkeypatch.setattr(
+        gate,
+        "run",
+        lambda *_args, **_kwargs: type(
+            "Result",
+            (),
+            {"returncode": 0, "stdout": "", "stderr": ""},
+        )(),
+    )
+    monkeypatch.setattr(
+        gate,
+        "git_branch",
+        lambda **_kwargs: "feat/example",
+    )
+    monkeypatch.setattr(
+        gate,
+        "git_head",
+        lambda **_kwargs: "2" * 40,
+    )
+
+    with pytest.raises(
+        gate.GateReject,
+        match="publish_branch HEAD mismatch",
+    ):
+        gate.publish_branch(
+            {
+                "job_id": "publish-head-mismatch",
+                "target_branch": "feat/example",
+                "expected_head": "1" * 40,
+                "remote": "origin",
+            },
+            allow_state_change=True,
+        )
