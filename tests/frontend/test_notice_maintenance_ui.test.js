@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
@@ -10,6 +11,8 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const notices = read('src/static/js/modules/notices.js');
 const index = read('src/index.html');
 const bootstrap = read('src/backend/routers/bootstrap.py');
+const navigationEvents = read('src/static/js/modules/navigation/events.js');
+const announcementsRouter = read('src/backend/routers/announcements.py');
 
 describe('maintenance information and new notice board separation', () => {
     it('keeps legacy announcements as maintenance information with date sorting and latest five', () => {
@@ -26,6 +29,62 @@ describe('maintenance information and new notice board separation', () => {
         expect(notices).toContain('data-tab="system-maintenance-info"');
         expect(notices).toContain("maintenanceTab.id = 'system-maintenance-infoTab'");
         expect(notices).toContain('/api/announcements');
+    });
+
+    it('binds the dynamically added maintenance button to the existing system tab route', () => {
+        expect(notices).toContain("const maintenanceButton = systemToolbar.querySelector('[data-tab=\"system-maintenance-info\"]');");
+        expect(notices).toContain("maintenanceButton.dataset.maintenanceInfoBound !== 'true'");
+        expect(notices).toContain("switchTab('systemPanel', 'system-maintenance-info');");
+        expect(notices.indexOf("switchTab('systemPanel', 'system-maintenance-info');"))
+            .toBeLessThan(notices.indexOf("maintenanceTab.id = 'system-maintenance-infoTab'"));
+    });
+
+    it('navigates to maintenance information when the dynamically added button is clicked', () => {
+        const listeners = new Map();
+        const maintenanceButton = {
+            dataset: {},
+            addEventListener: (eventName, listener) => listeners.set(eventName, listener),
+        };
+        let buttonInserted = false;
+        const toolbar = {
+            querySelector: () => (buttonInserted ? maintenanceButton : null),
+            insertAdjacentHTML: () => { buttonInserted = true; },
+        };
+        const systemPanel = {
+            querySelector: (selector) => (selector === '.toolbar' ? toolbar : null),
+            appendChild: vi.fn(),
+        };
+        const maintenanceTab = {
+            id: 'announcementTab',
+            parentElement: systemPanel,
+            querySelector: () => null,
+        };
+        const switchTab = vi.fn();
+        const setupStart = notices.indexOf('function setupNoticeAndMaintenanceUi()');
+        const setupEnd = notices.indexOf('\nfunction maintenanceInfoHomeHtml()');
+        const setupSource = notices.slice(setupStart, setupEnd);
+
+        vm.runInNewContext(`${setupSource}; setupNoticeAndMaintenanceUi();`, {
+            ensurePortalNoticeHeaderActions: vi.fn(),
+            document: { querySelector: () => null },
+            switchTab,
+            $: (id) => ({
+                systemPanel,
+                announcementTab: maintenanceTab,
+                'system-maintenance-infoTab': maintenanceTab,
+            })[id] || null,
+        });
+
+        expect(maintenanceButton.dataset.maintenanceInfoBound).toBe('true');
+        listeners.get('click')();
+        expect(switchTab).toHaveBeenCalledWith('systemPanel', 'system-maintenance-info');
+    });
+
+    it('keeps existing system tab click handling and legacy announcement API authorization unchanged', () => {
+        expect(navigationEvents).toContain("document.querySelectorAll('#systemPanel [data-tab]').forEach((button) => {");
+        expect(navigationEvents).toContain("button.addEventListener('click', () => switchTab('systemPanel', button.dataset.tab));");
+        expect(announcementsRouter).toContain('@router.get("/api/announcements", response_model=list[Announcement])');
+        expect(announcementsRouter.match(/Depends\(get_admin_device_auth\)/g)).toHaveLength(3);
     });
 
     it('places maintenance between menu groups and action buttons by wrapping menu rendering', () => {
