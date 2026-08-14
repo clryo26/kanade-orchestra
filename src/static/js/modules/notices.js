@@ -186,6 +186,15 @@ function setupNoticeAndMaintenanceUi() {
                 '<button class="btn btn-sm btn-outline-primary" data-tab="system-maintenance-info" type="button">メンテナンス情報</button>'
             );
         }
+        const maintenanceButton = systemToolbar.querySelector('[data-tab="system-maintenance-info"]');
+        // This button is created after the initial navigation binding, so bind its
+        // existing system-tab transition here without changing other tab handlers.
+        if (maintenanceButton && maintenanceButton.dataset.maintenanceInfoBound !== 'true') {
+            maintenanceButton.dataset.maintenanceInfoBound = 'true';
+            maintenanceButton.addEventListener('click', function () {
+                switchTab('systemPanel', 'system-maintenance-info');
+            });
+        }
         maintenanceTab.id = 'system-maintenance-infoTab';
         const cardHeader = maintenanceTab.querySelector('.card-header');
         if (cardHeader) cardHeader.textContent = 'メンテナンス情報';
