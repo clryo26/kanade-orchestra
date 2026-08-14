@@ -330,7 +330,75 @@ function updateMemberTabHistory(tabName) {
     appState.currentMemberTab = normalizedTabName;
 }
 
-async function switchTab(panelId, tabName, renderOnShow = true) {
+function makePortalHistoryState(panelId, tabName) {
+    return {
+        portalNavigation: true,
+        panelId: String(panelId || ''),
+        tabName: String(tabName || ''),
+    };
+}
+
+function updatePortalBrowserHistory(panelId, tabName, historyMode = 'push') {
+    if (historyMode === 'skip' || !window.history) return;
+    if (typeof window.history.replaceState !== 'function' || typeof window.history.pushState !== 'function') return;
+
+    const nextState = makePortalHistoryState(panelId, tabName);
+    const currentState = window.history.state;
+    if (
+        currentState &&
+        currentState.portalNavigation === true &&
+        currentState.panelId === nextState.panelId &&
+        currentState.tabName === nextState.tabName
+    ) {
+        return;
+    }
+
+    if (!currentState || currentState.portalNavigation !== true) {
+        window.history.replaceState(nextState, '');
+        return;
+    }
+
+    window.history.pushState(nextState, '');
+}
+
+async function restorePortalHistoryState(state) {
+    if (!state || state.portalNavigation !== true) return;
+
+    const panelId = String(state.panelId || '');
+    const tabName = String(state.tabName || '');
+    if (!tabName || !['memberPanel', 'adminPanel', 'systemPanel'].includes(panelId)) return;
+
+    if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
+    if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
+    if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
+
+    const memberPanel = $('memberPanel');
+    const adminPanel = $('adminPanel');
+    const systemPanel = $('systemPanel');
+    if (memberPanel) memberPanel.hidden = panelId !== 'memberPanel';
+    if (adminPanel) adminPanel.hidden = panelId !== 'adminPanel';
+    if (systemPanel) systemPanel.hidden = panelId !== 'systemPanel';
+
+    if (panelId === 'memberPanel') {
+        localStorage.setItem('userRole', 'member');
+        updateManagerNavigationVisibility();
+    } else if (panelId === 'adminPanel') {
+        localStorage.setItem(
+            'userRole',
+            appState.currentUserPermission === 'システム管理者' ? 'system-admin' : 'admin'
+        );
+    } else {
+        localStorage.setItem('userRole', 'system-admin');
+    }
+
+    await switchTab(panelId, tabName, true, 'skip');
+}
+
+if (typeof window.addEventListener === 'function') {
+    window.addEventListener('popstate', (event) => restorePortalHistoryState(event.state));
+}
+
+async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'push') {
     if (panelId === 'memberPanel' && isExtraRestrictedMemberTab(tabName)) {
         tabName = 'member-home';
     }
@@ -339,6 +407,7 @@ async function switchTab(panelId, tabName, renderOnShow = true) {
     if (panelId === 'memberPanel') {
         updateMemberTabHistory(tabName);
     }
+    updatePortalBrowserHistory(panelId, tabName, historyMode);
     const toolbar = panel.querySelector('.toolbar');
     if (toolbar && panelId === 'memberPanel') {
         toolbar.hidden = tabName === 'member-home';
