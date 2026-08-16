@@ -1469,12 +1469,33 @@ def verify_text_file(
     *,
     base_ref: str,
     cwd: Path,
+    allow_mixed_eol: bool = False,
 ) -> dict[str, Any]:
     data = path.read_bytes()
-    _, current = decode_text_file(data, rel=rel)
+    if allow_mixed_eol:
+        # Keep BOM and UTF-8 validation while preserving pre-existing mixed EOLs.
+        if data.startswith(b"\xef\xbb\xbf"):
+            raise GateReject(f"UTF-8 BOM forbidden: {rel}")
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise GateReject(f"UTF-8 decode failed: {rel}: {exc}") from exc
+        current = eol_kind(data)
+    else:
+        _, current = decode_text_file(data, rel=rel)
 
     old = git_bytes(base_ref, rel, cwd=cwd)
     old_kind = eol_kind(old) if old is not None else None
+    if allow_mixed_eol and old_kind == "MIXED" and current == "MIXED":
+        return {
+            "encoding": "utf-8",
+            "bom": False,
+            "eol": current,
+            "base_eol": old_kind,
+        }
+
+    if current == "MIXED":
+        raise GateReject(f"mixed line endings: {rel}")
     if old_kind == "MIXED":
         raise GateReject(f"base file has mixed line endings: {rel}")
     if old_kind in {"LF", "CRLF", "NONE"} and current != old_kind:
@@ -2298,6 +2319,7 @@ def verify_change_against_contract(
     cwd: Path,
     base_ref: str = "HEAD",
     run_tests: bool = True,
+    allow_mixed_eol: bool = False,
 ) -> dict[str, Any]:
     validate_contract(contract)
 
@@ -2335,6 +2357,7 @@ def verify_change_against_contract(
                     rel,
                     base_ref=base_ref,
                     cwd=cwd,
+                    allow_mixed_eol=allow_mixed_eol,
                 )
             syntax_check(rel, cwd=cwd)
 
@@ -2668,6 +2691,7 @@ def validate_existing_change(
         cwd=ROOT,
         base_ref="HEAD",
         run_tests=True,
+        allow_mixed_eol=True,
     )
 
     evidence = write_evidence(
