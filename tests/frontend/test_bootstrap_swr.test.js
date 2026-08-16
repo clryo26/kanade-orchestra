@@ -245,6 +245,40 @@ describe('bootstrap-lite stale-while-revalidate', () => {
         ).toBe(false);
     });
 
+    test('full bootstrap failure does not fan out into individual API requests', async () => {
+        const { sandbox } = createSandbox({
+            requestImpl: async () => {
+                throw new Error('bootstrap unavailable');
+            },
+        });
+
+        await expect(sandbox.loadAll({ includeHeavyLists: true }))
+            .rejects.toThrow('bootstrap unavailable');
+
+        expect(sandbox.request).toHaveBeenCalledTimes(1);
+        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap', {});
+    });
+
+    test('bootstrap-core failure does not fan out and background loading stays fail-soft', async () => {
+        const { sandbox } = createSandbox({
+            requestImpl: async () => {
+                throw new Error('bootstrap-core unavailable');
+            },
+        });
+
+        sandbox.loadFullDataInBackground();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(sandbox.request).toHaveBeenCalledTimes(1);
+        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap-core', {});
+        expect(sandbox.console.warn).toHaveBeenCalledWith(
+            'Background data load failed',
+            expect.any(Error)
+        );
+        expect(sandbox.portalRuntimeContext.appState.dataLoaded).not.toBe(true);
+        expect(sandbox.portalRuntimeContext.appState.fullDataLoading).toBe(false);
+    });
+
     test('cached preview is not used before portal authentication is verified', async () => {
         const latestData = {
             performances: [{ id: 'latest' }],

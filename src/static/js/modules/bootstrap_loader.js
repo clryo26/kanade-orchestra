@@ -449,17 +449,9 @@ function loadFullDataInBackground() {
 
 async function loadAll(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
-    let data;
-    try {
-        data = await requestBootstrapData(includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core');
-    } catch (error) {
-        // Background core refresh must not fan out into the legacy multi-request fallback.
-        // Keep the legacy fallback only for an explicit full load.
-        if (!includeHeavyLists) {
-            throw error;
-        }
-        data = await legacyBootstrapData(includeHeavyLists);
-    }
+    const data = await requestBootstrapData(
+        includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core'
+    );
     applyBootstrapData(data);
     renderInitialViews({ includeHeavyLists });
 }
@@ -473,103 +465,6 @@ async function requestJson(url, options = {}) {
     const response = await fetch(url, options);
     if (!response.ok) throw new Error(`Request failed: ${response.status}`);
     return response.json();
-}
-
-async function legacyBootstrapData(includeHeavyLists = true) {
-    const [
-        performances,
-        schedules,
-        announcements,
-        events,
-        members,
-        recordings,
-        absences,
-        eventResponses,
-        dateAdjustments,
-        dateAdjustmentResponses,
-        sheetLibrary,
-        payments,
-        castings,
-        pieceInfos,
-        practiceInstructions,
-        performanceDayInfos,
-        desiredPieces,
-        promotions,
-        albums,
-        partSettings,
-        venueSettings,
-        flyerDistributions,
-        flyerDistributionAssignments,
-        concertRecordVideos,
-        orgSettings,
-        snsSettings,
-        connectionSettings,
-        sheets,
-        authDevices
-    ] = await Promise.all([
-        request('/api/performances'),
-        request('/api/schedules'),
-        request('/api/announcements'),
-        request('/api/events'),
-        request('/api/members'),
-        includeHeavyLists ? request('/api/recordings') : Promise.resolve({ files: appState.recordings || [] }),
-        request('/api/extra/absences'),
-        request('/api/extra/event_responses'),
-        request('/api/extra/date_adjustments'),
-        request('/api/extra/date_adjustment_responses'),
-        request('/api/extra/sheet_library'),
-        request('/api/extra/payments'),
-        request('/api/extra/castings'),
-        request('/api/extra/piece_infos'),
-        request('/api/extra/practice_instructions'),
-        request('/api/extra/performance_day_infos'),
-        request('/api/extra/desired_pieces'),
-        request('/api/extra/promotions'),
-        request('/api/extra/albums'),
-        request('/api/extra/part_settings'),
-        request('/api/extra/venue_settings'),
-        request('/api/extra/flyer_distributions'),
-        request('/api/extra/flyer_distribution_assignments'),
-        request('/api/extra/concert_record_videos'),
-        request('/api/extra/org_settings'),
-        request('/api/extra/sns_settings'),
-        request('/api/extra/connection_settings'),
-        includeHeavyLists ? request('/api/sheets') : Promise.resolve({ files: appState.sheetLibrary || [] }),
-        request('/api/auth/devices')
-    ]);
-    return {
-        performances,
-        schedules,
-        announcements,
-        events,
-        members,
-        recordings,
-        extras: {
-            absences,
-            event_responses: eventResponses,
-            date_adjustments: dateAdjustments,
-            date_adjustment_responses: dateAdjustmentResponses,
-            sheet_library: sheetLibrary,
-            payments,
-            castings,
-            piece_infos: pieceInfos,
-            practice_instructions: practiceInstructions,
-            performance_day_infos: performanceDayInfos,
-            promotions,
-            albums,
-            part_settings: partSettings,
-            venue_settings: venueSettings,
-            flyer_distributions: flyerDistributions,
-            flyer_distribution_assignments: flyerDistributionAssignments,
-            concert_record_videos: concertRecordVideos,
-            org_settings: orgSettings,
-            sns_settings: snsSettings,
-            connection_settings: connectionSettings,
-            desired_pieces: desiredPieces
-        },
-        auth_devices: authDevices,
-        sheets
-    };
 }
 
 // backend の bootstrap 系 API が返す複合レスポンスを
