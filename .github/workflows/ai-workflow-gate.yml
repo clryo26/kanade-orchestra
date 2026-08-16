@@ -96,7 +96,7 @@ jobs:
         env:
           GH_TOKEN: ''
         run: |
-          python -m pytest             tests/operations/test_ai_workflow_gate.py             tests/operations/test_ai_workflow_execution_guards.py             -q
+          python -m pytest             --confcutdir=tests/operations             tests/operations/test_ai_workflow_gate.py             tests/operations/test_ai_workflow_execution_guards.py             -q
 
       - name: Accept validated protected AI gate policy change
         if: steps.classify.outputs.policy_update == 'true'

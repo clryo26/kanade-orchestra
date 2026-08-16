@@ -66,6 +66,7 @@ def test_remote_gate_allows_protected_only_policy_changes_with_guard_tests():
     assert "persist-credentials: false" in workflow
     assert "tests/operations/test_ai_workflow_gate.py" in workflow
     assert "tests/operations/test_ai_workflow_execution_guards.py" in workflow
+    assert "--confcutdir=tests/operations" in workflow
     assert 'GH_TOKEN: \'\'' in workflow
     assert 'echo "AI_WORKFLOW_REMOTE_GATE=PASS"' in workflow
 

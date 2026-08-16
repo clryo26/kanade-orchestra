@@ -215,3 +215,39 @@ def test_inspect_job_passes(tmp_path):
     assert result.returncode == 0
     assert "AI_WORKFLOW_GATE=PASS" in result.stdout
     assert "OPERATION=inspect" in result.stdout
+
+
+def _load_gate_module():
+    import importlib.util
+
+    module_name = "ai_workflow_gate_mixed_eol_test"
+    spec = importlib.util.spec_from_file_location(module_name, RUNNER)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_mixed_crlf_lf_input_is_normalized_to_lf():
+    gate = _load_gate_module()
+    data = b"alpha\r\nbeta\n"
+
+    assert gate.eol_kind(data) == "LF"
+    text, eol = gate.decode_text_file(data, rel="src/demo.py")
+
+    assert text == "alpha\nbeta\n"
+    assert "\r" not in text
+    assert eol == "LF"
+
+
+def test_pure_crlf_input_still_preserves_crlf_policy():
+    gate = _load_gate_module()
+    data = b"alpha\r\nbeta\r\n"
+
+    assert gate.eol_kind(data) == "CRLF"
+    text, eol = gate.decode_text_file(data, rel="src/demo.py")
+
+    assert text == "alpha\nbeta\n"
+    assert eol == "CRLF"

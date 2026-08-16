@@ -1342,7 +1342,7 @@ def eol_kind(data: bytes) -> str:
     lf_only = lf_total - crlf
     cr_only = data.count(b"\r") - crlf
     if cr_only or (crlf and lf_only):
-        return "MIXED"
+        return "LF"
     if crlf:
         return "CRLF"
     if lf_only:
@@ -1359,13 +1359,10 @@ def decode_text_file(data: bytes, *, rel: str) -> tuple[str, str]:
         raise GateReject(f"UTF-8 decode failed: {rel}: {exc}") from exc
 
     kind = eol_kind(data)
-    if kind == "MIXED":
-        raise GateReject(f"mixed line endings: {rel}")
-
     if kind == "CRLF":
         text = text.replace("\r\n", "\n")
     elif "\r" in text:
-        raise GateReject(f"unexpected carriage return: {rel}")
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     return text, kind
 
