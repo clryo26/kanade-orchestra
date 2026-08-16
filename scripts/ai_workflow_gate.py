@@ -1309,6 +1309,16 @@ def reject_forbidden_keys(value: Any, where: str = "$") -> None:
             reject_forbidden_keys(child, f"{where}[{index}]")
 
 
+ROOT_TEXT_FILES = {
+    "pyproject.toml",
+    "uv.lock",
+}
+TEXT_SUFFIXES.update(
+    Path(path).suffix.lower()
+    for path in ROOT_TEXT_FILES
+)
+
+
 def safe_rel_path(value: Any, *, roots: tuple[str, ...]) -> str:
     if not isinstance(value, str) or not value:
         raise GateReject("path must be non-empty string")
@@ -1316,7 +1326,10 @@ def safe_rel_path(value: Any, *, roots: tuple[str, ...]) -> str:
     path = Path(normalized)
     if path.is_absolute() or ".." in path.parts:
         raise GateReject(f"path escapes allowed root: {value}")
-    if not normalized.startswith(roots):
+    if (
+        normalized not in ROOT_TEXT_FILES
+        and not normalized.startswith(roots)
+    ):
         raise GateReject(
             f"path outside approved roots {roots}: {value}"
         )

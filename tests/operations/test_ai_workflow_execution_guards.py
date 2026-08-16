@@ -31,6 +31,29 @@ def _valid_plan() -> dict[str, object]:
     }
 
 
+def test_safe_rel_path_allows_only_dependency_root_files():
+    gate = _load_gate()
+    roots = (
+        "src/",
+        "tests/",
+        ".github/",
+        "scripts/",
+        "db/",
+        "docs/",
+        ".githooks/",
+    )
+
+    assert gate.safe_rel_path("pyproject.toml", roots=roots) == "pyproject.toml"
+    assert gate.safe_rel_path("uv.lock", roots=roots) == "uv.lock"
+    assert ".toml" in gate.TEXT_SUFFIXES
+    assert ".lock" in gate.TEXT_SUFFIXES
+
+    with pytest.raises(gate.GateReject, match="path outside approved roots"):
+        gate.safe_rel_path("package.json", roots=roots)
+    with pytest.raises(gate.GateReject, match="path outside approved roots"):
+        gate.safe_rel_path("pyproject.toml.bak", roots=roots)
+
+
 def test_plan_requires_next_action():
     gate = _load_gate()
     plan = _valid_plan()
