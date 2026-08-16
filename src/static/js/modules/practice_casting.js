@@ -43,7 +43,7 @@ async function renderPdfViewer(url, scale = null) {
     status.textContent = '楽譜を読み込み中...';
     try {
         const pdfjsLib = await loadPdfJs();
-        const data = await fetch(url, { cache: 'no-store' }).then((response) => {
+        const data = await fetchWithTimeout(url, { cache: 'no-store' }, PORTAL_TIMEOUT_GET).then((response) => {
             if (!response.ok) throw new Error(`PDFを取得できませんでした (${response.status})`);
             return response.arrayBuffer();
         });

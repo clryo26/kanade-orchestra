@@ -149,14 +149,14 @@ function recordAccessLog(panelId, tabName) {
         if (typeof fetch !== 'function') {
             return;
         }
-        fetch('/api/system/access-logs', {
+        fetchWithTimeout('/api/system/access-logs', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Device-Id': deviceId,
             },
             body: JSON.stringify(payload),
-        }).catch((error) => console.warn('Access log save failed:', error));
+        }, PORTAL_TIMEOUT_MUTATION).catch((error) => console.warn('Access log save failed:', error));
     } catch (error) {
         console.warn('Access log save failed:', error);
     }

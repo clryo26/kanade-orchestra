@@ -101,10 +101,10 @@ async function exportPerformanceDayInfoExcel() {
     }
 
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
-    const response = await fetch(`/api/reports/performance-timetable/${encodeURIComponent(performanceId)}/xlsx`, {
+    const response = await fetchWithTimeout(`/api/reports/performance-timetable/${encodeURIComponent(performanceId)}/xlsx`, {
         method: 'GET',
         headers: deviceId ? { 'X-Device-Id': deviceId } : {}
-    });
+    }, PORTAL_TIMEOUT_GET);
     if (!response.ok) {
         let message = 'Excel出力に失敗しました';
         try {
