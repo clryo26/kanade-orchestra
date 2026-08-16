@@ -226,6 +226,19 @@ describe('bootstrap-lite stale-while-revalidate', () => {
         expect(sandbox.portalStartup.ready).not.toHaveBeenCalled();
     });
 
+    test('explicit essential refresh forwards force revalidation to the request layer', async () => {
+        const { sandbox } = createSandbox({
+            requestImpl: async () => ({ performances: [{ id: 'latest' }] }),
+        });
+
+        await sandbox.loadEssentialData({ forceRevalidate: true });
+
+        expect(sandbox.request).toHaveBeenCalledWith(
+            '/api/bootstrap-lite',
+            { _forceRevalidate: true }
+        );
+    });
+
     test('background load does not prefetch deferred collections', async () => {
         const { sandbox } = createSandbox({
             requestImpl: async () => ({ extras: {} }),

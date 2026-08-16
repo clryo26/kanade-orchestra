@@ -53,6 +53,7 @@ function setDefaultDates() {
 // 読み込み失敗時はローディングバーを解除して例外を呼出元へ伝播する
 async function loadEssentialData(options = {}) {
     const useCachedPreview = options.useCachedPreview === true;
+    const forceRevalidate = options.forceRevalidate === true;
     const cacheKey = '/api/bootstrap-lite';
 
     let cachedPreviewRendered = false;
@@ -147,9 +148,10 @@ async function loadEssentialData(options = {}) {
     }
 
     try {
-        const requestOptions = cachedPreviewRendered
-            ? { _allowCacheFallback: false }
-            : {};
+        const requestOptions = {
+            ...(cachedPreviewRendered ? { _allowCacheFallback: false } : {}),
+            ...(forceRevalidate ? { _forceRevalidate: true } : {}),
+        };
 
         const data = await requestBootstrapData(cacheKey, requestOptions);
 
@@ -377,7 +379,7 @@ async function refreshPortalData(options = {}) {
     appState.portalRefreshInProgress = (async () => {
         setLoadingBar('更新中...');
         try {
-            await loadEssentialData();
+            await loadEssentialData({ forceRevalidate: true });
             appState.essentialDataLoaded = true;
             if (includeBackground) {
                 // Explicit refreshes should revalidate the broader bootstrap payload too.

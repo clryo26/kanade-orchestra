@@ -9,6 +9,7 @@ var PORTAL_TIMEOUT_BOOTSTRAP_LITE = 12000;
 var PORTAL_TIMEOUT_BOOTSTRAP_CORE = 20000;
 var PORTAL_TIMEOUT_GET = 15000;
 var PORTAL_TIMEOUT_MUTATION = 20000;
+var FRESH_CACHE_TTL_MS = 10000;
 
 // タイムアウトエラーを他のネットワークエラーと区別するクラス
 class PortalTimeoutError extends Error {
@@ -55,7 +56,13 @@ async function fetchWithTimeout(url, options, timeoutMs) {
     }, timeoutMs);
 
     // 内部専用プロパティを除外してfetchOptionsを構築
-    const { _skipAuthRecovery: _omit1, _allowCacheFallback: _omit2, signal: _omit3, ...fetchOptions } = Object(options || {});
+    const {
+        _skipAuthRecovery: _omit1,
+        _allowCacheFallback: _omit2,
+        _forceRevalidate: _omit3,
+        signal: _omit4,
+        ...fetchOptions
+    } = Object(options || {});
     fetchOptions.signal = controller.signal;
 
     try {
@@ -228,6 +235,37 @@ async function invalidateCacheForMutation(url) {
     await Promise.all(keys.map((key) => window.portalRuntimeContext.dbCache.delete(key)));
 }
 
+// Only stable member-facing list endpoints can briefly use cache-first.
+// Authentication, management, bootstrap, revision, and file endpoints always revalidate.
+function freshCacheTtlMs(url) {
+    const path = String(url || '').split('?')[0];
+    if ([
+        '/api/performances',
+        '/api/schedules',
+        '/api/announcements',
+        '/api/events',
+    ].includes(path)) {
+        return FRESH_CACHE_TTL_MS;
+    }
+    return 0;
+}
+
+function hasFreshCacheEntry(cacheEntry, url, forceRevalidate) {
+    const ttlMs = freshCacheTtlMs(url);
+    const timestamp = Number(cacheEntry?.timestamp);
+    if (
+        forceRevalidate ||
+        !ttlMs ||
+        cacheEntry?.data == null ||
+        !Number.isFinite(timestamp) ||
+        timestamp <= 0
+    ) {
+        return false;
+    }
+    const ageMs = Date.now() - timestamp;
+    return ageMs >= 0 && ageMs < ttlMs;
+}
+
 async function request(url, options = {}) {
     const method = options.method || 'GET';
     const cacheKey = url;
@@ -235,6 +273,7 @@ async function request(url, options = {}) {
     const baseHeaders = { ...(options.headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) };
     const skipAuthRecovery = Boolean(options._skipAuthRecovery);
     const allowCacheFallback = options._allowCacheFallback !== false;
+    const forceRevalidate = Boolean(options._forceRevalidate);
     const timeoutMs = _resolveTimeoutMs(url, method);
     if (method === 'GET') {
         if (window.portalRuntimeContext.inFlightGetRequests.has(cacheKey)) return window.portalRuntimeContext.inFlightGetRequests.get(cacheKey);
@@ -242,6 +281,9 @@ async function request(url, options = {}) {
             const cacheEntry = await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
             const cached = cacheEntry?.data ?? null;
             const etag = cacheEntry?.etag ?? null;
+            if (hasFreshCacheEntry(cacheEntry, url, forceRevalidate)) {
+                return cached;
+            }
             const headers = { ...baseHeaders };
             if (etag) headers['If-None-Match'] = etag;
             let response;
