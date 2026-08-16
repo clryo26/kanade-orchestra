@@ -130,7 +130,7 @@ class _PooledPsycopgAdapter:
         return getattr(_real_psycopg, name)
 
 
-pooled_psycopg = _PooledPsycopgAdapter() if _real_psycopg is not None else None
+pooled_psycopg = _PooledPsycopgAdapter()
 
 
 __all__ = [
