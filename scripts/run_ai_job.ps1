@@ -37,6 +37,52 @@ if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
 }
 
 
+function Get-GitUtf8Stdout {
+    param(
+        [Parameter(Mandatory = $true)][string]$Repo,
+        [Parameter(Mandatory = $true)][string[]]$GitArguments
+    )
+
+    # Git emits repository paths as UTF-8. PowerShell's native-command output
+    # decoding is code-page dependent, so read the child process stream explicitly.
+    $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $gitPath
+    $startInfo.Arguments = ('-C "{0}" {1}' -f @(
+        $Repo,
+        ($GitArguments -join " ")
+    ))
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "[AI-WORKFLOW-GATE] Git process could not be started."
+        }
+        # Start both reads before waiting so a verbose Git error cannot fill
+        # stderr while stdout is being consumed synchronously.
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) {
+            throw "[AI-WORKFLOW-GATE] Git command failed: $stderr"
+        }
+        return $stdout.Trim()
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+
 function Install-PublishGuard {
     param([Parameter(Mandatory = $true)][string]$Repo)
 
@@ -45,10 +91,10 @@ function Install-PublishGuard {
     $tokenEnvName = "KANADE_AI_PUBLISH_TOKEN"
     $tokenFileName = "kanade-ai-publish-token"
 
-    $commonDirRaw = (& git -C $Repo rev-parse --git-common-dir)
-    if ($LASTEXITCODE -ne 0) {
-        throw "[AI-WORKFLOW-GATE] Git common directory could not be resolved."
-    }
+    $commonDirRaw = Get-GitUtf8Stdout -Repo $Repo -GitArguments @(
+        "rev-parse",
+        "--git-common-dir"
+    )
 
     $commonDirText = ([string]$commonDirRaw).Trim()
     if ([string]::IsNullOrWhiteSpace($commonDirText)) {
