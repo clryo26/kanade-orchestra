@@ -254,6 +254,32 @@ describe('member detail on-demand', () => {
         expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/members/1', '/api/members/2']);
     });
 
+    test('member intro excludes extra-permission members', async () => {
+        const request = vi.fn(async (url) => {
+            const match = String(url).match(/^\/api\/members\/(\d+)$/);
+            if (match) {
+                const id = Number(match[1]);
+                return detailMember(id, {
+                    permission: id === 2 ? 'エキストラ' : '一般',
+                    comment: id === 2 ? 'Extra comment' : 'General comment',
+                });
+            }
+            throw new Error(`unexpected request: ${url}`);
+        });
+        const { sandbox, appState, elements } = buildMemberSandbox(request);
+        appState.members = [
+            { id: 1, name: 'General Member', last_name: 'General', first_name: 'Member', part: 'Vn', photo_url: '/api/members/1/photo', password_set: true, permission: '一般', joined_at: '2026-01', system_access_until: '' },
+            { id: 2, name: 'Extra Member', last_name: 'Extra', first_name: 'Member', part: 'Va', photo_url: '/api/members/2/photo', password_set: true, permission: 'エキストラ', joined_at: '2026-02', system_access_until: '2026-12-31' },
+        ];
+
+        await sandbox.showMemberIntroView();
+
+        expect(elements.get('memberIntroInfo').innerHTML).toContain('Last1First1');
+        expect(elements.get('memberIntroInfo').innerHTML).toContain('General comment');
+        expect(elements.get('memberIntroInfo').innerHTML).not.toContain('Last2First2');
+        expect(elements.get('memberIntroInfo').innerHTML).not.toContain('Extra comment');
+    });
+
     test('member intro concurrent openings do not duplicate in-flight member detail requests', async () => {
         let resolveDetail;
         const detailPromise = new Promise((resolve) => {
