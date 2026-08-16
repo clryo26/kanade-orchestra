@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -174,6 +178,29 @@ def test_write_evidence_is_keyed_and_signed(tmp_path, monkeypatch):
     assert signature == expected
 
 
+def test_validate_existing_change_evidence_is_committable(tmp_path, monkeypatch):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "EVIDENCE_DIR", tmp_path)
+    monkeypatch.setattr(gate, "publish_guard_token", lambda: "a" * 64)
+
+    path = gate.write_evidence(
+        job_id="validated-existing",
+        contract={"id": "contract", "goal": "goal"},
+        verification={
+            "files": ["src/index.html"],
+            "content_hash": "b" * 64,
+            "integrity": {},
+            "tests": [],
+        },
+        source_operation="validate_existing_change",
+    )
+
+    assert gate.evidence_for_job("validated-existing")["source_operation"] == (
+        "validate_existing_change"
+    )
+    assert path.is_file()
+
+
 
 def test_gate_requires_cr_at_eol_compatibility():
     gate_source = Path("scripts/ai_workflow_gate.py").read_text(encoding="utf-8")
@@ -186,10 +213,10 @@ def test_pre_commit_requires_v4_signed_evidence_and_runner_token():
 
     assert "KANADE_AI_RUNNER_TOKEN" in hook
     assert 'evidence.get("runner_version") != 4' in hook
-    assert (
-        'evidence.get("source_operation") not in '
-        '{"apply_change", "policy_update"}'
-    ) in hook
+    assert '"validate_existing_change"' in hook
+    assert '"apply_change"' in hook
+    assert '"policy_update"' in hook
+    assert 'evidence.get("job_id") != evidence_path.stem' in hook
     assert 'signature = evidence.get("evidence_signature")' in hook
     assert "hashlib.blake2b(" in hook
     assert "key=bytes.fromhex(runner_token)" in hook
@@ -280,6 +307,96 @@ def test_evidence_for_job_rejects_unsigned_legacy_shape(
         match="evidence was not created by JSON-only runner version 4",
     ):
         gate.evidence_for_job("legacy")
+
+
+def test_pre_commit_accepts_only_matching_signed_validate_evidence(tmp_path):
+    repo = tmp_path / "repo"
+    hook_dir = repo / ".githooks"
+    evidence_dir = repo / ".ai-gate" / "evidence"
+    hook_dir.mkdir(parents=True)
+    evidence_dir.mkdir(parents=True)
+    hook = hook_dir / "pre-commit"
+    hook.write_bytes(Path(".githooks/pre-commit").read_bytes())
+
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    for key, value in (
+        ("user.email", "gate-test@example.invalid"),
+        ("user.name", "Gate Test"),
+        ("core.autocrlf", "false"),
+    ):
+        subprocess.run(["git", "config", key, value], cwd=repo, check=True)
+    target = repo / "src" / "demo.py"
+    target.parent.mkdir()
+    target.write_text("before\n", encoding="utf-8", newline="\n")
+    subprocess.run(["git", "add", "src/demo.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True)
+    target.write_text("after\n", encoding="utf-8", newline="\n")
+    subprocess.run(["git", "add", "src/demo.py"], cwd=repo, check=True)
+
+    files = ["src/demo.py"]
+    digest = hashlib.sha256()
+    for rel in files:
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update((repo / rel).read_bytes())
+        digest.update(b"\0")
+
+    def write_evidence(name: str, payload: dict[str, object]) -> None:
+        unsigned = dict(payload)
+        canonical = json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        payload["evidence_signature"] = hashlib.blake2b(
+            canonical,
+            key=bytes.fromhex("a" * 64),
+            digest_size=32,
+        ).hexdigest()
+        (evidence_dir / f"{name}.json").write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    payload = {
+        "gate": "PASS",
+        "runner_version": 4,
+        "source_operation": "validate_existing_change",
+        "job_id": "validated-job",
+        "files": files,
+        "content_hash": digest.hexdigest(),
+    }
+    write_evidence("validated-job", payload)
+    environment = dict(os.environ, KANADE_AI_RUNNER_TOKEN="a" * 64)
+    accepted = subprocess.run(
+        [sys.executable, str(hook)], cwd=repo, env=environment, capture_output=True, text=True
+    )
+    assert accepted.returncode == 0, accepted.stderr
+
+    for field, value in (
+        ("content_hash", "0" * 64),
+        ("files", []),
+        ("job_id", "other-job"),
+    ):
+        tampered = dict(payload)
+        tampered[field] = value
+        tampered.pop("evidence_signature", None)
+        write_evidence("validated-job", tampered)
+        rejected = subprocess.run(
+            [sys.executable, str(hook)], cwd=repo, env=environment, capture_output=True, text=True
+        )
+        assert rejected.returncode == 2
+
+    invalid_signature = dict(payload)
+    invalid_signature["evidence_signature"] = "0" * 64
+    (evidence_dir / "validated-job.json").write_text(
+        json.dumps(invalid_signature, ensure_ascii=False), encoding="utf-8"
+    )
+    rejected = subprocess.run(
+        [sys.executable, str(hook)], cwd=repo, env=environment, capture_output=True, text=True
+    )
+    assert rejected.returncode == 2
 
 
 
