@@ -39,12 +39,13 @@ function renderMembers() {
 function renderMemberIntros() {
     const container = $('memberIntroInfo');
     if (!container) return;
-    if (!appState.members.length) {
+    const introMembers = appState.members.filter((member) => member.permission !== 'エキストラ');
+    if (!introMembers.length) {
         container.innerHTML = '<p class="text-muted mb-0">団員情報はまだありません</p>';
         return;
     }
     const grouped = groupBy(
-        sortedMembersByPartAndKana(appState.members).map((member) => publicMemberDetailById(member.id) || member),
+        sortedMembersByPartAndKana(introMembers).map((member) => publicMemberDetailById(member.id) || member),
         'part',
     );
     const entries = Object.entries(grouped);
