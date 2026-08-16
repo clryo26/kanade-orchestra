@@ -1,21 +1,30 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 import sys
 
 import pytest
-from fastapi.testclient import TestClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.backend import main as backend  # noqa: E402
-from src.backend.services import album_service  # noqa: E402
+if importlib.util.find_spec("fastapi") is not None:
+    from fastapi.testclient import TestClient
+    from src.backend import main as backend
+    from src.backend.services import album_service
+else:
+    TestClient = None
+    backend = None
+    album_service = None
 
 
 @pytest.fixture
 def backend_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    if backend is None or album_service is None:
+        pytest.fail("backend test dependencies are unavailable")
+
     data_dir = tmp_path / "data"
     upload_dir = tmp_path / "uploads"
     converted_dir = upload_dir / "converted"
@@ -48,6 +57,9 @@ def backend_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def client(backend_env):
+    if TestClient is None:
+        pytest.fail("FastAPI test client is unavailable")
+
     return TestClient(backend_env.app)
 
 
