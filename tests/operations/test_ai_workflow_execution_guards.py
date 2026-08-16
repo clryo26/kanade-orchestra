@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import importlib.util
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +21,257 @@ def _load_gate():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _powershell_executable() -> str | None:
+    return shutil.which("powershell.exe") or shutil.which("powershell")
+
+
+def _git_utf8_stdout_from_runner(repo: Path) -> str:
+    """Invoke the runner's actual helper without invoking its state-changing main."""
+    powershell = _powershell_executable()
+    if powershell is None:
+        pytest.skip("Windows PowerShell is unavailable")
+
+    runner = Path("scripts/run_ai_job.ps1").resolve()
+    command = """
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    $env:KANADE_TEST_RUNNER,
+    [ref]$tokens,
+    [ref]$errors
+)
+if ($errors.Count -ne 0) { throw "runner parser error" }
+$function = $ast.Find(
+    {
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq "Get-GitUtf8Stdout"
+    },
+    $true
+)
+if ($null -eq $function) { throw "Get-GitUtf8Stdout not found" }
+. ([scriptblock]::Create($function.Extent.Text))
+Get-GitUtf8Stdout -Repo $env:KANADE_TEST_REPO -GitArguments @("rev-parse", "--git-common-dir")
+"""
+    environment = dict(
+        os.environ,
+        KANADE_TEST_RUNNER=str(runner),
+        KANADE_TEST_REPO=str(repo),
+    )
+    encoded_command = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            encoded_command,
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=environment,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def _git(*arguments: str, cwd: Path) -> str:
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def _resolve_git_dir(raw: str, repo: Path) -> Path:
+    path = Path(raw)
+    return (path if path.is_absolute() else repo / path).resolve()
+
+
+def _run_runner_token_probe(repo: Path) -> subprocess.CompletedProcess[str]:
+    powershell = _powershell_executable()
+    if powershell is None:
+        pytest.skip("Windows PowerShell is unavailable")
+
+    source_root = Path.cwd()
+    (repo / "scripts").mkdir(exist_ok=True)
+    (repo / ".githooks").mkdir(exist_ok=True)
+    shutil.copy2(source_root / "scripts" / "run_ai_job.ps1", repo / "scripts")
+    shutil.copy2(source_root / ".githooks" / "pre-commit", repo / ".githooks")
+    (repo / "scripts" / "ai_workflow_gate.py").write_text(
+        """import os
+import subprocess
+import sys
+from pathlib import Path
+
+if "--allow-state-change" not in sys.argv:
+    raise SystemExit(10)
+common = subprocess.check_output(
+    ["git", "rev-parse", "--git-common-dir"], text=True, encoding="utf-8"
+).strip()
+common_path = Path(common)
+if not common_path.is_absolute():
+    common_path = Path.cwd() / common_path
+expected = (common_path / "kanade-ai-publish-token").read_text(encoding="utf-8").strip()
+raise SystemExit(0 if os.environ.get("KANADE_AI_RUNNER_TOKEN") == expected else 11)
+""",
+        encoding="utf-8",
+    )
+    job = repo / "token-probe.zip"
+    job.write_bytes(b"token probe")
+    venv_scripts = Path(sys.executable).parent
+    environment = dict(os.environ, PATH=str(venv_scripts) + os.pathsep + os.environ["PATH"])
+    return subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(repo / "scripts" / "run_ai_job.ps1"), "-JobZip", str(job), "-AllowStateChange"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=environment,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell encoding regression")
+def test_runner_git_utf8_stdout_handles_ascii_normal_worktree(tmp_path):
+    repo = tmp_path / "ascii-runner-repo"
+    repo.mkdir()
+    _git("init", cwd=repo)
+
+    common = _resolve_git_dir(_git_utf8_stdout_from_runner(repo), repo)
+    assert common == (repo / ".git").resolve()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell encoding regression")
+def test_runner_git_utf8_stdout_handles_japanese_normal_and_linked_worktrees(tmp_path):
+    main_repo = tmp_path / "日本語リポジトリ"
+    main_repo.mkdir()
+    _git("init", cwd=main_repo)
+    _git("config", "user.email", "gate-test@example.invalid", cwd=main_repo)
+    _git("config", "user.name", "Gate Test", cwd=main_repo)
+    (main_repo / "README.txt").write_text("test\n", encoding="utf-8")
+    _git("add", "README.txt", cwd=main_repo)
+    _git("commit", "-m", "initial", cwd=main_repo)
+
+    expected_common = (main_repo / ".git").resolve()
+    normal_common = _resolve_git_dir(
+        _git_utf8_stdout_from_runner(main_repo), main_repo
+    )
+    assert normal_common == expected_common
+
+    linked_repo = tmp_path / "日本語linked-worktree"
+    _git("worktree", "add", "-b", "utf8-linked-test", str(linked_repo), cwd=main_repo)
+    linked_common = _resolve_git_dir(
+        _git_utf8_stdout_from_runner(linked_repo), linked_repo
+    )
+    assert linked_common == expected_common
+
+    correct_token = "a" * 64
+    (expected_common / "kanade-ai-publish-token").write_text(
+        correct_token, encoding="ascii"
+    )
+    decoy_common = tmp_path / "繧ｪ繧ｱ繝昴・繧ｿ繝ｫ" / ".git"
+    decoy_common.mkdir(parents=True)
+    (decoy_common / "kanade-ai-publish-token").write_text("f" * 64, encoding="ascii")
+    assert linked_common != decoy_common.resolve()
+    assert hashlib.sha256(
+        (linked_common / "kanade-ai-publish-token").read_bytes()
+    ).hexdigest() == hashlib.sha256(correct_token.encode("ascii")).hexdigest()
+
+
+def test_runner_utf8_helper_reads_streams_concurrently():
+    runner = Path("scripts/run_ai_job.ps1").read_text(encoding="utf-8")
+    assert "$stdoutTask = $process.StandardOutput.ReadToEndAsync()" in runner
+    assert "$stderrTask = $process.StandardError.ReadToEndAsync()" in runner
+    assert "$process.WaitForExit()" in runner
+    assert "$stdout = $stdoutTask.GetAwaiter().GetResult()" in runner
+    assert "$stderr = $stderrTask.GetAwaiter().GetResult()" in runner
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell runner integration")
+@pytest.mark.parametrize("initial", [None, "existing-runner-token"])
+def test_runner_restores_calling_powershell_environment(tmp_path, initial):
+    repo = tmp_path / "runner-env-repo"
+    repo.mkdir()
+    _git("init", cwd=repo)
+    _git("config", "user.email", "gate-test@example.invalid", cwd=repo)
+    _git("config", "user.name", "Gate Test", cwd=repo)
+    (repo / "README.txt").write_text("test\n", encoding="utf-8")
+    _git("add", "README.txt", cwd=repo)
+    _git("commit", "-m", "initial", cwd=repo)
+
+    powershell = _powershell_executable()
+    assert powershell is not None
+    _run_runner_token_probe(repo)  # install the isolated runner files
+    runner = repo / "scripts" / "run_ai_job.ps1"
+    command = """
+$env:KANADE_AI_RUNNER_TOKEN = $env:KANADE_TEST_INITIAL
+if ($env:KANADE_TEST_INITIAL -eq "__UNSET__") { Remove-Item Env:KANADE_AI_RUNNER_TOKEN -ErrorAction SilentlyContinue }
+& $env:KANADE_TEST_RUNNER -JobZip $env:KANADE_TEST_JOB -AllowStateChange
+if ($null -eq $env:KANADE_AI_RUNNER_TOKEN) { Write-Output "AFTER=UNSET" } else { Write-Output ("AFTER=" + $env:KANADE_AI_RUNNER_TOKEN) }
+"""
+    environment = dict(os.environ, KANADE_TEST_INITIAL=initial or "__UNSET__", KANADE_TEST_RUNNER=str(runner), KANADE_TEST_JOB=str(repo / "token-probe.zip"), PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
+    encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+    result = subprocess.run([powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert ("AFTER=UNSET" if initial is None else f"AFTER={initial}") in result.stdout
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell encoding regression")
+def test_runner_utf8_helper_rejects_nonzero_git_with_stderr_without_hanging(tmp_path):
+    repo = tmp_path / "git-failure-repo"
+    repo.mkdir()
+    _git("init", cwd=repo)
+    powershell = _powershell_executable()
+    assert powershell is not None
+    runner = Path("scripts/run_ai_job.ps1").resolve()
+    command = """
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile($env:KANADE_TEST_RUNNER,[ref]$tokens,[ref]$errors)
+$function=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq "Get-GitUtf8Stdout"},$true)
+. ([scriptblock]::Create($function.Extent.Text))
+try { Get-GitUtf8Stdout -Repo $env:KANADE_TEST_REPO -GitArguments @("status", "--definitely-invalid-option") } catch { Write-Output ("ERROR=" + $_.Exception.Message); exit 7 }
+exit 8
+"""
+    environment = dict(os.environ, KANADE_TEST_RUNNER=str(runner), KANADE_TEST_REPO=str(repo))
+    encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+    result = subprocess.run([powershell, "-NoProfile", "-EncodedCommand", encoded], capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment, timeout=15)
+    assert result.returncode == 7
+    assert "Git command failed:" in result.stdout
+    assert "unknown option" in result.stdout.lower() or "unknown switch" in result.stdout.lower()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell runner integration")
+def test_runner_authorizes_token_in_japanese_normal_and_linked_worktrees(tmp_path):
+    main_repo = tmp_path / "日本語runner-repo"
+    main_repo.mkdir()
+    _git("init", cwd=main_repo)
+    _git("config", "user.email", "gate-test@example.invalid", cwd=main_repo)
+    _git("config", "user.name", "Gate Test", cwd=main_repo)
+    (main_repo / "README.txt").write_text("test\n", encoding="utf-8")
+    _git("add", "README.txt", cwd=main_repo)
+    _git("commit", "-m", "initial", cwd=main_repo)
+
+    normal = _run_runner_token_probe(main_repo)
+    assert normal.returncode == 0, normal.stdout + normal.stderr
+    assert "PUBLISH_GUARD=ACTIVE" in normal.stdout
+
+    linked_repo = tmp_path / "日本語runner-linked"
+    _git("worktree", "add", "-b", "runner-linked-test", str(linked_repo), cwd=main_repo)
+    linked = _run_runner_token_probe(linked_repo)
+    assert linked.returncode == 0, linked.stdout + linked.stderr
+    assert "PUBLISH_GUARD=ACTIVE" in linked.stdout
 
 
 def _valid_plan() -> dict[str, object]:
