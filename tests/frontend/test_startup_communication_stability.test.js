@@ -59,13 +59,12 @@ describe('portal startup and communication stability', () => {
         expect(postCalls).toBe(1);
     });
 
-    test('background bootstrap-core failure does not fan out to legacy requests', () => {
+    test('bootstrap endpoint failures do not retain the legacy fan-out fallback', () => {
         const source = fs.readFileSync(
             path.resolve(__dirname, '../../src/static/js/modules/bootstrap_loader.js'),
             'utf8'
         );
-        expect(source).toContain('if (!includeHeavyLists) {');
-        expect(source).toContain('throw error;');
-        expect(source).toContain('data = await legacyBootstrapData(includeHeavyLists);');
+        expect(source).not.toContain('legacyBootstrapData');
+        expect(source).toContain("includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core'");
     });
 });

@@ -20,10 +20,9 @@ describe('non-standard API fetch paths', () => {
         expect(source).not.toMatch(/\bfetch\s*\(/);
     });
 
-    test('legacy bootstrap request fallback remains isolated from normal startup', () => {
+    test('bootstrap loading has no legacy individual-request fallback', () => {
         const source = fs.readFileSync(path.join(root, 'modules/bootstrap_loader.js'), 'utf8');
 
-        expect(source).toContain('if (!includeHeavyLists) {');
-        expect(source).toContain('data = await legacyBootstrapData(includeHeavyLists);');
+        expect(source).not.toContain('legacyBootstrapData');
     });
 });
