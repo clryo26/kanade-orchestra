@@ -7,6 +7,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "scripts" / "ai_workflow_gate.py"
 
@@ -196,6 +198,46 @@ def test_apply_change_requires_state_change_flag(tmp_path):
     assert "requires --allow-state-change" in result.stderr
 
 
+def test_validate_existing_change_requires_runner_authorization_in_active_main(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.delenv("KANADE_AI_RUNNER_TOKEN", raising=False)
+    contract = {
+        "version": 1,
+        "id": "validate-existing-demo",
+        "goal": "validate existing change only through the runner",
+        "allowed_files": ["src/index.html"],
+        "required_changed_files": ["src/index.html"],
+        "required_tests": [],
+        "assertions": [],
+    }
+    job = make_job(
+        tmp_path,
+        plan={
+            "version": 1,
+            "job_id": "validate-existing-no-runner",
+            "purpose": "must require the state-changing runner path",
+            "operation": "validate_existing_change",
+            "contract_id": "validate-existing-demo",
+            "next_action": {
+                "instruction": "Do not create commit evidence directly.",
+                "expected_result": "The runner authorization check rejects direct execution.",
+                "state_change": False,
+            },
+        },
+        contract=contract,
+    )
+
+    no_flag = run_job(job)
+    assert no_flag.returncode == 2
+    assert "validate_existing_change requires --allow-state-change" in no_flag.stderr
+
+    no_runner = run_job(job, "--allow-state-change")
+    assert no_runner.returncode == 2
+    assert "must run through scripts/run_ai_job.ps1" in no_runner.stderr
+
+
 def test_inspect_job_passes(tmp_path):
     job = make_job(
         tmp_path,
@@ -230,16 +272,16 @@ def _load_gate_module():
     return module
 
 
-def test_mixed_crlf_lf_input_is_normalized_to_lf():
+def test_mixed_crlf_lf_input_is_classified_as_mixed():
     gate = _load_gate_module()
     data = b"alpha\r\nbeta\n"
 
-    assert gate.eol_kind(data) == "LF"
+    assert gate.eol_kind(data) == "MIXED"
     text, eol = gate.decode_text_file(data, rel="src/demo.py")
 
-    assert text == "alpha\nbeta\n"
-    assert "\r" not in text
-    assert eol == "LF"
+    assert text == "alpha\r\nbeta\n"
+    assert "\r" in text
+    assert eol == "MIXED"
 
 
 def test_pure_crlf_input_still_preserves_crlf_policy():
@@ -295,3 +337,152 @@ def test_diff_check_accepts_preserved_crlf_line_endings(tmp_path):
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_structured_apply_rejects_mixed_eol_without_writing(tmp_path):
+    gate = _load_gate_module()
+    target = tmp_path / "src" / "demo.py"
+    target.parent.mkdir()
+    original = b"alpha\r\nbeta\n"
+    target.write_bytes(original)
+
+    operation = {
+        "operations": [
+            {
+                "path": "src/demo.py",
+                "operation": "replace_exact",
+                "expected_sha256": hashlib.sha256(original).hexdigest(),
+                "expected_occurrences": 1,
+                "old_text": "alpha\nbeta\n",
+                "new_text": "alpha\ngamma\n",
+            }
+        ]
+    }
+
+    with pytest.raises(
+        gate.GateReject,
+        match="structured apply rejects mixed EOL files; use validate_existing_change",
+    ):
+        gate.apply_operations(operation, cwd=tmp_path)
+
+    assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("base", "current", "allow", "passes"),
+    [
+        (b"alpha\r\nbeta\n", b"gamma\r\ndelta\n", True, True),
+        (b"alpha\n", b"alpha\r\nbeta\n", True, False),
+        (b"alpha\r\nbeta\n", b"alpha\n", True, False),
+        (b"alpha\r\n", b"alpha\r\nbeta\n", True, False),
+        (b"alpha\r\nbeta\n", b"alpha\r\n", True, False),
+    ],
+)
+def test_verify_text_file_allows_only_existing_mixed_eol(
+    tmp_path,
+    monkeypatch,
+    base,
+    current,
+    allow,
+    passes,
+):
+    gate = _load_gate_module()
+    target = tmp_path / "demo.py"
+    target.write_bytes(current)
+    monkeypatch.setattr(gate, "git_bytes", lambda *_args, **_kwargs: base)
+
+    if passes:
+        result = gate.verify_text_file(
+            target,
+            "src/demo.py",
+            base_ref="HEAD",
+            cwd=tmp_path,
+            allow_mixed_eol=allow,
+        )
+        assert result["base_eol"] == "MIXED"
+        assert result["eol"] == "MIXED"
+    else:
+        with pytest.raises(gate.GateReject, match="mixed EOL"):
+            gate.verify_text_file(
+                target,
+                "src/demo.py",
+                base_ref="HEAD",
+                cwd=tmp_path,
+                allow_mixed_eol=allow,
+            )
+
+
+def test_eol_correction_contract_pins_parent_head_current_and_eol(tmp_path):
+    gate = _load_gate_module()
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "gate-test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Gate Test"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"],
+        cwd=tmp_path,
+        check=True,
+    )
+    target = tmp_path / "src" / "demo.py"
+    target.parent.mkdir()
+    parent_bytes = b"alpha\r\nbeta\n"
+    target.write_bytes(parent_bytes)
+    subprocess.run(["git", "add", "src/demo.py"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "parent"], cwd=tmp_path, check=True)
+    parent = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+    ).strip()
+    head_bytes = b"alpha\nbeta\n"
+    target.write_bytes(head_bytes)
+    subprocess.run(["git", "commit", "-am", "lf"], cwd=tmp_path, check=True)
+    current_bytes = b"gamma\r\nbeta\n"
+    target.write_bytes(current_bytes)
+
+    entry = {
+        "path": "src/demo.py",
+        "parent_sha256": hashlib.sha256(parent_bytes).hexdigest(),
+        "head_sha256": hashlib.sha256(head_bytes).hexdigest(),
+        "current_sha256": hashlib.sha256(current_bytes).hexdigest(),
+        "parent_eol": "MIXED",
+        "head_eol": "LF",
+        "current_eol": "MIXED",
+    }
+    contract = {"eol_correction": {"parent_ref": parent, "files": [entry]}}
+
+    result = gate.validate_eol_correction_contract(
+        contract,
+        files=["src/demo.py"],
+        cwd=tmp_path,
+    )
+    assert result == {"src/demo.py": {"head_eol": "LF", "current_eol": "MIXED"}}
+
+    bad_parent = {"eol_correction": {"parent_ref": "0" * 40, "files": [entry]}}
+    with pytest.raises(gate.GateReject, match="parent_ref"):
+        gate.validate_eol_correction_contract(
+            bad_parent,
+            files=["src/demo.py"],
+            cwd=tmp_path,
+        )
+
+    wrong_hash = dict(entry)
+    wrong_hash["current_sha256"] = "0" * 64
+    with pytest.raises(gate.GateReject, match="current SHA mismatch"):
+        gate.validate_eol_correction_contract(
+            {"eol_correction": {"parent_ref": parent, "files": [wrong_hash]}},
+            files=["src/demo.py"],
+            cwd=tmp_path,
+        )
+
+    with pytest.raises(gate.GateReject, match="exactly match changed files"):
+        gate.validate_eol_correction_contract(
+            contract,
+            files=[],
+            cwd=tmp_path,
+        )

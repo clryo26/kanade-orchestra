@@ -1342,7 +1342,7 @@ def eol_kind(data: bytes) -> str:
     lf_only = lf_total - crlf
     cr_only = data.count(b"\r") - crlf
     if cr_only or (crlf and lf_only):
-        return "LF"
+        return "MIXED"
     if crlf:
         return "CRLF"
     if lf_only:
@@ -1361,8 +1361,6 @@ def decode_text_file(data: bytes, *, rel: str) -> tuple[str, str]:
     kind = eol_kind(data)
     if kind == "CRLF":
         text = text.replace("\r\n", "\n")
-    elif "\r" in text:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     return text, kind
 
@@ -1479,15 +1477,37 @@ def verify_text_file(
     *,
     base_ref: str,
     cwd: Path,
+    allow_mixed_eol: bool = False,
+    eol_correction: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     data = path.read_bytes()
     _, current = decode_text_file(data, rel=rel)
 
     old = git_bytes(base_ref, rel, cwd=cwd)
     old_kind = eol_kind(old) if old is not None else None
-    if old_kind == "MIXED":
-        raise GateReject(f"base file has mixed line endings: {rel}")
-    if old_kind in {"LF", "CRLF", "NONE"} and current != old_kind:
+    if eol_correction is not None:
+        if old_kind != eol_correction["head_eol"]:
+            raise GateReject(
+                f"EOL correction HEAD EOL mismatch: {rel}: "
+                f"{old_kind} != {eol_correction['head_eol']}"
+            )
+        if current != eol_correction["current_eol"]:
+            raise GateReject(
+                f"EOL correction current EOL mismatch: {rel}: "
+                f"{current} != {eol_correction['current_eol']}"
+            )
+    elif old_kind == "MIXED" or current == "MIXED":
+        if not (allow_mixed_eol and old_kind == current == "MIXED"):
+            raise GateReject(
+                "mixed EOL is allowed only by validate_existing_change "
+                f"when base and current are both MIXED: {rel}: "
+                f"{old_kind} -> {current}"
+            )
+    if (
+        eol_correction is None
+        and old_kind in {"LF", "CRLF", "NONE"}
+        and current != old_kind
+    ):
         raise GateReject(
             f"EOL changed unexpectedly: {rel}: {old_kind} -> {current}"
         )
@@ -2236,6 +2256,11 @@ def apply_operations(
             )
 
         raw = full.read_bytes()
+        if eol_kind(raw) == "MIXED":
+            raise GateReject(
+                "structured apply rejects mixed EOL files; use "
+                f"validate_existing_change: {rel}"
+            )
         actual_sha = sha256_bytes(raw)
         if actual_sha != operation["expected_sha256"]:
             raise GateReject(
@@ -2308,6 +2333,8 @@ def verify_change_against_contract(
     cwd: Path,
     base_ref: str = "HEAD",
     run_tests: bool = True,
+    allow_mixed_eol: bool = False,
+    eol_corrections: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     validate_contract(contract)
 
@@ -2345,6 +2372,8 @@ def verify_change_against_contract(
                     rel,
                     base_ref=base_ref,
                     cwd=cwd,
+                    allow_mixed_eol=allow_mixed_eol,
+                    eol_correction=(eol_corrections or {}).get(rel),
                 )
             syntax_check(rel, cwd=cwd)
 
@@ -2404,7 +2433,11 @@ def write_evidence(
     verification: dict[str, Any],
     source_operation: str,
 ) -> Path:
-    if source_operation not in {"apply_change", "policy_update"}:
+    if source_operation not in {
+        "apply_change",
+        "policy_update",
+        "validate_existing_change",
+    }:
         raise GateReject(
             "committable evidence cannot be created by "
             f"{source_operation!r}"
@@ -2654,6 +2687,101 @@ def apply_structured_change(
             )
 
 
+def validate_eol_correction_contract(
+    contract: dict[str, Any],
+    *,
+    files: list[str],
+    cwd: Path,
+) -> dict[str, dict[str, str]]:
+    """Validate an explicit, byte-pinned LF/CRLF-to-MIXED correction."""
+    correction = contract.get("eol_correction")
+    if correction is None:
+        return {}
+    if not isinstance(correction, dict):
+        raise GateReject("eol_correction must be object")
+
+    parent_ref = correction.get("parent_ref")
+    entries = correction.get("files")
+    if (
+        not isinstance(parent_ref, str)
+        or re.fullmatch(r"[0-9a-f]{40}", parent_ref) is None
+    ):
+        raise GateReject("eol_correction.parent_ref must be a SHA")
+    if not isinstance(entries, list) or not entries:
+        raise GateReject("eol_correction.files must be non-empty list")
+
+    ancestor = run(
+        [executable("git"), "merge-base", "--is-ancestor", parent_ref, "HEAD"],
+        cwd=cwd,
+    )
+    if ancestor.returncode != 0:
+        raise GateReject("eol_correction.parent_ref must be an ancestor of HEAD")
+
+    expected_paths: set[str] = set()
+    result: dict[str, dict[str, str]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise GateReject("eol_correction file entry must be object")
+        required = {
+            "path",
+            "parent_sha256",
+            "head_sha256",
+            "current_sha256",
+            "parent_eol",
+            "head_eol",
+            "current_eol",
+        }
+        if set(entry) != required:
+            raise GateReject("eol_correction file entry has unsupported keys")
+        rel = safe_rel_path(
+            entry["path"],
+            roots=("src/", "tests/", ".github/", "scripts/", "db/", "docs/", ".githooks/"),
+        )
+        if rel in expected_paths:
+            raise GateReject(f"eol_correction duplicate path: {rel}")
+        expected_paths.add(rel)
+        for field in ("parent_sha256", "head_sha256", "current_sha256"):
+            if (
+                not isinstance(entry[field], str)
+                or re.fullmatch(r"[0-9a-f]{64}", entry[field]) is None
+            ):
+                raise GateReject(f"eol_correction.{field} must be a SHA-256")
+        for field in ("parent_eol", "head_eol", "current_eol"):
+            if not isinstance(entry[field], str):
+                raise GateReject(f"eol_correction.{field} must be a string")
+        if entry["parent_eol"] != "MIXED" or entry["current_eol"] != "MIXED":
+            raise GateReject("eol_correction must restore MIXED EOL")
+        if entry["head_eol"] not in {"LF", "CRLF"}:
+            raise GateReject("eol_correction HEAD EOL must be LF or CRLF")
+
+        parent = git_bytes(parent_ref, rel, cwd=cwd)
+        head = git_bytes("HEAD", rel, cwd=cwd)
+        current_path = cwd / rel
+        if parent is None or head is None or not current_path.is_file():
+            raise GateReject(f"eol_correction target missing: {rel}")
+        current = current_path.read_bytes()
+        if sha256_bytes(parent) != entry["parent_sha256"]:
+            raise GateReject(f"eol_correction parent SHA mismatch: {rel}")
+        if sha256_bytes(head) != entry["head_sha256"]:
+            raise GateReject(f"eol_correction HEAD SHA mismatch: {rel}")
+        if sha256_bytes(current) != entry["current_sha256"]:
+            raise GateReject(f"eol_correction current SHA mismatch: {rel}")
+        if eol_kind(parent) != entry["parent_eol"]:
+            raise GateReject(f"eol_correction parent EOL mismatch: {rel}")
+        if eol_kind(head) != entry["head_eol"]:
+            raise GateReject(f"eol_correction HEAD EOL mismatch: {rel}")
+        if eol_kind(current) != entry["current_eol"]:
+            raise GateReject(f"eol_correction current EOL mismatch: {rel}")
+        result[rel] = {
+            "head_eol": entry["head_eol"],
+            "current_eol": entry["current_eol"],
+        }
+
+    if expected_paths != set(files):
+        raise GateReject("eol_correction files must exactly match changed files")
+    return result
+
+
 def validate_existing_change(
     job: JobPaths,
     plan: dict[str, Any],
@@ -2673,18 +2801,33 @@ def validate_existing_change(
             "plan.contract_id does not match contract.id"
         )
 
+    files = changed_files(cwd=ROOT, base="HEAD")
+    corrections = validate_eol_correction_contract(
+        contract,
+        files=files,
+        cwd=ROOT,
+    )
     verification = verify_change_against_contract(
         contract,
         cwd=ROOT,
         base_ref="HEAD",
         run_tests=True,
+        allow_mixed_eol=True,
+        eol_corrections=corrections,
+    )
+
+    evidence = write_evidence(
+        job_id=plan["job_id"],
+        contract=contract,
+        verification=verification,
+        source_operation="validate_existing_change",
     )
 
     print("AI_WORKFLOW_GATE=PASS")
     print("RUNNER_VERSION=4")
     print("OPERATION=validate_existing_change")
     print(f"JOB_ID={plan['job_id']}")
-    print("COMMIT_EVIDENCE=NOT_CREATED")
+    print(f"EVIDENCE={evidence.relative_to(ROOT)}")
     print_verification_summary(verification)
 
 
@@ -2741,6 +2884,7 @@ def evidence_for_job(job_id: str) -> dict[str, Any]:
     if evidence.get("source_operation") not in {
         "apply_change",
         "policy_update",
+        "validate_existing_change",
     }:
         raise GateReject(
             "evidence source operation is not committable"
@@ -3003,6 +3147,7 @@ def main() -> int:
 
             operation = plan["operation"]
             state_changing = operation in {
+                "validate_existing_change",
                 "apply_change",
                 "policy_update",
                 "commit_validated_change",
@@ -3291,6 +3436,7 @@ def main() -> int:
 
             operation = plan["operation"]
             state_changing = operation in {
+                "validate_existing_change",
                 "apply_change",
                 "policy_update",
                 "commit_validated_change",
