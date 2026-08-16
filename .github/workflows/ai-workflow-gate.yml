@@ -17,7 +17,8 @@ jobs:
     name: Protected AI gate files
     runs-on: ubuntu-latest
     steps:
-      - name: Reject protected AI gate file changes
+      - name: Classify protected AI gate file changes
+        id: classify
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,23 +38,66 @@ jobs:
             "tests/operations/test_ai_workflow_execution_guards.py"
           )
 
-          blocked=()
+          protected_changed=()
+          outside_protected=()
+
           for changed in "${changed_files[@]}"; do
+            is_protected=false
             for protected in "${protected_paths[@]}"; do
               if [[ "${changed}" == "${protected}" ]]; then
-                blocked+=("${changed}")
+                protected_changed+=("${changed}")
+                is_protected=true
                 break
               fi
             done
+
+            if [[ "${is_protected}" == "false" ]]; then
+              outside_protected+=("${changed}")
+            fi
           done
 
-          if (( ${#blocked[@]} > 0 )); then
+          if (( ${#protected_changed[@]} == 0 )); then
+            echo "policy_update=false" >> "${GITHUB_OUTPUT}"
+            echo "AI_WORKFLOW_REMOTE_GATE=PASS"
+            exit 0
+          fi
+
+          if (( ${#outside_protected[@]} > 0 )); then
             echo "AI_WORKFLOW_REMOTE_GATE=REJECT"
-            echo "Protected AI gate files changed in this pull request:"
-            for blocked_path in "${blocked[@]}"; do
-              echo " - ${blocked_path}"
+            echo "Protected AI gate changes must not include non-protected files:"
+            for changed in "${outside_protected[@]}"; do
+              echo " - ${changed}"
             done
             exit 1
           fi
 
-          echo "AI_WORKFLOW_REMOTE_GATE=PASS"
+          echo "policy_update=true" >> "${GITHUB_OUTPUT}"
+          echo "Protected AI gate policy change detected."
+
+      - name: Checkout policy change
+        if: steps.classify.outputs.policy_update == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup Python
+        if: steps.classify.outputs.policy_update == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install policy test dependency
+        if: steps.classify.outputs.policy_update == 'true'
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run protected AI gate policy tests
+        if: steps.classify.outputs.policy_update == 'true'
+        env:
+          GH_TOKEN: ''
+        run: |
+          python -m pytest             tests/operations/test_ai_workflow_gate.py             tests/operations/test_ai_workflow_execution_guards.py             -q
+
+      - name: Accept validated protected AI gate policy change
+        if: steps.classify.outputs.policy_update == 'true'
+        run: echo "AI_WORKFLOW_REMOTE_GATE=PASS"
