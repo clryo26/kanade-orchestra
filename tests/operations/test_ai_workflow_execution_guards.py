@@ -31,6 +31,45 @@ def _valid_plan() -> dict[str, object]:
     }
 
 
+def test_safe_rel_path_allows_only_dependency_root_files():
+    gate = _load_gate()
+    roots = (
+        "src/",
+        "tests/",
+        ".github/",
+        "scripts/",
+        "db/",
+        "docs/",
+        ".githooks/",
+    )
+
+    assert gate.safe_rel_path("pyproject.toml", roots=roots) == "pyproject.toml"
+    assert gate.safe_rel_path("uv.lock", roots=roots) == "uv.lock"
+    assert ".toml" in gate.TEXT_SUFFIXES
+    assert ".lock" in gate.TEXT_SUFFIXES
+
+    with pytest.raises(gate.GateReject, match="path outside approved roots"):
+        gate.safe_rel_path("package.json", roots=roots)
+    with pytest.raises(gate.GateReject, match="path outside approved roots"):
+        gate.safe_rel_path("pyproject.toml.bak", roots=roots)
+
+
+def test_remote_gate_allows_protected_only_policy_changes_with_guard_tests():
+    workflow = Path(".github/workflows/ai-workflow-gate.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'echo "policy_update=false" >> "${GITHUB_OUTPUT}"' in workflow
+    assert 'echo "policy_update=true" >> "${GITHUB_OUTPUT}"' in workflow
+    assert "Protected AI gate changes must not include non-protected files:" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha }}" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "tests/operations/test_ai_workflow_gate.py" in workflow
+    assert "tests/operations/test_ai_workflow_execution_guards.py" in workflow
+    assert 'GH_TOKEN: \'\'' in workflow
+    assert 'echo "AI_WORKFLOW_REMOTE_GATE=PASS"' in workflow
+
+
 def test_plan_requires_next_action():
     gate = _load_gate()
     plan = _valid_plan()
