@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -233,7 +235,29 @@ def test_validate_existing_change_requires_runner_authorization_in_active_main(
     assert no_flag.returncode == 2
     assert "validate_existing_change requires --allow-state-change" in no_flag.stderr
 
-    no_runner = run_job(job, "--allow-state-change")
+    # Use an isolated Git repository so this assertion never depends on a
+    # developer-local publish token in the real repository common directory.
+    isolated_repo = tmp_path / "isolated-gate-repo"
+    (isolated_repo / "scripts").mkdir(parents=True)
+    shutil.copy2(RUNNER, isolated_repo / "scripts" / "ai_workflow_gate.py")
+    subprocess.run(["git", "init"], cwd=isolated_repo, check=True, capture_output=True)
+    (isolated_repo / ".git" / "kanade-ai-publish-token").write_text(
+        "a" * 64, encoding="ascii"
+    )
+    environment = dict(os.environ)
+    environment.pop("KANADE_AI_RUNNER_TOKEN", None)
+    no_runner = subprocess.run(
+        [
+            sys.executable,
+            str(isolated_repo / "scripts" / "ai_workflow_gate.py"),
+            str(job),
+            "--allow-state-change",
+        ],
+        cwd=isolated_repo,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
     assert no_runner.returncode == 2
     assert "must run through scripts/run_ai_job.ps1" in no_runner.stderr
 
