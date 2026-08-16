@@ -452,7 +452,12 @@ async function loadAll(options = {}) {
     let data;
     try {
         data = await requestBootstrapData(includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core');
-    } catch {
+    } catch (error) {
+        // Background core refresh must not fan out into the legacy multi-request fallback.
+        // Keep the legacy fallback only for an explicit full load.
+        if (!includeHeavyLists) {
+            throw error;
+        }
         data = await legacyBootstrapData(includeHeavyLists);
     }
     applyBootstrapData(data);
