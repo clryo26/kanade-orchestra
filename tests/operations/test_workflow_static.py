@@ -944,3 +944,15 @@ def test_promote_production_allows_zero_percent_tagged_revision():
     assert "traffic_entry = positive_traffic[0]" in content
     assert 'if traffic_entry.get("revisionName") != latest_ready_revision:' in content
     assert 'if traffic_entry.get("percent") != 100:' in content
+
+
+def test_deploy_to_test_waits_for_protected_pr_auto_merge():
+    script = Path("scripts/deploy_to_test.ps1").read_text(encoding="utf-8")
+
+    assert "gh pr merge $prNumber --merge --auto" in script
+    assert "--admin" not in script
+    assert "$mergeDeadline = (Get-Date).AddSeconds($RunDiscoveryTimeoutSeconds)" in script
+    assert "while ((Get-Date) -lt $mergeDeadline)" in script
+    assert "Start-Sleep -Seconds $PollIntervalSeconds" in script
+    assert 'if ($mergedPr.state -eq "CLOSED")' in script
+    assert "Timed out waiting for PR #$prNumber to reach MERGED state." in script
