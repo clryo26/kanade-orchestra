@@ -85,6 +85,9 @@ beforeEach(() => {
     sandbox.fetch = null;
     sandbox.showAlert = vi.fn();
     sandbox.portalRuntimeContext.inFlightGetRequests.clear();
+    sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue(null);
+    sandbox.portalRuntimeContext.dbCache.set = vi.fn().mockResolvedValue(undefined);
+    sandbox.portalRuntimeContext.dbCache.delete = vi.fn().mockResolvedValue(undefined);
 });
 
 // abort信号を監視してAbortErrorをrejectするモックfetch
@@ -251,6 +254,120 @@ describe('fetchWithTimeout (本番 api_runtime.js)', () => {
 });
 
 describe('request cache ETag restore', () => {
+    function jsonResponse(data, etag = null) {
+        return {
+            ok: true,
+            status: 200,
+            headers: {
+                get: (name) => {
+                    if (name === 'content-type') return 'application/json';
+                    if (name === 'ETag') return etag;
+                    return null;
+                },
+            },
+            json: async () => data,
+        };
+    }
+
+    test('fresh cache-first list data returns without a network request', async () => {
+        const cachedData = [{ id: 1 }];
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue({
+            data: cachedData,
+            etag: '"performances-etag-v1"',
+            timestamp: Date.now(),
+        });
+        sandbox.fetch = vi.fn();
+
+        await expect(request('/api/performances')).resolves.toEqual(cachedData);
+        expect(sandbox.fetch).not.toHaveBeenCalled();
+    });
+
+    test('expired cache revalidates with its ETag', async () => {
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue({
+            data: [{ id: 1 }],
+            etag: '"performances-etag-v1"',
+            timestamp: Date.now() - 10001,
+        });
+        let capturedOptions;
+        sandbox.fetch = vi.fn().mockImplementation((_url, options) => {
+            capturedOptions = options;
+            return Promise.resolve(jsonResponse([{ id: 2 }]));
+        });
+
+        await expect(request('/api/performances')).resolves.toEqual([{ id: 2 }]);
+        expect(capturedOptions.headers['If-None-Match']).toBe('"performances-etag-v1"');
+    });
+
+    test('legacy cache entries without a timestamp revalidate over the network', async () => {
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue({
+            data: [{ id: 1 }],
+            etag: '"performances-etag-v1"',
+        });
+        sandbox.fetch = vi.fn().mockResolvedValue(jsonResponse([{ id: 2 }]));
+
+        await expect(request('/api/performances')).resolves.toEqual([{ id: 2 }]);
+        expect(sandbox.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('force revalidation bypasses a fresh cache entry and keeps internal options out of fetch', async () => {
+        const cachedData = [{ id: 1 }];
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue({
+            data: cachedData,
+            etag: '"performances-etag-v1"',
+            timestamp: Date.now(),
+        });
+        let capturedOptions;
+        sandbox.fetch = vi.fn().mockImplementation((_url, options) => {
+            capturedOptions = options;
+            return Promise.resolve(jsonResponse([{ id: 2 }]));
+        });
+
+        await expect(request('/api/performances', { _forceRevalidate: true }))
+            .resolves.toEqual([{ id: 2 }]);
+        expect(sandbox.fetch).toHaveBeenCalledTimes(1);
+        expect(capturedOptions).not.toHaveProperty('_forceRevalidate');
+    });
+
+    test('auth and system endpoints always revalidate even with a fresh cache entry', async () => {
+        const freshEntry = {
+            data: { ok: 'cached' },
+            etag: '"sensitive-etag-v1"',
+            timestamp: Date.now(),
+        };
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn().mockResolvedValue(freshEntry);
+        sandbox.fetch = vi.fn().mockResolvedValue(jsonResponse({ ok: 'network' }));
+
+        await expect(request('/api/auth/devices')).resolves.toEqual({ ok: 'network' });
+        await expect(request('/api/system/readiness-summary')).resolves.toEqual({ ok: 'network' });
+        expect(sandbox.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('mutation invalidation prevents a previously fresh list entry from being reused', async () => {
+        const freshEntry = {
+            data: [{ id: 1 }],
+            etag: '"performances-etag-v1"',
+            timestamp: Date.now(),
+        };
+        const cacheEntries = new Map([['/api/performances', freshEntry]]);
+        sandbox.portalRuntimeContext.dbCache.getEntry = vi.fn((key) => (
+            Promise.resolve(cacheEntries.get(key) || null)
+        ));
+        sandbox.portalRuntimeContext.dbCache.delete = vi.fn((key) => {
+            cacheEntries.delete(key);
+            return Promise.resolve();
+        });
+        sandbox.fetch = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ ok: true }))
+            .mockResolvedValueOnce(jsonResponse([{ id: 2 }]));
+
+        await request('/api/performances/1', { method: 'PUT', body: '{}' });
+        expect(sandbox.portalRuntimeContext.dbCache.delete)
+            .toHaveBeenCalledWith('/api/performances');
+
+        await expect(request('/api/performances')).resolves.toEqual([{ id: 2 }]);
+        expect(sandbox.fetch).toHaveBeenCalledTimes(2);
+    });
+
     test('IndexedDB entry ETag is sent and 304 returns cached data', async () => {
         const cachedData = { performances: [{ id: 1 }] };
 
