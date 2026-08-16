@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .compat_gateway import get_compat_app, run_db_startup_self_check, seed_cloud_data_from_local
+from .db_pool import close_db_pool, open_db_pool
 from .lifespan import build_lifespan
 from .middleware import configure_middlewares
 from .router_registry import register_routes
@@ -14,5 +15,7 @@ def create_app() -> FastAPI:
     app.router.lifespan_context = build_lifespan(
         startup_self_check=run_db_startup_self_check,
         seed_startup_data=seed_cloud_data_from_local,
+        open_db_pool=open_db_pool,
+        close_db_pool=close_db_pool,
     )
     return register_routes(app)

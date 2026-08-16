@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-import psycopg
+from ..core.db_pool import pooled_psycopg as psycopg
 
 
 class ImprovementSuggestionRepository:

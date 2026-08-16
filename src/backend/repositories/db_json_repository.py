@@ -6,11 +6,11 @@ from typing import Any
 from fastapi import HTTPException
 
 try:
-    import psycopg
+    from ..core.db_pool import pooled_psycopg as psycopg
     from psycopg import sql as psql
     from psycopg.types.json import Jsonb
 except Exception:  # pragma: no cover - optional dependency guard
-    psycopg = None
+    psycopg = None  # type: ignore[assignment]
     psql = None
     Jsonb = None
 
