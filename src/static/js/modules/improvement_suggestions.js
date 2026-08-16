@@ -25,7 +25,9 @@
     }
 
     async function api(path, options) {
-        var response = await fetch(path, Object.assign({ headers: deviceHeaders(Boolean(options && options.body)) }, options || {}));
+        var requestOptions = Object.assign({ headers: deviceHeaders(Boolean(options && options.body)) }, options || {});
+        var method = String(requestOptions.method || 'GET').toUpperCase();
+        var response = await fetchWithTimeout(path, requestOptions, _resolveTimeoutMs(path, method));
         if (!response.ok) {
             var detail = '';
             try {
@@ -324,7 +326,8 @@
     async function pdfEditorApi(path, options) {
         var requestOptions = Object.assign({}, options || {});
         requestOptions.headers = Object.assign({}, deviceHeaders(false), requestOptions.headers || {});
-        var response = await fetch(path, requestOptions);
+        var method = String(requestOptions.method || 'GET').toUpperCase();
+        var response = await fetchWithTimeout(path, requestOptions, _resolveTimeoutMs(path, method));
         if (!response.ok) {
             var detail = '';
             try {
