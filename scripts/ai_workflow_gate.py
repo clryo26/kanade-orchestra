@@ -2670,11 +2670,18 @@ def validate_existing_change(
         run_tests=True,
     )
 
+    evidence = write_evidence(
+        job_id=plan["job_id"],
+        contract=contract,
+        verification=verification,
+        source_operation="apply_change",
+    )
+
     print("AI_WORKFLOW_GATE=PASS")
     print("RUNNER_VERSION=4")
     print("OPERATION=validate_existing_change")
     print(f"JOB_ID={plan['job_id']}")
-    print("COMMIT_EVIDENCE=NOT_CREATED")
+    print(f"EVIDENCE={evidence.relative_to(ROOT)}")
     print_verification_summary(verification)
 
 
