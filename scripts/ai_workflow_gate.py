@@ -703,7 +703,7 @@ def verify_change_against_contract(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab",
+            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
             "diff",
             "--check",
             base_ref,
@@ -959,7 +959,7 @@ def commit_validated_change(plan: dict[str, Any], *, allow_state_change: bool) -
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab",
+            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
             "diff",
             "--cached",
             "--check",
@@ -2354,7 +2354,7 @@ def verify_change_against_contract(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab",
+            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
             "diff",
             "--check",
             base_ref,
@@ -2811,7 +2811,7 @@ def commit_validated_change(
         [
             executable("git"),
             "-c",
-            "core.whitespace=trailing-space,space-before-tab",
+            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
             "diff",
             "--cached",
             "--check",

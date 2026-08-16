@@ -251,3 +251,47 @@ def test_pure_crlf_input_still_preserves_crlf_policy():
 
     assert text == "alpha\nbeta\n"
     assert eol == "CRLF"
+
+
+def test_diff_check_accepts_preserved_crlf_line_endings(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "gate-test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Gate Test"],
+        cwd=repo,
+        check=True,
+    )
+
+    target = repo / "demo.py"
+    target.write_bytes(b"alpha\r\n")
+    subprocess.run(["git", "add", "demo.py"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+    target.write_bytes(b"alpha\r\nbeta\r\n")
+    result = subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.whitespace=trailing-space,space-before-tab,cr-at-eol",
+            "diff",
+            "--check",
+            "HEAD",
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
