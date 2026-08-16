@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 try:
-    import psycopg
+    from ..core.db_pool import pooled_psycopg as psycopg
     from psycopg import sql as psql
 except Exception:  # pragma: no cover - optional dependency guard
     psycopg = None
