@@ -50,10 +50,10 @@ async function refreshSystemEnvironmentMenuVisibility() {
     }
 
     try {
-        const response = await fetch('/api/system/environment/status', {
+        const response = await fetchWithTimeout('/api/system/environment/status', {
             method: 'GET',
             headers: { 'X-Device-Id': deviceId },
-        });
+        }, PORTAL_TIMEOUT_GET);
         if (!response.ok) {
             button.hidden = true;
             return false;

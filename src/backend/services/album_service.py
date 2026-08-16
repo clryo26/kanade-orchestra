@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, Response
+from google.api_core.exceptions import NotFound
 
 from ..core.runtime_paths import UPLOAD_DIR
 from ..drive_storage import get_storage_bucket, storage_enabled
@@ -113,9 +114,9 @@ def get_album_photo_response(album_id: int, photo_id: int) -> Response:
         try:
             bucket = get_storage_bucket()
             blob = bucket.blob(object_name)
-            if not blob.exists():
-                raise HTTPException(status_code=404, detail="Photo object not found")
             return Response(content=blob.download_as_bytes(), media_type=media_type)
+        except NotFound as exc:
+            raise HTTPException(status_code=404, detail="Photo object not found") from exc
         except HTTPException:
             raise
         except Exception as exc:

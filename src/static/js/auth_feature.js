@@ -173,14 +173,14 @@ async function handlePortalLogin() {
         showAlert('名前、パート、パスワードを入力してください', 'warning');
         return;
     }
-    const response = await fetch('/api/auth/portal-login', jsonOptions('POST', {
+    const response = await fetchWithTimeout('/api/auth/portal-login', jsonOptions('POST', {
         name,
         part,
         password,
         device_id: portalDeviceId(),
         device_name: portalDeviceName(),
         user_agent: navigator.userAgent || ''
-    }));
+    }), PORTAL_TIMEOUT_MUTATION);
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
         const detail = typeof result === 'object' && result.detail ? String(result.detail) : '';

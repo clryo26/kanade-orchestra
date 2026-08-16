@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
+from google.api_core.exceptions import NotFound
 
 from ..core.runtime_paths import UPLOAD_DIR
 from ..drive_storage import get_storage_bucket, storage_enabled
@@ -180,9 +181,11 @@ def serve_stored_image(
 
     if storage_enabled():
         blob = get_storage_bucket().blob(ref.object_name)
-        if not blob.exists():
-            raise HTTPException(status_code=404, detail="Image not found")
-        return Response(content=blob.download_as_bytes(), media_type=media_type)
+        try:
+            content = blob.download_as_bytes()
+        except NotFound as exc:
+            raise HTTPException(status_code=404, detail="Image not found") from exc
+        return Response(content=content, media_type=media_type)
 
     if ref.local_path.exists():
         return _read_file_response(ref.local_path, media_type)
