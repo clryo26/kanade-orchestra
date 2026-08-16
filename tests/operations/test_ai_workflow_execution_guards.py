@@ -134,6 +134,28 @@ def test_write_evidence_is_keyed_and_signed(tmp_path, monkeypatch):
     assert signature == expected
 
 
+def test_validate_existing_change_creates_commit_evidence():
+    gate_source = Path("scripts/ai_workflow_gate.py").read_text(encoding="utf-8")
+    start = gate_source.rindex("def validate_existing_change(")
+    end = gate_source.index("\ndef publish_guard_token", start)
+    section = gate_source[start:end]
+
+    assert 'source_operation="apply_change"' in section
+    assert "allow_mixed_eol=True" in section
+    assert 'print(f"EVIDENCE={evidence.relative_to(ROOT)}")' in section
+    assert "COMMIT_EVIDENCE=NOT_CREATED" not in section
+
+
+def test_regular_change_verification_keeps_mixed_eol_disabled_by_default():
+    gate_source = Path("scripts/ai_workflow_gate.py").read_text(encoding="utf-8")
+    start = gate_source.rindex("def verify_change_against_contract(")
+    end = gate_source.index("\ndef write_evidence", start)
+    section = gate_source[start:end]
+
+    assert "allow_mixed_eol: bool = False" in section
+    assert "allow_mixed_eol=allow_mixed_eol" in section
+
+
 
 def test_gate_has_no_cr_at_eol_compatibility():
     gate_source = Path("scripts/ai_workflow_gate.py").read_text(encoding="utf-8")

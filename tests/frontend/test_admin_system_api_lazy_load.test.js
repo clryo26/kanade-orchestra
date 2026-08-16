@@ -84,11 +84,11 @@ describe('admin system API lazy loading', () => {
         expect(indexHtml).not.toContain('/static/js/modules/admin_system/api.js');
     });
 
-    test('initial script count in index.html is 64', () => {
+    test('initial script count in index.html is 66', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(65);
+        expect(matches.length).toBe(66);
     });
 
     test('app.js legacy list does not include admin_system/api.js', () => {

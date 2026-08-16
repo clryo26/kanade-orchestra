@@ -1,14 +1,28 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "scripts" / "ai_workflow_gate.py"
+
+
+def _load_gate():
+    spec = importlib.util.spec_from_file_location(
+        "ai_workflow_gate_for_eol_test", RUNNER
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def make_job(
@@ -215,3 +229,58 @@ def test_inspect_job_passes(tmp_path):
     assert result.returncode == 0
     assert "AI_WORKFLOW_GATE=PASS" in result.stdout
     assert "OPERATION=inspect" in result.stdout
+
+
+def test_verify_text_file_rejects_mixed_eol_by_default(tmp_path, monkeypatch):
+    gate = _load_gate()
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(b"first\r\nsecond\n")
+    monkeypatch.setattr(gate, "git_bytes", lambda *args, **kwargs: path.read_bytes())
+
+    with pytest.raises(gate.GateReject, match="mixed line endings"):
+        gate.verify_text_file(path, "mixed.txt", base_ref="HEAD", cwd=tmp_path)
+
+
+def test_verify_text_file_allows_existing_mixed_eol_only(tmp_path, monkeypatch):
+    gate = _load_gate()
+    path = tmp_path / "mixed.txt"
+    base = b"first\r\nsecond\n"
+    path.write_bytes(b"first\r\nupdated\n")
+    monkeypatch.setattr(gate, "git_bytes", lambda *args, **kwargs: base)
+
+    result = gate.verify_text_file(
+        path,
+        "mixed.txt",
+        base_ref="HEAD",
+        cwd=tmp_path,
+        allow_mixed_eol=True,
+    )
+
+    assert result["eol"] == "MIXED"
+    assert result["base_eol"] == "MIXED"
+
+
+@pytest.mark.parametrize(
+    ("base", "current"),
+    [
+        (b"first\nsecond\n", b"first\r\nupdated\n"),
+        (b"first\r\nsecond\n", b"first\nupdated\n"),
+    ],
+    ids=["lf-base-to-mixed", "mixed-base-to-lf"],
+)
+def test_verify_text_file_rejects_other_mixed_eol_transitions(
+    tmp_path, monkeypatch, base, current
+):
+    gate = _load_gate()
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(current)
+    monkeypatch.setattr(gate, "git_bytes", lambda *args, **kwargs: base)
+
+    with pytest.raises(gate.GateReject):
+        gate.verify_text_file(
+            path,
+            "mixed.txt",
+            base_ref="HEAD",
+            cwd=tmp_path,
+            allow_mixed_eol=True,
+        )

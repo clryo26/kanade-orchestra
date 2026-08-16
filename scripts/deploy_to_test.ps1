@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$BaseBranch = "main",
     [string]$ProjectId = "kanade-orchestra",
@@ -265,15 +265,30 @@ After PR CI succeeds, this automation merges the PR and waits for main CI and De
 
     Write-Step "Merging PR #$prNumber"
 
-    gh pr merge $prNumber --merge
+    gh pr merge $prNumber --merge --auto
     if ($LASTEXITCODE -ne 0) {
-        Stop-Deploy "PR merge failed. PR #$prNumber"
+        Stop-Deploy "PR auto-merge enablement failed. PR #$prNumber"
     }
 
-    $mergedPr = gh pr view $prNumber --json state,mergedAt,mergeCommit,url | ConvertFrom-Json
+    $mergeDeadline = (Get-Date).AddSeconds($RunDiscoveryTimeoutSeconds)
+    $mergedPr = $null
 
-    if ($mergedPr.state -ne "MERGED") {
-        Stop-Deploy "PR #$prNumber did not reach MERGED state."
+    while ((Get-Date) -lt $mergeDeadline) {
+        $mergedPr = gh pr view $prNumber --json state,mergedAt,mergeCommit,url | ConvertFrom-Json
+
+        if ($mergedPr.state -eq "MERGED") {
+            break
+        }
+
+        if ($mergedPr.state -eq "CLOSED") {
+            Stop-Deploy "PR #$prNumber was closed before merging."
+        }
+
+        Start-Sleep -Seconds $PollIntervalSeconds
+    }
+
+    if ($null -eq $mergedPr -or $mergedPr.state -ne "MERGED") {
+        Stop-Deploy "Timed out waiting for PR #$prNumber to reach MERGED state."
     }
 
     $mergeSha = [string]$mergedPr.mergeCommit.oid
