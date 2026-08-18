@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import time
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
@@ -29,6 +30,77 @@ from .timetable_payload_helpers import normalize_extra_for_collection
 from ..utils.concurrency import ensure_expected_updated_at
 from ..utils.collection_utils import find_item, next_id
 from ..utils.datetime_utils import next_updated_at
+
+
+ATTENDANCE_STATUSES = {"present", "absent", "late", "leave_early"}
+
+
+def _validate_absence_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate the attendance values shared by the member schedule UI and API."""
+    normalized = dict(payload)
+    status = str(normalized.get("status") or "").strip()
+    if status not in ATTENDANCE_STATUSES:
+        raise HTTPException(status_code=422, detail="Invalid attendance status")
+
+    if not str(normalized.get("schedule_id") or "").strip():
+        raise HTTPException(status_code=422, detail="schedule_id is required")
+    if not (
+        str(normalized.get("member_id") or "").strip()
+        or str(normalized.get("name") or "").strip()
+    ):
+        raise HTTPException(status_code=422, detail="member_id or name is required")
+
+    planned_time = str(normalized.get("planned_time") or "").strip()
+    if status in {"late", "leave_early"} and not planned_time:
+        raise HTTPException(status_code=422, detail="planned_time is required for late or leave_early")
+    if planned_time and status in {"late", "leave_early"}:
+        try:
+            time.fromisoformat(planned_time)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail="planned_time must be a valid time") from error
+    # A time on present/absent would be misleading, so normalize it away.
+    normalized["planned_time"] = planned_time if status in {"late", "leave_early"} else ""
+    normalized["status"] = status
+    return normalized
+
+
+def _matching_absence_index(items: list[dict[str, Any]], payload: dict[str, Any]) -> int | None:
+    """Return an existing response for the same member and practice, if any."""
+    schedule_id = str(payload.get("schedule_id") or "")
+    member_id = str(payload.get("member_id") or "")
+    name = str(payload.get("name") or "")
+    schedule_items = [
+        (index, item)
+        for index, item in enumerate(items)
+        if str(item.get("schedule_id") or "") == schedule_id
+    ]
+    for index, item in schedule_items:
+        if member_id and str(item.get("member_id") or "") == member_id:
+            return index
+
+    # Never use a display name to overwrite a response already owned by another
+    # member ID. Legacy name-only records are updated only when they are the one
+    # unambiguous candidate for the authenticated member's ID.
+    if not member_id or not name:
+        return None
+    matching_named_items = [
+        (index, item)
+        for index, item in schedule_items
+        if str(item.get("name") or "") == name
+    ]
+    legacy_matches = [
+        (index, item)
+        for index, item in matching_named_items
+        if not str(item.get("member_id") or "")
+    ]
+    has_other_member_with_name = any(
+        str(item.get("member_id") or "")
+        and str(item.get("member_id") or "") != member_id
+        for _, item in matching_named_items
+    )
+    if len(legacy_matches) == 1 and not has_other_member_with_name:
+        return legacy_matches[0][0]
+    return None
 
 
 def _promotion_route(promotion_id: int) -> str:
@@ -294,7 +366,17 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
     items = collection_items(name, load_json_data)
     upsert = parse_extra_upsert_request(raw_body)
     normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    if name == "absences":
+        normalized_body = _validate_absence_payload(normalized_body)
     assert_extra_collection_permission(name, device, payload=normalized_body)
+    if name == "absences":
+        # The generic extra endpoint predates attendance.  Preserve its URL while
+        # making POST idempotent per member/practice to prevent duplicate replies.
+        existing_index = _matching_absence_index(items, normalized_body)
+        if existing_index is not None:
+            existing_id = int(items[existing_index].get("id") or 0)
+            if existing_id:
+                return await update_item(name, existing_id, raw_body, device)
     if (
         name in {"desired_pieces", "promotions"}
         and str(device.get("permission") or "") not in {"管理者", "システム管理者"}
@@ -359,6 +441,8 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
     upsert = parse_extra_upsert_request(raw_body)
     ensure_expected_updated_at(current, upsert.expected_updated_at)
     normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    if name == "absences":
+        normalized_body = _validate_absence_payload(normalized_body)
     assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
     if (
         name in {"desired_pieces", "promotions"}
