@@ -1361,6 +1361,10 @@ def decode_text_file(data: bytes, *, rel: str) -> tuple[str, str]:
     kind = eol_kind(data)
     if kind == "CRLF":
         text = text.replace("\r\n", "\n")
+    elif kind == "MIXED":
+        # Structured apply may normalize a byte-pinned MIXED base, but
+        # operation text itself remains LF-only and output must be explicit.
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     return text, kind
 
@@ -1479,6 +1483,7 @@ def verify_text_file(
     cwd: Path,
     allow_mixed_eol: bool = False,
     eol_correction: dict[str, str] | None = None,
+    eol_normalization: str | None = None,
 ) -> dict[str, Any]:
     data = path.read_bytes()
     _, current = decode_text_file(data, rel=rel)
@@ -1496,6 +1501,12 @@ def verify_text_file(
                 f"EOL correction current EOL mismatch: {rel}: "
                 f"{current} != {eol_correction['current_eol']}"
             )
+    elif eol_normalization is not None:
+        if old_kind != "MIXED" or current != eol_normalization:
+            raise GateReject(
+                "structured apply mixed EOL normalization mismatch: "
+                f"{rel}: {old_kind} -> {current}, expected {eol_normalization}"
+            )
     elif old_kind == "MIXED" or current == "MIXED":
         if not (allow_mixed_eol and old_kind == current == "MIXED"):
             raise GateReject(
@@ -1505,6 +1516,7 @@ def verify_text_file(
             )
     if (
         eol_correction is None
+        and eol_normalization is None
         and old_kind in {"LF", "CRLF", "NONE"}
         and current != old_kind
     ):
@@ -2171,11 +2183,18 @@ def validate_operations_document(
             "new_text",
             "anchor",
             "content",
+            "output_eol",
         }
         extra_keys = sorted(set(operation) - allowed_keys)
         if extra_keys:
             raise GateReject(
                 f"unsupported keys for {where}: {extra_keys}"
+            )
+
+        output_eol = operation.get("output_eol")
+        if output_eol is not None and output_eol not in {"LF", "CRLF"}:
+            raise GateReject(
+                f"{where}.output_eol must be LF or CRLF"
             )
 
         expected_sha = operation.get("expected_sha256")
@@ -2225,7 +2244,8 @@ def apply_operations(
     document: dict[str, Any],
     *,
     cwd: Path,
-) -> None:
+) -> dict[str, str]:
+    normalized_eols: dict[str, str] = {}
     for index, operation in enumerate(document["operations"]):
         rel = operation["path"].replace("\\", "/")
         full = cwd / rel
@@ -2256,11 +2276,6 @@ def apply_operations(
             )
 
         raw = full.read_bytes()
-        if eol_kind(raw) == "MIXED":
-            raise GateReject(
-                "structured apply rejects mixed EOL files; use "
-                f"validate_existing_change: {rel}"
-            )
         actual_sha = sha256_bytes(raw)
         if actual_sha != operation["expected_sha256"]:
             raise GateReject(
@@ -2269,7 +2284,20 @@ def apply_operations(
                 f"got {actual_sha}"
             )
 
-        text, eol = decode_text_file(raw, rel=rel)
+        text, input_eol = decode_text_file(raw, rel=rel)
+        output_eol = operation.get("output_eol", input_eol)
+        if input_eol == "MIXED":
+            if output_eol not in {"LF", "CRLF"}:
+                raise GateReject(
+                    "mixed EOL structured apply requires explicit "
+                    f"output_eol LF or CRLF: {rel}"
+                )
+            normalized_eols[rel] = output_eol
+        elif "output_eol" in operation:
+            raise GateReject(
+                "output_eol is only allowed when the base file has "
+                f"mixed EOL: {rel}"
+            )
         expected_count = operation["expected_occurrences"]
 
         if op_type == "replace_exact":
@@ -2323,8 +2351,10 @@ def apply_operations(
             )
 
         full.write_bytes(
-            encode_text_file(text, eol=eol, rel=rel)
+            encode_text_file(text, eol=output_eol, rel=rel)
         )
+
+    return normalized_eols
 
 
 def verify_change_against_contract(
@@ -2335,6 +2365,7 @@ def verify_change_against_contract(
     run_tests: bool = True,
     allow_mixed_eol: bool = False,
     eol_corrections: dict[str, dict[str, str]] | None = None,
+    eol_normalizations: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     validate_contract(contract)
 
@@ -2374,6 +2405,7 @@ def verify_change_against_contract(
                     cwd=cwd,
                     allow_mixed_eol=allow_mixed_eol,
                     eol_correction=(eol_corrections or {}).get(rel),
+                    eol_normalization=(eol_normalizations or {}).get(rel),
                 )
             syntax_check(rel, cwd=cwd)
 
@@ -2592,13 +2624,17 @@ def apply_structured_change(
             )
 
         try:
-            apply_operations(document, cwd=temp_root)
+            eol_normalizations = apply_operations(
+                document,
+                cwd=temp_root,
+            )
 
             verification = verify_change_against_contract(
                 contract,
                 cwd=temp_root,
                 base_ref="HEAD",
                 run_tests=True,
+                eol_normalizations=eol_normalizations,
             )
 
             if git_head(cwd=ROOT) != base_head:
@@ -2622,6 +2658,7 @@ def apply_structured_change(
                     cwd=ROOT,
                     base_ref="HEAD",
                     run_tests=False,
+                    eol_normalizations=eol_normalizations,
                 )
                 if (
                     real_verification["content_hash"]
