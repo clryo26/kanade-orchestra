@@ -381,7 +381,7 @@ def test_db_mode_master_and_extra_crud_persist_to_db(client, backend_env, monkey
             "schedule_id": created_schedule.json()["id"],
             "member_id": 2,
             "name": "User",
-            "status": "ng",
+            "status": "absent",
         },
     )
     assert created_absence.status_code == 200
@@ -490,7 +490,7 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
     monkeypatch.setattr(youtube_validation_service, "urlopen", fake_urlopen)
 
     payloads = {
-        "absences": {"schedule_id": 20, "member_id": 1, "name": "Admin", "status": "ng", "note": "late"},
+        "absences": {"schedule_id": 20, "member_id": 1, "name": "Admin", "status": "absent", "note": "late"},
         "event_responses": {"event_id": 30, "member_id": 1, "name": "Admin", "status": "ok", "note": ""},
         "date_adjustments": {
             "title": "候補日",
