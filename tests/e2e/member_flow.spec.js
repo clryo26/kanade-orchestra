@@ -25,7 +25,7 @@ test.describe('Member flow smoke', () => {
     await expect(page.locator('#memberScheduleTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');
-    await drawer.getByRole('button', { name: '欠席連絡' }).click();
+    await drawer.getByRole('button', { name: '出欠確認' }).click();
     await expect(page.locator('#memberAbsenceTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');

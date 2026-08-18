@@ -49,6 +49,12 @@ async function enterPortal() {
     // 正常起動完亁E 起動画面を非表示にする
     if (window.portalStartup) window.portalStartup.ready();
 
+    // Essential bootstrap already includes schedules, members, and absences.
+    // Run this once per signed-in member so normal rerenders cannot reopen it.
+    if (typeof showUpcomingAttendanceReminder === 'function') {
+        showUpcomingAttendanceReminder();
+    }
+
     // 背景チE�Eタ読込は操作可能化後に開始。エラーは冁E��で処琁E��る、E
     void loadFullDataInBackground();
 }

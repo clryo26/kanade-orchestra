@@ -35,7 +35,7 @@ const ACCESS_LOG_MENU_LABELS = {
     'member-practice-instruction': '練習指示',
     'member-recording': '録音部屋',
     'member-intro': '団員紹介',
-    'member-absence': '欠席連絡',
+    'member-absence': '出欠確認',
     'member-sheet': '楽譜ライブラリ',
     'member-sheet-viewer': '楽譜表示',
     'member-payment': '支払状況',

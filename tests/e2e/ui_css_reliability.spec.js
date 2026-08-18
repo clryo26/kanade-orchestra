@@ -213,7 +213,7 @@ test.describe('UI CSS reliability smoke', () => {
     monitor.assertNoClientErrors();
   });
 
-  test('mobile absence controls keep readable size and viewport width after selecting and editing', async ({ page }) => {
+  test('mobile attendance controls keep readable size and viewport width', async ({ page }) => {
     const monitor = attachErrorMonitor(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await installPortalApiMocks(page, {
@@ -252,14 +252,13 @@ test.describe('UI CSS reliability smoke', () => {
     await loginAsMember(page);
 
     await page.click('#portalDrawerToggle');
-    await page.locator('#portalDrawerMenu [data-home-tab="member-absence"]').click();
-    await expect(page.locator('#memberAbsenceTab')).toBeVisible();
-    await expect(page.locator('.absence-edit-btn')).toBeVisible();
+    await page.locator('#portalDrawerMenu [data-home-tab="member-schedule"]').click();
+    await expect(page.locator('#memberScheduleTab')).toBeVisible();
+    await expect(page.locator('[data-attendance-form]')).toBeVisible();
 
     const beforeEdit = await page.evaluate(() => {
-      const schedule = document.querySelector('#absenceScheduleId');
-      const status = document.querySelector('#absenceStatus');
-      const time = document.querySelector('#absenceTime');
+      const status = document.querySelector('[data-attendance-form] input[value="late"]');
+      const time = document.querySelector('[data-attendance-form] [data-attendance-time]');
       const viewportWidth = document.documentElement.clientWidth;
       const scrollWidth = document.documentElement.scrollWidth;
       const scale = window.visualViewport?.scale ?? 1;
@@ -268,69 +267,55 @@ test.describe('UI CSS reliability smoke', () => {
         viewportWidth,
         scrollWidth,
         scale,
-        scheduleFontSize: fontSize(schedule),
         statusFontSize: fontSize(status),
         timeFontSize: fontSize(time),
-        timeDisabled: time.disabled,
+        timeValue: time.value,
       };
     });
 
-    expect(parseFloat(beforeEdit.scheduleFontSize)).toBeGreaterThanOrEqual(16);
     expect(parseFloat(beforeEdit.statusFontSize)).toBeGreaterThanOrEqual(16);
     expect(parseFloat(beforeEdit.timeFontSize)).toBeGreaterThanOrEqual(16);
-    expect(beforeEdit.timeDisabled).toBeTruthy();
+    expect(beforeEdit.timeValue).toBe('19:00');
     expect(beforeEdit.scrollWidth).toBeLessThanOrEqual(beforeEdit.viewportWidth);
     expect(beforeEdit.scale).toBeCloseTo(1, 2);
 
-    await page.selectOption('#absenceScheduleId', '101');
-    await page.locator('.absence-edit-btn').click();
+    await page.locator('[data-attendance-form] input[value="present"]').check();
 
     const afterEdit = await page.evaluate(() => {
-      const schedule = document.querySelector('#absenceScheduleId');
-      const status = document.querySelector('#absenceStatus');
-      const time = document.querySelector('#absenceTime');
+      const form = document.querySelector('[data-attendance-form]');
+      const status = form.querySelector('input[value="present"]');
+      const time = form.querySelector('[data-attendance-time]');
       const viewportWidth = document.documentElement.clientWidth;
       const scrollWidth = document.documentElement.scrollWidth;
       const scale = window.visualViewport?.scale ?? 1;
-      const row = document.querySelector('.absence-row');
-      const rowBox = row.getBoundingClientRect();
-      const labelBox = row.querySelector('.absence-row-label').getBoundingClientRect();
-      const actionsBox = row.querySelector('.absence-row-actions').getBoundingClientRect();
+      const formBox = form.getBoundingClientRect();
+      const statusBox = status.getBoundingClientRect();
+      const actionsBox = form.querySelector('[data-attendance-save]').getBoundingClientRect();
       const fontSize = (element) => getComputedStyle(element).fontSize;
       return {
         viewportWidth,
         scrollWidth,
         scale,
-        scheduleFontSize: fontSize(schedule),
         statusFontSize: fontSize(status),
         timeFontSize: fontSize(time),
-        timeDisabled: time.disabled,
-        row: {
-          left: rowBox.left,
-          right: rowBox.right,
-          width: rowBox.width,
+        timeHidden: time.closest('[data-attendance-time-row]').hidden,
+        form: {
+          left: formBox.left,
+          right: formBox.right,
+          width: formBox.width,
         },
-        label: {
-          left: labelBox.left,
-          right: labelBox.right,
-          width: labelBox.width,
-        },
-        actions: {
-          left: actionsBox.left,
-          right: actionsBox.right,
-          width: actionsBox.width,
-        },
+        status: { left: statusBox.left, right: statusBox.right },
+        actions: { left: actionsBox.left, right: actionsBox.right },
       };
     });
 
-    expect(parseFloat(afterEdit.scheduleFontSize)).toBeGreaterThanOrEqual(16);
     expect(parseFloat(afterEdit.statusFontSize)).toBeGreaterThanOrEqual(16);
     expect(parseFloat(afterEdit.timeFontSize)).toBeGreaterThanOrEqual(16);
-    expect(afterEdit.timeDisabled).toBeFalsy();
+    expect(afterEdit.timeHidden).toBeTruthy();
     expect(afterEdit.scrollWidth).toBeLessThanOrEqual(afterEdit.viewportWidth);
     expect(afterEdit.scale).toBeCloseTo(1, 2);
-    expect(afterEdit.label.left).toBeGreaterThanOrEqual(afterEdit.row.left);
-    expect(afterEdit.actions.right).toBeLessThanOrEqual(afterEdit.row.right + 1);
+    expect(afterEdit.status.left).toBeGreaterThanOrEqual(afterEdit.form.left);
+    expect(afterEdit.actions.right).toBeLessThanOrEqual(afterEdit.form.right + 1);
 
     monitor.assertNoClientErrors();
   });

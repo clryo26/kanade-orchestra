@@ -28,7 +28,7 @@ function portalMenuGroups() {
             title: '練習情報',
             items: [
                 { tab: 'member-schedule', label: '練習予定' },
-                { tab: 'member-absence', label: '欠席連絡' },
+                { tab: 'member-absence', label: '出欠確認' },
                 { tab: 'member-practice-instruction', label: '練習指示' },
                 { tab: 'member-recording', label: '録音部屋' },
             ],
