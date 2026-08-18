@@ -91,6 +91,12 @@ async function installPortalApiMocks(page, options = {}) {
       return fulfillJson(route, bootstrapData);
     }
 
+    // The attendance overview lazily reloads this collection after navigation.
+    // Keep that response consistent with the bootstrap fixture used by its E2E.
+    if (path === '/api/extra/absences' && method === 'GET') {
+      return fulfillJson(route, bootstrapData.extras?.absences || []);
+    }
+
     if (path === '/api/system/access-logs') {
       return method === 'POST' ? fulfillJson(route, { ok: true }) : fulfillJson(route, []);
     }

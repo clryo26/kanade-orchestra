@@ -20,7 +20,7 @@ test.describe('Member menu smoke', () => {
     await expect(page.locator('#portalDrawerMenu')).toBeVisible();
     const drawer = page.locator('#portalDrawerMenu');
 
-    for (const label of ['練習予定', '演奏会情報', '録音部屋', '楽譜ライブラリ', '欠席連絡']) {
+    for (const label of ['練習予定', '演奏会情報', '録音部屋', '楽譜ライブラリ', '出欠確認']) {
       await expect(drawer.getByRole('button', { name: label })).toBeVisible();
     }
 
@@ -40,7 +40,7 @@ test.describe('Member menu smoke', () => {
     await expect(page.locator('#memberSheetTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');
-    await drawer.getByRole('button', { name: '欠席連絡' }).click();
+    await drawer.getByRole('button', { name: '出欠確認' }).click();
     await expect(page.locator('#memberAbsenceTab')).toBeVisible();
   });
 });

@@ -1,6 +1,6 @@
 # ARCHITECTURE_DECISIONS
 
-最終更新: 2026-07-02
+最終更新: 2026-08-18
 
 この文書は設計判断を一箇所で追跡するためのADR集約ポイントです。
 
@@ -99,3 +99,10 @@
 - Decision: 判断の記録先を `ARCHITECTURE_DECISIONS.md` に統一し、`DECISION_LOG_GUIDE.md` と PRテンプレートで運用を固定する。
 - Consequence: 新規参加者のオンボーディングと判断トレースが容易になる。
 - Related: [docs/DECISION_LOG_GUIDE.md](docs/DECISION_LOG_GUIDE.md), [.github/pull_request_template.md](.github/pull_request_template.md), [scripts/check_decision_log.py](scripts/check_decision_log.py)
+## ADR-013: 練習出欠は既存absencesコレクションを拡張する
+
+- Status: Accepted
+- Context: `absences` はすでに練習ID・団員ID・状態・予定時刻を持ち、欠席・遅刻・早退のデータが運用済みである。
+- Decision: 新テーブルや移行を追加せず、`present` を含む4状態をAPIで検証する。POSTは同一練習・同一団員の既存回答を更新する冪等操作とし、旧 `ng` は欠席として表示する。
+- Consequence: 既存の読み込み・更新APIとDBデータを維持しながら、練習予定からの出欠登録と出欠確認を実現する。
+- Related: [src/backend/services/extra_service.py](src/backend/services/extra_service.py), [src/static/js/modules/absences.js](src/static/js/modules/absences.js), [db/postgresql_table_spec.md](../db/postgresql_table_spec.md)
