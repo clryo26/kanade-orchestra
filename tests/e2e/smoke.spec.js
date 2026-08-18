@@ -25,7 +25,7 @@ test.describe('Portal smoke', () => {
     await expect(page.locator('#memberPanel')).toBeVisible();
     await page.click('#portalDrawerToggle');
     const drawer = page.locator('#portalDrawerMenu');
-    for (const label of ['練習予定', '演奏会情報', '録音部屋', '楽譜ライブラリ', '欠席連絡']) {
+    for (const label of ['練習予定', '演奏会情報', '録音部屋', '楽譜ライブラリ', '出欠確認']) {
       await expect(drawer.getByRole('button', { name: label })).toBeVisible();
     }
 

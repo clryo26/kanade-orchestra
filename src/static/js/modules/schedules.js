@@ -324,6 +324,7 @@ function renderMemberSchedules() {
                     <div class="schedule-detail-line">練習可能時間: ${escapeHtml(scheduleAvailableLabel(sched) || '未定')}</div>
                     <div class="schedule-detail-line">練習曲: ${escapeHtml(sched.pieces || '未定')}</div>
                     <div class="schedule-detail-line multiline-text">備考: ${escapeHtml(sched.notes || 'なし')}</div>
+                    ${typeof attendanceFormHtml === 'function' ? attendanceFormHtml(sched, ownAttendanceForSchedule(sched.id)) : ''}
                     <div class="schedule-action-row">
                         <button class="btn btn-outline-success btn-sm" type="button" data-google-calendar="${escapeHtml(String(sched.id))}">Googleカレンダー連携</button>
                     </div>
@@ -336,6 +337,7 @@ function renderMemberSchedules() {
     container.querySelectorAll('[data-google-calendar]').forEach((button) => {
         button.addEventListener('click', () => openGoogleCalendarForSchedule(button.dataset.googleCalendar));
     });
+    if (typeof bindAttendanceForms === 'function') bindAttendanceForms(container);
 }
 
 

@@ -303,8 +303,8 @@ def test_mixed_crlf_lf_input_is_classified_as_mixed():
     assert gate.eol_kind(data) == "MIXED"
     text, eol = gate.decode_text_file(data, rel="src/demo.py")
 
-    assert text == "alpha\r\nbeta\n"
-    assert "\r" in text
+    assert text == "alpha\nbeta\n"
+    assert "\r" not in text
     assert eol == "MIXED"
 
 
@@ -363,7 +363,18 @@ def test_diff_check_accepts_preserved_crlf_line_endings(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_structured_apply_rejects_mixed_eol_without_writing(tmp_path):
+@pytest.mark.parametrize(
+    ("output_eol", "expected"),
+    [
+        ("LF", b"alpha\ngamma\n"),
+        ("CRLF", b"alpha\r\ngamma\r\n"),
+    ],
+)
+def test_structured_apply_normalizes_mixed_eol_with_pinned_output(
+    tmp_path,
+    output_eol,
+    expected,
+):
     gate = _load_gate_module()
     target = tmp_path / "src" / "demo.py"
     target.parent.mkdir()
@@ -379,17 +390,156 @@ def test_structured_apply_rejects_mixed_eol_without_writing(tmp_path):
                 "expected_occurrences": 1,
                 "old_text": "alpha\nbeta\n",
                 "new_text": "alpha\ngamma\n",
+                "output_eol": output_eol,
             }
         ]
     }
 
-    with pytest.raises(
-        gate.GateReject,
-        match="structured apply rejects mixed EOL files; use validate_existing_change",
-    ):
+    normalizations = gate.apply_operations(operation, cwd=tmp_path)
+
+    assert target.read_bytes() == expected
+    assert gate.eol_kind(target.read_bytes()) == output_eol
+    assert normalizations == {"src/demo.py": output_eol}
+
+
+def test_structured_apply_mixed_eol_rejects_sha_mismatch_without_writing(tmp_path):
+    gate = _load_gate_module()
+    target = tmp_path / "src" / "demo.py"
+    target.parent.mkdir()
+    original = b"alpha\r\nbeta\n"
+    target.write_bytes(original)
+    operation = {
+        "operations": [
+            {
+                "path": "src/demo.py",
+                "operation": "replace_exact",
+                "expected_sha256": "0" * 64,
+                "expected_occurrences": 1,
+                "old_text": "alpha\nbeta\n",
+                "new_text": "alpha\ngamma\n",
+                "output_eol": "LF",
+            }
+        ]
+    }
+
+    with pytest.raises(gate.GateReject, match="source SHA-256 mismatch"):
         gate.apply_operations(operation, cwd=tmp_path)
 
     assert target.read_bytes() == original
+
+
+def test_structured_apply_mixed_eol_rejects_occurrence_mismatch_without_writing(tmp_path):
+    gate = _load_gate_module()
+    target = tmp_path / "src" / "demo.py"
+    target.parent.mkdir()
+    original = b"alpha\r\nbeta\n"
+    target.write_bytes(original)
+    operation = {
+        "operations": [
+            {
+                "path": "src/demo.py",
+                "operation": "replace_exact",
+                "expected_sha256": hashlib.sha256(original).hexdigest(),
+                "expected_occurrences": 2,
+                "old_text": "alpha\nbeta\n",
+                "new_text": "alpha\ngamma\n",
+                "output_eol": "LF",
+            }
+        ]
+    }
+
+    with pytest.raises(gate.GateReject, match="replace occurrence mismatch"):
+        gate.apply_operations(operation, cwd=tmp_path)
+
+    assert target.read_bytes() == original
+
+
+def test_structured_apply_mixed_eol_rejects_utf8_bom_without_writing(tmp_path):
+    gate = _load_gate_module()
+    target = tmp_path / "src" / "demo.py"
+    target.parent.mkdir()
+    original = b"\xef\xbb\xbfalpha\r\nbeta\n"
+    target.write_bytes(original)
+    operation = {
+        "operations": [
+            {
+                "path": "src/demo.py",
+                "operation": "replace_exact",
+                "expected_sha256": hashlib.sha256(original).hexdigest(),
+                "expected_occurrences": 1,
+                "old_text": "alpha\nbeta\n",
+                "new_text": "alpha\ngamma\n",
+                "output_eol": "LF",
+            }
+        ]
+    }
+
+    with pytest.raises(gate.GateReject, match="UTF-8 BOM forbidden"):
+        gate.apply_operations(operation, cwd=tmp_path)
+
+    assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("original", "expected"),
+    [
+        (b"alpha\nbeta\n", b"alpha\ngamma\n"),
+        (b"alpha\r\nbeta\r\n", b"alpha\r\ngamma\r\n"),
+    ],
+)
+def test_structured_apply_preserves_normal_lf_and_crlf_behavior(
+    tmp_path,
+    original,
+    expected,
+):
+    gate = _load_gate_module()
+    target = tmp_path / "src" / "demo.py"
+    target.parent.mkdir()
+    target.write_bytes(original)
+    operation = {
+        "operations": [
+            {
+                "path": "src/demo.py",
+                "operation": "replace_exact",
+                "expected_sha256": hashlib.sha256(original).hexdigest(),
+                "expected_occurrences": 1,
+                "old_text": "alpha\nbeta\n",
+                "new_text": "alpha\ngamma\n",
+            }
+        ]
+    }
+
+    assert gate.apply_operations(operation, cwd=tmp_path) == {}
+    assert target.read_bytes() == expected
+
+
+def test_verify_text_file_accepts_only_pinned_mixed_normalization(
+    tmp_path,
+    monkeypatch,
+):
+    gate = _load_gate_module()
+    target = tmp_path / "demo.py"
+    target.write_bytes(b"alpha\ngamma\n")
+    monkeypatch.setattr(gate, "git_bytes", lambda *_args, **_kwargs: b"alpha\r\nbeta\n")
+
+    result = gate.verify_text_file(
+        target,
+        "src/demo.py",
+        base_ref="HEAD",
+        cwd=tmp_path,
+        eol_normalization="LF",
+    )
+    assert result["base_eol"] == "MIXED"
+    assert result["eol"] == "LF"
+
+    with pytest.raises(gate.GateReject, match="normalization mismatch"):
+        gate.verify_text_file(
+            target,
+            "src/demo.py",
+            base_ref="HEAD",
+            cwd=tmp_path,
+            eol_normalization="CRLF",
+        )
 
 
 @pytest.mark.parametrize(
