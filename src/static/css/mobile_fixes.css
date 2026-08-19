@@ -37,7 +37,22 @@
 }
 
 .attendance-time-inline {
-    min-width: 8.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.attendance-time-inline .form-label {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+.attendance-time-inline .form-control {
+    flex: 0 0 6.75rem;
+    width: 6.75rem;
+    min-width: 0;
 }
 
 @media (max-width: 768px) {
@@ -58,9 +73,9 @@
 
     .attendance-status-row-secondary {
         display: grid;
-        grid-template-columns: max-content max-content minmax(8rem, 1fr);
+        grid-template-columns: max-content max-content minmax(0, 1fr);
         gap: 0.65rem;
-        align-items: end;
+        align-items: center;
     }
 
     .attendance-status-row .form-check {
@@ -72,12 +87,14 @@
     }
 
     .attendance-time-inline .form-control {
-        width: 100%;
+        flex-basis: 6.75rem;
+        width: 6.75rem;
         min-width: 0;
         font-size: 16px;
     }
 
     .attendance-time-inline .form-label {
+        margin-bottom: 0;
         font-size: 0.875rem;
         white-space: nowrap;
     }
