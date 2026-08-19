@@ -40,6 +40,10 @@ function bindAttendanceForms(container, afterSave = null) {
     });
 }
 
+function reminderBodyHtml(schedules) {
+    return `<p>練習予定について、出欠の登録をお願いいたします。</p>${schedules.map((schedule) => `<div class="info-block"><strong>${escapeHtml(formatScheduleDate(schedule.date))} ${escapeHtml(scheduleTimeLabel(schedule) || '')}</strong><div class="small text-muted">${escapeHtml(schedule.venue || '')}</div>${attendanceFormHtml(schedule, null, 'reminder')}</div>`).join('')}`;
+}
+
 function attendanceOverviewSchedules() {
     const today = window.portalRuntimeContext.today();
     return sortedSchedules(appState.schedules || []).filter((schedule) => !schedule?.date || schedule.date >= today);
