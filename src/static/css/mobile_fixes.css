@@ -51,14 +51,14 @@
 
     .attendance-status-row-primary {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: max-content max-content minmax(8rem, 1fr);
         gap: 0.65rem;
         margin-bottom: 0.65rem;
     }
 
     .attendance-status-row-secondary {
         display: grid;
-        grid-template-columns: auto auto minmax(8rem, 1fr);
+        grid-template-columns: max-content max-content minmax(8rem, 1fr);
         gap: 0.65rem;
         align-items: end;
     }
