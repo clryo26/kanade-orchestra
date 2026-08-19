@@ -54,7 +54,7 @@
     <!-- 起動画面: JavaScript初期化前から表示。正常起動後に非表示になる。 -->
     <section id="portalStartupPanel" role="status" aria-live="polite">
         <h1>奏オケポータル</h1>
-        <p id="portalStartupMessage">起動しています...</p>
+        <p id="portalStartupMessage">起動を準備しています...</p>
         <button id="portalStartupRetryButton" type="button" hidden onclick="var message=document.getElementById('portalStartupMessage'); if (message &amp;&amp; String(message.textContent || '').trim() === '通信に時間がかかっています。再試行してください。') { event.preventDefault(); event.stopImmediatePropagation(); this.disabled = true; message.textContent = '再試行しています...'; var retryUrl = new URL(window.location.href); retryUrl.searchParams.set('_portal_retry', String(Date.now())); window.location.replace(retryUrl.toString()); }">再試行</button>
         <button id="portalStartupReloadButton" type="button" hidden>再読み込み</button>
     </section>

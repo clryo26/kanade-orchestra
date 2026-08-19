@@ -4,6 +4,21 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+if (window.portalStartup && !window.__KANADE_STARTUP_PROGRESS_MARK_WRAPPED__) {
+    window.__KANADE_STARTUP_PROGRESS_MARK_WRAPPED__ = true;
+    const originalStartupMark = window.portalStartup.mark;
+    window.portalStartup.mark = function (name, detail) {
+        if (name === 'IDB_START') {
+            window.portalStartup.setMessage('端末データを準備しています...');
+        } else if (name === 'UI_BIND_START') {
+            window.portalStartup.setMessage('画面を準備しています...');
+        } else if (name === 'AUTH_START') {
+            window.portalStartup.setMessage('認証を確認しています...');
+        }
+        return originalStartupMark(name, detail);
+    };
+}
+
 async function loadPartSettingsForLogin() {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
