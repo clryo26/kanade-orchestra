@@ -22,9 +22,64 @@
     min-width: 0;
 }
 
+.attendance-status-layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+}
+
+.attendance-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+}
+
+.attendance-time-inline {
+    min-width: 8.5rem;
+}
+
 @media (max-width: 768px) {
     .recording-continuous-check {
         padding: 0.45rem 0.75rem;
+    }
+
+    .attendance-status-layout {
+        display: block;
+    }
+
+    .attendance-status-row-primary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 0.65rem;
+    }
+
+    .attendance-status-row-secondary {
+        display: grid;
+        grid-template-columns: auto auto minmax(8rem, 1fr);
+        gap: 0.65rem;
+        align-items: end;
+    }
+
+    .attendance-status-row .form-check {
+        margin-right: 0;
+    }
+
+    .attendance-time-inline {
+        min-width: 0;
+    }
+
+    .attendance-time-inline .form-control {
+        width: 100%;
+        min-width: 0;
+        font-size: 16px;
+    }
+
+    .attendance-time-inline .form-label {
+        font-size: 0.875rem;
+        white-space: nowrap;
     }
 
     #memberAbsenceTab .form-control,
