@@ -33,6 +33,22 @@ async function enterPortal() {
     renderLoadingPlaceholders();
     setLoadingBar('読み込み中...');
 
+    if (typeof attendanceOverviewSchedules !== 'function') {
+        if (!window.portalRuntimeContext.attendanceFollowupLoadPromise) {
+            window.portalRuntimeContext.attendanceFollowupLoadPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = '/static/js/modules/attendance_followup.js?v=20260819-1';
+                script.addEventListener('load', resolve, { once: true });
+                script.addEventListener('error', () => {
+                    window.portalRuntimeContext.attendanceFollowupLoadPromise = null;
+                    reject(new Error('出欠画面の追加機能を読み込めませんでした'));
+                }, { once: true });
+                document.head.appendChild(script);
+            });
+        }
+        await window.portalRuntimeContext.attendanceFollowupLoadPromise;
+    }
+
     if (!appState.essentialDataLoaded) {
         try {
             await loadEssentialData({ useCachedPreview: true });
