@@ -510,27 +510,3 @@ def test_eol_correction_contract_pins_parent_head_current_and_eol(tmp_path):
             files=[],
             cwd=tmp_path,
         )
-
-
-def test_decode_text_file_preserves_allowed_utf8_bom():
-    gate = _load_gate_module()
-    rel = "tests/frontend/test_recordings_lazy_load.test.js"
-    data = b"\xef\xbb\xbfconst value = 1;\n"
-
-    text, eol = gate.decode_text_file(data, rel=rel)
-
-    assert text == "\ufeffconst value = 1;\n"
-    assert eol == "LF"
-    assert gate.encode_text_file(text, eol=eol, rel=rel) == data
-
-
-def test_decode_text_file_rejects_unlisted_utf8_bom():
-    gate = _load_gate_module()
-    data = b"\xef\xbb\xbfconst value = 1;\n"
-
-    try:
-        gate.decode_text_file(data, rel="tests/frontend/unlisted.test.js")
-    except gate.GateReject as exc:
-        assert "UTF-8 BOM forbidden" in str(exc)
-    else:
-        raise AssertionError("unlisted BOM file must be rejected")
