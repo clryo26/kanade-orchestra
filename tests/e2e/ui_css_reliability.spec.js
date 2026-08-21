@@ -180,8 +180,8 @@ test.describe('UI CSS reliability smoke', () => {
       const home = document.querySelector('#memberHomeTab .portal-home');
       const section = document.querySelector('#memberHomeTab .portal-home-section');
       const menuGrid = document.querySelector('#memberHomeTab .portal-menu-grid');
-      const announcementLine = document.querySelector('#portalHomeAnnouncementList .portal-home-announcement-mobile-line');
-      const announcementTitle = document.querySelector('#portalHomeAnnouncementList .portal-announcement-title');
+      const announcementLine = document.querySelector('#portalMaintenanceInfoList [data-maintenance-latest-list] .portal-home-announcement-mobile-line');
+      const announcementTitle = document.querySelector('#portalMaintenanceInfoList [data-maintenance-latest-list] .portal-announcement-title');
 
       const rect = (element) => {
         const box = element.getBoundingClientRect();
@@ -250,6 +250,7 @@ test.describe('UI CSS reliability smoke', () => {
     });
     await page.goto('/');
     await loginAsMember(page);
+    await expect(page.locator('#memberPanel')).toBeVisible();
 
     await page.click('#portalDrawerToggle');
     await page.locator('#portalDrawerMenu [data-home-tab="member-schedule"]').click();

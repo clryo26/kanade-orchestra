@@ -122,24 +122,24 @@ function renderMemberPerformances() {
 
 function renderMemberExtraViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
-    renderAbsenceView();
-    if (includeHeavyLists) renderSheetLibraryView();
-    renderPracticeInstructionView();
-    renderFlyerDistributionView();
-    renderPaymentView();
-    renderCastingView();
-    renderMemberEventView();
-    renderPerformanceDayInfoView();
-    renderDateAdjustmentView();
-    renderPieceInfoView();
-    renderDesiredPieceView();
-    renderManualView();
-    renderPromotionView();
+    if (typeof renderAbsenceView === 'function') renderAbsenceView();
+    if (includeHeavyLists && typeof renderSheetLibraryView === 'function' && typeof bindSheetLibraryFilters === 'function') renderSheetLibraryView();
+    if (typeof renderPracticeInstructionView === 'function') renderPracticeInstructionView();
+    if (typeof renderFlyerDistributionView === 'function') renderFlyerDistributionView();
+    if (typeof renderPaymentView === 'function') renderPaymentView();
+    if (typeof renderCastingView === 'function') renderCastingView();
+    if (typeof renderMemberEventView === 'function') renderMemberEventView();
+    if (typeof renderPerformanceDayInfoView === 'function') renderPerformanceDayInfoView();
+    if (typeof renderDateAdjustmentView === 'function') renderDateAdjustmentView();
+    if (typeof renderPieceInfoView === 'function') renderPieceInfoView();
+    if (typeof renderDesiredPieceView === 'function') renderDesiredPieceView();
+    if (typeof renderManualView === 'function') renderManualView();
+    if (typeof renderPromotionView === 'function') renderPromotionView();
     if (typeof renderAlbumView === 'function') {
         renderAlbumView();
     }
-    renderConcertRecordView();
-    renderSnsView();
+    if (typeof renderConcertRecordView === 'function') renderConcertRecordView();
+    if (typeof renderSnsView === 'function') renderSnsView();
 }
 
 function renderCastingMembersList() {

@@ -50,16 +50,11 @@ DEFAULT_STARTUP_PRELOAD_COLLECTIONS = (
     "performances",
     "schedules",
     "announcements",
-    "events",
     "members",
     "payments",
     "part_settings",
-    "venue_settings",
-    "flyer_distributions",
-    "flyer_distribution_assignments",
     "org_settings",
     "sns_settings",
-    "connection_settings",
 )
 
 _startup_preload_env = os.getenv("STARTUP_PRELOAD_COLLECTIONS", "").strip()

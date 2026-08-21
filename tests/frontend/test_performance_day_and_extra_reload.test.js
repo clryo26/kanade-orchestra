@@ -100,10 +100,10 @@ describe('performance-day module regression', () => {
             'utf8'
         );
 
-        expect(indexHtml).toContain(
+        expect(indexHtml).not.toContain(
             '/static/js/modules/performance_day/helpers.js'
         );
-        expect(indexHtml).toContain(
+        expect(indexHtml).not.toContain(
             '/static/js/modules/performance_day/render.js'
         );
         expect(indexHtml).not.toContain(

@@ -20,7 +20,7 @@ test.describe('Admin menu smoke', () => {
     await drawer.getByRole('button', { name: '管理者メニュー' }).click();
 
     await expect(page.locator('#adminPanel')).toBeVisible();
-    for (const label of ['演奏会情報', '練習予定', 'お知らせ', '団員登録', '支払状況']) {
+    for (const label of ['演奏会情報', '練習予定', '団員登録', '支払状況']) {
       await expect(page.getByRole('button', { name: label })).toBeVisible();
     }
   });

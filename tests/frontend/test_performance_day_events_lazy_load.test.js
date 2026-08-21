@@ -66,6 +66,43 @@ function defineAllEventsFunctions(sandbox) {
     }
 }
 
+function createMemberFeaturePreloadSandbox({ failFirstScript = false, idleSupported = true } = {}) {
+    const scripts = [];
+    const sandbox = {
+        Promise,
+        Error,
+        console: { warn: vi.fn() },
+        document: {
+            querySelector: vi.fn(() => null),
+            createElement: vi.fn(() => {
+                const script = createScriptMock();
+                scripts.push(script);
+                return script;
+            }),
+            head: {
+                appendChild: vi.fn((script) => {
+                    script._trigger(failFirstScript && scripts.length === 1 ? 'error' : 'load');
+                }),
+            },
+        },
+        window: {
+            portalRuntimeContext: { appState: {}, getById: () => null },
+            requestIdleCallback: idleSupported ? vi.fn((callback) => callback()) : undefined,
+            setTimeout: vi.fn((callback) => callback()),
+        },
+    };
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(readSource('src/static/js/modules/navigation/routes.js'), sandbox);
+    return { sandbox, scripts };
+}
+
+async function flushMemberFeaturePreload() {
+    for (let index = 0; index < 100; index += 1) {
+        await Promise.resolve();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Static / structural tests
 // ---------------------------------------------------------------------------
@@ -80,7 +117,7 @@ describe('performance day events lazy loading', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(66);
+        expect(matches.length).toBe(43);
     });
 
     test('app.js legacy list does not include performance_day/events.js', () => {
@@ -269,5 +306,50 @@ describe('performance day events lazy loading', () => {
         defineAllEventsFunctions(sandbox);
         el2._trigger('load');
         await expect(p2).resolves.toBeUndefined();
+    });
+
+    test('[behaviour] preloads likely member features during an idle callback', async () => {
+        const { sandbox, scripts } = createMemberFeaturePreloadSandbox();
+
+        sandbox.scheduleLikelyMemberFeaturePreload();
+        await flushMemberFeaturePreload();
+
+        expect(sandbox.window.requestIdleCallback).toHaveBeenCalledTimes(1);
+        expect(scripts.map((script) => script.src)).toEqual([
+            '/static/js/modules/recordings.js?v=20260731-1',
+            '/static/js/modules/practice_casting/helpers.js?v=20260701-1',
+            '/static/js/modules/scores/helpers.js?v=20260701-1',
+            '/static/js/modules/scores/render.js?v=20260701-1',
+            '/static/js/modules/scores/events.js?v=20260701-1',
+            '/static/js/modules/scores.js?v=20260701-1',
+            '/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1',
+            '/static/js/modules/date_piece_promotion/validation.js?v=20260701-3',
+            '/static/js/modules/date_piece_promotion/events.js?v=20260701-3',
+            '/static/js/modules/date_piece_promotion/state.js?v=20260701-2',
+            '/static/js/modules/date_piece_promotion/api.js?v=20260701-2',
+            '/static/js/modules/date_piece_promotion/render_piece_practice.js?v=20260701-1',
+            '/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20260701-1',
+            '/static/js/modules/date_piece_promotion/render.js?v=20260701-3',
+            '/static/js/modules/date_piece_promotion.js?v=20260630-6',
+        ]);
+    });
+
+    test('[behaviour] uses timeout fallback when requestIdleCallback is unavailable', () => {
+        const { sandbox } = createMemberFeaturePreloadSandbox({ idleSupported: false });
+
+        sandbox.scheduleLikelyMemberFeaturePreload();
+
+        expect(sandbox.window.requestIdleCallback).toBeUndefined();
+        expect(sandbox.window.setTimeout).toHaveBeenCalledWith(expect.any(Function), 1000);
+    });
+
+    test('[behaviour] swallows preload failures so startup remains non-blocking', async () => {
+        const { sandbox } = createMemberFeaturePreloadSandbox({ failFirstScript: true });
+
+        expect(() => sandbox.scheduleLikelyMemberFeaturePreload()).not.toThrow();
+        await flushMemberFeaturePreload();
+
+        expect(sandbox.memberFeatureLoadPromises.recording).toBeNull();
+        expect(sandbox.memberFeatureLoadPromises.sheet).toBeDefined();
     });
 });

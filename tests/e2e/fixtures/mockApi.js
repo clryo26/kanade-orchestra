@@ -97,6 +97,18 @@ async function installPortalApiMocks(page, options = {}) {
       return fulfillJson(route, bootstrapData.extras?.absences || []);
     }
 
+    if (path === '/api/extra/performance_day_infos' && method === 'GET') {
+      return fulfillJson(route, bootstrapData.extras?.performance_day_infos || []);
+    }
+
+    if (path === '/api/extra/castings' && method === 'GET') {
+      return fulfillJson(route, bootstrapData.extras?.castings || []);
+    }
+
+    if (path === '/api/extra/albums' && method === 'GET') {
+      return fulfillJson(route, bootstrapData.extras?.albums || []);
+    }
+
     if (path === '/api/system/access-logs') {
       return method === 'POST' ? fulfillJson(route, { ok: true }) : fulfillJson(route, []);
     }

@@ -84,7 +84,7 @@ describe('albums lazy loading', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(66);
+        expect(matches.length).toBe(43);
     });
 
     test('app.js legacy list does not include albums.js', () => {
