@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from time import perf_counter
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -112,9 +113,16 @@ async def seed_cloud_data_from_local(
 
     for name in startup_preload_collections:
         logger.info("Startup preload begin: %s", name)
+        started_at = perf_counter()
         try:
             loaded = load_json_data(name)
-            logger.info("Startup preload done: %s (%s items)", name, len(loaded))
+            elapsed_ms = (perf_counter() - started_at) * 1000
+            logger.info(
+                "Startup preload done: %s (%s items, %.1f ms)",
+                name,
+                len(loaded),
+                elapsed_ms,
+            )
         except HTTPException as exc:
             logger.exception("Startup preload failed: %s (%s)", name, exc)
             if db_expected():

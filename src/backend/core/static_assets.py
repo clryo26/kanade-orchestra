@@ -11,7 +11,14 @@ class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict[str, Any]) -> Response:
         response = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webmanifest", ".ico")):
-            response.headers["Cache-Control"] = "public, max-age=3600"
+                query_string = scope.get("query_string", b"").decode("ascii", errors="ignore")
+                has_revision = any(part.startswith("rev=") for part in query_string.split("&"))
+                if has_revision:
+                    # Revisioned URLs are content-addressed by deployment revision.
+                    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                else:
+                    # Dynamically injected assets may not have the index rewrite's rev query.
+                    response.headers["Cache-Control"] = "public, max-age=3600"
         else:
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"

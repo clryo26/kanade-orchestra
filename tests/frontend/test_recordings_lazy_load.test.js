@@ -9,11 +9,11 @@ function readSource(relativePath) {
 }
 
 describe('recordings lazy loading', () => {
-    test('initial page excludes the recordings feature implementation', () => {
+    test('initial page excludes recordings scripts', () => {
         const indexHtml = readSource('src/index.html');
 
-        expect(indexHtml).toContain(
-            '/static/js/modules/recordings.js?v=20260731-1'
+        expect(indexHtml).not.toContain(
+            '/static/js/modules/recordings.js'
         );
         expect(indexHtml).not.toContain(
             '/static/js/recordings_feature.js'
@@ -57,7 +57,7 @@ describe('recordings lazy loading', () => {
         );
 
         expect(source).toContain(
-            'if (includeHeavyLists) void ensureRecordingsFeatureLoaded().then(renderRecordings);'
+            'if (includeHeavyLists && typeof ensureRecordingsFeatureLoaded === \'function\') void ensureRecordingsFeatureLoaded().then(renderRecordings);'
         );
     });
 });

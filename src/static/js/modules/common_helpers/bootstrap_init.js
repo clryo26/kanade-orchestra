@@ -14,7 +14,7 @@ if (window.__KANADE_BOOTSTRAP_INIT_BOUND__) {
 } else {
     window.__KANADE_BOOTSTRAP_INIT_BOUND__ = true;
 
-// 認証確認から起動�E琁E��実行する。�E試行時も同じ関数を呼ぶ、E
+// 認証確認から起動処理を実行する。再試行時も同じ関数を呼ぶ。
 async function _runAuthAndStart() {
     try {
         const authResult = await isPortalAuthenticated();
@@ -44,12 +44,16 @@ async function _runAuthAndStart() {
                 retry: _runAuthAndStart,
             });
         } else {
-            try { showPortalLogin(); } catch (_) {}
+            try {
+                showPortalLogin();
+            } catch (showLoginError) {
+                console.warn('[bootstrap_init] failed to show login view after startup error:', showLoginError);
+            }
         }
     }
 }
 
-// セチE��ョン復帰時�E再認証�E�E状態対応！E
+// セッション復帰時の再認証・状態対応
 async function syncPortalSessionOnResume() {
     if (portalResumeSyncInFlight) return;
     if (document.visibilityState === 'hidden') return;
@@ -97,26 +101,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     window.__KANADE_BOOTSTRAP_INIT_DONE__ = true;
 
-    // Phase 2計測: DOM解析完亁E
+    // Phase 2計測: DOM解析完了
     if (window.portalStartup) window.portalStartup.mark('DOM_INTERACTIVE');
 
     if (window.portalStartup) window.portalStartup.setMessage('起動しています..');
 
-    // Phase 2計測: IndexedDB初期化開姁E
+    // Phase 2計測: IndexedDB初期化開始
     if (window.portalStartup) window.portalStartup.mark('IDB_START');
     try {
         await window.portalRuntimeContext.dbCache.init();
     } catch (error) {
         console.warn('IndexedDB initialization failed:', error);
     } finally {
-        // Phase 2計測: IndexedDB初期化完亁E�E失敁E
+        // Phase 2計測: IndexedDB初期化完了・失敗
         if (window.portalStartup) window.portalStartup.mark('IDB_END');
     }
 
-    // Phase 2計測: UI初期化開姁E
+    // Phase 2計測: UI初期化開始
     if (window.portalStartup) window.portalStartup.mark('UI_BIND_START');
 
-    // UI初期設定に失敗した場合�E再読み込み導線を表示して停止する
+    // UI初期設定に失敗した場合は再読み込み導線を表示して停止する
     try {
         setDefaultDates();
         setupPortalHome();

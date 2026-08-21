@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import perf_counter
 from collections.abc import Callable
 from typing import Any
 
@@ -8,9 +9,12 @@ from fastapi import Request
 
 def create_audit_log_middleware(logger: Any):
     async def audit_log_middleware(request: Request, call_next: Callable[..., Any]):
+        started_at = perf_counter()
         response = None
         try:
             response = await call_next(request)
+            elapsed_ms = (perf_counter() - started_at) * 1000
+            response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
             return response
         finally:
             try:
