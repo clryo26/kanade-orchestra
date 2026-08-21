@@ -16,6 +16,7 @@ from ..services.auth_service import (
 from ..services.file_service import format_duration
 from ..services.json_collection_service import list_auth_devices
 from ..services import bootstrap_service, meta_service
+from ..repositories.db_json_repository import load_collection_etag
 from ..services.recording_asset_service import recording_payload
 from ..services.sheet_asset_service import sheet_payload
 from .notices import router as notices_router
@@ -34,6 +35,27 @@ def _recording_payload() -> dict[str, list[dict[str, object]]]:
 
 def _sheet_payload() -> list[dict[str, object]]:
     return sheet_payload(load_json_data("sheet_library"))
+
+
+def _collection_etag(name: str) -> str:
+    cached = get_memory_cache_instance().etag(name) or ""
+    try:
+        db_digest = load_collection_etag(name)
+        if db_digest:
+            return db_digest
+    except Exception:
+        pass
+
+    if cached:
+        return cached
+
+    # In local-fallback mode no DB digest may be available on first request.
+    # Hydrate the collection once so subsequent If-None-Match checks stay stable.
+    try:
+        load_json_data(name)
+    except Exception:
+        return ""
+    return get_memory_cache_instance().etag(name) or ""
 
 
 @router.get("/api/bootstrap-lite", response_model=None)
@@ -63,9 +85,11 @@ async def get_bootstrap_lite_data(
             "org_settings",
             "sns_settings",
         ),
-        load_json_data,
         lambda name: get_memory_cache_instance().etag(name) or "",
+        _collection_etag,
     )
+    if bootstrap_service.request_not_modified(request, etag):
+        return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_lite_payload(
         load_json_data=load_json_data,
         public_member_list=public_member_list,
@@ -79,6 +103,8 @@ async def get_bootstrap_lite_data(
 async def get_bootstrap_core_data(request: Request):
     revision = meta_service.cloud_run_revision()
     etag = hashlib.sha256(revision.encode("utf-8")).hexdigest()
+    if bootstrap_service.request_not_modified(request, etag):
+        return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_core_payload(
         cloud_run_revision=meta_service.cloud_run_revision,
     )
@@ -118,9 +144,11 @@ async def get_bootstrap_data(request: Request):
             "desired_pieces",
             "promotions",
         ),
-        load_json_data,
         lambda name: get_memory_cache_instance().etag(name) or "",
+        _collection_etag,
     )
+    if bootstrap_service.request_not_modified(request, etag):
+        return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_payload(
         load_json_data=load_json_data,
         public_member_payload=public_member_payload,

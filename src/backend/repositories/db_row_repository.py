@@ -180,8 +180,11 @@ def db_write_value(table_name: str, column: str, value: Any) -> Any:
             return Decimal("0")
         try:
             return Decimal(str(value))
-        except Exception:
-            return Decimal("0")
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid numeric value for {table_name}.{column}",
+            ) from exc
     if column in DB_DATE_COLUMNS.get(table_name, set()):
         return parse_db_date(value)
     if column in DB_TIME_COLUMNS.get(table_name, set()):
@@ -307,6 +310,16 @@ def db_insert_rows(cur: Any, table_name: str, columns: tuple[str, ...], rows: li
 
 
 def db_next_id(cur: Any, table_name: str) -> int:
+    cur.execute("SELECT pg_get_serial_sequence(%s, 'id')", (table_name,))
+    sequence_row = cur.fetchone()
+    sequence_name = sequence_row[0] if sequence_row else None
+    if sequence_name:
+        cur.execute("SELECT nextval(%s)", (sequence_name,))
+        return int(cur.fetchone()[0])
+
+    # Fallback for legacy tables without a sequence on id.
+    # Advisory lock prevents MAX(id)+1 races under concurrent writes.
+    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{table_name}:id",))
     cur.execute(psql.SQL("SELECT COALESCE(MAX(id), 0) FROM {}").format(psql.Identifier(table_name)))
     return int(cur.fetchone()[0]) + 1
 
@@ -315,11 +328,26 @@ def db_fill_missing_ids(cur: Any, table_name: str, rows: list[dict[str, Any]]) -
     columns = DB_COLLECTION_COLUMNS.get(table_name) or DB_CHILD_COLUMNS.get(table_name, ())
     if "id" not in columns:
         return
-    next_value = db_next_id(cur, table_name)
-    for row in rows:
-        if row.get("id") in (None, ""):
-            row["id"] = next_value
-            next_value += 1
+    missing_rows = [row for row in rows if row.get("id") in (None, "")]
+    if not missing_rows:
+        return
+
+    cur.execute("SELECT pg_get_serial_sequence(%s, 'id')", (table_name,))
+    sequence_row = cur.fetchone()
+    sequence_name = sequence_row[0] if sequence_row else None
+
+    if sequence_name:
+        for row in missing_rows:
+            cur.execute("SELECT nextval(%s)", (sequence_name,))
+            row["id"] = int(cur.fetchone()[0])
+        return
+
+    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{table_name}:id",))
+    cur.execute(psql.SQL("SELECT COALESCE(MAX(id), 0) FROM {}").format(psql.Identifier(table_name)))
+    next_value = int(cur.fetchone()[0]) + 1
+    for row in missing_rows:
+        row["id"] = next_value
+        next_value += 1
 
 
 def db_delete_collection_children(cur: Any, name: str) -> None:

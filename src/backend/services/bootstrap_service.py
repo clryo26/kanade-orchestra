@@ -58,21 +58,35 @@ def _public_org_settings(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def combined_collection_etag(
     names: tuple[str, ...],
-    load_json_data: Callable[[str], list[dict[str, Any]]],
     cache_etag: Callable[[str], str],
+    collection_etag: Callable[[str], str] | None = None,
 ) -> str:
     parts: list[str] = []
     for name in dict.fromkeys(names):
-        load_json_data(name)
-        parts.append(f"{name}:{cache_etag(name) or ''}")
+        resolved = ""
+        if collection_etag is not None:
+            resolved = collection_etag(name) or ""
+        if not resolved:
+            resolved = cache_etag(name) or ""
+        parts.append(f"{name}:{resolved}")
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def request_not_modified(request: Request, etag: str) -> bool:
+    request_etag = str(request.headers.get("if-none-match", ""))
+    return request_etag == etag
+
+
+def not_modified_response(etag: str) -> Response:
+    return Response(status_code=304, headers={"ETag": etag})
 
 
 def bootstrap_response(request: Request, data: dict[str, Any], etag: str) -> dict[str, Any] | Response:
     if request.headers.get("if-none-match", "") == etag:
         return Response(status_code=304, headers={"ETag": etag})
     return Response(
-        content=json.dumps(data, ensure_ascii=False),
+        # Compact JSON reduces the bootstrap transfer without changing its schema.
+        content=json.dumps(data, ensure_ascii=False, separators=(",", ":")),
         media_type="application/json",
         headers={"ETag": etag},
     )

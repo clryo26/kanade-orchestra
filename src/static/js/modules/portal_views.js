@@ -193,6 +193,33 @@ function ensurePortalNoticesModuleLoaded() {
     return portalNoticesModuleLoadPromise;
 }
 
+function portalHomeMemoState() {
+    if (!appState.portalHomeMemo || typeof appState.portalHomeMemo !== 'object') {
+        appState.portalHomeMemo = {
+            announcementsRef: null,
+            performancesRef: null,
+            today: '',
+            topAnnouncements: [],
+            nextPerformance: null,
+        };
+    }
+    return appState.portalHomeMemo;
+}
+
+function portalHomeTopAnnouncements() {
+    const memo = portalHomeMemoState();
+    const source = appState.announcements || [];
+    if (memo.announcementsRef === source && Array.isArray(memo.topAnnouncements)) {
+        return memo.topAnnouncements;
+    }
+    memo.announcementsRef = source;
+    memo.topAnnouncements = [...source]
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, 5);
+    return memo.topAnnouncements;
+}
+
+
 function renderPortalHome() {
     if (!window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__) {
         ensurePortalNoticesModuleLoaded()
@@ -211,9 +238,7 @@ function renderPortalHome() {
     const menuContainer = $('portalHomeMenu');
     if (!announceContainer || !countdownContainer || !menuContainer) return;
 
-    const announcements = [...(appState.announcements || [])]
-        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-        .slice(0, 5);
+    const announcements = portalHomeTopAnnouncements();
     announceContainer.innerHTML = announcements.length
         ? '<div class="list-group" id="portalHomeAnnouncementList"></div>'
         : '<p class="text-muted mb-0">お知らせはまだありません</p>';
@@ -409,10 +434,19 @@ async function deleteFlyerDistributionAssignment(button) {
 }
 
 function nextPerformance() {
-    const upcoming = [...(appState.performances || [])]
-        .filter((perf) => perf.date && perf.date >= window.portalRuntimeContext.today())
+    const memo = portalHomeMemoState();
+    const source = appState.performances || [];
+    const today = window.portalRuntimeContext.today();
+    if (memo.performancesRef === source && memo.today === today) {
+        return memo.nextPerformance || null;
+    }
+    memo.performancesRef = source;
+    memo.today = today;
+    const upcoming = [...source]
+        .filter((perf) => perf.date && perf.date >= today)
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    return upcoming[0] || null;
+    memo.nextPerformance = upcoming[0] || null;
+    return memo.nextPerformance;
 }
 
 // renderMemberPerformances moved to feature module.

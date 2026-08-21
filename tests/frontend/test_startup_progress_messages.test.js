@@ -42,6 +42,6 @@ describe('startup progress messages', () => {
     it('does not add another initial script tag', () => {
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(66);
+        expect(matches.length).toBe(43);
     });
 });

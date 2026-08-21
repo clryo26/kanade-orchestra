@@ -29,16 +29,16 @@ function bindForms() {
     if ($('exportPerformanceDayInfoExcelBtn')) $('exportPerformanceDayInfoExcelBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '出力中...', () => exportPerformanceDayInfoExcel()));
     if ($('clearPerformanceDayInfoBtn')) $('clearPerformanceDayInfoBtn').addEventListener('click', () => clearPerformanceDayInfoForm());
     if ($('deletePerformanceDayInfoBtn')) $('deletePerformanceDayInfoBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePerformanceDayInfo()));
-    if ($('addPerformanceDayAssignmentRowBtn')) $('addPerformanceDayAssignmentRowBtn').addEventListener('click', addPerformanceDayAssignmentRow);
+    if ($('addPerformanceDayAssignmentRowBtn')) $('addPerformanceDayAssignmentRowBtn').addEventListener('click', () => addPerformanceDayAssignmentRow());
     if ($('performanceDayInfoPerformance')) $('performanceDayInfoPerformance').addEventListener('change', () => {
         $('performanceDayInfoId').value = '';
         if (typeof renderPerformanceDayPartRehearsalRows === 'function') renderPerformanceDayPartRehearsalRows();
     });
-    if ($('performanceDayAssignmentRows')) renderPerformanceDayAssignmentRows([]);
+    if ($('performanceDayAssignmentRows') && typeof renderPerformanceDayAssignmentRows === 'function') renderPerformanceDayAssignmentRows([]);
     if ($('savePracticeInstructionBtn')) $('savePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePracticeInstructionAdmin()));
-    if ($('clearPracticeInstructionBtn')) $('clearPracticeInstructionBtn').addEventListener('click', clearPracticeInstructionForm);
+    if ($('clearPracticeInstructionBtn')) $('clearPracticeInstructionBtn').addEventListener('click', () => clearPracticeInstructionForm());
     if ($('deletePracticeInstructionBtn')) $('deletePracticeInstructionBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePracticeInstructionAdmin()));
-    if ($('practiceInstructionPerformance')) $('practiceInstructionPerformance').addEventListener('change', updatePracticeInstructionPieceOptions);
+    if ($('practiceInstructionPerformance')) $('practiceInstructionPerformance').addEventListener('change', () => updatePracticeInstructionPieceOptions());
 
     $('addSchedBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => saveSchedule()));
     $('editSchedBtn').addEventListener('click', clearScheduleForm);
@@ -82,10 +82,10 @@ function bindForms() {
     if ($('clearConnectionSettingBtn')) $('clearConnectionSettingBtn').addEventListener('click', clearConnectionSettingForm);
     if ($('accessLogReloadBtn')) $('accessLogReloadBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '読込中...', () => renderAccessLogView()));
 
-    if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', updateSheetPieceOptions);
+    if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', () => updateSheetPieceOptions());
     if ($('uploadSheetBtn')) $('uploadSheetBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', () => uploadSheets()));
     
-    bindCastingAdminEvents();
+    if (typeof bindCastingAdminEvents === 'function') bindCastingAdminEvents();
 }
 
 // 管理者パネル表示要求のガード処理。

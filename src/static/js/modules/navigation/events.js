@@ -44,6 +44,7 @@ function ensureAttendanceFollowupLoaded() {
 
 async function loadAttendanceReminderAfterStartup() {
     try {
+        await ensureMemberFeatureLoaded('absence');
         await Promise.all([
             ensureAttendanceFollowupLoaded(),
             loadExtraData(['absences']),
@@ -79,6 +80,10 @@ async function enterPortal() {
 
     // 正常起動完亁E 起動画面を非表示にする
     if (window.portalStartup) window.portalStartup.ready();
+
+    if (typeof scheduleLikelyMemberFeaturePreload === 'function') {
+        scheduleLikelyMemberFeaturePreload();
+    }
 
     // 出欠追加機能と最新の出欠データは初回表示後に取得し、
     // 両方の取得成功後だけ督促判定する。

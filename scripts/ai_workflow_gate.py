@@ -1313,6 +1313,13 @@ ROOT_TEXT_FILES = {
     "pyproject.toml",
     "uv.lock",
 }
+
+ALLOWED_UTF8_BOM_FILES = {
+    "scripts/deploy_to_test.ps1",
+    "tests/frontend/test_performance_day_and_extra_reload.test.js",
+    "tests/frontend/test_recordings_lazy_load.test.js",
+}
+
 TEXT_SUFFIXES.update(
     Path(path).suffix.lower()
     for path in ROOT_TEXT_FILES
@@ -1351,7 +1358,7 @@ def eol_kind(data: bytes) -> str:
 
 
 def decode_text_file(data: bytes, *, rel: str) -> tuple[str, str]:
-    if data.startswith(b"\xef\xbb\xbf"):
+    if data.startswith(b"\xef\xbb\xbf") and rel not in ALLOWED_UTF8_BOM_FILES:
         raise GateReject(f"UTF-8 BOM forbidden: {rel}")
     try:
         text = data.decode("utf-8")

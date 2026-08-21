@@ -15,6 +15,8 @@ bootstrap payloads.
 - Background data is loaded from `/api/bootstrap-core`.
 - Full bootstrap data remains available through `/api/bootstrap` for legacy
   fallback paths.
+- Bootstrap routes evaluate ETag before payload assembly and return `304` early
+  when the requested revision is unchanged.
 
 ## Change
 
@@ -22,6 +24,9 @@ bootstrap payloads.
   available.
 - The shared request helper provides IndexedDB cache restoration, in-flight GET
   deduplication, ETag revalidation, and offline fallback for cached GET data.
+- Server-side ETag generation now prefers cached or lightweight collection
+  signatures and avoids full payload construction on `If-None-Match` hit
+  paths.
 - Bootstrap payload application preserves existing state for collections that
   are not included in a lighter response. This prevents `/api/bootstrap-lite`
   from clearing admin data such as `venue_settings` and `castings` while

@@ -305,7 +305,7 @@ async function ensureDeferredTabDataLoaded(tabName) {
         }
         queueExtraLoad(['eventResponses']);
     }
-    if (tabName === 'member-absence') queueExtraLoad(['absences']);
+    if (tabName === 'member-schedule' || tabName === 'member-absence') queueExtraLoad(['absences']);
     if (tabName === 'member-date-adjustment') queueExtraLoad(['dateAdjustments', 'dateAdjustmentResponses']);
     if (tabName === 'member-piece-info') queueExtraLoad(['pieceInfos']);
     if (tabName === 'member-practice-instruction') queueExtraLoad(['practiceInstructions', 'pieceInfos']);
@@ -441,9 +441,11 @@ function renderEssentialViews() {
 }
 
 function loadFullDataInBackground() {
-    if (appState.dataLoaded || appState.fullDataLoading) return;
+    if (appState.dataLoaded || appState.fullDataLoading || appState.backgroundLoadScheduled) return;
+    appState.backgroundLoadScheduled = true;
     appState.fullDataLoading = true;
     const start = async () => {
+        appState.backgroundLoadScheduled = false;
         setLoadingBar('全データを取得中...');
         try {
             await loadAll({ includeHeavyLists: false });
@@ -456,11 +458,24 @@ function loadFullDataInBackground() {
             clearLoadingBar();
         }
     };
+    const scheduleStart = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+            const onVisible = () => {
+                document.removeEventListener('visibilitychange', onVisible);
+                if (document.visibilityState !== 'hidden') {
+                    start();
+                }
+            };
+            document.addEventListener('visibilitychange', onVisible);
+            return;
+        }
+        start();
+    };
     // 初回メニュー描画・操作を優先するため、重めの追加取得は少し後ろへ回す。
     if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(start, { timeout: 3000 });
+        window.requestIdleCallback(scheduleStart, { timeout: 1200 });
     } else {
-        window.setTimeout(start, 1500);
+        window.setTimeout(scheduleStart, 400);
     }
 }
 
@@ -534,6 +549,7 @@ function applyBootstrapData(data) {
     refreshVenueOptions();
     applyOrgSettings();
     updateCloudRunRevision();
+    appState.bootstrapDataVersion = (Number(appState.bootstrapDataVersion || 0) + 1);
     if (data.recordings) appState.recordingsLoaded = true;
     if (data.sheets) appState.sheetsLoaded = true;
     updateManagerNavigationVisibility();
@@ -543,7 +559,7 @@ async function loadPerformances() {
     appState.performances = await request('/api/performances');
     renderUploadPerformanceOptions();
     renderPerformances();
-    renderSheetAdmin();
+    if (typeof renderSheetAdmin === 'function') renderSheetAdmin();
     renderPaymentAdmin();
 }
 
@@ -571,6 +587,7 @@ async function loadMembers() {
 
 function renderInitialViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
+    const renderVersionKey = `${appState.bootstrapDataVersion}:${includeHeavyLists ? '1' : '0'}`;
     appState.suppressDerivedRender = true;
     renderPerformances();
     renderUploadPerformanceOptions();
@@ -578,16 +595,16 @@ function renderInitialViews(options = {}) {
     renderAnnouncements();
     renderEvents();
     renderMembers();
-    if (includeHeavyLists) void ensureRecordingsFeatureLoaded().then(renderRecordings);
-    if (includeHeavyLists) renderSheetAdmin();
+    if (includeHeavyLists && typeof ensureRecordingsFeatureLoaded === 'function') void ensureRecordingsFeatureLoaded().then(renderRecordings);
+    if (includeHeavyLists && typeof renderSheetAdmin === 'function') renderSheetAdmin();
     renderPaymentAdmin();
     renderVenueManagement();
-    renderCastingAdmin();
-    renderPracticeInstructionAdmin();
-    renderPerformanceDayInfoAdmin();
+    if (typeof renderCastingAdmin === 'function') renderCastingAdmin();
+    if (typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
+    if (typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
-    renderConnectionSettingsManagement();
+    if (typeof renderConnectionSettingsManagement === 'function') renderConnectionSettingsManagement();
     appState.suppressDerivedRender = false;
     renderMemberPerformances();
     renderMemberSchedules();
@@ -597,22 +614,28 @@ function renderInitialViews(options = {}) {
     renderSchedulePerformanceOptions();
     updateSchedulePieceOptions();
     renderPortalHome();
+    appState.lastInitialRenderVersionKey = renderVersionKey;
 }
 
 function renderBackgroundViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
+    const renderVersionKey = `${appState.bootstrapDataVersion}:${includeHeavyLists ? '1' : '0'}`;
+    if (appState.lastInitialRenderVersionKey === renderVersionKey || appState.lastBackgroundRenderVersionKey === renderVersionKey) {
+        return;
+    }
     renderSchedules();
     renderEvents();
     renderMembers();
     renderMemberExtraViews({ includeHeavyLists });
-    renderSheetAdmin();
-    renderCastingAdmin();
-    renderPracticeInstructionAdmin();
-    renderPerformanceDayInfoAdmin();
+    if (typeof renderSheetAdmin === 'function') renderSheetAdmin();
+    if (typeof renderCastingAdmin === 'function') renderCastingAdmin();
+    if (typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
+    if (typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
     renderAuthDevices();
     renderSchedulePerformanceOptions();
     updateSchedulePieceOptions();
     renderPortalHome();
+    appState.lastBackgroundRenderVersionKey = renderVersionKey;
 }
 
 function normalizeMemberSummaryCollection(members) {
@@ -772,17 +795,17 @@ async function loadExtraData(collectionNames = null) {
     refreshVenueOptions();
     applyOrgSettings();
     renderMemberExtraViews();
-    renderSheetAdmin();
+    if (typeof renderSheetAdmin === 'function') renderSheetAdmin();
     renderPaymentAdmin();
     renderPartManagement();
     renderVenueManagement();
     renderFlyerDistributionManagement();
-    renderCastingAdmin();
-    renderPracticeInstructionAdmin();
-    renderPerformanceDayInfoAdmin();
+    if (typeof renderCastingAdmin === 'function') renderCastingAdmin();
+    if (typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
+    if (typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
     renderOrgManagement();
     renderSnsManagement();
-    renderConnectionSettingsManagement();
+    if (typeof renderConnectionSettingsManagement === 'function') renderConnectionSettingsManagement();
 }
 
 
