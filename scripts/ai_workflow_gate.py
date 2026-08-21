@@ -1315,6 +1315,7 @@ ROOT_TEXT_FILES = {
 }
 
 ALLOWED_UTF8_BOM_FILES = {
+    "scripts/deploy_to_test.ps1",
     "tests/frontend/test_performance_day_and_extra_reload.test.js",
     "tests/frontend/test_recordings_lazy_load.test.js",
 }

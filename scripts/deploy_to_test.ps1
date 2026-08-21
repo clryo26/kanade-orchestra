@@ -265,7 +265,7 @@ After PR CI succeeds, this automation merges the PR and waits for main CI and De
 
     Write-Step "Merging PR #$prNumber"
 
-    gh pr merge $prNumber --merge
+    gh pr merge $prNumber --merge --auto
     if ($LASTEXITCODE -ne 0) {
         Stop-Deploy "PR merge failed. PR #$prNumber"
     }

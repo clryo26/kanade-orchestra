@@ -524,6 +524,18 @@ def test_decode_text_file_preserves_allowed_utf8_bom():
     assert gate.encode_text_file(text, eol=eol, rel=rel) == data
 
 
+def test_decode_text_file_preserves_deploy_to_test_utf8_bom():
+    gate = _load_gate_module()
+    rel = "scripts/deploy_to_test.ps1"
+    data = b"\xef\xbb\xbfWrite-Host \"test\"\n"
+
+    text, eol = gate.decode_text_file(data, rel=rel)
+
+    assert text == "\ufeffWrite-Host \"test\"\n"
+    assert eol == "LF"
+    assert gate.encode_text_file(text, eol=eol, rel=rel) == data
+
+
 def test_decode_text_file_rejects_unlisted_utf8_bom():
     gate = _load_gate_module()
     data = b"\xef\xbb\xbfconst value = 1;\n"
