@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.11",
     "glob": "^13.0.6",
     "vitest": "^4.1.9"
   }
