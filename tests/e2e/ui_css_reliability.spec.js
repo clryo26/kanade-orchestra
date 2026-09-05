@@ -230,7 +230,7 @@ test.describe('UI CSS reliability smoke', () => {
         }],
         schedules: [{
           id: 101,
-          date: '2026-09-01',
+          date: '2099-09-01',
           time: '18:30-20:30',
           start_time: '18:30',
           end_time: '20:30',
