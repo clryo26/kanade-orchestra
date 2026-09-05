@@ -319,8 +319,6 @@ function renderMemberSchedules() {
                         <span>${escapeHtml(formatScheduleDate(sched.date))}</span>
                         ${scheduleIsConductorTraining(sched) ? '<span class="schedule-conductor-training">※指揮トレ</span>' : ''}
                     </div>
-                    <div class="schedule-main-line">${escapeHtml(scheduleTimeLabel(sched) || '時間未定')}</div>
-                    <div class="schedule-main-line">${escapeHtml(sched.venue || '場所未定')}</div>
                     <div class="schedule-detail-line">練習可能時間: ${escapeHtml(scheduleAvailableLabel(sched) || '未定')}</div>
                     <div class="schedule-detail-line">練習曲: ${escapeHtml(sched.pieces || '未定')}</div>
                     <div class="schedule-detail-line multiline-text">備考: ${escapeHtml(sched.notes || 'なし')}</div>

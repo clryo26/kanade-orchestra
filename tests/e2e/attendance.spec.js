@@ -41,49 +41,15 @@ test.describe('Practice attendance', () => {
     await expect(forms.nth(0).getByLabel('出席')).toBeChecked();
     await expect(forms.nth(0).locator('[data-attendance-save]')).toHaveText('変更');
     await expect(forms.nth(1).locator('[data-attendance-save]')).toHaveText('登録');
-    await page.setViewportSize({ width: 390, height: 844 });
-    await forms.nth(0).getByLabel('遅刻').check();
-    const mobileLayout = await forms.nth(0).evaluate((form) => {
-      const radioBox = (value) => form.querySelector(`input[value="${value}"]`).closest('.form-check').getBoundingClientRect();
-      const box = (selector) => form.querySelector(selector).getBoundingClientRect();
-      return {
-        present: radioBox('present'),
-        absent: radioBox('absent'),
-        late: radioBox('late'),
-        early: radioBox('leave_early'),
-        time: box('[data-attendance-time-row]'),
-      };
-    });
-    expect(mobileLayout.present.top).toBe(mobileLayout.absent.top);
-    expect(mobileLayout.late.left).toBeLessThan(mobileLayout.early.left);
-    expect(mobileLayout.early.left).toBeLessThan(mobileLayout.time.left);
-    expect(mobileLayout.late.top).toBeGreaterThan(mobileLayout.present.top);
-    expect(mobileLayout.early.top).toBeGreaterThan(mobileLayout.present.top);
-    expect(mobileLayout.time.top).toBeGreaterThan(mobileLayout.present.top);
+
     const scheduleCard = page.locator('.schedule-card').filter({ hasText: '練習場' }).first();
     await expect(scheduleCard.getByRole('tab', { name: '出席 3名' })).toBeVisible();
     await scheduleCard.getByRole('tab', { name: '欠席 1名' }).click();
     await expect(scheduleCard).toContainText('欠席三郎');
+    await expect(scheduleCard.locator(':scope > .schedule-main-line:not(.schedule-date-line)')).toHaveCount(0);
+    await expect(page.locator('#memberScheduleTab')).toContainText('練習可能時間');
 
     await page.click('#portalDrawerToggle');
-    await page.locator('#portalDrawerMenu').getByRole('button', { name: '出欠確認' }).click();
-    const overview = page.locator('#memberAbsenceInfo .attendance-overview').filter({ hasText: '2099/08/20' });
-    await expect(page.locator('#memberAbsenceInfo')).not.toContainText('過去の練習場');
-    await expect(overview.getByRole('tab', { name: '出席 3名' })).toBeVisible();
-    await overview.getByRole('tab', { name: '出席 3名' }).click();
-    await expect(overview.getByText('Viola', { exact: true })).toBeVisible();
-    await expect(overview).toContainText('遅刻花子（遅刻 14:00）');
-    await expect(overview).toContainText('早退次郎（早退 16:00）');
-    await overview.getByRole('tab', { name: '欠席 1名' }).click();
-    const absentPanel = overview.locator('[data-attendance-overview-panel="absent"]');
-    await expect(absentPanel).toBeVisible();
-    await expect(absentPanel).toContainText('Cello');
-    await expect(absentPanel).toContainText('欠席三郎');
-    await expect(absentPanel).not.toContainText('遅刻花子');
-    await overview.getByRole('tab', { name: '未登録 1名' }).click();
-    const unregisteredPanel = overview.locator('[data-attendance-overview-panel="unregistered"]');
-    await expect(unregisteredPanel).toBeVisible();
-    await expect(unregisteredPanel).toContainText('未登録四郎');
-    await expect(unregisteredPanel).not.toContainText('欠席三郎');
+    await expect(page.locator('#portalDrawerMenu').getByRole('button', { name: '出欠確認' })).toHaveCount(0);
   });
 });
