@@ -43,7 +43,9 @@ test.describe('Practice attendance', () => {
     await expect(forms.nth(1).locator('[data-attendance-save]')).toHaveText('登録');
 
     const scheduleCard = page.locator('.schedule-card').first();
+    const attendanceOverview = scheduleCard.locator('[data-attendance-overview]');
     await expect(scheduleCard).toContainText('2099/08/20');
+    await expect(attendanceOverview).not.toContainText('2099/08/20');
     await expect(scheduleCard).not.toContainText('13:00 - 16:30');
     await expect(scheduleCard).not.toContainText('練習場');
     await expect(scheduleCard.getByRole('tab', { name: '出席 3名' })).toBeVisible();
