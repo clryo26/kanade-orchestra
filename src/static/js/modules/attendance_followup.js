@@ -18,7 +18,7 @@ function attendanceFormHtml(schedule, existing, context = 'schedule') {
             <div class="attendance-status-row attendance-status-row-secondary">
                 ${ATTENDANCE_STATUS_OPTIONS.slice(2).map(statusInputHtml).join('')}
                 <div class="attendance-time-inline" data-attendance-time-row${selectedStatus === 'late' || selectedStatus === 'leave_early' ? '' : ' hidden'}>
-                    <label class="form-label mb-1" data-attendance-time-label for="${escapeHtml(formId)}-time">${selectedStatus === 'leave_early' ? '退出予定時刻' : '到着予定時刻'}</label>
+                    <label class="form-label mb-1" data-attendance-time-label for="${escapeHtml(formId)}-time">予定時刻</label>
                     <input class="form-control form-control-sm" data-attendance-time id="${escapeHtml(formId)}-time" type="time" value="${escapeHtml(plannedTime)}">
                 </div>
             </div>

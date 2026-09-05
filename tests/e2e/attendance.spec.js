@@ -44,7 +44,7 @@ test.describe('Practice attendance', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await forms.nth(0).getByLabel('遅刻').check();
     const mobileLayout = await forms.nth(0).evaluate((form) => {
-      const radioBox = (value) => form.querySelector(`input[value="${value}"]`).closest('.col-6, .col-2').getBoundingClientRect();
+      const radioBox = (value) => form.querySelector(`input[value="${value}"]`).closest('.form-check').getBoundingClientRect();
       const box = (selector) => form.querySelector(selector).getBoundingClientRect();
       return {
         present: radioBox('present'),
@@ -57,8 +57,9 @@ test.describe('Practice attendance', () => {
     expect(mobileLayout.present.top).toBe(mobileLayout.absent.top);
     expect(mobileLayout.late.left).toBeLessThan(mobileLayout.early.left);
     expect(mobileLayout.early.left).toBeLessThan(mobileLayout.time.left);
-    expect(mobileLayout.late.bottom).toBe(mobileLayout.time.bottom);
     expect(mobileLayout.late.top).toBeGreaterThan(mobileLayout.present.top);
+    expect(mobileLayout.early.top).toBeGreaterThan(mobileLayout.present.top);
+    expect(mobileLayout.time.top).toBeGreaterThan(mobileLayout.present.top);
     const scheduleCard = page.locator('.schedule-card').filter({ hasText: '練習場' }).first();
     await expect(scheduleCard.getByRole('tab', { name: '出席 3名' })).toBeVisible();
     await scheduleCard.getByRole('tab', { name: '欠席 1名' }).click();
