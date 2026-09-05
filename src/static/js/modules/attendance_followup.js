@@ -168,8 +168,7 @@ function attendanceOverviewHtml(schedule, members) {
     const unregisteredPeople = unregistered.map((member) => attendancePersonFromMember(member));
 
     return `<article class="info-block attendance-overview" data-attendance-overview>
-        <strong>${escapeHtml(formatScheduleDate(schedule.date))}</strong>
-        <div class="attendance-overview-tabs d-flex flex-wrap gap-2 mt-2 mb-3" role="tablist" aria-label="出欠区分">
+        <div class="attendance-overview-tabs d-flex flex-wrap gap-2 mb-3" role="tablist" aria-label="出欠区分">
             <button class="btn btn-outline-primary btn-sm active" type="button" role="tab" aria-selected="true" data-attendance-overview-tab="present">出席 ${present.length}名</button>
             <button class="btn btn-outline-primary btn-sm" type="button" role="tab" aria-selected="false" data-attendance-overview-tab="absent">欠席 ${absent.length}名</button>
             <button class="btn btn-outline-primary btn-sm" type="button" role="tab" aria-selected="false" data-attendance-overview-tab="unregistered">未登録 ${unregistered.length}名</button>
