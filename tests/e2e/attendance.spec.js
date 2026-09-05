@@ -44,6 +44,7 @@ test.describe('Practice attendance', () => {
 
     const scheduleCard = page.locator('.schedule-card').first();
     const attendanceOverview = scheduleCard.locator('[data-attendance-overview]');
+    await expect(attendanceOverview).toHaveCount(1);
     await expect(scheduleCard).toContainText('2099/08/20');
     await expect(attendanceOverview).not.toContainText('2099/08/20');
     await expect(scheduleCard).not.toContainText('13:00 - 16:30');

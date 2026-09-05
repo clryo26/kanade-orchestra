@@ -166,7 +166,7 @@ function attendanceOverviewHtml(schedule, members) {
     const selected = appState.attendanceOverviewSelectionBySchedule?.[scheduleId] || 'present';
     const labels = { present: '出席', absent: '欠席', unregistered: '未登録' };
     const tabs = ['present', 'absent', 'unregistered'].map((status) => `<button type="button" role="tab" class="btn btn-sm ${selected === status ? 'btn-primary' : 'btn-outline-primary'}" data-attendance-overview-tab data-attendance-schedule-id="${escapeHtml(scheduleId)}" data-attendance-overview-status="${status}" aria-selected="${selected === status}">${labels[status]} ${entries[status].length}名</button>`).join('');
-    return `<article class="info-block attendance-overview"><strong>${escapeHtml(formatScheduleDate(schedule.date))}</strong><div class="btn-group flex-wrap mt-2" role="tablist" aria-label="出欠区分">${tabs}</div><div class="mt-2" data-attendance-overview-members>${attendanceMemberGroupsHtml(entries[selected], selected === 'present')}</div></article>`;
+    return `<article class="info-block attendance-overview" data-attendance-overview><div class="btn-group flex-wrap" role="tablist" aria-label="出欠区分">${tabs}</div><div class="mt-2" data-attendance-overview-members>${attendanceMemberGroupsHtml(entries[selected], selected === 'present')}</div></article>`;
 }
 function upcomingUnregisteredSchedules() {
     const today = window.portalRuntimeContext.today();

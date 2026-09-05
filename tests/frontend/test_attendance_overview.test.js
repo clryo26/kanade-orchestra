@@ -20,7 +20,7 @@ test('overview excludes past practices and groups selected entries by part then 
   appState.members = [{ id: 1, name: 'いち', kana: 'いち', part: 'Viola' }, { id: 2, name: 'あ', kana: 'あ', part: 'Violin' }, { id: 3, name: 'え', kana: 'え', part: 'Violin' }];
   appState.absences = [{ schedule_id: 2, member_id: 1, name: 'いち', status: 'late', planned_time: '14:00' }, { schedule_id: 2, member_id: 2, name: 'あ', status: 'present' }];
   const html = api.attendanceOverviewHtml({ id: 2, date: '2026-08-18', venue: '練習場' }, appState.members);
-  expect(html).toContain('2026-08-18');
+  expect(html).not.toContain('2026-08-18');
   expect(html).not.toContain('13:00 - 16:00');
   expect(html).not.toContain('練習場');
   expect(html).toContain('出席 2名');
