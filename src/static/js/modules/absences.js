@@ -46,16 +46,16 @@ function attendanceFormHtml(schedule, existing, context = 'schedule') {
     const selectedStatus = existing?.status || '';
     const plannedTime = absencePlannedTimeLabel(existing?.planned_time);
     const formId = `attendance-${context}-${scheduleId}`;
+    const saveLabel = existing ? '変更' : '登録';
     return `<section class="attendance-form mt-3 border-top pt-3" data-attendance-form data-attendance-schedule-id="${escapeHtml(scheduleId)}">
         <h6 class="mb-2">出欠登録</h6>
-        <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="${escapeHtml(formatScheduleDate(schedule.date))} の出欠">
-            ${ATTENDANCE_STATUS_OPTIONS.map(([value, label]) => `<label class="form-check form-check-inline mb-0" for="${escapeHtml(formId)}-${value}"><input class="form-check-input" type="radio" name="${escapeHtml(formId)}-status" id="${escapeHtml(formId)}-${value}" value="${value}"${selectedStatus === value ? ' checked' : ''}><span class="form-check-label">${label}</span></label>`).join('')}
+        <div class="row g-2 align-items-end" data-attendance-status-grid role="radiogroup" aria-label="${escapeHtml(formatScheduleDate(schedule.date))} の出欠">
+            ${ATTENDANCE_STATUS_OPTIONS.map(([value, label], index) => `<div class="${index < 2 ? 'col-6' : 'col-2'} col-sm-auto"><label class="form-check mb-0" for="${escapeHtml(formId)}-${value}"><input class="form-check-input" type="radio" name="${escapeHtml(formId)}-status" id="${escapeHtml(formId)}-${value}" value="${value}"${selectedStatus === value ? ' checked' : ''}><span class="form-check-label">${label}</span></label></div>`).join('')}
+            <div class="col-8 col-sm-auto d-flex align-items-center gap-1" data-attendance-time-row${selectedStatus === 'late' || selectedStatus === 'leave_early' ? '' : ' hidden'}><label class="form-label mb-0 text-nowrap" data-attendance-time-label for="${escapeHtml(formId)}-time">予定時刻</label><input class="form-control flex-grow-1" data-attendance-time id="${escapeHtml(formId)}-time" type="time" value="${escapeHtml(plannedTime)}"></div>
         </div>
-        <div class="row g-2 align-items-end mt-1" data-attendance-time-row${selectedStatus === 'late' || selectedStatus === 'leave_early' ? '' : ' hidden'}><div class="col-sm-5"><label class="form-label mb-1" data-attendance-time-label for="${escapeHtml(formId)}-time">${selectedStatus === 'leave_early' ? '退出予定時刻' : '到着予定時刻'}</label><input class="form-control" data-attendance-time id="${escapeHtml(formId)}-time" type="time" value="${escapeHtml(plannedTime)}"></div></div>
-        <div class="mt-2"><button class="btn btn-primary btn-sm" type="button" data-attendance-save>登録</button></div>
+        <div class="mt-2"><button class="btn btn-primary btn-sm" type="button" data-attendance-save>${saveLabel}</button></div>
     </section>`;
 }
-
 function syncAttendanceTimeInput(form) {
     const selected = form.querySelector('input[type="radio"]:checked')?.value || '';
     const needsTime = selected === 'late' || selected === 'leave_early';
@@ -63,7 +63,7 @@ function syncAttendanceTimeInput(form) {
     const label = form.querySelector('[data-attendance-time-label]');
     const timeInput = form.querySelector('[data-attendance-time]');
     if (timeRow) timeRow.hidden = !needsTime;
-    if (label) label.textContent = selected === 'leave_early' ? '退出予定時刻' : '到着予定時刻';
+    if (label) label.textContent = '予定時刻';
     if (!needsTime && timeInput) timeInput.value = '';
 }
 
@@ -95,30 +95,79 @@ async function saveOwnAttendance(form) {
     showAlert('出欠を登録しました', 'success');
 }
 
+function visibleAttendanceSchedules() {
+    const today = window.portalRuntimeContext.today();
+    return sortedSchedules(appState.schedules || []).filter((schedule) => !schedule?.date || String(schedule.date) >= today);
+}
+
 function renderAbsenceView() {
     const container = $('memberAbsenceInfo');
     if (!container) return;
-    const schedules = sortedSchedules(appState.schedules || []);
-    if (!schedules.length) { container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>'; return; }
+    const schedules = visibleAttendanceSchedules();
+    if (!schedules.length) { container.innerHTML = '<p class="text-muted mb-0">今後の練習予定はありません</p>'; return; }
     container.innerHTML = schedules.map((schedule) => attendanceOverviewHtml(schedule, appState.members || [])).join('');
+    bindAttendanceOverviewTabs(container, renderAbsenceView);
+}
+
+function bindAttendanceOverviewTabs(container, rerender) {
+    container.querySelectorAll('[data-attendance-overview-tab]').forEach((button) => button.addEventListener('click', () => {
+        const scheduleId = String(button.dataset.attendanceScheduleId || '');
+        const status = button.dataset.attendanceOverviewStatus || 'present';
+        appState.attendanceOverviewSelectionBySchedule ||= {};
+        appState.attendanceOverviewSelectionBySchedule[scheduleId] = status;
+        rerender();
+    }));
+}
+
+function attendanceMemberForResponse(response, members) {
+    const memberId = String(response?.member_id || '');
+    const member = (memberId && members.find((item) => String(item.id || '') === memberId))
+        || members.find((item) => memberDisplayName(item) === String(response?.name || '')) || null;
+    return { member, part: member?.part || '未設定', name: member ? memberDisplayName(member) : String(response?.name || ''), response };
+}
+
+function attendanceEntryCompare(a, b) {
+    return partSortIndex(a.part) - partSortIndex(b.part)
+        || String(a.part).localeCompare(String(b.part), 'ja')
+        || String(memberKanaName(a.member) || a.name).localeCompare(String(memberKanaName(b.member) || b.name), 'ja')
+        || String(a.name).localeCompare(String(b.name), 'ja');
+}
+
+function attendanceOverviewEntries(status, responses, members) {
+    const responseByMemberId = new Map(responses.filter((item) => item.member_id).map((item) => [String(item.member_id), item]));
+    const responseNames = new Set(responses.filter((item) => !item.member_id).map((item) => String(item.name || '')));
+    if (status === 'unregistered') {
+        return members.filter((member) => !responseByMemberId.has(String(member.id || '')) && !responseNames.has(memberDisplayName(member)))
+            .map((member) => ({ member, part: member.part || '未設定', name: memberDisplayName(member), response: null })).sort(attendanceEntryCompare);
+    }
+    const statuses = status === 'present' ? new Set(['present', 'late', 'leave_early']) : new Set(['absent', 'ng']);
+    const deduped = new Map();
+    responses.filter((response) => statuses.has(response.status || 'absent')).forEach((response) => {
+        const entry = attendanceMemberForResponse(response, members);
+        const key = entry.member ? 'member:' + String(entry.member.id || '') : 'legacy:' + entry.name;
+        if (!deduped.has(key)) deduped.set(key, entry);
+    });
+    return [...deduped.values()].sort(attendanceEntryCompare);
+}
+
+function attendanceMemberGroupsHtml(entries, includeStatus) {
+    if (!entries.length) return '<div>なし</div>';
+    const groups = groupBy(entries, 'part');
+    return [...new Set(entries.map((entry) => entry.part))].sort((a, b) => partSortIndex(a) - partSortIndex(b) || String(a).localeCompare(String(b), 'ja')).map((part) => {
+        const names = (groups[part] || []).map((entry) => escapeHtml(includeStatus && ['late', 'leave_early'].includes(entry.response?.status) ? attendanceEntryLabel(entry.response) : entry.name));
+        return `<section class="attendance-part-group mt-2"><h6 class="mb-1">${escapeHtml(part)}</h6><div>${names.join('、')}</div></section>`;
+    }).join('');
 }
 
 function attendanceOverviewHtml(schedule, members) {
     const responses = (appState.absences || []).filter((item) => String(item.schedule_id || '') === String(schedule.id || ''));
-    const responseByMemberId = new Map(responses.filter((item) => item.member_id).map((item) => [String(item.member_id), item]));
-    const responseNames = new Set(responses.filter((item) => !item.member_id).map((item) => String(item.name || '')));
-    const present = responses.filter((item) => ['present', 'late', 'leave_early'].includes(item.status));
-    const absent = responses.filter((item) => !['present', 'late', 'leave_early'].includes(item.status));
-    // The public member list is the only current eligibility source. Hidden system users are not in it.
-    const unregistered = members.filter((member) => !responseByMemberId.has(String(member.id || '')) && !responseNames.has(memberDisplayName(member)));
-    return `<article class="info-block attendance-overview"><strong>${escapeHtml(formatScheduleDate(schedule.date))} ${escapeHtml(scheduleTimeLabel(schedule) || '')}</strong><div class="small text-muted mb-2">${escapeHtml(schedule.venue || '')}</div>${attendanceGroupHtml('出席', present, true)}${attendanceGroupHtml('欠席', absent, false)}<div class="mt-2"><strong>未登録 ${unregistered.length}名</strong><div>${unregistered.length ? unregistered.map((member) => escapeHtml(memberDisplayName(member))).join('、') : 'なし'}</div></div></article>`;
+    const entries = { present: attendanceOverviewEntries('present', responses, members), absent: attendanceOverviewEntries('absent', responses, members), unregistered: attendanceOverviewEntries('unregistered', responses, members) };
+    const scheduleId = String(schedule.id || '');
+    const selected = appState.attendanceOverviewSelectionBySchedule?.[scheduleId] || 'present';
+    const labels = { present: '出席', absent: '欠席', unregistered: '未登録' };
+    const tabs = ['present', 'absent', 'unregistered'].map((status) => `<button type="button" role="tab" class="btn btn-sm ${selected === status ? 'btn-primary' : 'btn-outline-primary'}" data-attendance-overview-tab data-attendance-schedule-id="${escapeHtml(scheduleId)}" data-attendance-overview-status="${status}" aria-selected="${selected === status}">${labels[status]} ${entries[status].length}名</button>`).join('');
+    return `<article class="info-block attendance-overview"><strong>${escapeHtml(formatScheduleDate(schedule.date))} ${escapeHtml(scheduleTimeLabel(schedule) || '')}</strong><div class="small text-muted mb-2">${escapeHtml(schedule.venue || '')}</div><div class="btn-group flex-wrap" role="tablist" aria-label="出欠区分">${tabs}</div><div class="mt-2" data-attendance-overview-members>${attendanceMemberGroupsHtml(entries[selected], selected === 'present')}</div></article>`;
 }
-
-function attendanceGroupHtml(label, absences, includeStatus) {
-    const names = absences.map((absence) => escapeHtml(includeStatus && ['late', 'leave_early'].includes(absence.status) ? attendanceEntryLabel(absence) : (absence.name || '')));
-    return `<div class="mt-2"><strong>${label} ${absences.length}名</strong><div>${names.length ? names.join('、') : 'なし'}</div></div>`;
-}
-
 function upcomingUnregisteredSchedules() {
     const today = window.portalRuntimeContext.today();
     // Date-only schedule values must not shift a day when the browser is in JST.
