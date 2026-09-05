@@ -25,6 +25,38 @@ function closePortalDrawer() {
     if ($('portalDrawerToggle')) $('portalDrawerToggle').setAttribute('aria-expanded', 'false');
 }
 
+function ensureAttendanceFollowupLoaded() {
+    if (typeof attendanceOverviewSchedules === 'function') return Promise.resolve();
+    if (!window.portalRuntimeContext.attendanceFollowupLoadPromise) {
+        window.portalRuntimeContext.attendanceFollowupLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/static/js/modules/attendance_followup.js?v=20260819-1';
+            script.addEventListener('load', resolve, { once: true });
+            script.addEventListener('error', () => {
+                window.portalRuntimeContext.attendanceFollowupLoadPromise = null;
+                reject(new Error('出欠画面の追加機能を読み込めませんでした'));
+            }, { once: true });
+            document.head.appendChild(script);
+        });
+    }
+    return window.portalRuntimeContext.attendanceFollowupLoadPromise;
+}
+
+async function loadAttendanceReminderAfterStartup() {
+    try {
+        await ensureMemberFeatureLoaded('absence');
+        await Promise.all([
+            ensureAttendanceFollowupLoaded(),
+            loadExtraData(['absences']),
+        ]);
+        if (typeof markDeferredPortalDataLoaded === 'function') markDeferredPortalDataLoaded('absences');
+        if (typeof renderMemberSchedules === 'function') renderMemberSchedules();
+        if (typeof showUpcomingAttendanceReminder === 'function') showUpcomingAttendanceReminder();
+    } catch (error) {
+        console.warn('Attendance reminder data load failed; reminder suppressed', error);
+    }
+}
+
 // loadEssentialData完亁E��で征E��し、完亁E��に起動画面を非表示にする
 async function enterPortal() {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
@@ -49,11 +81,13 @@ async function enterPortal() {
     // 正常起動完亁E 起動画面を非表示にする
     if (window.portalStartup) window.portalStartup.ready();
 
-    // Essential bootstrap already includes schedules, members, and absences.
-    // Run this once per signed-in member so normal rerenders cannot reopen it.
-    if (typeof showUpcomingAttendanceReminder === 'function') {
-        showUpcomingAttendanceReminder();
+    if (typeof scheduleLikelyMemberFeaturePreload === 'function') {
+        scheduleLikelyMemberFeaturePreload();
     }
+
+    // 出欠追加機能と最新の出欠データは初回表示後に取得し、
+    // 両方の取得成功後だけ督促判定する。
+    void loadAttendanceReminderAfterStartup();
 
     // 背景チE�Eタ読込は操作可能化後に開始。エラーは冁E��で処琁E��る、E
     void loadFullDataInBackground();

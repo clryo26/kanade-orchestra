@@ -6,9 +6,15 @@ var $ = window.portalRuntimeContext.getById;
 
 function updateManagerNavigationVisibility() {
     const uploadButton = $('memberUploadAdminBtn');
-    if (uploadButton) uploadButton.hidden = !canManageRecordings();
+    const canManageRecordingsNow = typeof canManageRecordings === 'function'
+        ? canManageRecordings()
+        : (canAccessAdmin() || appState.currentUserIsRecordingManager);
+    if (uploadButton) uploadButton.hidden = !canManageRecordingsNow;
     const sheetButton = $('memberSheetAdminBtn');
-    if (sheetButton) sheetButton.hidden = !canManageSheets();
+    const canManageSheetsNow = typeof canManageSheets === 'function'
+        ? canManageSheets()
+        : (canAccessAdmin() || appState.currentUserIsSheetManager);
+    if (sheetButton) sheetButton.hidden = !canManageSheetsNow;
     document.querySelectorAll('#memberPanel [data-tab]').forEach((button) => {
         const tabName = button.dataset.tab || '';
         if (EXTRA_RESTRICTED_MEMBER_TABS.has(tabName)) button.hidden = isExtraRestrictedMemberTab(tabName);
@@ -17,9 +23,15 @@ function updateManagerNavigationVisibility() {
 
 function portalMenuGroups() {
     const paymentAlert = paymentAlertInfo().hasAlert;
+    const canManageRecordingsNow = typeof canManageRecordings === 'function'
+        ? canManageRecordings()
+        : (canAccessAdmin() || appState.currentUserIsRecordingManager);
+    const canManageSheetsNow = typeof canManageSheets === 'function'
+        ? canManageSheets()
+        : (canAccessAdmin() || appState.currentUserIsSheetManager);
     const settingItems = [
-        canManageRecordings() ? { tab: 'upload', label: '録音管理', admin: true } : null,
-        canManageSheets() ? { tab: 'sheet-admin', label: '楽譜管理', admin: true } : null,
+        canManageRecordingsNow ? { tab: 'upload', label: '録音管理', admin: true } : null,
+        canManageSheetsNow ? { tab: 'sheet-admin', label: '楽譜管理', admin: true } : null,
         canAccessAdmin() ? { action: 'admin', label: '管理者メニュー', admin: true } : null,
         canAccessSystemAdmin() ? { action: 'system', label: 'システム管理', admin: true } : null,
     ].filter(Boolean);

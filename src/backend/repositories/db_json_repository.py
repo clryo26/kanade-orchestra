@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -15,7 +16,9 @@ except Exception:  # pragma: no cover - optional dependency guard
     Jsonb = None
 
 from ..core.db_schema import (
+    DB_CHILD_PARENT_KEYS,
     DB_CHILD_COLUMNS,
+    DB_CHILD_TABLES,
     DB_COLLECTION_COLUMNS,
     DB_COLLECTION_ORDER_BY,
     DB_WRITABLE_COLLECTIONS,
@@ -175,6 +178,74 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
         return items
 
 
+def load_collection_etag(name: str) -> str:
+    table_name = JSON_COLLECTION_TABLES.get(name)
+    if not table_name:
+        return ""
+
+    tenant_id = get_current_tenant_id()
+
+    def _table_signature(conn: Any, cur: Any, target_table: str) -> str:
+        has_org_column = table_has_organization_id(conn, target_table)
+        try:
+            if has_org_column:
+                cur.execute(
+                    psql.SQL(
+                        "SELECT COUNT(*), COALESCE(md5(string_agg(xmin::text, ',' ORDER BY xmin::text)), '') "
+                        "FROM {} WHERE organization_id = %s"
+                    ).format(psql.Identifier(target_table)),
+                    (tenant_id,),
+                )
+            else:
+                cur.execute(
+                    psql.SQL(
+                        "SELECT COUNT(*), COALESCE(md5(string_agg(xmin::text, ',' ORDER BY xmin::text)), '') FROM {}"
+                    ).format(psql.Identifier(target_table))
+                )
+        except Exception:
+            try:
+                if has_org_column:
+                    cur.execute(
+                        psql.SQL(
+                            "SELECT COUNT(*), COALESCE(MAX(updated_at)::text, '') FROM {} WHERE organization_id = %s"
+                        ).format(psql.Identifier(target_table)),
+                        (tenant_id,),
+                    )
+                else:
+                    cur.execute(
+                        psql.SQL("SELECT COUNT(*), COALESCE(MAX(updated_at)::text, '') FROM {}").format(
+                            psql.Identifier(target_table)
+                        )
+                    )
+            except Exception:
+                if has_org_column:
+                    cur.execute(
+                        psql.SQL(
+                            "SELECT COUNT(*), COALESCE(MAX(id)::text, '') FROM {} WHERE organization_id = %s"
+                        ).format(psql.Identifier(target_table)),
+                        (tenant_id,),
+                    )
+                else:
+                    cur.execute(
+                        psql.SQL("SELECT COUNT(*), COALESCE(MAX(id)::text, '') FROM {}").format(
+                            psql.Identifier(target_table)
+                        )
+                    )
+        row = cur.fetchone() or (0, "")
+        return f"{target_table}:{row[0]}:{row[1]}"
+
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        with conn.cursor() as cur:
+            signatures = [_table_signature(conn, cur, table_name)]
+            signatures.extend(
+                _table_signature(conn, cur, child_table)
+                for child_table in DB_CHILD_TABLES.get(name, ())
+            )
+
+    digest_base = f"{name}:" + "|".join(signatures)
+    return hashlib.sha256(digest_base.encode("utf-8")).hexdigest()
+
+
 def upsert_auth_device(device: dict[str, Any]) -> dict[str, Any]:
     table_name = "auth_devices"
     tenant_id = get_current_tenant_id()
@@ -251,12 +322,12 @@ def replace_collection(name: str, data: list[dict[str, Any]]) -> None:
     with psycopg.connect(db_connection_string(), autocommit=False) as conn:
         has_org_column = table_has_organization_id(conn, table_name)
         with conn.cursor() as cur:
-            db_delete_collection_children(cur, name)
             if not rows:
                 if has_org_column:
                     cur.execute(psql.SQL("DELETE FROM {} WHERE organization_id = %s").format(psql.Identifier(table_name)), (tenant_id,))
                 else:
                     cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(table_name)))
+                db_delete_collection_children(cur, name)
                 conn.commit()
                 return
 
@@ -287,14 +358,109 @@ def replace_collection(name: str, data: list[dict[str, Any]]) -> None:
                 _stabilize_concert_record_video_sort_orders(cur, tenant_id)
 
             db_upsert_rows(cur, table_name, columns, rows)
+            kept_ids = [db_write_value(table_name, "id", item.get("id")) for item in rows if item.get("id") is not None]
             for child_table, child_rows in db_child_rows_for_collection(name, rows).items():
                 child_has_org_column = table_has_organization_id(conn, child_table)
                 child_columns = DB_CHILD_COLUMNS[child_table]
+                child_parent_key = DB_CHILD_PARENT_KEYS.get(child_table)
+                if not child_parent_key:
+                    continue
                 if child_has_org_column and "organization_id" not in child_columns:
                     child_columns = (*child_columns, "organization_id")
                 if child_has_org_column:
                     for child_row in child_rows:
                         child_row["organization_id"] = str(child_row.get("organization_id") or tenant_id)
+
+                if kept_ids:
+                    if child_has_org_column:
+                        cur.execute(
+                            psql.SQL("DELETE FROM {} WHERE organization_id = %s AND NOT ({} = ANY(%s))").format(
+                                psql.Identifier(child_table),
+                                psql.Identifier(child_parent_key),
+                            ),
+                            (tenant_id, kept_ids),
+                        )
+                    else:
+                        cur.execute(
+                            psql.SQL("DELETE FROM {} WHERE NOT ({} = ANY(%s))").format(
+                                psql.Identifier(child_table),
+                                psql.Identifier(child_parent_key),
+                            ),
+                            (kept_ids,),
+                        )
+                else:
+                    if child_has_org_column:
+                        cur.execute(
+                            psql.SQL("DELETE FROM {} WHERE organization_id = %s").format(psql.Identifier(child_table)),
+                            (tenant_id,),
+                        )
+                    else:
+                        cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(child_table)))
+
+                if not child_rows:
+                    continue
+
                 db_fill_missing_ids(cur, child_table, child_rows)
-                db_insert_rows(cur, child_table, child_columns, child_rows)
+                if "id" in DB_CHILD_COLUMNS[child_table]:
+                    db_upsert_rows(cur, child_table, child_columns, child_rows)
+                    incoming_child_ids = [
+                        db_write_value(child_table, "id", row.get("id"))
+                        for row in child_rows
+                        if row.get("id") is not None
+                    ]
+                    affected_parent_ids = list({row.get(child_parent_key) for row in child_rows if row.get(child_parent_key) is not None})
+                    if affected_parent_ids:
+                        if incoming_child_ids:
+                            if child_has_org_column:
+                                cur.execute(
+                                    psql.SQL(
+                                        "DELETE FROM {} WHERE organization_id = %s AND {} = ANY(%s) AND NOT (id = ANY(%s))"
+                                    ).format(psql.Identifier(child_table), psql.Identifier(child_parent_key)),
+                                    (tenant_id, affected_parent_ids, incoming_child_ids),
+                                )
+                            else:
+                                cur.execute(
+                                    psql.SQL("DELETE FROM {} WHERE {} = ANY(%s) AND NOT (id = ANY(%s))").format(
+                                        psql.Identifier(child_table),
+                                        psql.Identifier(child_parent_key),
+                                    ),
+                                    (affected_parent_ids, incoming_child_ids),
+                                )
+                        else:
+                            if child_has_org_column:
+                                cur.execute(
+                                    psql.SQL("DELETE FROM {} WHERE organization_id = %s AND {} = ANY(%s)").format(
+                                        psql.Identifier(child_table),
+                                        psql.Identifier(child_parent_key),
+                                    ),
+                                    (tenant_id, affected_parent_ids),
+                                )
+                            else:
+                                cur.execute(
+                                    psql.SQL("DELETE FROM {} WHERE {} = ANY(%s)").format(
+                                        psql.Identifier(child_table),
+                                        psql.Identifier(child_parent_key),
+                                    ),
+                                    (affected_parent_ids,),
+                                )
+                else:
+                    affected_parent_ids = list({row.get(child_parent_key) for row in child_rows if row.get(child_parent_key) is not None})
+                    if affected_parent_ids:
+                        if child_has_org_column:
+                            cur.execute(
+                                psql.SQL("DELETE FROM {} WHERE organization_id = %s AND {} = ANY(%s)").format(
+                                    psql.Identifier(child_table),
+                                    psql.Identifier(child_parent_key),
+                                ),
+                                (tenant_id, affected_parent_ids),
+                            )
+                        else:
+                            cur.execute(
+                                psql.SQL("DELETE FROM {} WHERE {} = ANY(%s)").format(
+                                    psql.Identifier(child_table),
+                                    psql.Identifier(child_parent_key),
+                                ),
+                                (affected_parent_ids,),
+                            )
+                    db_insert_rows(cur, child_table, child_columns, child_rows)
         conn.commit()

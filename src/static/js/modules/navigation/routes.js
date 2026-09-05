@@ -183,6 +183,116 @@ function ensureAlbumsLoaded() {
     return albumsLoadPromise;
 }
 
+var memberFeatureLoadPromises = {};
+var memberFeatureScripts = {
+    absence: ['/static/js/modules/absences.js?v=20260630-6'],
+    recording: ['/static/js/modules/recordings.js?v=20260731-1'],
+    sheet: [
+        '/static/js/modules/practice_casting/helpers.js?v=20260701-1',
+        '/static/js/modules/scores/helpers.js?v=20260701-1',
+        '/static/js/modules/scores/render.js?v=20260701-1',
+        '/static/js/modules/scores/events.js?v=20260701-1',
+        '/static/js/modules/scores.js?v=20260701-1',
+    ],
+    datePiecePromotion: [
+        '/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1',
+        '/static/js/modules/date_piece_promotion/validation.js?v=20260701-3',
+        '/static/js/modules/date_piece_promotion/events.js?v=20260701-3',
+        '/static/js/modules/date_piece_promotion/state.js?v=20260701-2',
+        '/static/js/modules/date_piece_promotion/api.js?v=20260701-2',
+        '/static/js/modules/date_piece_promotion/render_piece_practice.js?v=20260701-1',
+        '/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20260701-1',
+        '/static/js/modules/date_piece_promotion/render.js?v=20260701-3',
+        '/static/js/modules/date_piece_promotion.js?v=20260630-6',
+    ],
+    practiceCasting: [
+        '/static/js/modules/practice_casting/helpers.js?v=20260701-1',
+        '/static/js/modules/practice_casting/render.js?v=20260701-1',
+        '/static/js/modules/practice_casting/events.js?v=20260701-1',
+        '/static/js/modules/practice_casting.js?v=20260701-1',
+    ],
+    performanceDay: [
+        '/static/js/modules/performance_day/helpers.js?v=20260701-1',
+        '/static/js/modules/performance_day/render.js?v=20260701-1',
+    ],
+    concertRecord: ['/static/js/modules/concert_record.js?v=20260808-1'],
+};
+var memberFeaturePreloadScheduled = false;
+
+function ensureMemberFeatureLoaded(featureName) {
+    if (memberFeatureLoadPromises[featureName]) return memberFeatureLoadPromises[featureName];
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return Promise.resolve();
+    const scripts = memberFeatureScripts[featureName] || [];
+    memberFeatureLoadPromises[featureName] = scripts.reduce(
+        (promise, scriptPath) => promise.then(() => new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src*="${scriptPath.split('?')[0]}"]`)) {
+                resolve();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = scriptPath;
+            script.async = true;
+            script.addEventListener('load', resolve, { once: true });
+            script.addEventListener('error', () => reject(new Error(`Failed to load ${scriptPath}`)), { once: true });
+            document.head.appendChild(script);
+        })),
+        Promise.resolve()
+    ).then(() => {
+        if (featureName === 'practiceCasting' && typeof bindCastingAdminEvents === 'function') {
+            bindCastingAdminEvents();
+        }
+    }).catch((error) => {
+        memberFeatureLoadPromises[featureName] = null;
+        throw error;
+    });
+    return memberFeatureLoadPromises[featureName];
+}
+
+function scheduleLikelyMemberFeaturePreload() {
+    if (memberFeaturePreloadScheduled) return;
+    memberFeaturePreloadScheduled = true;
+
+    const preloadOrder = ['recording', 'sheet', 'datePiecePromotion'];
+    const runPreload = () => {
+        preloadOrder.reduce(
+            (p, featureName) => p.then(() => ensureMemberFeatureLoaded(featureName)).catch(() => {}),
+            Promise.resolve()
+        ).catch(() => {});
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(runPreload, { timeout: 2500 });
+        return;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+        window.setTimeout(runPreload, 1000);
+        return;
+    }
+
+    runPreload();
+}
+
+function ensureFeatureForMemberTab(tabName) {
+    if (tabName === 'member-schedule' || tabName === 'member-absence') return ensureMemberFeatureLoaded('absence');
+    if (tabName === 'member-recording') return ensureMemberFeatureLoaded('recording');
+    if (tabName === 'member-album') return ensureAlbumsLoaded();
+    if (tabName === 'member-sheet' || tabName === 'sheet-admin') return ensureMemberFeatureLoaded('sheet');
+    if (['member-date-adjustment', 'member-piece-info', 'member-desired-piece', 'member-promotion'].includes(tabName)) {
+        return ensureMemberFeatureLoaded('datePiecePromotion');
+    }
+    if (['member-casting', 'casting-admin', 'member-practice-instruction', 'practice-instruction-admin'].includes(tabName)) {
+        return ensureMemberFeatureLoaded('practiceCasting');
+    }
+    if (['member-performance-day', 'performance-day-admin'].includes(tabName)) {
+        return ensureMemberFeatureLoaded('performanceDay');
+    }
+    if (['member-concert-record', 'concert-record-admin'].includes(tabName)) {
+        return ensureMemberFeatureLoaded('concertRecord');
+    }
+    return Promise.resolve();
+}
+
 function requestAdminPanel() {
     return (async () => {
         const authResult = await isPortalAuthenticated();
@@ -198,6 +308,7 @@ function requestAdminPanel() {
             showAlert('管理者権限がありません', 'warning');
             return;
         }
+        await ensureAdminSystemModuleLoaded();
         try {
             await ensureAdminSystemApiLoaded();
         } catch (err) {
@@ -221,6 +332,24 @@ function requestAdminPanel() {
         }
         showAdminPanel(appState.currentUserPermission === 'システム管理者' ? 'system-admin' : 'admin');
     })();
+}
+
+var adminSystemModuleLoadPromise = null;
+function ensureAdminSystemModuleLoaded() {
+    if (typeof ensureAdminSystemApiLoaded === 'function') return Promise.resolve();
+    if (adminSystemModuleLoadPromise) return adminSystemModuleLoadPromise;
+    adminSystemModuleLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/static/js/modules/admin_system.js?v=20260630-6';
+        script.async = true;
+        script.addEventListener('load', () => {
+            if (typeof ensureAdminSystemApiLoaded === 'function') resolve();
+            else reject(new Error('Admin system module loaded without its loader'));
+        }, { once: true });
+        script.addEventListener('error', () => reject(new Error('Admin system module failed to load')), { once: true });
+        document.head.appendChild(script);
+    });
+    return adminSystemModuleLoadPromise;
 }
 
 function showAdminPanel(role = 'admin') {
@@ -250,6 +379,7 @@ function showSystemPanel() {
             showAlert('システム管理者権限がありません', 'warning');
             return;
         }
+        await ensureAdminSystemModuleLoaded();
         try {
             await ensureAdminSystemApiLoaded();
         } catch (err) {
@@ -426,8 +556,10 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     if (button) button.classList.add('active');
     recordAccessLog(panelId, tabName);
     if (renderOnShow) {
+        await ensureFeatureForMemberTab(tabName);
         await ensureDeferredTabDataLoaded(tabName);
     }
+    if (renderOnShow && tabName === 'member-schedule') renderMemberSchedules();
     if (renderOnShow && tabName === 'member-home') renderPortalHome();
     if (renderOnShow && tabName === 'member-flyer-distribution') renderFlyerDistributionView();
     if (renderOnShow && tabName === 'member-performance-day') renderPerformanceDayInfoView();

@@ -10,6 +10,8 @@ var PORTAL_TIMEOUT_BOOTSTRAP_CORE = 20000;
 var PORTAL_TIMEOUT_GET = 15000;
 var PORTAL_TIMEOUT_MUTATION = 20000;
 var FRESH_CACHE_TTL_MS = 10000;
+var PORTAL_TRANSIENT_NETWORK_NOTICE_COOLDOWN_MS = 30000;
+var portalLastTransientNetworkNoticeAt = 0;
 
 // タイムアウトエラーを他のネットワークエラーと区別するクラス
 class PortalTimeoutError extends Error {
@@ -167,6 +169,13 @@ function buildApiFailureMessage(url, method, status, detail) {
     return `${target}の${action}に失敗しました。時間をおいて再試行してください。`;
 }
 
+function showTransientNetworkNotice() {
+    const now = Date.now();
+    if (now - portalLastTransientNetworkNoticeAt < PORTAL_TRANSIENT_NETWORK_NOTICE_COOLDOWN_MS) return;
+    portalLastTransientNetworkNoticeAt = now;
+    showAlert('通信が一時的に不安定なため、保存済みデータを表示しています。', 'warning');
+}
+
 async function tryRecoverPortalSession(deviceId) {
     if (!deviceId) {
         clearPortalAuthState();
@@ -292,7 +301,7 @@ async function request(url, options = {}) {
             } catch (networkError) {
                 if (networkError instanceof PortalTimeoutError) {
                     if (allowCacheFallback && cached) {
-                        showAlert('通信が不安定なため、保存済みデータを表示しています。', 'warning');
+                        showTransientNetworkNotice();
                         return cached;
                     }
                     const message = `${apiTargetLabel(url)}の取得がタイムアウトしました。再試行してください。`;
@@ -300,7 +309,7 @@ async function request(url, options = {}) {
                     throw networkError;
                 }
                 if (allowCacheFallback && cached) {
-                    showAlert('通信が不安定なため、保存済みデータを表示しています。', 'warning');
+                    showTransientNetworkNotice();
                     return cached;
                 }
                 const message = buildApiFailureMessage(url, method, 0, networkError instanceof Error ? networkError.message : 'network error');

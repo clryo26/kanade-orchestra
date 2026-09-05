@@ -612,7 +612,7 @@ function renderPaymentAdmin() {
         });
     });
 
-    renderPaymentFeeSettings();
+    if (typeof renderPaymentFeeSettings === 'function') renderPaymentFeeSettings();
 }
 
 function selectPaymentByMember(memberId) {

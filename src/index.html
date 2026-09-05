@@ -11,6 +11,8 @@
     <meta name="theme-color" content="#235789">
     <meta name="application-name" content="楽団ポータル">
     <meta name="apple-mobile-web-app-title" content="楽団ポータル">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
     <link rel="stylesheet" href="/static/css/style.css?v=20260807-1">
     <link rel="stylesheet" href="/static/css/mobile_fixes.css?v=20260807-1">
@@ -54,8 +56,8 @@
     <!-- 起動画面: JavaScript初期化前から表示。正常起動後に非表示になる。 -->
     <section id="portalStartupPanel" role="status" aria-live="polite">
         <h1>奏オケポータル</h1>
-        <p id="portalStartupMessage">起動しています...</p>
-        <button id="portalStartupRetryButton" type="button" hidden>再試行</button>
+        <p id="portalStartupMessage">起動を準備しています...</p>
+        <button id="portalStartupRetryButton" type="button" hidden onclick="var message=document.getElementById('portalStartupMessage'); if (message &amp;&amp; String(message.textContent || '').trim() === '通信に時間がかかっています。再試行してください。') { event.preventDefault(); event.stopImmediatePropagation(); this.disabled = true; message.textContent = '再試行しています...'; var retryUrl = new URL(window.location.href); retryUrl.searchParams.set('_portal_retry', String(Date.now())); window.location.replace(retryUrl.toString()); }">再試行</button>
         <button id="portalStartupReloadButton" type="button" hidden>再読み込み</button>
     </section>
     <!-- グローバルヘッダー: ドロワー開閉とブランド表示 -->
@@ -1337,41 +1339,23 @@
     <script src="/static/js/modules/admin_system/helpers.js?v=20260725-1" defer></script>
     <script src="/static/js/modules/admin_system/render.js?v=20260725-1" defer></script>
     <script src="/static/js/modules/admin_system/diagnostics.js?v=20260802-1" defer></script>
-    <script src="/static/js/modules/admin_system.js?v=20260630-6" defer></script>
+
     <script src="/static/js/modules/portal_views.js?v=20260802-1" defer></script>
-    <script src="/static/js/modules/concert_record.js?v=20260808-1" defer></script>
-    <script src="/static/js/modules/performance_day/helpers.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/performance_day/render.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/practice_casting/helpers.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/practice_casting/render.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/practice_casting/events.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/practice_casting.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/validation.js?v=20260701-3" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/events.js?v=20260701-3" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/state.js?v=20260701-2" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/api.js?v=20260701-2" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/render_piece_practice.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/date_piece_promotion/render.js?v=20260701-3" defer></script>
-    <script src="/static/js/modules/date_piece_promotion.js?v=20260630-6" defer></script>
+
     <script src="/static/js/modules/announcements.js?v=20260630-6" defer></script>
     <script src="/static/js/modules/performances.js?v=20260706-1" defer></script>
     <script src="/static/js/modules/schedules.js?v=20260630-6" defer></script>
-    <script src="/static/js/modules/recordings.js?v=20260731-1" defer></script>
+
     <script src="/static/js/modules/members/helpers.js?v=20260701-1" defer></script>
     <script src="/static/js/modules/members/form.js?v=20260701-1" defer></script>
     <script src="/static/js/modules/members/api.js?v=20260701-1" defer></script>
     <script src="/static/js/modules/members/render.js?v=20260802-1" defer></script>
     <script src="/static/js/modules/members/events.js?v=20260701-1" defer></script>
     <script src="/static/js/modules/members.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/absences.js?v=20260630-6" defer></script>
+
     <script src="/static/js/modules/payments.js?v=20260703-1" defer></script>
     <script src="/static/js/modules/events.js?v=20260630-6" defer></script>
-    <script src="/static/js/modules/scores/helpers.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/scores/render.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/scores/events.js?v=20260701-1" defer></script>
-    <script src="/static/js/modules/scores.js?v=20260701-1" defer></script>
+
     <script src="/static/js/modules/sns.js?v=20260630-6" defer></script>
     <script src="/static/js/auth_feature.js?v=20260630-6" defer></script>
 </body>

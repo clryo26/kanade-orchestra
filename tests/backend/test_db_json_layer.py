@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import pytest
 
 from src.backend.core import db_runtime
+import src.backend.routers.bootstrap as bootstrap_router
 from src.backend.services import production_ops_service
 
 pytestmark = pytest.mark.db_profile
@@ -47,6 +48,14 @@ def test_db_write_values_accept_month_and_display_order_alias(backend_env):
     assert payment_row[3] == ""
     assert payment_row[4] == "2022-09"
     assert payment_row[5] == "2022-09-01"
+
+
+def test_db_write_value_rejects_invalid_numeric_input(backend_env):
+    with pytest.raises(HTTPException) as excinfo:
+        backend_env.db_write_value("payments", "membership_fee_amount", "invalid-number")
+
+    assert excinfo.value.status_code == 400
+    assert "Invalid numeric value" in str(excinfo.value.detail)
 
 
 def test_db_time_values_are_returned_as_hour_minute(backend_env):
@@ -458,6 +467,154 @@ def test_bootstrap_lite_etag_changes_when_non_performance_data_changes(client, b
     assert second.status_code == 200
     assert second.json()["schedules"][0]["venue"] == "B"
     assert (second.headers.get("etag") or second.headers.get("ETag")) != etag
+
+
+def test_bootstrap_lite_if_none_match_short_circuits_payload_build(client):
+    first = client.get("/api/bootstrap-lite")
+    assert first.status_code == 200
+
+    etag = first.headers.get("etag") or first.headers.get("ETag")
+    assert etag
+
+    async def _unexpected_payload_call(**kwargs):
+        raise AssertionError("bootstrap_lite_payload must not be called for 304")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(bootstrap_router.bootstrap_service, "bootstrap_lite_payload", _unexpected_payload_call)
+    try:
+        second = client.get("/api/bootstrap-lite", headers={"If-None-Match": etag})
+    finally:
+        monkeypatch.undo()
+
+    assert second.status_code == 304
+
+
+def test_collection_etag_hydrates_local_cache_when_db_digest_is_unavailable(monkeypatch):
+    class _Cache:
+        def __init__(self):
+            self.value = None
+
+        def etag(self, name):
+            return self.value
+
+    cache = _Cache()
+    loaded = []
+
+    def _load_collection(name):
+        loaded.append(name)
+        cache.value = "hydrated-etag"
+        return []
+
+    monkeypatch.setattr(bootstrap_router, "get_memory_cache_instance", lambda: cache)
+    monkeypatch.setattr(bootstrap_router, "load_collection_etag", lambda name: "")
+    monkeypatch.setattr(bootstrap_router, "load_json_data", _load_collection)
+
+    assert bootstrap_router._collection_etag("performances") == "hydrated-etag"
+    assert loaded == ["performances"]
+
+
+def test_combined_collection_etag_prefers_db_signature_over_stale_memory_cache():
+    result = bootstrap_router.bootstrap_service.combined_collection_etag(
+        ("performances",),
+        lambda name: "stale-memory-etag",
+        lambda name: "fresh-db-etag",
+    )
+    expected = bootstrap_router.bootstrap_service.hashlib.sha256(
+        b"performances:fresh-db-etag"
+    ).hexdigest()
+
+    assert result == expected
+
+
+def test_load_collection_etag_tracks_parent_and_child_row_versions(monkeypatch):
+    from src.backend.repositories import db_json_repository
+
+    executed_queries = []
+
+    class _Cursor:
+        def __init__(self, rows):
+            self._rows = iter(rows)
+            self._current = (0, "")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params=None):
+            executed_queries.append(str(query))
+            self._current = next(self._rows)
+
+        def fetchone(self):
+            return self._current
+
+    class _Connection:
+        def __init__(self, rows):
+            self._cursor = _Cursor(rows)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return self._cursor
+
+    class _Psycopg:
+        def __init__(self, result_sets):
+            self._result_sets = iter(result_sets)
+
+        def connect(self, _connection_string, *, autocommit):
+            assert autocommit is True
+            return _Connection(next(self._result_sets))
+
+    monkeypatch.setattr(db_json_repository, "db_connection_string", lambda: "postgresql://test")
+    monkeypatch.setattr(db_json_repository, "table_has_organization_id", lambda _conn, _table: False)
+    monkeypatch.setattr(
+        db_json_repository,
+        "psycopg",
+        _Psycopg(
+            [
+                [(1, "parent-v1"), (2, "child-v1")],
+                [(1, "parent-v2"), (2, "child-v1")],
+                [(1, "parent-v1"), (2, "child-v2")],
+            ]
+        ),
+    )
+
+    initial = db_json_repository.load_collection_etag("performances")
+    parent_changed = db_json_repository.load_collection_etag("performances")
+    child_changed = db_json_repository.load_collection_etag("performances")
+
+    assert parent_changed != initial
+    assert child_changed != initial
+    assert len(executed_queries) == 6
+    assert all("xmin" in query for query in executed_queries)
+
+
+def test_db_fill_missing_ids_uses_sequence_allocation_per_row(backend_env):
+    class _SequenceCursor:
+        def __init__(self) -> None:
+            self._last_query = ""
+            self._nextval = 500
+
+        def execute(self, query, params=None):
+            self._last_query = str(query)
+
+        def fetchone(self):
+            if "pg_get_serial_sequence" in self._last_query:
+                return ("public.performances_id_seq",)
+            if "nextval" in self._last_query:
+                self._nextval += 1
+                return (self._nextval,)
+            raise AssertionError(f"Unexpected query: {self._last_query}")
+
+    rows = [{"title": "A"}, {"title": "B"}, {"title": "C"}]
+    backend_env.db_fill_missing_ids(_SequenceCursor(), "performances", rows)
+
+    assert [row["id"] for row in rows] == [501, 502, 503]
 
 
 def test_run_db_startup_self_check_skips_when_db_not_expected(backend_env, monkeypatch):
