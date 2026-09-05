@@ -9,7 +9,7 @@ async function loginAsMember(page) {
 }
 
 test.describe('Practice attendance', () => {
-  test('practice schedule has four attendance choices and overview groups saved statuses', async ({ page }) => {
+  test('practice schedule has four attendance choices and hides removed menu items', async ({ page }) => {
     await installPortalApiMocks(page, {
       permission: '一般',
       bootstrapOverrides: {
@@ -40,12 +40,10 @@ test.describe('Practice attendance', () => {
     await expect(form.getByLabel('出席')).toBeChecked();
     for (const label of ['出席', '欠席', '遅刻', '早退']) await expect(form.getByLabel(label)).toHaveCount(1);
 
+    await expect(page.locator('#memberScheduleTab')).toContainText('練習可能時間');
+    await expect(page.locator('#memberScheduleTab')).not.toContainText('13:00 - 16:30');
+    await expect(page.locator('#memberScheduleTab')).not.toContainText('練習場');
     await page.click('#portalDrawerToggle');
-    await page.locator('#portalDrawerMenu').getByRole('button', { name: '出欠確認' }).click();
-    await expect(page.locator('#memberAbsenceInfo')).toContainText('出席 3名');
-    await expect(page.locator('#memberAbsenceInfo')).toContainText('遅刻花子（遅刻 14:00）');
-    await expect(page.locator('#memberAbsenceInfo')).toContainText('早退次郎（早退 16:00）');
-    await expect(page.locator('#memberAbsenceInfo')).toContainText('欠席 1名');
-    await expect(page.locator('#memberAbsenceInfo')).toContainText('未登録 1名');
+    await expect(page.locator('#portalDrawerMenu').getByRole('button', { name: '出欠確認' })).toHaveCount(0);
   });
 });
