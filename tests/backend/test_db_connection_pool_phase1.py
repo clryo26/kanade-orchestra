@@ -45,6 +45,10 @@ def test_open_pool_uses_bounded_phase1_sizes(monkeypatch: pytest.MonkeyPatch) ->
     created: list[object] = []
 
     class FakePool:
+        @staticmethod
+        def check_connection(_connection: object) -> None:
+            return None
+
         def __init__(self, **kwargs):
             self.kwargs = kwargs
             self.open_calls: list[bool] = []
@@ -69,6 +73,7 @@ def test_open_pool_uses_bounded_phase1_sizes(monkeypatch: pytest.MonkeyPatch) ->
     assert pool.kwargs["min_size"] == 1
     assert pool.kwargs["max_size"] == 5
     assert pool.kwargs["kwargs"] == {"autocommit": False}
+    assert pool.kwargs["check"] is FakePool.check_connection
     assert pool.kwargs["open"] is False
     assert pool.open_calls == [True]
 
