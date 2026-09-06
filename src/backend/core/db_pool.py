@@ -47,6 +47,7 @@ def open_db_pool() -> None:
             min_size=DB_POOL_MIN_SIZE,
             max_size=DB_POOL_MAX_SIZE,
             kwargs={"autocommit": False},
+            check=ConnectionPool.check_connection,
             open=False,
         )
         try:
