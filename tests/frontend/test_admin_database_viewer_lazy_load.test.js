@@ -153,7 +153,7 @@ describe('admin database viewer lazy loading', () => {
     test('recordings lazy load implementation is unchanged', () => {
         const source = readSource('src/static/js/modules/recordings.js');
         expect(source).toContain('function ensureRecordingsFeatureLoaded()');
-        expect(source).toContain("script.src = '/static/js/recordings_feature.js?v=20260731-1'");
+        expect(source).toContain("script.src = '/static/js/recordings_feature.js?v=20260912-1'");
         expect(source).toContain('recordingsFeatureLoadPromise = null');
         expect(source).toMatch(/async function loadRecordings\(\)\s*\{\s*await ensureRecordingsFeatureLoaded\(\)/);
     });

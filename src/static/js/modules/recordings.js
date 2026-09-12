@@ -15,7 +15,7 @@ function ensureRecordingsFeatureLoaded() {
 
     recordingsFeatureLoadPromise = new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = '/static/js/recordings_feature.js?v=20260731-1';
+        script.src = '/static/js/recordings_feature.js?v=20260912-1';
         script.async = true;
         script.addEventListener('load', () => resolve(), { once: true });
         script.addEventListener('error', () => {
