@@ -269,11 +269,13 @@ def create_resumable_upload_session(
     if not storage_enabled():
         raise RuntimeError("Google Cloud Storage is not configured")
     blob = get_storage_bucket().blob(object_name)
-    return blob.create_resumable_upload_session(
-        content_type=content_type,
-        size=size,
-        origin=origin,
-        if_generation_match=0,
+    return str(
+        blob.create_resumable_upload_session(
+            content_type=content_type,
+            size=size,
+            origin=origin,
+            if_generation_match=0,
+        )
     )
 
 
