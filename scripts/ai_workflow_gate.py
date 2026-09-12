@@ -3250,6 +3250,7 @@ def validate_plan(plan: dict[str, Any]) -> None:
         "validate_existing_change",
         "apply_change",
         "policy_update",
+        "sync_branch_with_main",
         "commit_validated_change",
         "publish_branch",
         "deploy_test",
@@ -3270,6 +3271,14 @@ def validate_plan(plan: dict[str, Any]) -> None:
             raise GateReject(
                 f"publish_branch missing plan keys: {missing}"
             )
+    elif operation == "sync_branch_with_main":
+        missing = sorted({"target_branch", "expected_head"} - set(plan))
+        if missing:
+            raise GateReject(
+                f"sync_branch_with_main missing plan keys: {missing}"
+            )
+        if "remote" in plan:
+            raise GateReject("sync_branch_with_main does not accept remote")
     elif present_publish_keys:
         raise GateReject(
             "publish-only plan keys are not allowed for "
@@ -3414,6 +3423,110 @@ def publish_branch(
     print(f"PUBLISHED_HEAD={expected_head}")
 
 
+
+def sync_branch_with_main(
+    plan: dict[str, Any],
+    *,
+    allow_state_change: bool,
+) -> None:
+    if not allow_state_change:
+        raise GateReject(
+            "sync_branch_with_main requires --allow-state-change"
+        )
+    if not repo_clean(cwd=ROOT):
+        raise GateReject(
+            "worktree must be clean before sync_branch_with_main"
+        )
+
+    target_branch = plan.get("target_branch")
+    if not isinstance(target_branch, str) or not target_branch:
+        raise GateReject("sync_branch_with_main target_branch is invalid")
+    if target_branch in {"main", "master"}:
+        raise GateReject("sync_branch_with_main refuses protected base branch")
+    current_branch = git_branch(cwd=ROOT)
+    if current_branch != target_branch:
+        raise GateReject(
+            "sync_branch_with_main current branch mismatch: "
+            f"expected {target_branch}, got {current_branch}"
+        )
+
+    expected_head = plan.get("expected_head")
+    if (
+        not isinstance(expected_head, str)
+        or re.fullmatch(r"[0-9a-f]{40}", expected_head) is None
+    ):
+        raise GateReject("sync_branch_with_main expected_head is invalid")
+    current_head = git_head(cwd=ROOT)
+    if current_head != expected_head:
+        raise GateReject(
+            "sync_branch_with_main HEAD mismatch: "
+            f"expected {expected_head}, got {current_head}"
+        )
+
+    remote_url_proc = run(
+        [executable("git"), "config", "--get", "remote.origin.url"],
+        cwd=ROOT,
+        check=True,
+    )
+    remote_url = remote_url_proc.stdout.strip()
+    expected_remote_url = "https://github.com/clryo26/kanade-orchestra.git"
+    if remote_url != expected_remote_url:
+        raise GateReject(
+            "sync_branch_with_main origin URL mismatch: "
+            f"expected {expected_remote_url}, got {remote_url}"
+        )
+
+    fetched = run([executable("git"), "fetch", "origin", "main"], cwd=ROOT)
+    if fetched.returncode != 0:
+        raise GateReject("sync_branch_with_main fetch origin main failed")
+    origin_main = run(
+        [executable("git"), "rev-parse", "origin/main"],
+        cwd=ROOT,
+        check=True,
+    ).stdout.strip()
+
+    ancestor = run(
+        [executable("git"), "merge-base", "--is-ancestor", "origin/main", "HEAD"],
+        cwd=ROOT,
+    )
+    if ancestor.returncode == 0:
+        print("AI_WORKFLOW_GATE=PASS")
+        print("RUNNER_VERSION=4")
+        print("OPERATION=sync_branch_with_main")
+        print(f"JOB_ID={plan['job_id']}")
+        print("SYNC_RESULT=no-op")
+        return
+    if ancestor.returncode != 1:
+        raise GateReject("sync_branch_with_main ancestor check failed")
+
+    merged = run([executable("git"), "merge", "--no-edit", "origin/main"], cwd=ROOT)
+    if merged.returncode != 0:
+        aborted = run([executable("git"), "merge", "--abort"], cwd=ROOT)
+        restored_head = git_head(cwd=ROOT)
+        restored_clean = repo_clean(cwd=ROOT)
+        if aborted.returncode != 0 or restored_head != expected_head or not restored_clean:
+            raise GateReject("sync_branch_with_main merge failed and recovery verification failed")
+        raise GateReject("sync_branch_with_main merge failed; merge was aborted")
+
+    origin_ancestor = run(
+        [executable("git"), "merge-base", "--is-ancestor", origin_main, "HEAD"],
+        cwd=ROOT,
+    )
+    expected_ancestor = run(
+        [executable("git"), "merge-base", "--is-ancestor", expected_head, "HEAD"],
+        cwd=ROOT,
+    )
+    if origin_ancestor.returncode != 0 or expected_ancestor.returncode != 0:
+        raise GateReject("sync_branch_with_main merge ancestry verification failed")
+    if not repo_clean(cwd=ROOT):
+        raise GateReject("sync_branch_with_main merge did not leave a clean worktree")
+
+    print("AI_WORKFLOW_GATE=PASS")
+    print("RUNNER_VERSION=4")
+    print("OPERATION=sync_branch_with_main")
+    print(f"JOB_ID={plan['job_id']}")
+    print("SYNC_RESULT=merged")
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("job_zip", type=Path)
@@ -3439,6 +3552,7 @@ def main() -> int:
                 "validate_existing_change",
                 "apply_change",
                 "policy_update",
+                "sync_branch_with_main",
                 "commit_validated_change",
                 "publish_branch",
                 "deploy_test",
@@ -3467,6 +3581,11 @@ def main() -> int:
                     plan,
                     allow_state_change=ns.allow_state_change,
                     policy_update=True,
+                )
+            elif operation == "sync_branch_with_main":
+                sync_branch_with_main(
+                    plan,
+                    allow_state_change=ns.allow_state_change,
                 )
             elif operation == "commit_validated_change":
                 commit_validated_change(
