@@ -70,7 +70,7 @@ def _sheet_exists(item: dict[str, Any]) -> bool:
 
 
 def _stream_sheets_zip(sheets: list[dict[str, Any]]):
-    sink = _StreamingZipWriter()
+    sink: Any = _StreamingZipWriter()
     used_names: set[str] = set()
 
     with zipfile.ZipFile(
