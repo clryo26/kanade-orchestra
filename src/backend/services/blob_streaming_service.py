@@ -5,9 +5,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from ..drive_storage import get_storage_bucket, storage_enabled
+
+STREAM_CHUNK_SIZE = 1024 * 1024
 
 
 def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | None:
@@ -29,7 +31,10 @@ def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | 
         end = total_size - 1
     if start >= total_size:
         return None
-    return max(start, 0), min(end, total_size - 1)
+    end = min(end, total_size - 1)
+    if end < start:
+        return None
+    return max(start, 0), end
 
 
 def stream_storage_blob(object_name: str, download: bool, request: Request):
@@ -57,13 +62,24 @@ def stream_storage_blob(object_name: str, download: bool, request: Request):
     requested_range = None if download else parse_range_header(request.headers.get("range", ""), total_size)
     if requested_range:
         start, end = requested_range
-        data = blob.download_as_bytes(start=start, end=end)
         headers = {
             **base_headers,
             "Content-Range": f"bytes {start}-{end}/{total_size}",
-            "Content-Length": str(len(data)),
+            "Content-Length": str(end - start + 1),
         }
-        return Response(content=data, status_code=206, media_type=content_type, headers=headers)
+
+        def range_chunks():
+            with blob.open("rb") as source:
+                source.seek(start)
+                remaining = end - start + 1
+                while remaining:
+                    chunk = source.read(min(STREAM_CHUNK_SIZE, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        return StreamingResponse(range_chunks(), status_code=206, media_type=content_type, headers=headers)
 
     headers = dict(base_headers)
     if total_size:
@@ -72,7 +88,7 @@ def stream_storage_blob(object_name: str, download: bool, request: Request):
     def chunks():
         with blob.open("rb") as source:
             while True:
-                chunk = source.read(1024 * 1024)
+                chunk = source.read(STREAM_CHUNK_SIZE)
                 if not chunk:
                     break
                 yield chunk
