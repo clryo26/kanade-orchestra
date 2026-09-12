@@ -63,7 +63,7 @@ def _response_body(response) -> bytes:
 
 
 def test_open_ended_range_streams_fixed_chunks(monkeypatch) -> None:
-    data_size = blob_streaming_service.STREAM_CHUNK_SIZE * 2 + 123
+    data_size = blob_streaming_service.MAX_RANGE_RESPONSE_BYTES * 2 + 123
     expected_data = bytes(index % 256 for index in range(data_size))
     blob = _Blob(expected_data)
     monkeypatch.setattr(blob_streaming_service, "storage_enabled", lambda: True)
@@ -73,12 +73,75 @@ def test_open_ended_range_streams_fixed_chunks(monkeypatch) -> None:
 
     assert response.status_code == 206
     assert response.headers["accept-ranges"] == "bytes"
-    assert response.headers["content-range"] == f"bytes 0-{data_size - 1}/{data_size}"
-    assert response.headers["content-length"] == str(data_size)
-    assert _response_body(response) == expected_data
+    max_end = blob_streaming_service.MAX_RANGE_RESPONSE_BYTES - 1
+    assert response.headers["content-range"] == f"bytes 0-{max_end}/{data_size}"
+    assert response.headers["content-length"] == str(blob_streaming_service.MAX_RANGE_RESPONSE_BYTES)
+    assert _response_body(response) == expected_data[:blob_streaming_service.MAX_RANGE_RESPONSE_BYTES]
     assert not blob.download_as_bytes_called
     assert blob.reader.max_read_size <= blob_streaming_service.STREAM_CHUNK_SIZE
     assert blob.reader.read_calls >= 3
+
+
+def test_open_ended_range_from_middle_is_limited(monkeypatch) -> None:
+    data_size = blob_streaming_service.MAX_RANGE_RESPONSE_BYTES * 2 + 123
+    expected_data = bytes(index % 256 for index in range(data_size))
+    start = blob_streaming_service.STREAM_CHUNK_SIZE + 7
+    blob = _Blob(expected_data)
+    monkeypatch.setattr(blob_streaming_service, "storage_enabled", lambda: True)
+    monkeypatch.setattr(blob_streaming_service, "get_storage_bucket", lambda: _Bucket(blob))
+
+    response = blob_streaming_service.stream_storage_blob("recording.mp3", False, _request(f"bytes={start}-"))
+
+    assert response.status_code == 206
+    assert response.headers["content-range"] == f"bytes {start}-{start + blob_streaming_service.MAX_RANGE_RESPONSE_BYTES - 1}/{data_size}"
+    assert response.headers["content-length"] == str(blob_streaming_service.MAX_RANGE_RESPONSE_BYTES)
+    assert _response_body(response) == expected_data[start:start + blob_streaming_service.MAX_RANGE_RESPONSE_BYTES]
+    assert not blob.download_as_bytes_called
+    assert blob.reader.max_read_size <= blob_streaming_service.STREAM_CHUNK_SIZE
+
+
+def test_explicit_large_range_is_limited(monkeypatch) -> None:
+    data_size = blob_streaming_service.MAX_RANGE_RESPONSE_BYTES * 2 + 123
+    expected_data = bytes(index % 256 for index in range(data_size))
+    start = 123
+    blob = _Blob(expected_data)
+    monkeypatch.setattr(blob_streaming_service, "storage_enabled", lambda: True)
+    monkeypatch.setattr(blob_streaming_service, "get_storage_bucket", lambda: _Bucket(blob))
+
+    response = blob_streaming_service.stream_storage_blob("recording.mp3", False, _request(f"bytes={start}-{data_size - 1}"))
+
+    assert response.status_code == 206
+    assert response.headers["content-range"] == f"bytes {start}-{start + blob_streaming_service.MAX_RANGE_RESPONSE_BYTES - 1}/{data_size}"
+    assert response.headers["content-length"] == str(blob_streaming_service.MAX_RANGE_RESPONSE_BYTES)
+    assert _response_body(response) == expected_data[start:start + blob_streaming_service.MAX_RANGE_RESPONSE_BYTES]
+
+
+def test_small_range_is_not_expanded(monkeypatch) -> None:
+    expected_data = b"0123456789"
+    blob = _Blob(expected_data)
+    monkeypatch.setattr(blob_streaming_service, "storage_enabled", lambda: True)
+    monkeypatch.setattr(blob_streaming_service, "get_storage_bucket", lambda: _Bucket(blob))
+
+    response = blob_streaming_service.stream_storage_blob("recording.mp3", False, _request("bytes=2-5"))
+
+    assert response.headers["content-range"] == "bytes 2-5/10"
+    assert response.headers["content-length"] == "4"
+    assert _response_body(response) == b"2345"
+
+
+def test_range_near_end_returns_only_remaining_bytes(monkeypatch) -> None:
+    data_size = blob_streaming_service.MAX_RANGE_RESPONSE_BYTES + 123
+    expected_data = bytes(index % 256 for index in range(data_size))
+    start = data_size - 50
+    blob = _Blob(expected_data)
+    monkeypatch.setattr(blob_streaming_service, "storage_enabled", lambda: True)
+    monkeypatch.setattr(blob_streaming_service, "get_storage_bucket", lambda: _Bucket(blob))
+
+    response = blob_streaming_service.stream_storage_blob("recording.mp3", False, _request(f"bytes={start}-"))
+
+    assert response.headers["content-range"] == f"bytes {start}-{data_size - 1}/{data_size}"
+    assert response.headers["content-length"] == "50"
+    assert _response_body(response) == expected_data[start:]
 
 
 def test_explicit_range_streams_only_requested_bytes(monkeypatch) -> None:

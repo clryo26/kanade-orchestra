@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from ..drive_storage import get_storage_bucket, storage_enabled
 
 STREAM_CHUNK_SIZE = 1024 * 1024
+MAX_RANGE_RESPONSE_BYTES = 8 * 1024 * 1024
 
 
 def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | None:
@@ -31,7 +32,7 @@ def parse_range_header(range_header: str, total_size: int) -> tuple[int, int] | 
         end = total_size - 1
     if start >= total_size:
         return None
-    end = min(end, total_size - 1)
+    end = min(end, total_size - 1, start + MAX_RANGE_RESPONSE_BYTES - 1)
     if end < start:
         return None
     return max(start, 0), end
