@@ -84,7 +84,7 @@ function bindForms() {
 
     if ($('sheetPerformanceSelect')) $('sheetPerformanceSelect').addEventListener('change', () => updateSheetPieceOptions());
     if ($('uploadSheetBtn')) $('uploadSheetBtn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '登録中...', () => uploadSheets()));
-    
+
     if (typeof bindCastingAdminEvents === 'function') bindCastingAdminEvents();
 }
 
@@ -127,7 +127,7 @@ async function uploadToLocalStore() {
     try {
         for (const file of appState.selectedFiles) {
             setOperationStatus('uploadProgress', `保存中: ${file.name}（${completed + 1} / ${appState.selectedFiles.length} 件）`);
-            await request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
+            await uploadRecordingFile(file);
             completed += 1;
             setOperationStatus('uploadProgress', `保存完了: ${completed} / ${appState.selectedFiles.length} 件`);
         }
@@ -138,6 +138,89 @@ async function uploadToLocalStore() {
         setOperationStatus('uploadProgress', `保存に失敗しました。${completed} / ${appState.selectedFiles.length} 件まで完了しています。`, 'danger');
         throw error;
     }
+}
+
+const RECORDING_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+const RECORDING_UPLOAD_RETRIES = 3;
+
+async function uploadRecordingFile(file) {
+    const session = await request('/api/drive/upload/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            filename: file.name,
+            date: document.getElementById('uploadDate').value,
+            piece: document.getElementById('uploadPiece').value.trim(),
+            size: file.size,
+            content_type: file.type || 'application/octet-stream',
+        }),
+    });
+    if (session.mode === 'local') {
+        return request('/api/drive/upload', { method: 'POST', body: audioFormData(file) });
+    }
+
+    await uploadResumableChunks(session.upload_url, file);
+    return request('/api/drive/upload/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            object_name: session.object_name,
+            filename: session.filename,
+            date: session.date,
+            piece: session.piece,
+            size: file.size,
+        }),
+    });
+}
+
+async function uploadResumableChunks(uploadUrl, file) {
+    let offset = 0;
+    while (offset < file.size) {
+        const end = Math.min(offset + RECORDING_UPLOAD_CHUNK_BYTES, file.size);
+        const chunk = file.slice(offset, end);
+        let response = null;
+        for (let attempt = 0; attempt < RECORDING_UPLOAD_RETRIES; attempt += 1) {
+            try {
+                response = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Range': `bytes ${offset}-${end - 1}/${file.size}`,
+                        'Content-Type': file.type || 'application/octet-stream',
+                    },
+                    body: chunk,
+                });
+                if (response.ok || response.status === 308) break;
+                throw new Error(`GCS upload failed (${response.status})`);
+            } catch (error) {
+                if (attempt === RECORDING_UPLOAD_RETRIES - 1) throw error;
+                offset = await queryResumableOffset(uploadUrl, file.size);
+                if (offset >= file.size) return;
+                if (offset !== end && offset !== end - chunk.size) break;
+                await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+            }
+        }
+        if (!response) continue;
+        if (response.status === 308) {
+            const range = response.headers.get('Range') || '';
+            const match = range.match(/bytes=0-(\d+)/);
+            offset = match ? Number(match[1]) + 1 : end;
+        } else {
+            offset = file.size;
+        }
+    }
+}
+
+async function queryResumableOffset(uploadUrl, size) {
+    const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Range': `bytes */${size}` },
+    });
+    if (response.status !== 308) {
+        throw new Error(`GCS upload status query failed (${response.status})`);
+    }
+    const range = response.headers.get('Range') || '';
+    const match = range.match(/bytes=0-(\d+)/);
+    return match ? Number(match[1]) + 1 : 0;
 }
 
 // 録音アップロード API 用 FormData を組み立てる。
