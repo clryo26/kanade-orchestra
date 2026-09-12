@@ -319,6 +319,8 @@ function renderMemberSchedules() {
                         <span>${escapeHtml(formatScheduleDate(sched.date))}</span>
                         ${scheduleIsConductorTraining(sched) ? '<span class="schedule-conductor-training">※指揮トレ</span>' : ''}
                     </div>
+                    <!-- 保存済みの会場を団員にも表示し、未登録時は未定とする。 -->
+                    <div class="schedule-detail-line">練習場所: ${escapeHtml(sched.venue || '未定')}</div>
                     <div class="schedule-detail-line">練習可能時間: ${escapeHtml(scheduleAvailableLabel(sched) || '未定')}</div>
                     <div class="schedule-detail-line">練習曲: ${escapeHtml(sched.pieces || '未定')}</div>
                     <div class="schedule-detail-line multiline-text">備考: ${escapeHtml(sched.notes || 'なし')}</div>
@@ -435,4 +437,3 @@ function scheduleOptions(selected = '') {
 // absenceStatusLabel moved to feature module.
 
 // absenceEntryLabel moved to feature module.
-
