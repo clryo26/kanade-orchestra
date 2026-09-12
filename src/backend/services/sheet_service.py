@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import io
 import zipfile
 from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 
 from ..core.runtime_paths import DRIVE_STAGING_DIR, SHEET_DIR, UPLOAD_DIR
 from ..drive_storage import get_storage_bucket, storage_enabled
 from ..utils.datetime_utils import next_updated_at
-from .sheet_asset_service import delete_sheet_file, sheet_file_bytes, sheet_metadata, sheet_payload, unique_zip_name
+from .sheet_asset_service import delete_sheet_file, local_sheet_path, sheet_metadata, sheet_payload, unique_zip_name
 from .file_service import ensure_pdf_file, safe_segment, save_upload_to_path
 from .extra_collection_helpers import normalize_extra_payload
 from .storage_service import load_json_data, save_json_data
@@ -23,7 +22,91 @@ def get_sheets_payload() -> dict[str, list[dict[str, Any]]]:
     return {"files": sheet_payload(load_json_data("sheet_library"))}
 
 
-def download_sheets_zip(performance_id: str = "", piece: str = "", part: str = "") -> Response:
+SHEET_ZIP_STREAM_CHUNK_SIZE = 1024 * 1024
+
+
+class _StreamingZipWriter:
+    def __init__(self) -> None:
+        self._offset = 0
+        self._chunks: list[bytes] = []
+
+    def write(self, data: bytes) -> int:
+        chunk = bytes(data)
+        if chunk:
+            self._chunks.append(chunk)
+            self._offset += len(chunk)
+        return len(chunk)
+
+    def tell(self) -> int:
+        return self._offset
+
+    def flush(self) -> None:
+        return None
+
+    def seekable(self) -> bool:
+        return False
+
+    def drain(self) -> list[bytes]:
+        chunks = self._chunks
+        self._chunks = []
+        return chunks
+
+
+def _sheet_exists(item: dict[str, Any]) -> bool:
+    if item.get("source") == "google_cloud_storage":
+        object_name = str(item.get("object_name") or "")
+        if not object_name or not storage_enabled():
+            return False
+        return bool(get_storage_bucket().blob(object_name).exists())
+
+    path = str(item.get("path") or "")
+    if not path:
+        return False
+    try:
+        local_sheet_path(path)
+    except HTTPException:
+        return False
+    return True
+
+
+def _stream_sheets_zip(sheets: list[dict[str, Any]]):
+    sink = _StreamingZipWriter()
+    used_names: set[str] = set()
+
+    with zipfile.ZipFile(
+        sink,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        for item in sheets:
+            folder = safe_segment(str(item.get("piece") or "piece"), "piece")
+            filename = unique_zip_name(str(item.get("name") or "score.pdf"), used_names)
+            archive_name = f"{folder}/{filename}"
+
+            if item.get("source") == "google_cloud_storage":
+                object_name = str(item.get("object_name") or "")
+                source = get_storage_bucket().blob(object_name).open("rb")
+            else:
+                source = local_sheet_path(str(item.get("path") or "")).open("rb")
+
+            with source, archive.open(archive_name, "w", force_zip64=True) as target:
+                while True:
+                    chunk = source.read(SHEET_ZIP_STREAM_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+                    yield from sink.drain()
+            yield from sink.drain()
+
+    yield from sink.drain()
+
+
+def download_sheets_zip(
+    performance_id: str = "",
+    piece: str = "",
+    part: str = "",
+) -> StreamingResponse:
     if not performance_id:
         raise HTTPException(status_code=400, detail="performance_id is required")
 
@@ -37,27 +120,17 @@ def download_sheets_zip(performance_id: str = "", piece: str = "", part: str = "
     if not sheets:
         raise HTTPException(status_code=404, detail="Sheets not found")
 
-    buffer = io.BytesIO()
-    used_names: set[str] = set()
-    performance_title = sheets[0].get("performance_title") or "sheets"
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for item in sheets:
-            data = sheet_file_bytes(item)
-            if data is None:
-                continue
-            folder = safe_segment(str(item.get("piece") or "piece"), "piece")
-            filename = unique_zip_name(str(item.get("name") or "score.pdf"), used_names)
-            archive.writestr(f"{folder}/{filename}", data)
-
-    if not buffer.tell():
+    available_sheets = [item for item in sheets if _sheet_exists(item)]
+    if not available_sheets:
         raise HTTPException(status_code=404, detail="Sheet files not found")
 
+    performance_title = available_sheets[0].get("performance_title") or "sheets"
     zip_name = safe_segment(
         f"{performance_title}_{piece or 'all'}_{part or 'all-parts'}",
         "sheets",
     ) + ".zip"
-    return Response(
-        content=buffer.getvalue(),
+    return StreamingResponse(
+        _stream_sheets_zip(available_sheets),
         media_type="application/zip",
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_name)}",
