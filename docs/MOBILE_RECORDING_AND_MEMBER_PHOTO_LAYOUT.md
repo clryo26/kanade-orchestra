@@ -8,6 +8,12 @@ On smartphone widths, the member recording room shows the continuous playback co
 
 This prevents the control from being clipped when the filter inputs wrap.
 
+### Playback position (2026-09-12)
+
+After opening a recording with the play button, use the native audio timeline to select a playback position. Native pause and the row's pause button retain the audio element and current position, so the timeline remains available while paused. Resuming the same recording does not reload its source. The row label follows native play/pause events. Selecting a different recording starts that recording from the beginning; continuous playback and explicit cleanup retain their existing behavior.
+
+`tests/frontend/test_recording_playback.test.js` covers pause, position selection and resume, native button synchronization, and track switching. iPhone Safari and production GCS audio require manual verification.
+
 ## Member Introduction Photos
 
 Member introduction photos use a larger portrait layout:

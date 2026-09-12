@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 function readSource(relativePath) {
@@ -29,7 +29,7 @@ describe('recordings lazy loading', () => {
             'function ensureRecordingsFeatureLoaded()'
         );
         expect(source).toContain(
-            "script.src = '/static/js/recordings_feature.js?v=20260731-1';"
+            "script.src = '/static/js/recordings_feature.js?v=20260912-1';"
         );
         expect(source).toMatch(
             /async function loadRecordings\(\)\s*\{\s*await ensureRecordingsFeatureLoaded\(\);/

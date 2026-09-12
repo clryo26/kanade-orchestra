@@ -253,7 +253,7 @@ function bindRecordingFileItem(item, file, playUrl, canDelete) {
 async function toggleRecordingPlayback(item) {
     const audio = appState.currentAudio;
     if (audio && appState.currentRecordingItem === item && !audio.paused) {
-        stopCurrentRecording();
+        audio.pause();
         return;
     }
     await startRecordingPlayback(item);
@@ -276,17 +276,20 @@ async function startRecordingPlayback(item) {
             playerArea.innerHTML = '';
             playerArea.appendChild(audio);
         }
-        audio.hidden = true;
-        audio.dataset.switchingTrack = '1';
-        audio.src = withCacheBuster(playUrl);
-        audio.load();
+        // 同じ録音の再開では、シークした位置と読み込み済みデータを保持する。
+        if (previousItem !== item) {
+            audio.hidden = true;
+            audio.dataset.switchingTrack = '1';
+            audio.src = withCacheBuster(playUrl);
+            audio.load();
+        }
         appState.currentAudio = audio;
         appState.currentPlayButton = playButton;
         appState.currentRecordingItem = item;
         await audio.play();
         audio.dataset.switchingTrack = '';
         audio.hidden = false;
-        playButton.textContent = '停止';
+        playButton.textContent = '一時停止';
         return true;
     } catch (error) {
         audio.dataset.switchingTrack = '';
@@ -307,7 +310,15 @@ function ensureRecordingAudio() {
     audio.hidden = true;
     audio.addEventListener('pause', () => {
         if (audio.ended || audio.dataset.switchingTrack === '1') return;
-        clearCurrentRecordingAudio(audio);
+        // 標準コントロールの一時停止・シークではプレーヤーを破棄しない。
+        if (appState.currentAudio === audio && appState.currentPlayButton) {
+            appState.currentPlayButton.textContent = '再生';
+        }
+    });
+    audio.addEventListener('play', () => {
+        if (appState.currentAudio === audio && appState.currentPlayButton) {
+            appState.currentPlayButton.textContent = '一時停止';
+        }
     });
     audio.addEventListener('ended', async () => {
         const finishedItem = appState.currentRecordingItem;
