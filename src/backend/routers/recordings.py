@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse, Response
 
 from ..core.auth_dependencies import get_recording_manager_device_auth
@@ -24,12 +25,34 @@ from ..services.recording_asset_service import (
     remember_drive_file,
 )
 from ..services.recording_service import duration_seconds_for_file, remember_recording_duration
-from ..services.recording_upload_service import convert_audio_upload, upload_to_drive_only
+from ..services.recording_upload_service import (
+    complete_recording_upload,
+    convert_audio_upload,
+    create_recording_upload_session,
+    upload_to_drive_only,
+)
 from ..services.sheet_asset_service import unique_zip_name
 from ..services.storage_service import load_json_data, save_json_data
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class RecordingUploadSessionRequest(BaseModel):
+    filename: str
+    date: str = ""
+    piece: str = ""
+    size: int
+    content_type: str = "application/octet-stream"
+
+
+class RecordingUploadCompleteRequest(BaseModel):
+    object_name: str
+    filename: str
+    date: str = ""
+    piece: str = ""
+    size: int
+    duration_seconds: float | None = None
 
 @router.post("/api/convert")
 async def convert_audio(
@@ -158,6 +181,40 @@ async def upload_to_drive(
         format_duration=format_duration,
         remember_drive_file=lambda item: remember_drive_file(item, load_json_data=load_json_data, save_json_data=save_json_data),
         logger=logger,
+    )
+
+
+@router.post("/api/drive/upload/session")
+async def create_recording_upload_session_route(
+    payload: RecordingUploadSessionRequest,
+    request: Request,
+    _recording_manager: dict[str, Any] = Depends(get_recording_manager_device_auth),
+) -> dict[str, Any]:
+    return create_recording_upload_session(
+        payload.filename,
+        payload.date,
+        payload.piece,
+        payload.size,
+        payload.content_type,
+        request.headers.get("origin"),
+    )
+
+
+@router.post("/api/drive/upload/complete")
+async def complete_recording_upload_route(
+    payload: RecordingUploadCompleteRequest,
+    _recording_manager: dict[str, Any] = Depends(get_recording_manager_device_auth),
+) -> dict[str, Any]:
+    return complete_recording_upload(
+        payload.object_name,
+        payload.filename,
+        payload.date,
+        payload.piece,
+        payload.size,
+        payload.duration_seconds,
+        remember_recording_duration=remember_recording_duration,
+        remember_drive_file=lambda item: remember_drive_file(item, load_json_data=load_json_data, save_json_data=save_json_data),
+        format_duration=format_duration,
     )
 
 

@@ -7,14 +7,107 @@ from typing import Any, Callable
 from fastapi import HTTPException, UploadFile
 
 from ..core.runtime_paths import CONVERTED_DIR, UPLOAD_DIR
-from ..drive_storage import storage_enabled, upload_file_to_drive
-from .file_service import ensure_audio_file, safe_segment, save_upload_to_path
+from ..drive_storage import (
+    create_resumable_upload_session,
+    recording_item_from_blob,
+    storage_enabled,
+    upload_file_to_drive,
+)
+from .file_service import ensure_audio_file, safe_segment, safe_upload_name, save_upload_to_path
 
 
 FormatDuration = Callable[[float | int | None], str]
 DurationGetter = Callable[[Path], float | None]
 RememberRecordingDuration = Callable[[str, float | None], None]
 RememberDriveFile = Callable[[dict[str, Any]], None]
+MAX_RECORDING_UPLOAD_BYTES = 1024 * 1024 * 1024
+
+
+def _recording_object_name(file_name: str, date: str, piece: str) -> tuple[str, str, str, str]:
+    safe_name = safe_upload_name(file_name)
+    date_dir = safe_segment(date, datetime.now().date().isoformat())
+    piece_dir = safe_segment(piece, "uncategorized")
+    return f"{date_dir}/{piece_dir}/{safe_name}", safe_name, date_dir, piece_dir
+
+
+def create_recording_upload_session(
+    file_name: str,
+    date: str,
+    piece: str,
+    size: int,
+    content_type: str,
+    origin: str | None = None,
+) -> dict[str, Any]:
+    if size <= 0 or size > MAX_RECORDING_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Recording file size must be between 1 byte and 1 GB")
+    suffix = Path(file_name).suffix.lower()
+    if suffix not in {".mp3", ".m4a"}:
+        raise HTTPException(status_code=400, detail="Please upload an MP3 or M4A file")
+    if not storage_enabled():
+        return {"mode": "local"}
+
+    object_name, safe_name, date_dir, piece_dir = _recording_object_name(file_name, date, piece)
+    upload_url = create_resumable_upload_session(
+        object_name,
+        content_type=content_type or "application/octet-stream",
+        size=size,
+        origin=origin,
+    )
+    return {
+        "mode": "gcs_resumable",
+        "upload_url": upload_url,
+        "object_name": object_name,
+        "filename": safe_name,
+        "date": date_dir,
+        "piece": piece_dir,
+        "size": size,
+    }
+
+
+def complete_recording_upload(
+    object_name: str,
+    file_name: str,
+    date: str,
+    piece: str,
+    size: int,
+    duration_seconds: float | None,
+    *,
+    remember_recording_duration: RememberRecordingDuration,
+    remember_drive_file: RememberDriveFile,
+    format_duration: FormatDuration,
+) -> dict[str, Any]:
+    expected_object_name, safe_name, date_dir, piece_dir = _recording_object_name(file_name, date, piece)
+    if object_name != expected_object_name:
+        raise HTTPException(status_code=400, detail="Upload metadata does not match the recording path")
+    if not storage_enabled():
+        raise HTTPException(status_code=503, detail="Google Cloud Storage is not configured")
+
+    try:
+        drive_item = recording_item_from_blob(
+            object_name,
+            practice_date=date_dir,
+            song_name=piece_dir,
+            filename=safe_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Uploaded recording was not found in Google Cloud Storage") from exc
+    if drive_item["size"] != size:
+        raise HTTPException(status_code=400, detail="Uploaded recording size does not match")
+
+    drive_item["duration_seconds"] = duration_seconds
+    drive_item["duration"] = format_duration(duration_seconds)
+    if duration_seconds is not None:
+        remember_recording_duration(object_name, duration_seconds)
+    remember_drive_file(drive_item)
+    return {
+        "drive_file_id": drive_item["id"],
+        "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
+        "download_url": drive_item.get("download_url"),
+        "source": "google_cloud_storage",
+        "duration_seconds": duration_seconds,
+        "duration": format_duration(duration_seconds),
+        "message": "Uploaded to Google Cloud Storage",
+    }
 
 
 def _store_local_upload(
