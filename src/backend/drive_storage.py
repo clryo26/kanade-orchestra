@@ -256,3 +256,53 @@ def upload_file_to_drive(local_path: str | Path, practice_date: str, song_name: 
         "view_url": url,
         "source": "google_cloud_storage",
     }
+
+
+def create_resumable_upload_session(
+    object_name: str,
+    *,
+    content_type: str,
+    size: int,
+    origin: str | None = None,
+) -> str:
+    """Create a browser-uploadable GCS resumable session without proxying bytes."""
+    if not storage_enabled():
+        raise RuntimeError("Google Cloud Storage is not configured")
+    blob = get_storage_bucket().blob(object_name)
+    return str(
+        blob.create_resumable_upload_session(
+            content_type=content_type,
+            size=size,
+            origin=origin,
+            if_generation_match=0,
+        )
+    )
+
+
+def recording_item_from_blob(
+    object_name: str,
+    *,
+    practice_date: str,
+    song_name: str,
+    filename: str,
+) -> dict[str, Any]:
+    """Build the existing recording-list metadata after a direct upload."""
+    bucket_name = storage_bucket_name()
+    blob = get_storage_bucket().blob(object_name)
+    blob.reload()
+    url = blob.public_url if blob.public_url else public_url(bucket_name, object_name)
+    return {
+        "id": object_name,
+        "name": filename,
+        "date": practice_date,
+        "piece": song_name,
+        "size": blob.size or 0,
+        "mime_type": blob.content_type or "application/octet-stream",
+        "modified_at": blob.updated.isoformat() if blob.updated else datetime.now().isoformat(),
+        "bucket": bucket_name,
+        "object_name": object_name,
+        "web_view_link": url,
+        "download_url": url,
+        "view_url": url,
+        "source": "google_cloud_storage",
+    }
