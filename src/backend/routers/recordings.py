@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import mimetypes
 import zipfile
@@ -10,17 +9,16 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ..core.auth_dependencies import get_recording_manager_device_auth
-from ..drive_storage import get_storage_bucket
+from ..drive_storage import get_storage_bucket, storage_enabled
 from ..models.schemas import RecordingDeleteRequest
 from ..services.blob_streaming_service import stream_storage_blob
 from ..services.file_service import format_duration, safe_segment, safe_upload_name
 from ..services.recording_asset_service import (
     forget_drive_file,
     local_recording_path,
-    recording_file_bytes,
     recording_payload,
     remember_drive_file,
 )
@@ -77,8 +75,89 @@ async def get_recordings() -> dict[str, list[dict[str, Any]]]:
     return recording_payload(load_json_data=load_json_data, format_duration=format_duration)
 
 
+ZIP_STREAM_CHUNK_SIZE = 1024 * 1024
+
+
+class _StreamingZipWriter:
+    def __init__(self) -> None:
+        self._offset = 0
+        self._chunks: list[bytes] = []
+
+    def write(self, data: bytes) -> int:
+        chunk = bytes(data)
+        if chunk:
+            self._chunks.append(chunk)
+            self._offset += len(chunk)
+        return len(chunk)
+
+    def tell(self) -> int:
+        return self._offset
+
+    def flush(self) -> None:
+        return None
+
+    def seekable(self) -> bool:
+        return False
+
+    def drain(self) -> list[bytes]:
+        chunks = self._chunks
+        self._chunks = []
+        return chunks
+
+
+def _recording_exists(item: dict[str, Any]) -> bool:
+    if item.get("source") == "google_cloud_storage":
+        object_name = str(item.get("object_name") or "")
+        if not object_name or not storage_enabled():
+            return False
+        return bool(get_storage_bucket().blob(object_name).exists())
+
+    path = str(item.get("path") or "")
+    if not path:
+        return False
+    try:
+        local_recording_path(path)
+    except HTTPException:
+        return False
+    return True
+
+
+def _stream_recordings_zip(recordings: list[dict[str, Any]]):
+    sink: Any = _StreamingZipWriter()
+    used_names: set[str] = set()
+
+    with zipfile.ZipFile(
+        sink,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        for item in recordings:
+            filename = safe_upload_name(str(item.get("name") or "recording.mp3"))
+            if not Path(filename).suffix:
+                filename = f"{filename}.mp3"
+            filename = unique_zip_name(filename, used_names)
+
+            if item.get("source") == "google_cloud_storage":
+                object_name = str(item.get("object_name") or "")
+                source = get_storage_bucket().blob(object_name).open("rb")
+            else:
+                source = local_recording_path(str(item.get("path") or "")).open("rb")
+
+            with source, archive.open(filename, "w", force_zip64=True) as target:
+                while True:
+                    chunk = source.read(ZIP_STREAM_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+                    yield from sink.drain()
+            yield from sink.drain()
+
+    yield from sink.drain()
+
+
 @router.get("/api/recordings/download-zip")
-async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
+async def download_recordings_zip(date: str = "", piece: str = "") -> StreamingResponse:
     recordings = [
         item
         for item in recording_payload(load_json_data=load_json_data, format_duration=format_duration)["files"]
@@ -88,25 +167,13 @@ async def download_recordings_zip(date: str = "", piece: str = "") -> Response:
     if not recordings:
         raise HTTPException(status_code=404, detail="Recordings not found")
 
-    buffer = io.BytesIO()
-    used_names: set[str] = set()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for item in recordings:
-            data = recording_file_bytes(item)
-            if data is None:
-                continue
-            filename = safe_upload_name(str(item.get("name") or "recording.mp3"))
-            if not Path(filename).suffix:
-                filename = f"{filename}.mp3"
-            filename = unique_zip_name(filename, used_names)
-            archive.writestr(filename, data)
-
-    if not buffer.tell():
+    available_recordings = [item for item in recordings if _recording_exists(item)]
+    if not available_recordings:
         raise HTTPException(status_code=404, detail="Recording files not found")
 
     zip_name = safe_segment(f"recordings_{date or 'all'}_{piece or 'all'}", "recordings") + ".zip"
-    return Response(
-        content=buffer.getvalue(),
+    return StreamingResponse(
+        _stream_recordings_zip(available_recordings),
         media_type="application/zip",
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_name)}",

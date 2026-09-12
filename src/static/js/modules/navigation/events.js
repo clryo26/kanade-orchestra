@@ -89,8 +89,6 @@ async function enterPortal() {
     // 両方の取得成功後だけ督促判定する。
     void loadAttendanceReminderAfterStartup();
 
-    // 背景チE�Eタ読込は操作可能化後に開始。エラーは冁E��で処琁E��る、E
-    void loadFullDataInBackground();
 }
 
 function bindNavigation() {
