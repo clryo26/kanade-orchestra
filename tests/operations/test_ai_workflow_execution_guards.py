@@ -699,6 +699,166 @@ def test_validate_plan_allows_publish_branch_only_with_publish_keys():
         gate.validate_plan(inspect_plan)
 
 
+def _sync_plan(target_branch="feat/example", expected_head="1" * 40):
+    return {
+        "version": 1,
+        "job_id": "sync-test",
+        "purpose": "Sync branch with main",
+        "operation": "sync_branch_with_main",
+        "target_branch": target_branch,
+        "expected_head": expected_head,
+        "next_action": {
+            "instruction": "Inspect sync result.",
+            "expected_result": "Branch contains origin/main.",
+            "state_change": True,
+        },
+    }
+
+
+def test_sync_branch_plan_requires_target_and_expected_head():
+    gate = _load_gate()
+    gate.validate_plan(_sync_plan())
+    for key in ("target_branch", "expected_head"):
+        invalid = _sync_plan()
+        invalid.pop(key)
+        with pytest.raises(gate.GateReject, match="sync_branch_with_main missing plan keys"):
+            gate.validate_plan(invalid)
+
+
+def test_sync_branch_plan_rejects_remote_and_arbitrary_command():
+    gate = _load_gate()
+    invalid = _sync_plan()
+    invalid["remote"] = "origin"
+    with pytest.raises(gate.GateReject, match="does not accept remote"):
+        gate.validate_plan(invalid)
+    invalid = _sync_plan()
+    invalid["command"] = "git push"
+    with pytest.raises(gate.GateReject, match="raw command/shell field forbidden"):
+        gate.validate_plan(invalid)
+
+
+def test_sync_branch_with_main_merges_without_push(monkeypatch):
+    from types import SimpleNamespace
+
+    gate = _load_gate()
+    expected_head = "1" * 40
+    merged_head = "2" * 40
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: "feat/example")
+    heads = iter([expected_head, merged_head])
+    monkeypatch.setattr(gate, "git_head", lambda **_kwargs: next(heads))
+    monkeypatch.setattr(gate, "executable", lambda name: name)
+    calls = []
+    merge_done = False
+
+    def fake_run(argv, **kwargs):
+        nonlocal merge_done
+        calls.append(list(argv))
+        if argv[1:4] == ["config", "--get", "remote.origin.url"]:
+            return SimpleNamespace(returncode=0, stdout="https://github.com/clryo26/kanade-orchestra.git\n", stderr="")
+        if argv[1:4] == ["fetch", "origin", "main"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[1:3] == ["rev-parse", "origin/main"]:
+            return SimpleNamespace(returncode=0, stdout="3" * 40 + "\n", stderr="")
+        if argv[1:3] == ["merge-base", "--is-ancestor"]:
+            return SimpleNamespace(returncode=0 if merge_done else 1, stdout="", stderr="")
+        if argv[1:3] == ["merge", "--no-edit"]:
+            merge_done = True
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected git argv: {argv!r}")
+
+    monkeypatch.setattr(gate, "run", fake_run)
+    gate.sync_branch_with_main(_sync_plan(expected_head=expected_head), allow_state_change=True)
+    assert not any(call[1] == "push" for call in calls)
+    assert any(call[1:4] == ["merge", "--no-edit", "origin/main"] for call in calls)
+
+
+def test_sync_branch_with_main_is_noop_when_main_is_ancestor(monkeypatch):
+    from types import SimpleNamespace
+
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: "feat/example")
+    monkeypatch.setattr(gate, "git_head", lambda **_kwargs: "1" * 40)
+    monkeypatch.setattr(gate, "executable", lambda name: name)
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1:4] == ["config", "--get", "remote.origin.url"]:
+            return SimpleNamespace(returncode=0, stdout="https://github.com/clryo26/kanade-orchestra.git\n", stderr="")
+        if argv[1:4] == ["fetch", "origin", "main"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[1:3] == ["rev-parse", "origin/main"]:
+            return SimpleNamespace(returncode=0, stdout="3" * 40 + "\n", stderr="")
+        if argv[1:3] == ["merge-base", "--is-ancestor"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected git argv: {argv!r}")
+
+    monkeypatch.setattr(gate, "run", fake_run)
+    gate.sync_branch_with_main(_sync_plan(), allow_state_change=True)
+    assert not any(call[1] == "merge" for call in calls)
+
+
+@pytest.mark.parametrize("branch", ["main", "master"])
+def test_sync_branch_with_main_rejects_protected_base(branch, monkeypatch):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: branch)
+    with pytest.raises(gate.GateReject, match="protected base branch"):
+        gate.sync_branch_with_main(_sync_plan(target_branch=branch), allow_state_change=True)
+
+
+def test_sync_branch_with_main_rejects_target_head_and_dirty_worktree(monkeypatch):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: "other")
+    with pytest.raises(gate.GateReject, match="current branch mismatch"):
+        gate.sync_branch_with_main(_sync_plan(), allow_state_change=True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: "feat/example")
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: False)
+    with pytest.raises(gate.GateReject, match="worktree must be clean"):
+        gate.sync_branch_with_main(_sync_plan(), allow_state_change=True)
+
+
+def test_sync_branch_with_main_rejects_expected_head_mismatch(monkeypatch):
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: "feat/example")
+    monkeypatch.setattr(gate, "git_head", lambda **_kwargs: "2" * 40)
+    with pytest.raises(gate.GateReject, match="HEAD mismatch"):
+        gate.sync_branch_with_main(_sync_plan(), allow_state_change=True)
+
+
+def test_sync_branch_with_main_aborts_conflict_and_restores_clean_head(monkeypatch):
+    from types import SimpleNamespace
+
+    gate = _load_gate()
+    expected_head = "1" * 40
+    monkeypatch.setattr(gate, "repo_clean", lambda **_kwargs: True)
+    monkeypatch.setattr(gate, "git_branch", lambda **_kwargs: "feat/example")
+    monkeypatch.setattr(gate, "git_head", lambda **_kwargs: expected_head)
+    monkeypatch.setattr(gate, "executable", lambda name: name)
+
+    def fake_run(argv, **kwargs):
+        if argv[1:4] == ["config", "--get", "remote.origin.url"]:
+            return SimpleNamespace(returncode=0, stdout="https://github.com/clryo26/kanade-orchestra.git\n", stderr="")
+        if argv[1:4] == ["fetch", "origin", "main"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[1:3] == ["rev-parse", "origin/main"]:
+            return SimpleNamespace(returncode=0, stdout="3" * 40 + "\n", stderr="")
+        if argv[1:3] == ["merge-base", "--is-ancestor"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        if argv[1:3] == ["merge", "--no-edit"]:
+            return SimpleNamespace(returncode=1, stdout="conflict", stderr="")
+        if argv[1:3] == ["merge", "--abort"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected git argv: {argv!r}")
+
+    monkeypatch.setattr(gate, "run", fake_run)
+    with pytest.raises(gate.GateReject, match="merge failed; merge was aborted"):
+        gate.sync_branch_with_main(_sync_plan(expected_head=expected_head), allow_state_change=True)
+
 def test_publish_branch_scopes_token_and_verifies_remote(monkeypatch):
     from types import SimpleNamespace
 
