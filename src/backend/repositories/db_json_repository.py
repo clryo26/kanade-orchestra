@@ -397,6 +397,31 @@ def replace_collection(name: str, data: list[dict[str, Any]]) -> None:
                     else:
                         cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(child_table)))
 
+                if child_table == "performance_pieces":
+                    # performance_pieces are intentionally rebuilt with fresh IDs.
+                    # Remove existing rows for all saved performances before inserting
+                    # replacements so UNIQUE (performance_id, sort_order) cannot collide.
+                    affected_parent_ids = list(kept_ids)
+                    if affected_parent_ids:
+                        if child_has_org_column:
+                            cur.execute(
+                                psql.SQL(
+                                    "DELETE FROM {} WHERE organization_id = %s AND {} = ANY(%s)"
+                                ).format(
+                                    psql.Identifier(child_table),
+                                    psql.Identifier(child_parent_key),
+                                ),
+                                (tenant_id, affected_parent_ids),
+                            )
+                        else:
+                            cur.execute(
+                                psql.SQL("DELETE FROM {} WHERE {} = ANY(%s)").format(
+                                    psql.Identifier(child_table),
+                                    psql.Identifier(child_parent_key),
+                                ),
+                                (affected_parent_ids,),
+                            )
+
                 if not child_rows:
                     continue
 
