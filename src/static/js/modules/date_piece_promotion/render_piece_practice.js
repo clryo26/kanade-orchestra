@@ -7,14 +7,20 @@ var $ = window.portalRuntimeContext.getById;
 function renderPieceInfoView() {
     const container = $('memberPieceInfo');
     if (!container) return;
-    const upcomingPerformances = [...(appState.performances || [])]
-        .filter((perf) => perf.date && perf.date >= window.portalRuntimeContext.today())
-        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.title || '').localeCompare(String(b.title || ''), 'ja'));
-    const rows = pieceScopedRows(upcomingPerformances, appState.pieceInfos);
+    const today = window.portalRuntimeContext.today();
+    const performanceDate = (perf) => isValidPerformanceDate(perf.date) ? perf.date : '';
+    const performances = [...(appState.performances || [])]
+        .sort((a, b) => performanceDate(b).localeCompare(performanceDate(a)));
+    // 直近の未開催1件だけ先頭へ移し、開催済みの紹介も閲覧できるようにする。
+    const upcoming = performances.filter((perf) => performanceDate(perf) && perf.date >= today);
+    const nearestDate = upcoming[upcoming.length - 1]?.date;
+    const nearestIndex = performances.findIndex((perf) => nearestDate && perf.date === nearestDate);
+    if (nearestIndex > 0) performances.unshift(performances.splice(nearestIndex, 1)[0]);
+    const rows = pieceScopedRows(performances, appState.pieceInfos);
     if (!rows.length) {
         appState.selectedPieceInfoContext = null;
         appState.pieceInfoEditing = false;
-        container.innerHTML = '<p class="text-muted mb-0">未開催の演奏会はありません</p>';
+        container.innerHTML = '<p class="text-muted mb-0">演奏会はありません</p>';
         return;
     }
     const hasPiece = (performanceId, piece) => rows.some((row) => row.performanceId === String(performanceId || '') && row.pieces.some((candidate) => performancePieceLookupLabels(candidate).includes(String(piece || '').trim())));
@@ -25,7 +31,17 @@ function renderPieceInfoView() {
     }
     if (!appState.selectedPieceInfoContext) {
         container.innerHTML = `
-            ${rows.map((row) => { const heading = `${formatDateWithWeekday(row.date, row.date)} ${row.title}`.trim(); if (!row.pieces.length) { return `<section class="mb-3"><h6 class="mb-2">${escapeHtml(heading)}</h6><p class="text-muted small mb-0">曲がまだ登録されていません</p></section>`; } return `<section class="mb-3"><h6 class="mb-2">${escapeHtml(heading)}</h6><div class="list-group">${row.pieces.map((piece) => { const pieceLabel = performancePieceFormalLabel(piece); const existing = findPieceScopedItem(appState.pieceInfos, row.performanceId, piece); const hasInfo = existing && String(existing.description || existing.notes || '').trim(); return `<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-piece-info-performance-id="${escapeHtml(row.performanceId)}" data-piece-info-piece="${escapeHtml(encodeURIComponent(pieceLabel))}"><span>${escapeHtml(pieceLabel)}</span>${hasInfo ? '<span class="badge text-bg-success">情報あり</span>' : ''}</button>`; }).join('')}</div></section>`; }).join('')}
+            ${rows.map((row) => {
+                const heading = `${formatDateWithWeekday(row.date, row.date)} ${row.title}`.trim();
+                const isPast = isValidPerformanceDate(row.date) && row.date < today;
+                const piecesHtml = row.pieces.length ? `<div class="list-group">${row.pieces.map((piece) => {
+                    const pieceLabel = performancePieceFormalLabel(piece);
+                    const existing = findPieceScopedItem(appState.pieceInfos, row.performanceId, piece);
+                    const hasInfo = existing && String(existing.description || existing.notes || '').trim();
+                    return `<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 text-start" type="button" data-piece-info-performance-id="${escapeHtml(row.performanceId)}" data-piece-info-piece="${escapeHtml(encodeURIComponent(pieceLabel))}"><span>${escapeHtml(pieceLabel)}</span>${hasInfo ? '<span class="badge text-bg-success">情報あり</span>' : ''}</button>`;
+                }).join('')}</div>` : '<p class="text-muted small mb-0">曲がまだ登録されていません</p>';
+                return `<details class="mb-3 piece-info-performance-group"${isPast ? '' : ' open'}><summary>${escapeHtml(heading)}</summary><div class="mt-2">${piecesHtml}</div></details>`;
+            }).join('')}
         `;
         container.querySelectorAll('[data-piece-info-performance-id][data-piece-info-piece]').forEach((button) => {
             button.addEventListener('click', () => {

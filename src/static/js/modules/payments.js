@@ -30,6 +30,7 @@ function memberPaymentStatusHtml() {
 
     return `
         <div class="info-block">
+            <div class="small text-muted mb-3">更新日: ${escapeHtml(payment?.latest_payment_date || '未登録')}</div>
             <h6>\u56e3\u8cbb</h6>
             <div class="${alertInfo.duesOverdue ? 'payment-overdue' : ''}">${escapeHtml(summary.duesLabel)}</div>
             <h6 class="mt-3">\u6f14\u594f\u4f1a\u8cbb</h6>

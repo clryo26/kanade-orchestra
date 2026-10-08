@@ -97,12 +97,12 @@ function performancePieceDurationText(piece) {
 function performancePieceLabel(piece) {
     if (typeof piece === 'string') return piece;
     const label = piece.alias || piece.short_name || (piece.composer ? `${piece.composer}: ${piece.title}` : piece.title);
-    return (piece.is_encore || piece.encore) ? `(${label})` : label;
+    return (piece.is_encore || piece.encore) ? `${label}(アンコール)` : label;
 }
 function performancePieceFormalLabel(piece) {
     if (typeof piece === 'string') return piece;
     const label = piece.composer ? `${piece.composer}: ${piece.title}` : piece.title;
-    return (piece.is_encore || piece.encore) ? `(${label})` : label;
+    return (piece.is_encore || piece.encore) ? `${label}(アンコール)` : label;
 }
 function performancePieceLookupLabels(piece) {
     if (typeof piece === 'string') return [piece].filter(Boolean);
@@ -110,6 +110,9 @@ function performancePieceLookupLabels(piece) {
     return [
         performancePieceLabel(piece),
         performancePieceFormalLabel(piece),
+        // 旧表示名で登録された曲紹介・練習指示との照合を保つ。
+        (piece.is_encore || piece.encore) ? `(${piece.alias || piece.short_name || (piece.composer ? `${piece.composer}: ${piece.title}` : piece.title)})` : '',
+        (piece.is_encore || piece.encore) ? `(${piece.composer ? `${piece.composer}: ${piece.title}` : piece.title})` : '',
         partPrefix,
         partPrefix && piece.title ? `${partPrefix} ${piece.title}` : '',
         partPrefix && piece.alias ? `${partPrefix} ${piece.alias}` : '',
