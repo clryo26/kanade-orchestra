@@ -262,21 +262,39 @@ function scheduleToIcsEvent(sched) {
 function renderSchedules() {
     const container = $('schedListItems');
     if (!container) return;
-    if (!appState.schedules.length) {
-        container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
+    const period = appState.scheduleAdminPeriod === 'past' ? 'past' : 'future';
+    const today = window.portalRuntimeContext.today();
+    // 管理一覧だけを日付で分け、団員表示や元の配列の順序は維持する。
+    const schedules = appState.schedules
+        .filter((sched) => period === 'past' ? sched.date && sched.date < today : !sched.date || sched.date >= today)
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    container.innerHTML = `
+        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="練習予定の表示期間">
+            <button class="btn ${period === 'future' ? 'btn-primary' : 'btn-outline-primary'}" type="button" data-schedule-period="future" aria-pressed="${period === 'future'}">未来（当日を含む）</button>
+            <button class="btn ${period === 'past' ? 'btn-primary' : 'btn-outline-primary'}" type="button" data-schedule-period="past" aria-pressed="${period === 'past'}">過去</button>
+        </div>
+    `;
+    container.querySelectorAll('[data-schedule-period]').forEach((button) => {
+        button.addEventListener('click', () => {
+            appState.scheduleAdminPeriod = button.dataset.schedulePeriod;
+            renderSchedules();
+        });
+    });
+    if (!schedules.length) {
+        container.insertAdjacentHTML('beforeend', `<p class="text-muted mb-0">${period === 'past' ? '過去の練習予定はありません' : '当日以降の練習予定はありません'}</p>`);
         if (!appState.suppressDerivedRender) renderMemberSchedules();
         return;
     }
-    container.innerHTML = `
+    container.insertAdjacentHTML('beforeend', `
         <div class="table-responsive">
             <table class="table table-sm align-middle">
                 <thead><tr><th>日付</th><th>時間</th><th>場所</th><th>演奏会</th><th>曲</th><th>備考</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
-    `;
+    `);
     const body = container.querySelector('tbody');
-    sortedSchedules(appState.schedules).forEach((sched) => {
+    schedules.forEach((sched) => {
         const row = document.createElement('tr');
         row.className = 'clickable-row';
         row.innerHTML = `

@@ -72,12 +72,13 @@ function renderSheetLibraryView() {
     }
 
     const performanceGroups = groupBy(visibleSheets, 'performance_id');
-    c.innerHTML = filterHtml + Object.entries(performanceGroups).map(([performanceId, sheets]) => {
+    c.innerHTML = filterHtml + sortedSheetPerformanceIds(Object.keys(performanceGroups)).map((performanceId, index) => {
+        const sheets = performanceGroups[performanceId];
         const performance = appState.performances.find((perf) => String(perf.id) === String(performanceId));
         const performanceTitle = performance?.title || sheets[0]?.performance_title || '未設定の演奏会';
         const pieceGroups = groupBy(sheets, 'piece');
         return `
-            <details class="mb-3 sheet-library-details sheet-performance-details" open>
+            <details class="mb-3 sheet-library-details sheet-performance-details"${index === 0 ? ' open' : ''}>
                 <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <strong class="sheet-library-heading">${escapeHtml(performanceTitle)}</strong>
                     <a class="btn btn-sm btn-primary" href="${escapeHtml(sheetZipUrl(performanceId, '', filters.part))}">演奏会一括DL</a>
@@ -90,7 +91,7 @@ function renderSheetLibraryView() {
                                 <a class="btn btn-sm btn-outline-primary" href="${escapeHtml(sheetZipUrl(performanceId, piece, filters.part))}">曲一括DL</a>
                             </summary>
                             <div class="list-group mt-2">
-                                ${pieceSheets.map((sheet) => `
+                                ${sortedSheetsByPart(pieceSheets).map((sheet) => `
                                     <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                                         <span>${escapeHtml(displayNameWithoutExtension(sheet.name || '楽譜'))}<span class="badge text-bg-secondary ms-2">${escapeHtml(sheet.part || 'パート未設定')}</span></span>
                                         <span class="d-flex gap-2">
@@ -200,7 +201,7 @@ function renderSheetAdmin() {
 
     const selectedPerformance = performanceSelect.value;
     performanceSelect.innerHTML = ['<option value="">選択してください</option>'].concat(
-        appState.performances.map((perf) => `<option value="${escapeHtml(String(perf.id))}" ${String(perf.id) === selectedPerformance ? 'selected' : ''}>${escapeHtml(perf.title || '')}</option>`)
+        sortedSheetPerformanceIds(appState.performances.map((perf) => String(perf.id))).map((id) => appState.performances.find((perf) => String(perf.id) === id)).map((perf) => `<option value="${escapeHtml(String(perf.id))}" ${String(perf.id) === selectedPerformance ? 'selected' : ''}>${escapeHtml(perf.title || '')}</option>`)
     ).join('');
     if (selectedPerformance && !performanceSelect.value) performanceSelect.value = selectedPerformance;
     updateSheetPieceOptions();
@@ -228,7 +229,7 @@ function sheetPieceOptions(performance) {
 
 function sheetFilterPerformanceOptions(selected = '') {
     const ids = [...new Set(appState.sheetLibrary.map((sheet) => String(sheet.performance_id || '')).filter(Boolean))];
-    return ['<option value="">すべて</option>'].concat(ids.map((id) => {
+    return ['<option value="">すべて</option>'].concat(sortedSheetPerformanceIds(ids).map((id) => {
         const performance = appState.performances.find((perf) => String(perf.id) === id);
         const fallback = appState.sheetLibrary.find((sheet) => String(sheet.performance_id || '') === id)?.performance_title || '未設定の演奏会';
         return `<option value="${escapeHtml(id)}" ${id === String(selected) ? 'selected' : ''}>${escapeHtml(performance?.title || fallback)}</option>`;
@@ -344,7 +345,8 @@ function renderSheetAdminList() {
     ` : '';
 
     const performanceGroups = groupBy(appState.sheetLibrary, 'performance_id');
-    list.innerHTML = selectionHtml + Object.entries(performanceGroups).map(([performanceId, sheets]) => {
+    list.innerHTML = selectionHtml + sortedSheetPerformanceIds(Object.keys(performanceGroups)).map((performanceId) => {
+        const sheets = performanceGroups[performanceId];
         const performance = appState.performances.find((perf) => String(perf.id) === String(performanceId));
         const performanceTitle = performance?.title || sheets[0]?.performance_title || '未設定の演奏会';
         const pieceGroups = groupBy(sheets, 'piece');
@@ -360,7 +362,7 @@ function renderSheetAdminList() {
                             <strong>${escapeHtml(piece || '未設定の曲名')}</strong>
                             <button class="btn btn-sm btn-outline-danger sheet-delete-piece-btn" type="button" data-performance-id="${escapeHtml(performanceId)}" data-piece="${escapeHtml(piece)}">曲名配下を削除</button>
                         </div>
-                        ${pieceSheets.map((sheet) => {
+                        ${sortedSheetsByPart(pieceSheets).map((sheet) => {
                             const isSelected = selectedSheetIdSet.has(String(sheet.id || ''));
                             return `
                             <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">

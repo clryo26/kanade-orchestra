@@ -7,6 +7,7 @@ const initialPortalAppState = {
     performancePieceEditIndex: null,
     performances: [],
     schedules: [],
+    scheduleAdminPeriod: 'future',
     announcements: [],
     events: [],
     members: [],

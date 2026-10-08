@@ -18,9 +18,29 @@ function sheetPieceOptions(performance) {
     return normalizePerformancePieces(performance?.pieces || []).map(performancePieceLabel).filter(Boolean);
 }
 
+// 元の楽譜配列を変更せず、未設定を先頭、残りをパート管理の表示順にする。
+function sortedSheetsByPart(sheets) {
+    return [...sheets].sort((a, b) => {
+        const aOrder = a.part ? partSortIndex(a.part) : -1;
+        const bOrder = b.part ? partSortIndex(b.part) : -1;
+        return aOrder - bOrder;
+    });
+}
+
+// 渡された表示対象の演奏会から、直近の未開催1件を先頭へ移す。
+function sortedSheetPerformanceIds(ids) {
+    const dates = new Map(appState.performances.map((perf) => [String(perf.id), isValidPerformanceDate(perf.date) ? perf.date : '']));
+    const today = window.portalRuntimeContext.today();
+    const sorted = [...ids].sort((a, b) => (dates.get(b) || '').localeCompare(dates.get(a) || ''));
+    const upcoming = sorted.filter((id) => dates.get(id) && dates.get(id) >= today);
+    const nearestDate = dates.get(upcoming[upcoming.length - 1]);
+    const nearest = upcoming.find((id) => dates.get(id) === nearestDate);
+    return nearest === undefined ? sorted : [nearest, ...sorted.filter((id) => id !== nearest)];
+}
+
 function sheetFilterPerformanceOptions(selected = '') {
     const ids = [...new Set(appState.sheetLibrary.map((sheet) => String(sheet.performance_id || '')).filter(Boolean))];
-    return ['<option value="">すべて</option>'].concat(ids.map((id) => {
+    return ['<option value="">すべて</option>'].concat(sortedSheetPerformanceIds(ids).map((id) => {
         const performance = appState.performances.find((perf) => String(perf.id) === id);
         const fallback = appState.sheetLibrary.find((sheet) => String(sheet.performance_id || '') === id)?.performance_title || '未設定の演奏会';
         return `<option value="${escapeHtml(id)}" ${id === String(selected) ? 'selected' : ''}>${escapeHtml(performance?.title || fallback)}</option>`;
