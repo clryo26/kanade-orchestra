@@ -1312,6 +1312,7 @@ def reject_forbidden_keys(value: Any, where: str = "$") -> None:
 ROOT_TEXT_FILES = {
     "pyproject.toml",
     "uv.lock",
+    "package-lock.json",
 }
 TEXT_SUFFIXES.update(
     Path(path).suffix.lower()

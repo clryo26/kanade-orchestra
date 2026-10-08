@@ -302,6 +302,9 @@ def test_safe_rel_path_allows_only_dependency_root_files():
 
     assert gate.safe_rel_path("pyproject.toml", roots=roots) == "pyproject.toml"
     assert gate.safe_rel_path("uv.lock", roots=roots) == "uv.lock"
+    assert gate.safe_rel_path("package-lock.json", roots=roots) == "package-lock.json"
+    with pytest.raises(gate.GateReject, match="path outside approved roots"):
+        gate.safe_rel_path("package-lock.json.bak", roots=roots)
     assert ".toml" in gate.TEXT_SUFFIXES
     assert ".lock" in gate.TEXT_SUFFIXES
 
