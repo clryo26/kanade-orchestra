@@ -11,6 +11,7 @@ from scripts.sync_prod_to_test_db import (
     ForeignKey,
     TableSpec,
     _connect_kwargs,
+    _prepare_and_upsert_rows,
     _table_spec,
     _upsert_rows,
     dependency_order,
@@ -180,6 +181,52 @@ def test_upsert_preserves_null_json_values() -> None:
     _upsert_rows(cursor, spec, [(1, None)])
 
     assert cursor.rows == [(1, None)]
+
+
+class PrepareAndUpsertCursor(UpsertCursor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[str] = []
+        self.delete_params: object | None = None
+
+    def execute(self, _query: object, params: object = None) -> None:
+        self.events.append("delete")
+        self.delete_params = params
+
+    def executemany(
+        self, query: object, rows: list[tuple[object, ...]]
+    ) -> None:
+        self.events.append("upsert")
+        super().executemany(query, rows)
+
+
+def test_prepare_and_upsert_rebuilds_performance_pieces_before_upsert() -> None:
+    cursor = PrepareAndUpsertCursor()
+    spec = TableSpec(
+        "performance_pieces",
+        ("id", "performance_id", "sort_order"),
+        ("id",),
+        (),
+    )
+    rows = [(101, 1, 1), (102, 1, 2)]
+
+    _prepare_and_upsert_rows(cursor, spec, rows)
+
+    assert cursor.events == ["delete", "upsert"]
+    assert cursor.delete_params == ([1],)
+    assert cursor.rows == rows
+
+
+def test_prepare_and_upsert_does_not_delete_generic_table_rows() -> None:
+    cursor = PrepareAndUpsertCursor()
+    spec = TableSpec("members", ("id",), ("id",), ())
+    rows = [(1,)]
+
+    _prepare_and_upsert_rows(cursor, spec, rows)
+
+    assert cursor.events == ["upsert"]
+    assert cursor.delete_params is None
+    assert cursor.rows == rows
 
 
 class FakeCursor:

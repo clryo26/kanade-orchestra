@@ -306,6 +306,34 @@ def _upsert_rows(cursor: Any, spec: TableSpec, rows: list[tuple[Any, ...]]) -> N
     cursor.executemany(query, adapted_rows)
 
 
+def _prepare_and_upsert_rows(
+    cursor: Any, spec: TableSpec, rows: list[tuple[Any, ...]]
+) -> None:
+    if spec.name == "performance_pieces" and rows:
+        try:
+            performance_id_index = spec.columns.index("performance_id")
+        except ValueError as exc:
+            raise RuntimeError(
+                "performance_pieces is missing performance_id column"
+            ) from exc
+        performance_ids = list(
+            dict.fromkeys(
+                row[performance_id_index]
+                for row in rows
+                if row[performance_id_index] is not None
+            )
+        )
+        if performance_ids:
+            cursor.execute(
+                sql.SQL("DELETE FROM {} WHERE {} = ANY(%s)").format(
+                    sql.Identifier(spec.name),
+                    sql.Identifier("performance_id"),
+                ),
+                (performance_ids,),
+            )
+    _upsert_rows(cursor, spec, rows)
+
+
 def _delete_rows_absent_from_source(
     cursor: Any, spec: TableSpec, source_rows: list[tuple[Any, ...]]
 ) -> None:
@@ -438,7 +466,9 @@ def synchronize_databases(
                 # Keep rows with matching primary keys in place. This avoids ON DELETE
                 # side effects in excluded audit/access tables while making target data exact.
                 for table in order:
-                    _upsert_rows(test_cursor, test_specs[table], source_rows[table])
+                    _prepare_and_upsert_rows(
+                        test_cursor, test_specs[table], source_rows[table]
+                    )
                 for table in reversed(order):
                     _delete_rows_absent_from_source(
                         test_cursor, test_specs[table], source_rows[table]
