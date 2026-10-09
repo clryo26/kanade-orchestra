@@ -1313,6 +1313,8 @@ ROOT_TEXT_FILES = {
     "pyproject.toml",
     "uv.lock",
     "package-lock.json",
+    ".env.example",
+    "SYSTEM_DESIGN.md",
 }
 TEXT_SUFFIXES.update(
     Path(path).suffix.lower()

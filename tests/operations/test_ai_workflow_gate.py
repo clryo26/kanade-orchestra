@@ -510,3 +510,38 @@ def test_eol_correction_contract_pins_parent_head_current_and_eol(tmp_path):
             files=[],
             cwd=tmp_path,
         )
+
+
+def _load_gate_for_root_contract_tests():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("ai_gate_root_contract_test", RUNNER)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_contract_accepts_explicit_root_example_and_design_files():
+    gate = _load_gate_for_root_contract_tests()
+    files = [".env.example", "SYSTEM_DESIGN.md"]
+    gate.validate_contract({
+        "version": 1, "id": "root-docs-contract", "goal": "Validate approved root files",
+        "allowed_files": files, "required_changed_files": files, "required_tests": [],
+    })
+    assert ".example" in gate.TEXT_SUFFIXES
+    assert ".md" in gate.TEXT_SUFFIXES
+
+
+@pytest.mark.parametrize("path", [
+    ".env", ".env.production", ".env.example.bak", "SYSTEM_DESIGN.md.bak",
+    "README.md", "C:/outside/.env.example", "../.env.example",
+])
+def test_contract_rejects_unapproved_root_files_and_escape_paths(path):
+    gate = _load_gate_for_root_contract_tests()
+    with pytest.raises(gate.GateReject, match="path (?:outside approved roots|escapes allowed root)"):
+        gate.validate_contract({
+            "version": 1, "id": "invalid-root-contract", "goal": "Reject unapproved path",
+            "allowed_files": [path], "required_changed_files": [path], "required_tests": [],
+        })

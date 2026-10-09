@@ -996,3 +996,28 @@ def test_publish_branch_rejects_base_branch_and_head_mismatch(
             },
             allow_state_change=True,
         )
+
+
+@pytest.mark.parametrize("path", [
+    "pyproject.toml", "uv.lock", "package-lock.json", ".env.example", "SYSTEM_DESIGN.md",
+])
+def test_safe_rel_path_accepts_exact_approved_root_files(path):
+    gate = _load_gate()
+    assert gate.safe_rel_path(path, roots=("src/", "tests/", "docs/")) == path
+
+
+@pytest.mark.parametrize("path", [
+    ".env", ".env.production", ".env.example.bak", "SYSTEM_DESIGN.md.bak",
+    "SYSTEM_DESIGN_OTHER.md", "README.md", "C:/outside/SYSTEM_DESIGN.md", "../SYSTEM_DESIGN.md",
+])
+def test_safe_rel_path_rejects_root_variants_and_escape_paths(path):
+    gate = _load_gate()
+    with pytest.raises(gate.GateReject, match="path (?:outside approved roots|escapes allowed root)"):
+        gate.safe_rel_path(path, roots=("src/", "tests/", "docs/"))
+
+
+def test_root_file_allowlist_contains_only_five_exact_names():
+    gate = _load_gate()
+    assert gate.ROOT_TEXT_FILES == {
+        "pyproject.toml", "uv.lock", "package-lock.json", ".env.example", "SYSTEM_DESIGN.md",
+    }
