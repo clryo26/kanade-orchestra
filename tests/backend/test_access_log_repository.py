@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
-from src.backend.repositories import access_log_repository
+from src.backend.core import tenant_context
+from src.backend.repositories import access_log_repository, db_row_repository
 
 
 class _FakeCursor:
@@ -113,3 +115,89 @@ def test_insert_access_log_supports_legacy_table_without_organization_id(monkeyp
     assert 999 not in insert_params
     assert "tenant-a" not in insert_params
     assert "untrusted-tenant" not in insert_params
+
+
+def test_query_access_logs_keeps_tenant_filters_and_clamps_last_page(monkeypatch):
+    date_from = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    date_to = datetime(2026, 8, 3, tzinfo=timezone.utc)
+    accessed_at = datetime(2026, 8, 2, 12, 30, tzinfo=timezone.utc)
+    rows = [(row_id, 10, "Clarinet", accessed_at) for row_id in range(205, 200, -1)]
+
+    class SearchCursor(_FakeCursor):
+        def __init__(self):
+            super().__init__(inserted_id=205)
+            self.description = [(name,) for name in ("id", "member_id", "member_part", "accessed_at")]
+
+        def fetchone(self):
+            query, _params = self.executions[-1]
+            # Keep the real schema-column check; only its database result is doubled.
+            if isinstance(query, str) and "information_schema.columns" in query:
+                return (1,)
+            assert query.as_string().startswith('SELECT COUNT(*) FROM "access_logs"')
+            return (205,)
+
+        def fetchall(self):
+            return rows
+
+    connection = _FakeConnection(inserted_id=205)
+    cursor = SearchCursor()
+    connection.cursor_instance = cursor
+    connect_calls = []
+
+    def fake_connect(connection_string: str, *, autocommit: bool):
+        connect_calls.append((connection_string, autocommit))
+        return connection
+
+    previous_tenant = tenant_context.get_current_tenant_id()
+    previous_cache = db_row_repository._ORG_COLUMN_CACHE
+    cache_snapshot = dict(previous_cache)
+    # Restore configuration, the schema cache and the connection boundary after the call.
+    with monkeypatch.context() as patch:
+        patch.setenv("DB_URL", "postgresql://search-test")
+        patch.setattr(db_row_repository, "_ORG_COLUMN_CACHE", {})
+        patch.setattr(access_log_repository.psycopg, "connect", fake_connect)
+        token = tenant_context.set_current_tenant_id("tenant-a")
+        try:
+            result = access_log_repository.query_access_logs(
+                date_from=date_from,
+                date_to=date_to,
+                member_id=10,
+                member_part="  Clarinet  ",
+                page=99,
+            )
+        finally:
+            tenant_context.reset_current_tenant_id(token)
+
+    assert tenant_context.get_current_tenant_id() == previous_tenant
+    assert db_row_repository._ORG_COLUMN_CACHE is previous_cache
+    assert previous_cache == cache_snapshot
+    assert connect_calls == [("postgresql://search-test", True)]
+    assert connection.commit_count == 0
+    assert len(cursor.executions) == 3
+    schema_query, schema_params = cursor.executions[0]
+    assert "information_schema.columns" in schema_query
+    assert schema_params == ("access_logs",)
+    count_query, count_params = cursor.executions[1]
+    list_query, list_params = cursor.executions[2]
+    where = (
+        " WHERE organization_id = %s AND accessed_at >= %s AND accessed_at < %s"
+        " AND member_id = %s AND member_part = %s"
+    )
+    # Check both SQL and bindings so tenant or date-boundary regressions cannot pass.
+    assert count_query.as_string() == 'SELECT COUNT(*) FROM "access_logs"' + where
+    assert list_query.as_string() == (
+        'SELECT * FROM "access_logs"' + where
+        + " ORDER BY accessed_at DESC, id DESC LIMIT %s OFFSET %s"
+    )
+    assert count_params == ("tenant-a", date_from, date_to, 10, "Clarinet")
+    assert list_params == (*count_params, 100, 200)
+    assert result == {
+        "items": [
+            {"id": row_id, "member_id": 10, "member_part": "Clarinet", "accessed_at": accessed_at.isoformat()}
+            for row_id in range(205, 200, -1)
+        ],
+        "page": 3,
+        "page_size": 100,
+        "total": 205,
+        "total_pages": 3,
+    }
