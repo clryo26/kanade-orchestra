@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import hashlib
 
+from unittest.mock import Mock
+
+import pytest
+
+from src.backend import auth_api
+from src.backend.services import auth_session_fallback
 from src.backend.services import auth_service
 
 
@@ -306,6 +312,7 @@ def test_login_refreshes_cached_auth_devices_after_db_write(client, backend_env,
 
 
 def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backend_env, monkeypatch):
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")
     db_store = {
         "members": [],
         "auth_devices": [],
@@ -361,6 +368,7 @@ def test_login_accepts_fullwidth_ascii_password_input(client, backend_env, monke
 
 
 def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, backend_env, monkeypatch):
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")
     db_store = {
         "members": [],
         "auth_devices": [],
@@ -380,6 +388,7 @@ def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, bac
 
 
 def test_hidden_administrator_login_survives_auth_device_persistence_failure(client, backend_env, monkeypatch):
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")
     db_store = {
         "members": [],
         "auth_devices": [],
@@ -478,3 +487,102 @@ def test_auth_device_management_list_reads_db_instead_of_stale_cache(client, bac
     device_ids = {item["device_id"] for item in response.json()}
     assert "device-db-visible" in device_ids
     assert "stale-cache-device" not in device_ids
+
+
+@pytest.mark.parametrize("setting", [None, "false", "FALSE", " false ", "", "1", "yes", "on", "invalid"])
+def test_disabled_hidden_admin_login_creates_no_device_or_session(client, backend_env, monkeypatch, setting):
+    if setting is None:
+        monkeypatch.delenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", setting)
+    db_store = {"members": [], "auth_devices": []}
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+    monkeypatch.setattr(auth_session_fallback, "_fallback_devices", {})
+    save_device = Mock()
+    remember_device = Mock()
+    monkeypatch.setattr(auth_api, "save_auth_device", save_device)
+    monkeypatch.setattr(auth_api, "remember_auth_device", remember_device)
+
+    response = _login(
+        client, name="Administrator", part="", password="systemadminadmin",
+        device_id="device-disabled-hidden-admin",
+    )
+
+    # A disabled shortcut follows the ordinary missing-member response and
+    # must never reach persistent device storage or fallback session creation.
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Member not found"}
+    save_device.assert_not_called()
+    remember_device.assert_not_called()
+    assert db_store["auth_devices"] == []
+    assert auth_session_fallback.fallback_auth_device("device-disabled-hidden-admin") is None
+    device_response = client.get("/api/auth/devices/device-disabled-hidden-admin")
+    assert device_response.status_code == 200
+    assert device_response.json() == {"authenticated": False}
+
+
+@pytest.mark.parametrize("setting", ["true", "TRUE", " true "])
+def test_explicit_hidden_admin_opt_in_preserves_authentication(client, backend_env, monkeypatch, setting):
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", setting)
+    db_store = {"members": [], "auth_devices": []}
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+    response = _login(
+        client, name="Administrator", part="", password="systemadminadmin",
+        device_id="device-explicit-hidden-admin",
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert payload["hidden_user"] is True
+    assert payload["permission"] == "システム管理者"
+    assert payload["member_id"] is None
+    assert len(db_store["auth_devices"]) == 1
+    assert db_store["auth_devices"][0]["permission"] == "システム管理者"
+
+
+@pytest.mark.parametrize("permission", ["一般", "管理者", "システム管理者"])
+@pytest.mark.parametrize("password_case", ["correct", "incorrect", "fixed"])
+def test_disabled_hidden_admin_preserves_member_authentication_and_permissions(
+    client, backend_env, monkeypatch, permission, password_case,
+):
+    monkeypatch.delenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", raising=False)
+    monkeypatch.setattr(auth_session_fallback, "_fallback_devices", {})
+    db_store = {
+        "members": [{
+            "id": 901, "name": "Administrator", "part": "Vn",
+            "password": backend_env.hash_password("member-pass"),
+            "permission": permission, "is_recording_manager": False,
+            "is_sheet_manager": False, "system_access_until": "",
+        }],
+        "auth_devices": [],
+    }
+    _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+    passwords = {"correct": "member-pass", "incorrect": "wrong-pass", "fixed": "systemadminadmin"}
+    response = _login(
+        client, name="Administrator", part="Vn", password=passwords[password_case],
+        device_id="device-ordinary-administrator-name",
+    )
+
+    # A member sharing the fixed login name still needs their own password
+    # and retains exactly their existing member permission and manager flags.
+    if password_case != "correct":
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Invalid member password"}
+        assert db_store["auth_devices"] == []
+        assert auth_session_fallback.fallback_auth_device("device-ordinary-administrator-name") is None
+        return
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert payload["hidden_user"] is False
+    assert payload["member_id"] == 901
+    assert payload["permission"] == permission
+    assert payload["is_recording_manager"] is False
+    assert payload["is_sheet_manager"] is False
+    assert len(db_store["auth_devices"]) == 1
+    assert db_store["auth_devices"][0]["member_id"] == 901
+    assert db_store["auth_devices"][0]["permission"] == permission
+    device_response = client.get("/api/auth/devices/device-ordinary-administrator-name")
+    assert device_response.status_code == 200
+    assert device_response.json()["authenticated"] is True
+    assert device_response.json()["device"]["permission"] == permission

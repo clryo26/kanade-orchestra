@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 
+import pytest
+
+
 def test_create_performance_requires_device_header(client):
     response = client.post(
         "/api/performances",
@@ -273,6 +276,7 @@ def test_portal_login_accepts_trimmed_mobile_password_input(client, backend_env,
     assert response.json()["authenticated"] is True
 
 
+@pytest.mark.usefixtures("hidden_admin_login_enabled")
 def test_hidden_admin_login_accepts_lowercase_name(client):
     response = client.post(
         "/api/auth/portal-login",
@@ -902,3 +906,9 @@ def test_general_member_partial_profile_update_preserves_unsent_fields(
     assert stored["part"] == "Cl"
     assert stored["permission"] == general_permission
     assert stored["password"] == "stored-password"
+
+
+@pytest.fixture
+def hidden_admin_login_enabled(monkeypatch):
+    # This existing compatibility test explicitly opts into the disabled path.
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")

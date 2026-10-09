@@ -35,6 +35,7 @@ def test_readiness_summary_requires_system_admin_auth(monkeypatch, backend_env) 
 
 
 def test_readiness_summary_returns_expected_shape(monkeypatch, backend_env) -> None:
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")
     _force_local_backend(monkeypatch)
     with TestClient(backend_env.app) as client:
         headers = _login_system_admin(client)
@@ -56,6 +57,7 @@ def _use_local_pdf_editor_storage(monkeypatch, tmp_path) -> None:
 
 
 def test_pdf_editor_system_admin_can_upload_and_list_single_pdf(monkeypatch, backend_env, tmp_path) -> None:
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")
     _force_local_backend(monkeypatch)
     _use_local_pdf_editor_storage(monkeypatch, tmp_path)
     with TestClient(backend_env.app) as client:
@@ -76,6 +78,7 @@ def test_pdf_editor_system_admin_can_upload_and_list_single_pdf(monkeypatch, bac
 
 
 def test_pdf_editor_rejects_non_pdf(monkeypatch, backend_env, tmp_path) -> None:
+    monkeypatch.setenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "true")
     _force_local_backend(monkeypatch)
     _use_local_pdf_editor_storage(monkeypatch, tmp_path)
     with TestClient(backend_env.app) as client:

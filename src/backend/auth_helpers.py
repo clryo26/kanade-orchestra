@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from datetime import datetime
@@ -69,6 +70,10 @@ def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str 
 
 
 def is_hidden_system_admin_login(login: Any) -> bool:
+    # Fixed administrator credentials require an explicit opt-in.
+    if os.getenv("HIDDEN_SYSTEM_ADMIN_LOGIN_ENABLED", "").strip().lower() != "true":
+        return False
+
     login_name = compact_member_name(getattr(login, "name", ""))
     login_password = unicodedata.normalize("NFKC", str(getattr(login, "password", "") or ""))
     login_password = re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", login_password).strip()
