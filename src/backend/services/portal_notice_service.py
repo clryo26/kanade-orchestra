@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from ..repositories.portal_notice_repository import PortalNoticeRepository
+from .notification_service import emit
 
 _repo = PortalNoticeRepository()
 
@@ -56,7 +57,9 @@ def create_notice(payload: dict[str, Any], device: dict[str, Any]) -> dict[str, 
         "content": str(payload.get("content") or "").strip(),
         "created_by_member_id": _member_id(device),
     }
-    return _repo.create(normalized)
+    saved = _repo.create(normalized)
+    emit('notices', saved)
+    return saved
 
 
 def update_notice(notice_id: int, payload: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:

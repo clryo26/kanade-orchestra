@@ -88,6 +88,13 @@ async function enterPortal() {
     // 出欠追加機能と最新の出欠データは初回表示後に取得し、
     // 両方の取得成功後だけ督促判定する。
     void loadAttendanceReminderAfterStartup();
+    if (new URL(window.location.href).searchParams.has('notification') || localStorage.getItem('portalPushMemberId')) {
+        try {
+            await ensureNotificationsLoaded();
+            await window.PortalNotifications.restoreTarget();
+        }
+        catch { showAlert('通知の対象画面を開けませんでした。メニューから開いてください。', 'warning'); }
+    }
 
 }
 

@@ -101,6 +101,21 @@ function _albumsReady() {
 }
 
 var improvementSuggestionsLoadPromise = null;
+var notificationSettingsLoadPromise = null;
+
+function ensureNotificationsLoaded() {
+    if (window.PortalNotifications) return Promise.resolve();
+    if (!notificationSettingsLoadPromise) {
+        notificationSettingsLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/static/js/modules/notifications/settings.js?v=20261008-1';
+            script.onload = () => window.PortalNotifications ? resolve() : reject(new Error('Notification module unavailable'));
+            script.onerror = () => reject(new Error('Notification module failed to load'));
+            document.head.appendChild(script);
+        }).catch((error) => { notificationSettingsLoadPromise = null; throw error; });
+    }
+    return notificationSettingsLoadPromise;
+}
 
 function _improvementSuggestionsReady() {
     return typeof window.showImprovementSuggestions === 'function' &&
@@ -550,6 +565,15 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     });
 
     const targetId = `${toPascalTab(tabName)}Tab`;
+    if (tabName === 'notification-settings') {
+        try {
+            await ensureNotificationsLoaded();
+            await window.PortalNotifications.render();
+        } catch {
+            showAlert('通知設定を読み込めませんでした。もう一度開いてください。', 'warning');
+            return;
+        }
+    }
     const target = $(targetId);
     if (target) target.hidden = false;
     const button = panel.querySelector(`[data-tab="${tabName}"]`);

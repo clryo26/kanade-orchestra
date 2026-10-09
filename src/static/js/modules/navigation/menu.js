@@ -30,6 +30,7 @@ function portalMenuGroups() {
         ? canManageSheets()
         : (canAccessAdmin() || appState.currentUserIsSheetManager);
     const settingItems = [
+        { tab: 'notification-settings', label: '通知設定' },
         canManageRecordingsNow ? { tab: 'upload', label: '録音管理', admin: true } : null,
         canManageSheetsNow ? { tab: 'sheet-admin', label: '楽譜管理', admin: true } : null,
         canAccessAdmin() ? { action: 'admin', label: '管理者メニュー', admin: true } : null,

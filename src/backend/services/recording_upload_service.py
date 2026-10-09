@@ -14,6 +14,7 @@ from ..drive_storage import (
     upload_file_to_drive,
 )
 from .file_service import ensure_audio_file, safe_segment, safe_upload_name, save_upload_to_path
+from .notification_service import emit
 
 
 FormatDuration = Callable[[float | int | None], str]
@@ -99,6 +100,7 @@ def complete_recording_upload(
     if duration_seconds is not None:
         remember_recording_duration(object_name, duration_seconds)
     remember_drive_file(drive_item)
+    emit('recordings', drive_item)
     return {
         "drive_file_id": drive_item["id"],
         "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),
@@ -169,6 +171,7 @@ def convert_audio_upload(
         storage_file["duration_seconds"] = duration_seconds
         storage_file["duration"] = format_duration(duration_seconds)
         remember_drive_file(storage_file)
+        emit('recordings', storage_file)
         response.update(
             {
                 "drive_file_id": storage_file["id"],
@@ -179,6 +182,8 @@ def convert_audio_upload(
             }
         )
 
+    if not storage_enabled():
+        emit('recordings', {'path': response['path'], 'date': date_dir, 'modified_at': str(output_path.stat().st_mtime_ns)})
     return response
 
 
@@ -206,6 +211,7 @@ def upload_to_drive_only(
     logger.info("piece=%s", piece)
 
     if not storage_enabled():
+        emit('recordings', {'path': response['download_url'], 'date': date_dir, 'modified_at': str(output_path.stat().st_mtime_ns)})
         return {
             "drive_file_id": None,
             "share_link": response["download_url"],
@@ -228,6 +234,7 @@ def upload_to_drive_only(
             detail=f"Google Cloud Storage upload failed: {exc}",
         ) from exc
 
+    emit('recordings', drive_item)
     return {
         "drive_file_id": drive_item["id"],
         "share_link": drive_item.get("web_view_link") or drive_item.get("download_url"),

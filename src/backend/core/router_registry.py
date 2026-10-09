@@ -27,6 +27,7 @@ def register_routes(app: FastAPI) -> FastAPI:
         return app
 
     access_logs_router = _import_router("..routers.access_logs", "routers.access_logs")
+    notifications_router = _import_router("..routers.notifications", "routers.notifications")
     bootstrap_router = _import_router("..routers.bootstrap", "routers.bootstrap")
     albums_router = _import_router("..routers.albums", "routers.albums")
     announcements_router = _import_router("..routers.announcements", "routers.announcements")
@@ -43,6 +44,7 @@ def register_routes(app: FastAPI) -> FastAPI:
     auth_router = _import_router("..auth_api", "auth_api")
 
     for router in (
+        notifications_router,
         performances_router,
         schedules_router,
         members_router,
@@ -61,5 +63,7 @@ def register_routes(app: FastAPI) -> FastAPI:
     ):
         app.include_router(router)
 
+    from ..services.notification_service import install_notification_middleware
+    install_notification_middleware(app)
     app.state.routes_registered = True
     return app

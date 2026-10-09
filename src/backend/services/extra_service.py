@@ -25,6 +25,7 @@ from .concert_record_video_service import (
 )
 from .image_asset_service import delete_stored_image, ensure_public_image_url, is_data_image, store_data_image, store_uploaded_image
 from .storage_service import load_json_data, save_json_data
+from .notification_service import data_changed, emit
 from .youtube_validation_service import fetch_youtube_metadata, validate_youtube_url
 from .timetable_payload_helpers import normalize_extra_for_collection
 from ..utils.concurrency import ensure_expected_updated_at
@@ -428,6 +429,8 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
         if name == "desired_pieces":
             _rollback_desired_piece_reference_score(int(payload.get("id") or 0), desired_piece_score_stored_name)
         raise
+    if name in {'piece_infos', 'sheet_library'}:
+        emit('piece_infos' if name == 'piece_infos' else 'sheets', payload)
     if name == "promotions":
         return _public_promotion_item(payload)
     if name == "org_settings":
@@ -512,6 +515,8 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
         raise
     if image_field and old_image_url and old_image_url != str(payload.get(image_field) or ""):
         _delete_collection_image(name, item_id, old_image_url)
+    if name == 'piece_infos' and data_changed(current, payload, 'piece_infos'):
+        emit('piece_infos', payload, 'updated')
     if name == "promotions":
         return _public_promotion_item(payload)
     if name == "org_settings":

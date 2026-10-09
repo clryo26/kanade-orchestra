@@ -197,6 +197,8 @@ def upload_sheet_file(
     payload["id"] = next_id(items)
     items.insert(0, payload)
     save_json_data("sheet_library", items)
+    from .notification_service import emit
+    emit('sheets', payload)
     return sheet_metadata(payload)
 
 
