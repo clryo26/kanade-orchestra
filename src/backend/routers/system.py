@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from pydantic import StrictBool
 
 try:
     import psycopg
@@ -17,6 +18,7 @@ from ..core.auth_dependencies import get_production_operation_auth, get_system_a
 from ..services import system_service
 from ..services import production_ops_service
 from ..services import member_service
+from ..services import menu_settings_service
 
 router = APIRouter()
 
@@ -29,6 +31,25 @@ class RolePermissionUpdate(BaseModel):
 
 class SystemPermissionGrant(BaseModel):
     permission: str
+
+
+class MenuSettingsUpdate(BaseModel):
+    visibility: dict[str, StrictBool]
+
+
+@router.get("/api/system/menu-settings")
+async def get_menu_settings(
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
+) -> dict[str, Any]:
+    return menu_settings_service.management_payload()
+
+
+@router.put("/api/system/menu-settings")
+async def update_menu_settings(
+    body: MenuSettingsUpdate,
+    _system_admin_device: dict[str, Any] = Depends(get_system_admin_device_auth),
+) -> dict[str, Any]:
+    return menu_settings_service.save_settings(body.visibility)
 
 
 class PromoteRequest(BaseModel):
