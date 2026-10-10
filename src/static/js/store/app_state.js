@@ -39,6 +39,7 @@ const initialPortalAppState = {
     orgSettings: [],
     snsSettings: [],
     connectionSettings: [],
+    menuVisibility: {},
     currentAudio: null,
     currentPlayButton: null,
     currentRecordingItem: null,

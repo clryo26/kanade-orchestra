@@ -864,6 +864,7 @@
             <div class="toolbar mb-3">
                 <button class="btn btn-sm btn-outline-primary active" data-tab="system-auth" type="button">認証端末管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-permission-management" type="button">権限管理</button>
+                <button class="btn btn-sm btn-outline-primary" data-tab="system-menu-management" type="button">メニュー管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-org" type="button">団体情報管理</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-sns" type="button">SNS情報</button>
                 <button class="btn btn-sm btn-outline-primary" data-tab="system-connection" type="button">接続先情報</button>
@@ -890,6 +891,18 @@
                         <p class="text-muted small mb-3">登録済み団員にシステム管理者権限を新規付与します。一般・エキストラ・管理者などの権限変更は団員登録から行ってください。</p>
                         <div id="systemPermissionManagementStatus" class="text-muted small mb-2" hidden></div>
                         <div id="systemPermissionManagementList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="systemMenuManagementTab" class="tab-content" hidden>
+                <div class="card">
+                    <div class="card-header">メニュー管理</div>
+                    <div class="card-body">
+                        <p class="text-muted small">ホームとドロワーのメインメニュー表示を団体内で共通設定します。表示OFFでも機能やアクセス権限は変わりません。システム管理への入口は常に維持されます。</p>
+                        <div id="systemMenuManagementStatus" role="status" class="small mb-3"></div>
+                        <div id="systemMenuManagementList"></div>
+                        <button id="systemMenuManagementSaveBtn" class="btn btn-primary mt-3" type="button" disabled>一括保存</button>
                     </div>
                 </div>
             </div>

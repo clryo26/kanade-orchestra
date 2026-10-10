@@ -553,6 +553,10 @@ function applyBootstrapData(data) {
     if (data.recordings) appState.recordingsLoaded = true;
     if (data.sheets) appState.sheetsLoaded = true;
     updateManagerNavigationVisibility();
+    // Older cached payloads omit the field; keep the latest known settings.
+    if (typeof applyPortalMenuVisibility === 'function' && data.menu_visibility) {
+        applyPortalMenuVisibility(data.menu_visibility);
+    }
 }
 
 async function loadPerformances() {
