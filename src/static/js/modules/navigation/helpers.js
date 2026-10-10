@@ -123,6 +123,7 @@ function toPascalTab(value) {
         'announcement-detail': 'announcementDetail',
         'system-auth': 'systemAuth',
         'system-permission-management': 'systemPermissionManagement',
+        'system-menu-management': 'systemMenuManagement',
         'system-org': 'systemOrg',
         'system-sns': 'systemSns',
         'system-connection': 'systemConnection',

@@ -16,6 +16,7 @@ from ..services.auth_service import (
 from ..services.file_service import format_duration
 from ..services.json_collection_service import list_auth_devices
 from ..services import bootstrap_service, meta_service
+from ..services import menu_settings_service
 from ..repositories.db_json_repository import load_collection_etag
 from ..services.recording_asset_service import recording_payload
 from ..services.sheet_asset_service import sheet_payload
@@ -88,6 +89,8 @@ async def get_bootstrap_lite_data(
         lambda name: get_memory_cache_instance().etag(name) or "",
         _collection_etag,
     )
+    menu_visibility = menu_settings_service.visibility_settings()
+    etag = menu_settings_service.bootstrap_etag(etag, menu_visibility)
     if bootstrap_service.request_not_modified(request, etag):
         return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_lite_payload(
@@ -96,6 +99,7 @@ async def get_bootstrap_lite_data(
         personal_payment_list=lambda payments: personal_payment_list(payments, device),
         cloud_run_revision=meta_service.cloud_run_revision,
     )
+    data["menu_visibility"] = menu_visibility
     return bootstrap_service.bootstrap_response(request, data, etag)
 
 
@@ -103,11 +107,14 @@ async def get_bootstrap_lite_data(
 async def get_bootstrap_core_data(request: Request):
     revision = meta_service.cloud_run_revision()
     etag = hashlib.sha256(revision.encode("utf-8")).hexdigest()
+    menu_visibility = menu_settings_service.visibility_settings()
+    etag = menu_settings_service.bootstrap_etag(etag, menu_visibility)
     if bootstrap_service.request_not_modified(request, etag):
         return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_core_payload(
         cloud_run_revision=meta_service.cloud_run_revision,
     )
+    data["menu_visibility"] = menu_visibility
     return bootstrap_service.bootstrap_response(request, data, etag)
 
 
@@ -147,6 +154,8 @@ async def get_bootstrap_data(request: Request):
         lambda name: get_memory_cache_instance().etag(name) or "",
         _collection_etag,
     )
+    menu_visibility = menu_settings_service.visibility_settings()
+    etag = menu_settings_service.bootstrap_etag(etag, menu_visibility)
     if bootstrap_service.request_not_modified(request, etag):
         return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_payload(
@@ -157,4 +166,5 @@ async def get_bootstrap_data(request: Request):
         list_auth_devices=_list_auth_devices,
         cloud_run_revision=meta_service.cloud_run_revision,
     )
+    data["menu_visibility"] = menu_visibility
     return bootstrap_service.bootstrap_response(request, data, etag)

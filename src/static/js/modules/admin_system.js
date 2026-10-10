@@ -82,6 +82,31 @@ function ensureSystemPermissionManagementLoaded() {
     return systemPermissionManagementLoadPromise;
 }
 
+// Main-menu presentation settings use the existing system-admin navigation.
+var systemMenuManagementLoadPromise = null;
+function ensureSystemMenuManagementLoaded() {
+    if (typeof renderSystemMenuManagement === 'function') return Promise.resolve();
+    if (systemMenuManagementLoadPromise) return systemMenuManagementLoadPromise;
+    systemMenuManagementLoadPromise = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = '/static/js/modules/admin_system/menu_management.js?v=20261010-1';
+        script.async = true;
+        script.addEventListener('load', function () {
+            if (typeof renderSystemMenuManagement === 'function') resolve();
+            else {
+                systemMenuManagementLoadPromise = null;
+                reject(new Error('Menu management functions are unavailable'));
+            }
+        }, { once: true });
+        script.addEventListener('error', function () {
+            systemMenuManagementLoadPromise = null;
+            reject(new Error('Menu management script failed to load'));
+        }, { once: true });
+        document.head.appendChild(script);
+    });
+    return systemMenuManagementLoadPromise;
+}
+
 // ===== 環境管理 =====
 // Environment management moved to modules/admin_system/environment_management.js.
 // Loaded on demand when the system panel is opened by a system admin.

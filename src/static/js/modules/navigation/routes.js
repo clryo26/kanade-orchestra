@@ -598,6 +598,14 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     if (renderOnShow && tabName === 'performance-day-admin') renderPerformanceDayInfoAdmin();
     if (renderOnShow && tabName === 'concert-record-admin') renderConcertRecordAdminView();
     if (renderOnShow && tabName === 'system-org') renderOrgManagement();
+    if (renderOnShow && tabName === 'system-menu-management') {
+        ensureSystemMenuManagementLoaded()
+            .then(function () { return renderSystemMenuManagement(); })
+            .catch(function (err) {
+                console.warn('Menu management failed to load', err);
+                showAlert('メニュー管理を読み込めませんでした。再度開いてください。', 'danger');
+            });
+    }
     if (renderOnShow && tabName === 'system-permission-management') {
         ensureSystemPermissionManagementLoaded()
             .then(function () { return renderSystemPermissionManagement(); })

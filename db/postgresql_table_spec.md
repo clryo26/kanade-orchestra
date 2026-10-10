@@ -745,6 +745,15 @@
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
 
+### menu_visibility_settings（メインメニュー共通表示設定）
+
+- organization_id TEXT NOT NULL DEFAULT 'default'
+- menu_key TEXT NOT NULL（既存tab/action固定キー）
+- visible BOOLEAN NOT NULL DEFAULT TRUE
+- updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()（保存時に更新）
+- 複合主キー `(organization_id, menu_key)`。団体内で共有、未登録はON。
+- DDL: `migrations/016_menu_visibility_settings.sql`。認証・認可テーブルとは独立する。
+
 ## 3. 補足
 
 - `practice_instructions.performance_instruction` は現行UIでは未使用。移行第2段階で削除候補。

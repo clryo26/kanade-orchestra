@@ -4,6 +4,21 @@
 var appState = window.portalRuntimeContext.appState;
 var $ = window.portalRuntimeContext.getById;
 
+function isPortalMenuVisible(key) {
+    // Visibility never grants access, and the recovery entry is always retained.
+    return key === 'system' || appState.menuVisibility?.[key] !== false;
+}
+
+function applyPortalMenuVisibility(settings) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return;
+    appState.menuVisibility = Object.fromEntries(
+        Object.entries(settings).filter(([, value]) => typeof value === 'boolean')
+    );
+    // Only the shared main menus change; toolbars, tabs and routes stay intact.
+    renderMenuGroups($('portalHomeMenu'));
+    renderPortalDrawerMenu();
+}
+
 function updateManagerNavigationVisibility() {
     const uploadButton = $('memberUploadAdminBtn');
     const canManageRecordingsNow = typeof canManageRecordings === 'function'
@@ -21,7 +36,7 @@ function updateManagerNavigationVisibility() {
     });
 }
 
-function portalMenuGroups() {
+function portalMenuGroups(options = {}) {
     const paymentAlert = paymentAlertInfo().hasAlert;
     const canManageRecordingsNow = typeof canManageRecordings === 'function'
         ? canManageRecordings()
@@ -83,7 +98,9 @@ function portalMenuGroups() {
             title: '設定',
             items: settingItems,
         },
-    ].map((group) => ({ ...group, items: visibleMemberMenuItems(group.items) }))
+    ].map((group) => ({ ...group, items: visibleMemberMenuItems(group.items)
+        .map((item) => ({ ...item, key: item.tab || item.action }))
+        .filter((item) => options.includeHidden === true || isPortalMenuVisible(item.key)) }))
         .filter((group) => group.items.length);
 }
 
