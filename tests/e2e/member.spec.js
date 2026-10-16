@@ -20,7 +20,7 @@ test.describe('Member menu smoke', () => {
     await expect(page.locator('#portalDrawerMenu')).toBeVisible();
     const drawer = page.locator('#portalDrawerMenu');
 
-    for (const label of ['練習予定', '演奏会情報', '録音部屋', '楽譜ライブラリ']) {
+    for (const label of ['練習予定', '次回演奏会', '録音部屋', '楽譜ライブラリ']) {
       await expect(drawer.getByRole('button', { name: label })).toBeVisible();
     }
     await expect(drawer.getByRole('button', { name: '出欠確認' })).toHaveCount(0);
@@ -29,7 +29,7 @@ test.describe('Member menu smoke', () => {
     await expect(page.locator('#memberScheduleTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');
-    await drawer.getByRole('button', { name: '演奏会情報' }).click();
+    await drawer.getByRole('button', { name: '次回演奏会' }).click();
     await expect(page.locator('#memberPerformanceTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');

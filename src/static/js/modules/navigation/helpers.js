@@ -83,6 +83,7 @@ function accessLogPanelLabel(panelId) {
 
 function toPascalTab(value) {
     const map = {
+        'notification-settings': 'notificationSettings',
         upload: 'upload',
         performance: 'performance',
         'concert-record-admin': 'concertRecordAdmin',

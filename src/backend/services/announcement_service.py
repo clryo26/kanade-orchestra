@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..repositories.announcement_repository import AnnouncementRepository
+from .notification_service import emit
 
 _repo = AnnouncementRepository()
 
@@ -17,7 +18,9 @@ def get_announcement(announcement_id: int) -> dict[str, Any]:
 
 
 def create_announcement(payload: dict[str, Any]) -> dict[str, Any]:
-    return cast(dict[str, Any], _repo.create(payload))
+    saved = cast(dict[str, Any], _repo.create(payload))
+    emit('maintenance', saved)
+    return saved
 
 
 def update_announcement(announcement_id: int, payload: dict[str, Any]) -> dict[str, Any]:

@@ -443,65 +443,41 @@ MIT License
 質問や提案がある場合は、プロジェクトマネージャーまでお問い合わせください。
 
 
-VSCode / GitHub Copilot / チャット型AIで、AI生成コードの品質を安定させるための Markdown 一式です。
+## 通常の開発・保守手順
 
-## 配置方法
+VS CodeのAIエージェントは、通常の開発ツールでソース調査、直接編集、テスト、Git操作を行えます。
+プロジェクト独自のAI専用ランナー、JSON修正ジョブ、署名付き検証証跡、commit/push制限、
+作業前ゲート・追加承認フローは撤廃しました。Git操作は通常のGitコマンドを使用します。
 
-リポジトリ直下に、この一式を展開してください。
-
-```text
-.
-├─ AGENTS.md
-├─ .github/
-│  ├─ copilot-instructions.md
-│  ├─ instructions/
-│  │  ├─ csharp.instructions.md
-│  │  ├─ oracle-sql.instructions.md
-│  │  └─ ai-generated-code-review.instructions.md
-│  └─ prompts/
-│     ├─ fix-bug.prompt.md
-│     ├─ review-ai-code.prompt.md
-│     ├─ create-testcases.prompt.md
-│     └─ self-audit.prompt.md
-└─ docs/
-   ├─ ai-chat-quality-gate-checklist.md
-   ├─ ai-generated-code-acceptance-criteria.md
-   └─ ai-workflow.md
+```powershell
+uv sync --extra dev
+npm ci
+uv run python -m compileall -q src/backend tests
+uv run ruff check .
+uv run pytest
+npm run check:frontend:syntax
+npm run test:frontend
+npx playwright install --with-deps chromium
+npm run test:e2e
 ```
 
-## 使い分け
+PowerShellで npm.ps1 が実行ポリシーにより停止する場合は npm.cmd を使用できます。
+Pythonを呼ぶnpmスクリプトは uv run npm.cmd run <スクリプト名> で仮想環境を利用できます。
 
-- `.github/copilot-instructions.md`  
-  プロジェクト全体に常時適用したい基本ルール
+一括実行は npm run setup:local / npm run qa:local、共有ZIP作成は
+npm run check:release-safety / npm run zip:source を利用できます。
+認証・認可、DB整合性、Secret保護、通常のCI/CD・テスト・型チェックとデータ保護は維持しています。
 
-- `AGENTS.md`  
-  AIエージェントに対する作業契約、禁止事項、品質ゲート
+AGENTS.md と .github/copilot-instructions.md は開発情報をまとめたガイドです。
+.github/instructions/ は言語別の実装指針、.github/prompts/ は任意の作業テンプレートです。
+変更した仕様は関連ドキュメントへ反映し、実際の検証結果と未確認事項を報告してください。
 
-- `.github/instructions/*.instructions.md`  
-  C#、Oracle SQL、AI生成コードレビューなど、対象ファイルや用途別のルール
-
-- `.github/prompts/*.prompt.md`  
-  不具合修正、AIコードレビュー、テストケース作成、自己監査など、作業ごとの呼び出し用テンプレート
-
-- `docs/*.md`  
-  人間側が運用・レビュー・採用判定に使うチェックリスト
-
-## 基本思想
-
-AIに「正しくやって」と依頼するのではなく、以下を必須化します。
-
-1. 変更許可範囲を明示する
-2. 変更禁止範囲を明示する
-3. 作業前ゲートを出させる
-4. 差分だけ出させる
-5. 受入条件チェック表を出させる
-6. 未確認事項を必ず書かせる
-7. 守れていない成果物は採用しない
-
-AIの自己申告は品質保証ではありません。  
-採用可否は、差分・根拠・テスト結果・人間の受入確認で判断してください。
+既存の環境で core.hooksPath が .git/kanade-hooks を指している場合は、ローカル設定を解除し、
+同ディレクトリの旧AI専用pre-commit・pre-pushと .git/kanade-ai-publish-token を削除してください。
+他のHooksやGit設定は保持してください。GitHubの必須チェックに旧「Protected AI gate files」が
+指定されている場合は、その指定だけを整理し、通常のCIチェックを維持してください。
 
 ---
 
-**最終更新**: 2026-06-12
+**最終更新**: 2026-10-10
 **バージョン**: 1.0.0

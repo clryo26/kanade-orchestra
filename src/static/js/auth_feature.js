@@ -247,7 +247,13 @@ async function handleMemberPasswordSetup() {
     showPortalLoginForm();
 }
 
-function logoutPortal() {
+async function logoutPortal() {
+    if (localStorage.getItem('portalPushMemberId')) {
+        try {
+            await ensureNotificationsLoaded();
+            await window.PortalNotifications.beforeLogout();
+        } catch { showAlert('通知停止を確認できませんでした。ブラウザの設定を確認してください。', 'warning'); }
+    }
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
