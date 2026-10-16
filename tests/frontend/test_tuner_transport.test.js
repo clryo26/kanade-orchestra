@@ -155,8 +155,36 @@ describe('tuner analysis worker', () => {
   it('handshakes with session information', () => {
     const { posted } = initWorker();
     expect(posted[0].message).toMatchObject({ type: 'ready', release: RELEASE, generation: 2 });
-    expect(posted[0].message.session).toMatchObject({ sampleRate: 48000, fftSize: 16384, window: 'hann' });
-    expect(posted[0].message.session.displayFrequencies).toHaveLength(512);
+    expect(posted[0].message.session).toMatchObject({ sampleRate: 48000, fftSize: 16384, window: 'hann', displayMinFrequency: 500, displayMaxFrequency: 16000 });
+    // The display axis comes as its own message (default: 500 Hz-16 kHz).
+    expect(posted[1].message).toMatchObject({ type: 'display-axis', generation: 2, axis: { axisId: 0, min: 500, max: 16000, nyquist: 24000 } });
+    expect(posted[1].message.axis.frequencies).toHaveLength(512);
+  });
+
+  it('switches the display axis without touching analysis, and tags frames with the axis id', () => {
+    const { context, posted, send } = initWorker({ displayRange: { axisId: 4, min: 500, max: 16000 } });
+    const chunks = sineChunks(110, 0.8);
+    chunks.slice(0, 12).forEach((chunk) => send(chunk));
+    context.self.onmessage({ data: { type: 'display-range', generation: 2, range: { axisId: 5, min: 25, max: 16000 } } });
+    chunks.slice(12).forEach((chunk) => send(chunk));
+    const messages = posted.map((p) => p.message);
+    const axes = messages.filter((m) => m.type === 'display-axis');
+    expect(axes.map((m) => [m.axis.axisId, m.axis.min, m.axis.max])).toEqual([[4, 500, 16000], [5, 25, 16000]]);
+    const switchAt = messages.indexOf(axes[1]);
+    const spectraBefore = messages.slice(0, switchAt).filter((m) => m.type === 'spectrum');
+    const spectraAfter = messages.slice(switchAt).filter((m) => m.type === 'spectrum');
+    expect(spectraAfter.length).toBeGreaterThan(0);
+    expect(spectraBefore.every((m) => m.frame.axisId === 4)).toBe(true);
+    expect(spectraAfter.every((m) => m.frame.axisId === 5)).toBe(true);
+    // Low-note pitch detection continues regardless of the display axis (110 Hz < 500 Hz).
+    const lastPitch = messages.filter((m) => m.type === 'pitch').at(-1).frame;
+    expect(lastPitch.valid).toBe(true);
+    expect(Math.abs(1200 * Math.log2(lastPitch.frequency / 110))).toBeLessThan(1);
+    // A request from another generation, or a nonsensical range, cannot break the axis.
+    context.self.onmessage({ data: { type: 'display-range', generation: 1, range: { axisId: 9, min: 25, max: 16000 } } });
+    context.self.onmessage({ data: { type: 'display-range', generation: 2, range: { axisId: 10, min: 0, max: -1 } } });
+    const lastAxis = posted.map((p) => p.message).filter((m) => m.type === 'display-axis').at(-1).axis;
+    expect([lastAxis.axisId, lastAxis.min, lastAxis.max]).toEqual([10, 25, 16000]);
   });
 
   it('analyses pitch at most 20 times and spectrum at most 10 times per second, returning buffers', () => {
@@ -225,7 +253,7 @@ describe('tuner analysis worker', () => {
   it('ignores audio from another generation and reports a release mismatch once', () => {
     const { posted, send } = initWorker();
     send(new Float32Array(2048), { generation: 1 });
-    expect(posted.filter((p) => p.message.type !== 'ready')).toHaveLength(0);
+    expect(posted.filter((p) => p.message.type !== 'ready' && p.message.type !== 'display-axis')).toHaveLength(0);
     send(new Float32Array(2048), { release: 'other' });
     send(new Float32Array(2048), { release: 'other' });
     expect(posted.filter((p) => p.message.type === 'version-mismatch')).toHaveLength(1);
