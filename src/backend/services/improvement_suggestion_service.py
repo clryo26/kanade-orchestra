@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from ..core import db_connection_string
 from ..core.tenant_context import get_current_tenant_id
 from ..repositories.improvement_suggestion_repository import ImprovementSuggestionRepository
+from .notification_service import emit
 
 VALID_STATUSES = {"未対応", "修正中", "対応済"}
 
@@ -47,7 +48,7 @@ def list_suggestions() -> list[dict[str, Any]]:
 
 
 def create_member_suggestion(suggestion: str, device: dict[str, Any]) -> dict[str, Any]:
-    return _repository().create(
+    saved = _repository().create(
         organization_id=get_current_tenant_id(),
         member_id=_member_id(device),
         registered_by=str(device.get("member_name") or ""),
@@ -56,6 +57,8 @@ def create_member_suggestion(suggestion: str, device: dict[str, Any]) -> dict[st
         resolution="",
         responded_at=None,
     )
+    emit('improvements', saved)
+    return saved
 
 
 def create_admin_suggestion(
@@ -65,7 +68,7 @@ def create_admin_suggestion(
     responded_at: date | None,
     device: dict[str, Any],
 ) -> dict[str, Any]:
-    return _repository().create(
+    saved = _repository().create(
         organization_id=get_current_tenant_id(),
         member_id=_member_id(device),
         registered_by=str(device.get("member_name") or ""),
@@ -74,6 +77,8 @@ def create_admin_suggestion(
         resolution=str(resolution or "").strip(),
         responded_at=responded_at,
     )
+    emit('improvements', saved)
+    return saved
 
 
 def update_admin_suggestion(

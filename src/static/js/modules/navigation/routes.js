@@ -101,6 +101,21 @@ function _albumsReady() {
 }
 
 var improvementSuggestionsLoadPromise = null;
+var notificationSettingsLoadPromise = null;
+
+function ensureNotificationsLoaded() {
+    if (window.PortalNotifications) return Promise.resolve();
+    if (!notificationSettingsLoadPromise) {
+        notificationSettingsLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/static/js/modules/notifications/settings.js?v=20261008-1';
+            script.onload = () => window.PortalNotifications ? resolve() : reject(new Error('Notification module unavailable'));
+            script.onerror = () => reject(new Error('Notification module failed to load'));
+            document.head.appendChild(script);
+        }).catch((error) => { notificationSettingsLoadPromise = null; throw error; });
+    }
+    return notificationSettingsLoadPromise;
+}
 
 function _improvementSuggestionsReady() {
     return typeof window.showImprovementSuggestions === 'function' &&
@@ -352,7 +367,82 @@ function ensureAdminSystemModuleLoaded() {
     return adminSystemModuleLoadPromise;
 }
 
+// ===== チューナー =====
+// The tuner (modules/tuner/) owns the microphone. Every path that hides the
+// system panel or switches tabs releases it through the launcher; leave() is
+// synchronous and idempotent, so calling it on unrelated transitions is safe.
+// Navigation sequence: every screen change (tab switch, panel change, history
+// restore, logout via the tuner exit) advances it. A tuner history restore
+// that awaited auth/module loading only switches screens if no newer
+// navigation happened meanwhile, so it can never overwrite a later choice.
+var portalNavigationSequence = 0;
+function nextPortalNavigation() {
+    portalNavigationSequence += 1;
+    return portalNavigationSequence;
+}
+function isLatestPortalNavigation(ticket) {
+    return ticket === portalNavigationSequence;
+}
+window.invalidatePortalNavigation = nextPortalNavigation;
+
+function leavePortalTuner(reason) {
+    nextPortalNavigation();
+    // portalTunerLeave (laboratory module) also cancels a tap that is still
+    // waiting for the launcher to load.
+    if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave(reason);
+    else if (window.PortalTunerLauncher) window.PortalTunerLauncher.leave(reason);
+}
+
+function enterPortalTunerTab() {
+    const host = $('systemTunerHost');
+    if (window.PortalTunerLauncher && host) void window.PortalTunerLauncher.enter(host);
+}
+
+// The launcher is loaded by the laboratory module (improvement_suggestions.js).
+// Preloading fetches code only: no AudioContext and no microphone.
+function preloadPortalTuner() {
+    let loading;
+    if (window.PortalTunerLauncher) loading = Promise.resolve(window.PortalTunerLauncher);
+    else if (typeof window.ensurePortalTunerLauncherLoaded === 'function') loading = window.ensurePortalTunerLauncherLoaded();
+    else return Promise.resolve(false);
+    return loading.then((launcher) => launcher.preload()).catch(() => false);
+}
+
+// History restore of the tuner tab: auth/permission first, then the
+// laboratory module that creates the tab DOM, then the tuner body. This is
+// not a user tap, so the tuner may end in "tap to resume" instead of measuring.
+async function preparePortalTunerHistoryRestore(ticket) {
+    const authResult = await isPortalAuthenticated();
+    if (!isLatestPortalNavigation(ticket)) return false;
+    if (authResult.status === 'unavailable') {
+        showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+        return false;
+    }
+    if (authResult.status !== 'authenticated') {
+        showPortalLogin();
+        return false;
+    }
+    if (!canAccessSystemAdmin()) {
+        showAlert('システム管理者権限がありません', 'warning');
+        return false;
+    }
+    try {
+        await ensureImprovementSuggestionsLoaded();
+    } catch (err) {
+        if (!isLatestPortalNavigation(ticket)) return false;
+        console.warn('[improvement-suggestions] load failed', err);
+        showAlert('実験室の読込に失敗しました。再度開いてください。', 'warning');
+        return false;
+    }
+    if (!isLatestPortalNavigation(ticket)) return false;
+    await preloadPortalTuner();
+    // Re-checked after the waits: a newer navigation, logout or lost rights wins.
+    return isLatestPortalNavigation(ticket) && appState.portalAuthVerified === true &&
+        canAccessSystemAdmin() && Boolean($('system-tunerTab'));
+}
+
 function showAdminPanel(role = 'admin') {
+    leavePortalTuner('admin-panel');
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     $('adminPanel').hidden = false;
     if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
@@ -365,6 +455,7 @@ function showAdminPanel(role = 'admin') {
 }
 
 function showSystemPanel() {
+    leavePortalTuner('system-panel');
     return (async () => {
         const authResult = await isPortalAuthenticated();
         if (authResult.status === 'unavailable') {
@@ -425,6 +516,7 @@ function showMemberPanel(shouldRender = true) {
 }
 
 function showMemberTab(tabName, shouldRender = true) {
+    leavePortalTuner('member-panel');
     return (async () => {
         const authResult = await isPortalAuthenticated();
         if (authResult.status === 'unavailable') {
@@ -498,6 +590,15 @@ async function restorePortalHistoryState(state) {
     const tabName = String(state.tabName || '');
     if (!tabName || !['memberPanel', 'adminPanel', 'systemPanel'].includes(panelId)) return;
 
+    if (panelId === 'systemPanel' && tabName === 'system-tuner') {
+        leavePortalTuner('history');
+        const ticket = nextPortalNavigation();
+        if (!(await preparePortalTunerHistoryRestore(ticket))) return;
+        if (!isLatestPortalNavigation(ticket)) return;
+    } else {
+        leavePortalTuner('history');
+    }
+
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = false;
     if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
@@ -534,6 +635,9 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     }
     const panel = $(panelId);
     if (!panel) return;
+    nextPortalNavigation();
+    const isTunerTab = panelId === 'systemPanel' && tabName === 'system-tuner';
+    if (!isTunerTab) leavePortalTuner('tab');
     if (panelId === 'memberPanel') {
         updateMemberTabHistory(tabName);
     }
@@ -550,10 +654,23 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     });
 
     const targetId = `${toPascalTab(tabName)}Tab`;
+    if (tabName === 'notification-settings') {
+        try {
+            await ensureNotificationsLoaded();
+            await window.PortalNotifications.render();
+        } catch {
+            showAlert('通知設定を読み込めませんでした。もう一度開いてください。', 'warning');
+            return;
+        }
+    }
     const target = $(targetId);
     if (target) target.hidden = false;
     const button = panel.querySelector(`[data-tab="${tabName}"]`);
     if (button) button.classList.add('active');
+    // Entered after the tab is visible so the tuner's visibility guard passes.
+    // Runs regardless of renderOnShow because the laboratory buttons pass false.
+    if (isTunerTab) enterPortalTunerTab();
+    if (panelId === 'systemPanel' && tabName === 'system-laboratory') void preloadPortalTuner();
     recordAccessLog(panelId, tabName);
     if (renderOnShow) {
         await ensureFeatureForMemberTab(tabName);

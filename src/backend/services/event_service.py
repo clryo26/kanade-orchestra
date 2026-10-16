@@ -5,6 +5,7 @@ from typing import Any, cast
 from fastapi import HTTPException
 
 from ..repositories.event_repository import EventRepository
+from .notification_service import emit
 
 _repo = EventRepository()
 
@@ -26,7 +27,9 @@ def create_event(payload: dict[str, Any], device: dict[str, Any]) -> dict[str, A
         **payload,
         "created_by_member_id": int(member_id_text),
     }
-    return cast(dict[str, Any], _repo.create(normalized_payload))
+    saved = cast(dict[str, Any], _repo.create(normalized_payload))
+    emit('events', saved)
+    return saved
 
 
 def update_event(event_id: int, payload: dict[str, Any]) -> dict[str, Any]:

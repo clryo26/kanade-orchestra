@@ -1,0 +1,230 @@
+/* チューナー専用スタイル。すべて .tuner 配下に限定し、他画面へ影響させない。
+   iPhone縦画面を基準に、読み取りやすい大きさと44px以上の操作領域を確保する。 */
+.tuner {
+    --tuner-flat: #b45309;
+    --tuner-in-tune: #2f855a;
+    --tuner-sharp: #c2410c;
+    --tuner-muted: #6b7280;
+    --tuner-graph-line: var(--brand, #235789);
+    --tuner-graph-fill: rgba(35, 87, 137, 0.18);
+    --tuner-graph-grid: rgba(107, 114, 128, 0.22);
+    --tuner-graph-text: #6b7280;
+    --tuner-graph-fundamental: #be185d;
+    --tuner-graph-target: #2f855a;
+    --tuner-graph-harmonic: #6b7280;
+    --tuner-graph-unavailable: rgba(107, 114, 128, 0.14);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin: 0 auto;
+    max-width: 640px;
+}
+
+.tuner-guide {
+    color: var(--tuner-muted);
+    font-size: 0.9rem;
+    margin: 0;
+    text-align: center;
+}
+
+.tuner-status,
+.tuner-fallback {
+    background: #fff8e6;
+    border: 1px solid #f0d58c;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.tuner-status-title {
+    font-weight: 700;
+    margin: 0 0 4px;
+}
+
+.tuner-status-detail {
+    font-size: 0.9rem;
+    margin: 0 0 8px;
+}
+
+.tuner-action {
+    min-height: 44px;
+    width: 100%;
+}
+
+.tuner-readout {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    justify-content: center;
+    text-align: center;
+}
+
+.tuner-note-name {
+    font-size: clamp(3rem, 16vw, 4.5rem);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.tuner-note-solfege {
+    font-size: 1.4rem;
+    margin-left: 4px;
+}
+
+.tuner-frequency {
+    font-size: 1.4rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 表示保持中（音が途切れた直後）は薄く表示する */
+.tuner-readout[data-state="held"],
+.tuner-readout[data-state="none"] {
+    color: var(--tuner-muted);
+}
+
+.tuner-meter-scale {
+    background: linear-gradient(to right, #fde7d6, #f7f7f7 45%, #f7f7f7 55%, #fde7d6);
+    border: 1px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    height: 56px;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ±3 cent（合っている範囲）の帯。全幅は100 cent。 */
+.tuner-meter-zone {
+    background: rgba(47, 133, 90, 0.22);
+    bottom: 0;
+    left: 47%;
+    position: absolute;
+    top: 0;
+    width: 6%;
+}
+
+.tuner-meter-center {
+    background: #374151;
+    bottom: 0;
+    left: 50%;
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    width: 2px;
+}
+
+.tuner-meter-needle {
+    background: var(--tuner-muted);
+    border-radius: 3px;
+    bottom: 6px;
+    position: absolute;
+    top: 6px;
+    transform: translateX(-50%);
+    transition: left 80ms linear;
+    width: 6px;
+}
+
+.tuner-meter[data-judgment="flat"] .tuner-meter-needle { background: var(--tuner-flat); }
+.tuner-meter[data-judgment="sharp"] .tuner-meter-needle { background: var(--tuner-sharp); }
+.tuner-meter[data-judgment="in-tune"] .tuner-meter-needle { background: var(--tuner-in-tune); }
+
+.tuner-meter-labels {
+    color: var(--tuner-muted);
+    display: flex;
+    font-size: 0.8rem;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+.tuner-meter-result {
+    align-items: baseline;
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 6px;
+}
+
+.tuner-cents {
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    min-width: 6.5em;
+    text-align: right;
+}
+
+.tuner-judgment {
+    font-size: 1.3rem;
+    font-weight: 700;
+    min-width: 7em;
+}
+
+.tuner-meter[data-judgment="flat"] .tuner-judgment { color: var(--tuner-flat); }
+.tuner-meter[data-judgment="sharp"] .tuner-judgment { color: var(--tuner-sharp); }
+.tuner-meter[data-judgment="in-tune"] .tuner-judgment { color: var(--tuner-in-tune); }
+.tuner-meter[data-judgment="none"] .tuner-judgment { color: var(--tuner-muted); font-weight: 400; }
+
+.tuner-graph-canvas {
+    background: #ffffff;
+    border: 1px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    display: block;
+    height: 200px;
+    width: 100%;
+}
+
+.tuner-graph-legend {
+    color: var(--tuner-muted);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    gap: 2px 14px;
+    margin: 6px 0 0;
+}
+
+.tuner-legend-fundamental { color: var(--tuner-graph-fundamental); }
+.tuner-legend-target { color: var(--tuner-graph-target); }
+
+.tuner-reference {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.tuner-step {
+    background: #ffffff;
+    border: 2px solid var(--brand, #235789);
+    border-radius: 10px;
+    color: var(--brand, #235789);
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+    min-height: 52px;
+    min-width: 52px;
+    touch-action: manipulation;
+}
+
+.tuner-step:disabled {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    border-style: dashed;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.tuner-reference-value {
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    min-width: 8em;
+    text-align: center;
+}
+
+.tuner-reference-note {
+    color: var(--tuner-muted);
+    font-size: 0.85rem;
+    margin: 0;
+    text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tuner-meter-needle { transition: none; }
+}

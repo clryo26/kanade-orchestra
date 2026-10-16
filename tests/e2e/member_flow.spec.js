@@ -33,7 +33,7 @@ test.describe('Member flow smoke', () => {
     await expect(page.locator('#memberSheetTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');
-    await drawer.getByRole('button', { name: '演奏会情報' }).click();
+    await drawer.getByRole('button', { name: '次回演奏会' }).click();
     await expect(page.locator('#memberPerformanceTab')).toBeVisible();
 
     await page.click('#portalDrawerToggle');

@@ -89,6 +89,8 @@ async function isPortalAuthenticated(options = {}) {
 }
 
 function showPortalLogin() {
+    // Panels are hidden directly here (also on session expiry): release the tuner's microphone first.
+    if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('login');
     closePortalDrawer();
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = true;
     $('adminPanel').hidden = true;
@@ -247,7 +249,15 @@ async function handleMemberPasswordSetup() {
     showPortalLoginForm();
 }
 
-function logoutPortal() {
+async function logoutPortal() {
+    // Release the microphone before awaiting the notification shutdown below.
+    if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('logout');
+    if (localStorage.getItem('portalPushMemberId')) {
+        try {
+            await ensureNotificationsLoaded();
+            await window.PortalNotifications.beforeLogout();
+        } catch { showAlert('通知停止を確認できませんでした。ブラウザの設定を確認してください。', 'warning'); }
+    }
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
