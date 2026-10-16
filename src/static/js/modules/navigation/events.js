@@ -191,6 +191,8 @@ function bindNavigation() {
 }
 
 function logoutPortal() {
+    // Overridden at runtime by auth_feature.js (loaded later); kept consistent.
+    if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('logout');
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;

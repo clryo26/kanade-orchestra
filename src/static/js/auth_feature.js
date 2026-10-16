@@ -89,6 +89,8 @@ async function isPortalAuthenticated(options = {}) {
 }
 
 function showPortalLogin() {
+    // Panels are hidden directly here (also on session expiry): release the tuner's microphone first.
+    if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('login');
     closePortalDrawer();
     if ($('portalDrawerToggle')) $('portalDrawerToggle').hidden = true;
     $('adminPanel').hidden = true;
@@ -248,6 +250,8 @@ async function handleMemberPasswordSetup() {
 }
 
 async function logoutPortal() {
+    // Release the microphone before awaiting the notification shutdown below.
+    if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('logout');
     if (localStorage.getItem('portalPushMemberId')) {
         try {
             await ensureNotificationsLoaded();

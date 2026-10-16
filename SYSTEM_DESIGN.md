@@ -113,6 +113,7 @@
 
 - 認証端末、団体情報、SNS
 - 接続先情報、パート管理、アクセスログ
+- 実験室（PDF編集、チューナー）。チューナーはフロントエンドのみで、詳細は `docs/TUNER_DESIGN.md`
 
 ## 5. データモデル
 
@@ -277,6 +278,15 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 - 検出対象: castings・absences・payments・piece_infos・practice_instructions・desired_pieces・event_responses・date_adjustment_responses
 - 各レコードをチェックボックスで個別選択して削除可能
 - 削除後に自動再スキャンを実行して結果を更新
+
+### 10.4 チューナー（実験室・システム管理者のみ）
+
+- マイク入力から音名・周波数・cent・判定と周波数スペクトラムを表示する。団員への公開は未実施
+- 音声は端末内で解析し、録音・保存・サーバー送信はしない。バックエンド/DB の追加はなく、保存は基準Hz（端末内）のみ
+- 初回タップ内で AudioContext を同期生成し（iOS Safari 対策）、本体・Worker・AudioWorklet は遅延読込。index.html の初期スクリプトは増やしていない
+- 画面遷移・ログアウト・セッション切れ・バックグラウンドでマイクと音声処理を解放する
+- チューナーのファイルを変更したら `npm run generate:tuner-release` でリリース識別子を更新する（`npm run check:tuner-release` で検査）
+- 構成・方式・調整値・制約・検証結果は `docs/TUNER_DESIGN.md`、iPhone 実機確認は `docs/MANUAL_DEVICE_QA_CHECKLIST.md` の「7. チューナー」
 
 ## 11. 今後の保守方針
 

@@ -271,6 +271,8 @@
     }
 
     async function showImprovementSuggestions() {
+        // This screen hides the panels directly, so release the tuner explicitly.
+        leaveTuner('improvement-suggestions');
         ensureMemberPanel();
         if ($('adminPanel')) $('adminPanel').hidden = true;
         if ($('systemPanel')) $('systemPanel').hidden = true;
@@ -387,6 +389,139 @@
         if (typeof showAlert === 'function') showAlert(error && error.message ? error.message : 'PDF編集処理に失敗しました', 'warning');
     }
 
+    // Tuner launcher (modules/tuner/launcher.js). It is loaded here, with the
+    // laboratory, instead of from index.html so the page's initial scripts do
+    // not grow. It must be present before the tuner button is tapped because
+    // the tap creates the AudioContext synchronously (iOS Safari). The rev
+    // value is maintained by scripts/generate_tuner_release.mjs.
+    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-e945264406d5';
+    var tunerLauncherPromise = null;
+
+    function ensureTunerLauncherLoaded() {
+        if (window.PortalTunerLauncher) return Promise.resolve(window.PortalTunerLauncher);
+        if (!tunerLauncherPromise) {
+            tunerLauncherPromise = new Promise(function (resolve, reject) {
+                var script = document.createElement('script');
+                script.src = TUNER_LAUNCHER_URL;
+                script.async = true;
+                script.addEventListener('load', function () {
+                    if (window.PortalTunerLauncher) resolve(window.PortalTunerLauncher);
+                    else reject(new Error('Tuner launcher loaded without its API'));
+                }, { once: true });
+                script.addEventListener('error', function () {
+                    script.remove();
+                    reject(new Error('Tuner launcher failed to load'));
+                }, { once: true });
+                document.head.appendChild(script);
+            }).catch(function (error) {
+                tunerLauncherPromise = null; // allow a retry on the next attempt
+                throw error;
+            });
+        }
+        return tunerLauncherPromise;
+    }
+
+    function isSystemAdministrator() {
+        return appState.portalAuthVerified === true && appState.currentUserPermission === 'システム管理者';
+    }
+
+    // Minimal synchronous audio preparation for a tap that arrives before the
+    // launcher has loaded (slow network / empty cache). iOS Safari only starts
+    // an AudioContext inside the tap, so it is created and resumed here, in this
+    // already-loaded module, and handed to the launcher once it arrives. No
+    // microphone access happens here.
+    var pendingTunerTap = null;
+    // "The user asked for the tuner and has not left" while the launcher is
+    // still loading. Kept apart from the AudioContext: going to the
+    // background releases the context but keeps this request, so returning
+    // can still start (without the tap's context, possibly asking for a tap).
+    var tunerStartRequested = false;
+
+    function closeAudioContextQuietly(ctx) {
+        if (!ctx) return;
+        try {
+            if (ctx.state !== 'closed') {
+                var closing = ctx.close();
+                if (closing && typeof closing.catch === 'function') closing.catch(function () {});
+            }
+        } catch (_) { /* best effort */ }
+    }
+
+    function prepareTunerTap() {
+        if (pendingTunerTap) return pendingTunerTap; // repeated tap while loading
+        var Ctor = window.AudioContext || window.webkitAudioContext;
+        var ctx = null;
+        if (typeof Ctor === 'function') {
+            try {
+                ctx = new Ctor({ latencyHint: 'interactive' });
+                var resumed = ctx.resume();
+                if (resumed && typeof resumed.catch === 'function') resumed.catch(function () {});
+            } catch (_) {
+                ctx = null; // the tuner body reports "unsupported" with guidance
+            }
+        }
+        pendingTunerTap = { ctx: ctx };
+        return pendingTunerTap;
+    }
+
+    function cancelPendingTunerTap() {
+        if (!pendingTunerTap) return;
+        closeAudioContextQuietly(pendingTunerTap.ctx);
+        pendingTunerTap = null;
+    }
+
+    // Visible including every parent panel, page visible, still an admin.
+    function tunerScreenIsShowing() {
+        var host = $('systemTunerHost');
+        return Boolean(host) && host.isConnected && !host.closest('[hidden]') &&
+            host.getClientRects().length > 0 && document.visibilityState === 'visible' &&
+            isSystemAdministrator();
+    }
+
+    // Single exit used by every navigation/auth path: cancels a tap that is
+    // still waiting for the launcher and releases a running tuner.
+    function leaveTuner(reason) {
+        tunerStartRequested = false;
+        cancelPendingTunerTap();
+        // Also invalidates a tuner history restore that is still waiting (routes.js).
+        if (typeof window.invalidatePortalNavigation === 'function') window.invalidatePortalNavigation();
+        if (window.PortalTunerLauncher) window.PortalTunerLauncher.leave(reason);
+    }
+
+    // Hand the waiting tap to the launcher, or start without a context after a
+    // background trip. Only while the request stands and the screen is showing.
+    function startRequestedTuner(launcher) {
+        if (!tunerStartRequested) return;
+        if (!tunerScreenIsShowing()) {
+            // Hidden page: keep the request for the return; anything else that
+            // hides the screen goes through leaveTuner() and clears it.
+            cancelPendingTunerTap();
+            return;
+        }
+        tunerStartRequested = false;
+        var tap = pendingTunerTap;
+        pendingTunerTap = null;
+        launcher.adoptPrimed(tap ? tap.ctx : null);
+        void launcher.enter($('systemTunerHost'));
+    }
+
+    // The launcher installs its own page-visibility handling once loaded; until
+    // then a pending tap's AudioContext is released here on background/page hide.
+    function handleTunerPageHidden() {
+        if (window.PortalTunerLauncher) return;
+        cancelPendingTunerTap();
+    }
+
+    function handleTunerPageVisible() {
+        if (window.PortalTunerLauncher && tunerStartRequested) startRequestedTuner(window.PortalTunerLauncher);
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') handleTunerPageHidden();
+        else handleTunerPageVisible();
+    });
+    window.addEventListener('pagehide', handleTunerPageHidden);
+
     function ensurePdfEditorPanel() {
         var panel = $('systemPanel');
         if (!panel) return;
@@ -399,8 +534,27 @@
                 <div id="system-laboratoryTab" class="tab-content" hidden>
                     <div class="card">
                         <div class="card-header">実験室</div>
-                        <div class="card-body">
+                        <div class="card-body d-flex flex-wrap gap-2">
                             <button class="btn btn-primary" data-tab="system-pdf-editor" type="button">PDF編集</button>
+                            <button class="btn btn-primary" data-tab="system-tuner" type="button">チューナー</button>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+        var laboratoryBody = $('system-laboratoryTab') ? $('system-laboratoryTab').querySelector('.card-body') : null;
+        if (laboratoryBody && !laboratoryBody.querySelector('[data-tab="system-tuner"]')) {
+            laboratoryBody.insertAdjacentHTML('beforeend', '<button class="btn btn-primary" data-tab="system-tuner" type="button">チューナー</button>');
+        }
+        if (!$('system-tunerTab')) {
+            // The tuner body renders into #systemTunerHost; this module only
+            // provides the container and never touches tuner DOM or audio.
+            panel.insertAdjacentHTML('beforeend', `
+                <div id="system-tunerTab" class="tab-content" hidden>
+                    <div class="card">
+                        <div class="card-header">チューナー</div>
+                        <div class="card-body">
+                            <div id="systemTunerHost"></div>
                         </div>
                     </div>
                 </div>
@@ -447,6 +601,29 @@
             });
         }
 
+        var tunerButton = laboratoryTab ? laboratoryTab.querySelector('[data-tab="system-tuner"]') : null;
+        if (tunerButton && tunerButton.dataset.tunerBound !== 'true') {
+            tunerButton.dataset.tunerBound = 'true';
+            tunerButton.addEventListener('click', function () {
+                // iOS Safari: the AudioContext must be created and resumed inside
+                // this tap, before any await, so prime() runs synchronously first.
+                var launcherReady = Boolean(window.PortalTunerLauncher);
+                if (launcherReady) window.PortalTunerLauncher.prime();
+                else if (isSystemAdministrator()) prepareTunerTap();
+                if (typeof switchTab === 'function') switchTab('systemPanel', 'system-tuner', false);
+                // Set after switchTab: its own leave-on-switch must not clear this tap's request.
+                if (!launcherReady && isSystemAdministrator()) tunerStartRequested = true;
+                if (!launcherReady) {
+                    ensureTunerLauncherLoaded().then(startRequestedTuner).catch(function (error) {
+                        tunerStartRequested = false;
+                        cancelPendingTunerTap();
+                        console.warn('[チューナー] 起動処理の読込に失敗しました', error);
+                        if (typeof showAlert === 'function') showAlert('チューナーを読み込めませんでした。再度開いてください。', 'warning');
+                    });
+                }
+            });
+        }
+
         var registerButton = $('pdfEditorRegisterBtn');
         if (registerButton && registerButton.dataset.pdfEditorRegisterBound !== 'true') {
             registerButton.dataset.pdfEditorRegisterBound = 'true';
@@ -460,12 +637,19 @@
         ensureMemberPanel();
         ensureSystemPanel();
         ensurePdfEditorPanel();
+        if (isSystemAdministrator()) {
+            ensureTunerLauncherLoaded().catch(function (error) {
+                console.warn('[チューナー] 起動処理の読込に失敗しました', error);
+            });
+        }
         document.querySelectorAll('[data-improvement-suggestion-open]').forEach(function (button) {
             button.addEventListener('click', showImprovementSuggestions);
         });
     }
 
     window.showImprovementSuggestions = showImprovementSuggestions;
+    window.ensurePortalTunerLauncherLoaded = ensureTunerLauncherLoaded;
+    window.portalTunerLeave = leaveTuner;
     window.loadImprovementSuggestions = loadSuggestions;
 
     if (document.readyState === 'loading') {
