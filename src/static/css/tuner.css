@@ -12,6 +12,7 @@
     --tuner-graph-fundamental: #be185d;
     --tuner-graph-target: #2f855a;
     --tuner-graph-harmonic: #6b7280;
+    --tuner-graph-equal: #6b7280;
     --tuner-graph-unavailable: rgba(107, 114, 128, 0.14);
     display: flex;
     flex-direction: column;
@@ -20,10 +21,105 @@
     max-width: 640px;
 }
 
-.tuner-guide {
+/* 判定方式・表示範囲・再生方法の切り替え（押下状態は aria-pressed で表し、色だけに頼らない） */
+.tuner-segmented {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tuner-segment {
+    background: #ffffff;
+    border: 2px solid var(--line, #d9dee7);
+    border-radius: 10px;
+    color: var(--text, #1f2933);
+    flex: 1 1 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.2;
+    min-height: 44px;
+    min-width: 6.5em;
+    padding: 6px 8px;
+    touch-action: manipulation;
+}
+
+.tuner-segment[aria-pressed="true"] {
+    background: var(--brand, #235789);
+    border-color: var(--brand, #235789);
+    color: #ffffff;
+}
+
+.tuner-segment[aria-pressed="true"]::before {
+    content: "\2713  ";
+}
+
+.tuner-segment-detail {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 400;
+}
+
+.tuner-section-label,
+.tuner-readout-label,
+.tuner-meter-caption {
     color: var(--tuner-muted);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    margin: 0 0 4px;
+}
+
+.tuner-readout-label {
+    flex-basis: 100%;
     margin: 0;
+    text-align: center;
+}
+
+.tuner-meter-caption {
+    text-align: center;
+}
+
+.tuner-section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.tuner-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tuner-field label {
+    font-size: 0.9rem;
+}
+
+.tuner-select,
+.tuner-input {
+    font-size: 1rem; /* 16px 以上: iPhone で入力時の自動拡大を防ぐ */
+    min-height: 44px;
+}
+
+.tuner-judgment-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tuner-target-line {
+    background: #eef6f1;
+    flex-basis: 100%;
+    text-align: left;
+    border-left: 4px solid var(--tuner-graph-target);
+    border-radius: 4px;
+    font-weight: 600;
+    margin: 0;
+    padding: 6px 10px;
+}
+
+.tuner-equal-diff {
+    color: var(--tuner-muted);
+    font-size: 0.95rem;
+    margin: 6px 0 0;
     text-align: center;
 }
 
@@ -179,8 +275,50 @@
     margin: 6px 0 0;
 }
 
-.tuner-legend-fundamental { color: var(--tuner-graph-fundamental); }
-.tuner-legend-target { color: var(--tuner-graph-target); }
+.tuner-legend-item:nth-child(1) { color: var(--tuner-graph-fundamental); }
+.tuner-legend-item:nth-child(2) { color: var(--tuner-graph-target); }
+.tuner[data-mode="just"] .tuner-legend-item:nth-child(3) { color: var(--tuner-graph-equal); }
+
+.tuner-range {
+    margin-bottom: 6px;
+}
+
+/* 基準音の再生 */
+.tuner-playback {
+    border-top: 1px solid var(--line, #d9dee7);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+}
+
+.tuner-playback-just,
+.tuner-playback-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tuner-wide-button {
+    flex: 1 1 0;
+    min-height: 44px;
+    min-width: 8em;
+}
+
+.tuner-playback-summary {
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+}
+
+.tuner-playback-error {
+    color: #b42318;
+    font-weight: 600;
+    margin: 0;
+}
+
+.tuner-volume {
+    min-height: 44px;
+}
 
 .tuner-reference {
     align-items: center;

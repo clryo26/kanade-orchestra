@@ -82,6 +82,45 @@ describe('tuner module boundaries', () => {
     expect(userText).not.toMatch(/localStorage|portalTuner|\.js\b|static\/|worker|worklet/i);
   });
 
+  it('removed the "one note, long" guidance but kept waiting/permission/resume/error guidance', () => {
+    for (const name of tunerScripts) {
+      const code = read(`${tunerDir}/${name}`);
+      expect(code, name).not.toContain('一度に一つの音を');
+      expect(code, name).not.toContain('長めに鳴らして');
+    }
+    expect(read('src/static/css/tuner.css')).not.toContain('.tuner-guide');
+    const view = read(`${tunerDir}/view.js`);
+    expect(view).toContain('音を待っています');
+    expect(view).toContain('マイクを準備しています。許可を求められたら『許可』を選んでください');
+    const errors = require(path.join(root, tunerDir, 'errors.js'));
+    expect(errors.MESSAGES['resume-required'].action).toBe('resume');
+    expect(errors.MESSAGES.denied.action).toBe('retry');
+  });
+
+  it('keeps playback on its own audio path, separate from the capture graph', () => {
+    const playbackCode = stripComments(read(`${tunerDir}/playback.js`));
+    expect(playbackCode).toContain('gain.connect(ctx.destination)');
+    expect(playbackCode).toContain("oscillator.type = 'sine'");
+    expect(playbackCode).not.toMatch(/getUserMedia|createMediaStreamSource|AudioWorklet|createCaptureGraph/);
+    const indexCode = stripComments(read(`${tunerDir}/index.js`));
+    // Its own context factory, never the capture controller's context.
+    expect(indexCode).toContain('createContext: function () { return new AudioContextCtor(');
+    // Playing stops the measurement first-class (microphone released).
+    const onPlay = indexCode.slice(indexCode.indexOf('onPlay: function'), indexCode.indexOf('onStop: function'));
+    expect(onPlay.indexOf('engine.start(')).toBeLessThan(onPlay.indexOf('controller.stop()'));
+    expect(onPlay).not.toMatch(/await|\.then\(/);
+    const onStop = indexCode.slice(indexCode.indexOf('onStop: function'), indexCode.indexOf('onRestart: function'));
+    expect(onStop).toContain('startOptions.onMeasurementResume(POST_PLAYBACK_DELAY_MS)');
+    expect(onStop).not.toMatch(/await|\.then\(/);
+  });
+
+  it('keeps the new settings in memory only (A4 stays the only stored value)', () => {
+    for (const name of ['temperament.js', 'playback.js', 'graph.js', 'index.js', 'display_filter.js']) {
+      const code = stripComments(read(`${tunerDir}/${name}`));
+      expect(code, name).not.toMatch(/\.setItem\(|sessionStorage|indexedDB/);
+    }
+  });
+
   it('keeps the laboratory free of tuner internals', () => {
     const lab = stripComments(read('src/static/js/modules/improvement_suggestions.js'));
     // The laboratory may only prepare an AudioContext inside the tap; the

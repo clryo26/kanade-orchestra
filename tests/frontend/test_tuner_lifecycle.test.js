@@ -458,6 +458,8 @@ function createLauncherHarness(options = {}) {
   const loads = [];
   const fallbacks = [];
   const state = { allowed: true, visible: true, hostVisible: true, bodyState: 'hidden' };
+  let timers = [];
+  let timerId = 0;
   const body = {
     starts: [],
     stops: 0,
@@ -481,8 +483,14 @@ function createLauncherHarness(options = {}) {
     hostVisible: () => state.hostVisible,
     isDocumentVisible: () => state.visible,
     renderFallback: (host, kind) => fallbacks.push(kind),
+    setTimeout: (fn, ms) => { timerId += 1; timers.push({ id: timerId, fn, ms }); return timerId; },
+    clearTimeout: (id) => { timers = timers.filter((t) => t.id !== id); },
   });
-  return { launcher, contexts, loads, fallbacks, body, state, host: { id: 'host' } };
+  return {
+    launcher, contexts, loads, fallbacks, body, state, host: { id: 'host' },
+    pendingTimers: () => timers.map((t) => t.ms),
+    runTimers: () => { const due = timers; timers = []; due.forEach((t) => t.fn()); },
+  };
 }
 
 describe('tuner launcher (first tap and generations)', () => {
@@ -629,6 +637,68 @@ describe('tuner launcher (first tap and generations)', () => {
     await h.launcher.enter(h.host);
     expect(h.contexts[0].state).toBe('closed');
     expect(h.body.starts).toHaveLength(0);
+  });
+
+  it('after playback stops, primes inside the stop tap and enters only after the delay', async () => {
+    const h = createLauncherHarness();
+    h.launcher.prime();
+    const entering = h.launcher.enter(h.host);
+    h.loads[0].resolve();
+    await entering;
+    h.state.bodyState = 'playing';
+    // While the tone plays the body counts as busy: a stray prime creates nothing.
+    h.launcher.prime();
+    expect(h.contexts).toHaveLength(1);
+    h.state.bodyState = 'hidden'; // the stop tap ended playback
+    h.launcher.resumeMeasurementFromGesture(250);
+    expect(h.contexts).toHaveLength(2); // created synchronously in the stop tap
+    expect(h.contexts[1].resumeCalls).toBe(1);
+    expect(h.pendingTimers()).toEqual([250]);
+    expect(h.body.starts).toHaveLength(1); // not yet
+    h.runTimers();
+    await flush();
+    expect(h.body.starts).toHaveLength(2);
+    expect(h.body.starts[1].audioContext).toBe(h.contexts[1]);
+    expect(typeof h.body.starts[1].isScreenActive).toBe('function');
+    expect(h.body.starts[1].isScreenActive()).toBe(true);
+  });
+
+  it('leaving during the post-playback delay closes the primed context and the old timer never starts', async () => {
+    const h = createLauncherHarness();
+    h.launcher.prime();
+    const entering = h.launcher.enter(h.host);
+    h.loads[0].resolve();
+    await entering;
+    h.state.bodyState = 'hidden'; // the stop tap ended playback (measurement already paused)
+    h.launcher.resumeMeasurementFromGesture(250);
+    h.launcher.leave('tab');
+    expect(h.contexts[1].state).toBe('closed');
+    expect(h.pendingTimers()).toEqual([]); // cancelled
+    h.runTimers();
+    await flush();
+    expect(h.body.starts).toHaveLength(1);
+  });
+
+  it('a stale post-playback timer cannot start after a newer start superseded it', async () => {
+    const h = createLauncherHarness();
+    h.launcher.prime();
+    const entering = h.launcher.enter(h.host);
+    h.loads[0].resolve();
+    await entering;
+    h.state.bodyState = 'hidden';
+    h.launcher.resumeMeasurementFromGesture(250);
+    const delayedContext = h.contexts[1];
+    // The user taps "タップして測定を再開" before the delay ends.
+    h.launcher.restartFromGesture();
+    await flush();
+    // The context primed by the stop tap is reused (no second one), the timer is cancelled.
+    expect(h.contexts).toHaveLength(2);
+    expect(h.body.starts).toHaveLength(2);
+    expect(h.body.starts[1].audioContext).toBe(delayedContext);
+    expect(h.pendingTimers()).toEqual([]);
+    h.runTimers(); // even a late firing would not start again
+    await flush();
+    expect(h.body.starts).toHaveLength(2);
   });
 
   it('background releases and returning tries one automatic, non-gesture restart', async () => {

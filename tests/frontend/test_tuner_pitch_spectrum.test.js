@@ -231,24 +231,35 @@ describe('tuner spectrum levels and harmonics', () => {
     for (const n of [1, 2, 3, 5, 8]) {
       expect(list[n - 1].powerDbfs).toBeCloseTo(20 * Math.log10(0.4 / n), 0);
     }
-    expect(list.every((item) => item.frequency <= 10000)).toBe(true);
+    // Analysis harmonics are bounded by Nyquist and the list size, not by the display axis.
+    expect(list.length).toBeLessThanOrEqual(40);
+    expect(list.every((item) => item.frequency < analyzer.nyquist)).toBe(true);
+    const low = analyzer.harmonics(110);
+    expect(low.at(-1).frequency).toBeCloseTo(110 * 40, 6); // reaches 4.4 kHz although the old axis stopped earlier
     // Too low to separate neighbouring harmonics with this window: not valid.
     expect(analyzer.harmonics(12)[0].valid).toBe(false);
   });
 
-  it('keeps 512 log-spaced display points and blanks those above Nyquist', () => {
+  it('defaults to the 500 Hz-16 kHz display axis', () => {
+    expect(analyzer.displayFrequencies).toHaveLength(512);
+    expect(analyzer.displayFrequencies[0]).toBeCloseTo(500, 6);
+    expect(analyzer.displayFrequencies[511]).toBeCloseTo(16000, 6);
+  });
+
+  it('reduces to a requested axis (25 Hz-16 kHz) and blanks points above Nyquist', () => {
     const low = spectrum.createSpectrumAnalyzer({ sampleRate: 16000 });
     const tone = synth(16000, 1000, low.fftSize, 'sine');
     low.analyze(tone);
-    const display = low.reduceForDisplay();
+    const axis = spectrum.displayFrequencies(25, 16000, 512);
+    const display = low.reduceForDisplay(undefined, axis);
     expect(display).toHaveLength(512);
-    expect(low.displayFrequencies[0]).toBeCloseTo(25, 6);
-    expect(low.displayFrequencies[511]).toBeCloseTo(10000, 6);
-    const aboveNyquist = Array.from(low.displayFrequencies).map((f, i) => [f, display[i]]).filter(([f]) => f >= 8000);
+    expect(axis[0]).toBeCloseTo(25, 6);
+    expect(axis[511]).toBeCloseTo(16000, 6);
+    const aboveNyquist = Array.from(axis).map((f, i) => [f, display[i]]).filter(([f]) => f >= 8000);
     expect(aboveNyquist.length).toBeGreaterThan(0);
     expect(aboveNyquist.every(([, value]) => Number.isNaN(value))).toBe(true);
     const peakIndex = display.reduce((best, value, i) => (value > display[best] ? i : best), 0);
-    expect(Math.abs(centsError(low.displayFrequencies[peakIndex], 1000))).toBeLessThan(30);
+    expect(Math.abs(centsError(axis[peakIndex], 1000))).toBeLessThan(30);
     expect(low.harmonics(3000).every((item) => item.frequency < 8000)).toBe(true);
   });
 });
