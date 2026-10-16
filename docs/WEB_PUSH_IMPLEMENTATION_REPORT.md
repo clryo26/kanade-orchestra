@@ -162,3 +162,11 @@ HTTPException等として処理される500にも`Cache-Control: no-store`を設
 - リモートCIは未実施。今回の追記作業でもGit add・commit・push、CI実行は行っていない。
 - 成功した実DB検証は専用ローカルPostgreSQLが対象であり、本番・既存テストDBや新規Neonへの適用結果ではない。
 - 実Pushを送らずに成功したHTTP・Repository・Playwright検証は、実スマートフォンへの到達の証明ではない。
+
+## CI coverage collection fix (2026-10-16)
+
+PR #134 initially failed the backend coverage gate: 3,593 / 7,196 lines (49.93%), below the unchanged 50% minimum. Notification code was included in the denominator, but the existing `tests/backend/test_notifications.py` suite ran only in the full test job and was omitted from coverage collection.
+
+The coverage job now also runs the notification contracts for authorization, endpoint validation, deduplication, delivery failures, post-save hooks, and cache control. Production coverage scope, exclusions, and thresholds are unchanged. These tests replace database and external Push access with isolated test doubles.
+
+Local validation of the updated CI selection: 108 tests passed; 3,816 / 7,196 lines covered (53.03%). Remote CI and test deployment results are reported separately.
