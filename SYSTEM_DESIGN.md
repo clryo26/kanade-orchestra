@@ -113,7 +113,7 @@
 
 - 認証端末、団体情報、SNS
 - 接続先情報、パート管理、アクセスログ
-- 実験室（PDF編集、チューナー）。チューナーはフロントエンドのみで、詳細は `docs/TUNER_DESIGN.md`
+- 実験室（PDF編集、チューナー）。チューナーの詳細は `docs/TUNER_DESIGN.md`、高機能版は `docs/TUNER_ADVANCED_DESIGN.md`
 
 ## 5. データモデル
 
@@ -282,12 +282,12 @@ INTEGRATION_TEST_SPEC_BACKEND.md / INTEGRATION_TEST_SPEC_FRONTEND.md / INTEGRATI
 ### 10.4 チューナー（実験室・システム管理者のみ）
 
 - マイク入力から音名・周波数・cent・判定と周波数スペクトラムを表示する。団員への公開は未実施
-- 判定方式（平均律／純正律の短3度・長3度、根音指定）、スペクトラム表示範囲の切り替え（倍音重視 500 Hz～16 kHz／全音域 25 Hz～16 kHz）、基準音（サイン波）の再生を持つ。再生中はマイク測定を停止し、停止後に自動で再開する。新しい設定はページ内のメモリーのみ
-- 音声は端末内で解析し、録音・保存・サーバー送信はしない。バックエンド/DB の追加はなく、保存は基準Hz（端末内）のみ
+- タブ構成（測定・音源・解析・練習・診断、履歴・楽器・設定）。A4 は 390.0～480.0 Hz・0.1 Hz 刻み。音律は平均律・純正律（三和音と役割・7度）・ピタゴラス・カスタム。音源は最大4音・音色・和音・繰り返し・メトロノームで、初期は測定と排他（同時使用は毎回の明示選択とイヤホン申告が必要で、その間の値は統計に使わない）
+- 音声は端末内で解析し、録音・音声の保存・サーバー送信はしない。履歴保存は初期設定でオフ。利用者が選んだ場合だけ、数値系列を端末内（IndexedDB `portalTunerAdvanced`）に、要約をアカウント（`/api/tuner`、システム管理者のみ、`db/migrations/017_tuner_practice.sql`）に保存する。所有者は団員の作成時刻と照合し、団員の削除・ID再利用ではトリガーで失効する。管理者でも他人の履歴は読めない
 - 初回タップ内で AudioContext を同期生成し（iOS Safari 対策）、本体・Worker・AudioWorklet は遅延読込。index.html の初期スクリプトは増やしていない
 - 画面遷移・ログアウト・セッション切れ・バックグラウンドでマイクと音声処理を解放する
 - チューナーのファイルを変更したら `npm run generate:tuner-release` でリリース識別子を更新する（`npm run check:tuner-release` で検査）
-- 構成・方式・調整値・制約・検証結果は `docs/TUNER_DESIGN.md`、iPhone 実機確認は `docs/MANUAL_DEVICE_QA_CHECKLIST.md` の「7. チューナー」
+- 構成・方式・調整値・制約・検証結果は `docs/TUNER_DESIGN.md`、高機能版の実装・検証状況は `docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md`、iPhone 実機確認は `docs/MANUAL_DEVICE_QA_CHECKLIST.md` の「7. チューナー」
 
 ## 11. 今後の保守方針
 

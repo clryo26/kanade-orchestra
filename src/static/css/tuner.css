@@ -366,3 +366,528 @@
 @media (prefers-reduced-motion: reduce) {
     .tuner-meter-needle { transition: none; }
 }
+
+/* ===== 高度なチューナー（タブ・状態表示・各機能画面） =====
+   すべて .tuner 配下。277～430px の幅で横スクロールが出ないよう、
+   折り返しと min-width: 0 を基本にする。操作要素は 44px 以上。 */
+.tuner *,
+.tuner *::before,
+.tuner *::after {
+    box-sizing: border-box;
+}
+
+.tuner :where(p, dd, li, span, label, legend) {
+    overflow-wrap: anywhere;
+}
+
+/* タブ（表示中のタブは aria-selected と下線・太字で示し、色だけに頼らない） */
+.tuner-tabbar {
+    background: var(--tuner-surface, #ffffff);
+    border-bottom: 1px solid var(--line, #d9dee7);
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    position: sticky;
+    scrollbar-width: none;
+    top: 0;
+    z-index: 2;
+}
+
+.tuner-tabbar::-webkit-scrollbar {
+    display: none;
+}
+
+.tuner-tab {
+    background: transparent;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    color: var(--text, #1f2933);
+    flex: 1 0 auto;
+    font-size: 0.95rem;
+    min-height: 44px;
+    min-width: 4em;
+    padding: 6px 10px;
+    touch-action: manipulation;
+    white-space: nowrap;
+}
+
+.tuner-tab[aria-selected="true"] {
+    border-bottom-color: var(--brand, #235789);
+    color: var(--brand, #235789);
+    font-weight: 700;
+}
+
+.tuner-tab:focus-visible,
+.tuner-segment:focus-visible,
+.tuner-map-cell:focus-visible {
+    outline: 3px solid var(--brand, #235789);
+    outline-offset: 2px;
+}
+
+.tuner-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.tuner-panel[hidden] {
+    display: none;
+}
+
+.tuner-sound,
+.tuner-analyzer,
+.tuner-trainer,
+.tuner-diagnosis,
+.tuner-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+/* 状態チップ（マイク・表示固定・再生中・同時使用） */
+.tuner-statusbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tuner-chip {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    padding: 3px 10px;
+}
+
+.tuner-chip[hidden] {
+    display: none;
+}
+
+.tuner-chip-warning,
+.tuner-warning {
+    background: #fff4e5;
+    border: 1px solid #f0b46c;
+    color: #7a3e00;
+}
+
+.tuner-warning {
+    border-radius: 8px;
+    font-size: 0.9rem;
+    margin: 0;
+    padding: 8px 10px;
+}
+
+.tuner-warning[hidden] {
+    display: none;
+}
+
+.tuner-measure-actions,
+.tuner-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tuner-toolbar > * {
+    flex: 1 1 4.5em;
+    min-height: 44px;
+}
+
+/* 入力レベル（閾値の位置を縦線で示す） */
+.tuner-level-bar {
+    background: #e5e7eb;
+    border-radius: 6px;
+    height: 14px;
+    overflow: hidden;
+    position: relative;
+}
+
+.tuner-level-fill {
+    background: var(--tuner-in-tune);
+    bottom: 0;
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 0;
+}
+
+.tuner-level-threshold {
+    background: #111827;
+    bottom: 0;
+    position: absolute;
+    top: 0;
+    width: 2px;
+}
+
+.tuner-level-note,
+.tuner-detail-line {
+    color: var(--tuner-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+/* 練習中に表示を隠す（音程は測り続ける） */
+.tuner[data-hidden-display="true"] .tuner-meter-needle,
+.tuner[data-hidden-display="true"] .tuner-cents,
+.tuner[data-hidden-display="true"] .tuner-graph-canvas {
+    visibility: hidden;
+}
+
+/* 画面いっぱいに表示（Fullscreen API がない iPhone ではこの表示で代替する） */
+.tuner.tuner-maximized {
+    background: var(--tuner-surface, #ffffff);
+    inset: 0;
+    max-width: none;
+    overflow-y: auto;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    position: fixed;
+    z-index: 1050;
+}
+
+.tuner.tuner-maximized .tuner-note-name {
+    font-size: clamp(4rem, 24vw, 7rem);
+}
+
+/* フォーム部品 */
+.tuner-fieldset {
+    border: 1px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    min-width: 0;
+    padding: 8px 10px;
+}
+
+.tuner-fieldset legend {
+    float: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0;
+    padding: 0 4px;
+    width: auto;
+}
+
+.tuner-check {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    min-height: 44px;
+}
+
+.tuner-check input {
+    flex: 0 0 auto;
+    height: 22px;
+    width: 22px;
+}
+
+.tuner-grid-2 {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr));
+}
+
+.tuner-trainer-options,
+.tuner-instrument-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tuner-instrument {
+    align-items: center;
+    border-bottom: 1px solid var(--line, #d9dee7);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0;
+}
+
+.tuner-instrument .btn,
+.tuner-voice .btn,
+.tuner-quiz-answers .btn {
+    min-height: 44px;
+}
+
+/* 複数音源のリスト */
+.tuner-voice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tuner-voice {
+    border: 1px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+}
+
+.tuner-voice > * {
+    min-width: 0;
+}
+
+.tuner-voice-index {
+    font-weight: 700;
+    min-width: 2em;
+}
+
+/* 練習 */
+.tuner-practice-state {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+    text-align: center;
+}
+
+.tuner-practice-result,
+.tuner-event-detail {
+    background: #f8fafc;
+    border: 1px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.tuner-beat {
+    background: #e5e7eb;
+    border-radius: 50%;
+    height: 28px;
+    margin: 0 auto;
+    width: 28px;
+}
+
+.tuner-beat[hidden] {
+    display: none;
+}
+
+.tuner-beat.tuner-beat-on {
+    background: var(--brand, #235789);
+}
+
+.tuner-quiz,
+.tuner-quiz-answers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tuner-quiz-answers > * {
+    flex: 1 1 6em;
+}
+
+/* 表と定義リスト（狭い画面では表だけ横スクロール） */
+.tuner-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.tuner-table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 100%;
+}
+
+.tuner-table th,
+.tuner-table td {
+    border-bottom: 1px solid var(--line, #d9dee7);
+    padding: 6px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.tuner-dl {
+    display: grid;
+    gap: 4px 10px;
+    grid-template-columns: minmax(6em, max-content) minmax(0, 1fr);
+    margin: 0;
+}
+
+.tuner-dl dt {
+    color: var(--tuner-muted);
+    font-weight: 600;
+}
+
+.tuner-dl dd {
+    margin: 0;
+}
+
+@media (max-width: 360px) {
+    .tuner-dl {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .tuner-dl dd {
+        margin-bottom: 6px;
+    }
+}
+
+/* 幅 277～340px（小型端末・拡大表示）: 固定の最小幅をやめて折り返す */
+@media (max-width: 340px) {
+    .tuner-meter-result {
+        flex-wrap: wrap;
+        gap: 4px 12px;
+    }
+
+    .tuner-cents,
+    .tuner-judgment {
+        min-width: 0;
+    }
+
+    .tuner-reference {
+        gap: 8px;
+    }
+
+    .tuner-reference-value {
+        font-size: 1.25rem;
+        min-width: 0;
+    }
+}
+
+/* 音ごとの傾向マップ。方向は文字（高め／低め）でも示し、色・線種は補助。 */
+.tuner-map {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(5.5em, 1fr));
+}
+
+.tuner-map-cell {
+    background: #ffffff;
+    border: 2px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    color: var(--text, #1f2933);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+    gap: 2px;
+    min-height: 44px;
+    padding: 6px;
+    text-align: left;
+}
+
+.tuner-map-note {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.tuner-map-value {
+    font-variant-numeric: tabular-nums;
+}
+
+.tuner-map-n,
+.tuner-map-status {
+    color: var(--tuner-muted);
+}
+
+.tuner-map-high { border-color: var(--tuner-sharp); }
+.tuner-map-low { border-color: var(--tuner-flat); border-style: dashed; }
+.tuner-map-none { border-color: var(--tuner-in-tune); }
+.tuner-map-undetermined,
+.tuner-map-insufficient { border-style: dotted; }
+.tuner-map-high.tuner-map-m2,
+.tuner-map-high.tuner-map-m3 { background: #fdebe1; }
+.tuner-map-low.tuner-map-m2,
+.tuner-map-low.tuner-map-m3 { background: #fdf1dc; }
+
+.tuner-categories,
+.tuner-periods,
+.tuner-weak,
+.tuner-trend,
+.tuner-improvement,
+.tuner-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tuner-suggestion-list {
+    margin: 0;
+    padding-left: 1.2em;
+}
+
+/* キャンバス（履歴・スペクトログラム） */
+.tuner-history-canvas,
+.tuner-spectrogram-canvas {
+    background: #ffffff;
+    border: 1px solid var(--line, #d9dee7);
+    border-radius: 8px;
+    display: block;
+    height: 200px;
+    max-width: 100%;
+    width: 100%;
+}
+
+.tuner-simultaneous {
+    border: 2px solid #f0b46c;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+/* 濃色表示（明示指定、または「端末の設定に従う」で端末が濃色のとき） */
+.tuner[data-theme="dark"] {
+    --tuner-surface: #111827;
+    --tuner-muted: #9ca3af;
+    --tuner-flat: #f59e0b;
+    --tuner-sharp: #fb923c;
+    --tuner-in-tune: #34d399;
+    --tuner-graph-grid: rgba(156, 163, 175, 0.25);
+    --tuner-graph-text: #9ca3af;
+    --text: #f3f4f6;
+    --line: #374151;
+    background: var(--tuner-surface);
+    color: var(--text);
+}
+
+.tuner[data-theme="dark"] :where(.tuner-segment, .tuner-step, .tuner-map-cell, .tuner-graph-canvas, .tuner-history-canvas, .tuner-spectrogram-canvas, .tuner-practice-result, .tuner-event-detail, .tuner-chip) {
+    background: #1f2937;
+    color: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+    .tuner[data-theme="auto"] {
+        --tuner-surface: #111827;
+        --tuner-muted: #9ca3af;
+        --tuner-flat: #f59e0b;
+        --tuner-sharp: #fb923c;
+        --tuner-in-tune: #34d399;
+        --tuner-graph-grid: rgba(156, 163, 175, 0.25);
+        --tuner-graph-text: #9ca3af;
+        --text: #f3f4f6;
+        --line: #374151;
+        background: var(--tuner-surface);
+        color: var(--text);
+    }
+
+    .tuner[data-theme="auto"] :where(.tuner-segment, .tuner-step, .tuner-map-cell, .tuner-graph-canvas, .tuner-history-canvas, .tuner-spectrogram-canvas, .tuner-practice-result, .tuner-event-detail, .tuner-chip) {
+        background: #1f2937;
+        color: var(--text);
+    }
+}
+
+/* 高コントラスト（太い線・濃い文字） */
+.tuner[data-contrast="high"] {
+    --tuner-muted: #374151;
+    --line: #111827;
+}
+
+.tuner[data-contrast="high"][data-theme="dark"] {
+    --tuner-muted: #e5e7eb;
+    --line: #f9fafb;
+}
+
+.tuner[data-contrast="high"] :where(.tuner-segment, .tuner-map-cell, .tuner-tab[aria-selected="true"], .tuner-chip) {
+    border-width: 3px;
+}
+
+.tuner[data-contrast="high"] .tuner-meter-needle {
+    width: 8px;
+}

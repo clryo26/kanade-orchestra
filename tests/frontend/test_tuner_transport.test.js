@@ -7,6 +7,8 @@ const root = process.cwd();
 const tunerDir = path.join(root, 'src/static/js/modules/tuner');
 const read = (name) => fs.readFileSync(path.join(tunerDir, name), 'utf8');
 const RELEASE = read('capture.worklet.js').match(/TUNER_RELEASE_ID = '([^']+)'/)[1];
+// Protocol version shared by the worklet, the worker and the controller.
+const PROTOCOL = Number(read('capture.worklet.js').match(/TUNER_PROTOCOL = (\d+)/)[1]);
 
 class FakePort {
   constructor() { this.sent = []; this.onmessage = null; this.closed = false; }
@@ -35,7 +37,7 @@ function loadWorklet() {
 function createProcessor(options = {}) {
   const { context, Processor } = loadWorklet();
   const processor = new Processor({
-    processorOptions: { release: RELEASE, protocol: 1, generation: 3, chunkSize: 256, poolSize: 2, ...options },
+    processorOptions: { release: RELEASE, protocol: PROTOCOL, generation: 3, chunkSize: 256, poolSize: 2, ...options },
   });
   const out = new FakePort();
   processor.port.onmessage({ data: { type: 'connect', port: out } });
@@ -54,7 +56,7 @@ describe('tuner capture worklet', () => {
   it('registers, reports ready with its release, and keeps the output silent', () => {
     const { context, processor, block } = createProcessor();
     expect(context.registeredName).toBe('portal-tuner-capture');
-    expect(processor.port.sent[0].message).toMatchObject({ type: 'ready', release: RELEASE, protocol: 1, generation: 3 });
+    expect(processor.port.sent[0].message).toMatchObject({ type: 'ready', release: RELEASE, protocol: PROTOCOL, generation: 3 });
     const { keepAlive, output } = block(128);
     expect(keepAlive).toBe(true);
     expect(Array.from(output[0]).every((v) => v === 0)).toBe(true);
@@ -142,10 +144,10 @@ function sineChunks(frequency, seconds, chunkSize = 2048, sampleRate = 48000) {
 function initWorker(options = {}) {
   const { context, posted } = loadWorker();
   const port = new FakePort();
-  context.self.onmessage({ data: { type: 'init', release: RELEASE, protocol: 1, generation: 2, sampleRate: 48000, port, ...options } });
+  context.self.onmessage({ data: { type: 'init', release: RELEASE, protocol: PROTOCOL, generation: 2, sampleRate: 48000, port, ...options } });
   let startFrame = 0;
   function send(samples, extra = {}) {
-    port.onmessage({ data: { type: 'audio', release: RELEASE, protocol: 1, generation: 2, startFrame, gap: startFrame === 0, buffer: samples.buffer, ...extra } });
+    port.onmessage({ data: { type: 'audio', release: RELEASE, protocol: PROTOCOL, generation: 2, startFrame, gap: startFrame === 0, buffer: samples.buffer, ...extra } });
     startFrame += samples.length;
   }
   return { context, posted, port, send };
@@ -187,15 +189,16 @@ describe('tuner analysis worker', () => {
     expect([lastAxis.axisId, lastAxis.min, lastAxis.max]).toEqual([10, 25, 16000]);
   });
 
-  it('analyses pitch at most 20 times and spectrum at most 10 times per second, returning buffers', () => {
+  it('analyses pitch at most 30 times (default profile) and spectrum at most 10 times per second, returning buffers', () => {
     const { posted, port, send } = initWorker();
-    const chunks = sineChunks(440, 1.0);
+    // Design: 1,024-sample chunks, pitch 30/s for the full-range profile.
+    const chunks = sineChunks(440, 1.0, 1024);
     for (const chunk of chunks) send(chunk);
     const messages = posted.map((p) => p.message);
     const pitches = messages.filter((m) => m.type === 'pitch');
     const spectra = messages.filter((m) => m.type === 'spectrum');
-    expect(pitches.length).toBeLessThanOrEqual(20);
-    expect(pitches.length).toBeGreaterThanOrEqual(15);
+    expect(pitches.length).toBeLessThanOrEqual(30);
+    expect(pitches.length).toBeGreaterThanOrEqual(25);
     expect(spectra.length).toBeLessThanOrEqual(10);
     expect(spectra.length).toBeGreaterThanOrEqual(5); // needs 16,384 samples (~0.34 s) first
     const last = pitches.at(-1).frame;
@@ -239,12 +242,12 @@ describe('tuner analysis worker', () => {
     const chunks = sineChunks(440, 0.8);
     let frame = 0;
     for (const chunk of chunks) {
-      port.onmessage({ data: { type: 'audio', release: RELEASE, protocol: 1, generation: 2, startFrame: frame, gap: frame === 0, buffer: chunk.buffer } });
+      port.onmessage({ data: { type: 'audio', release: RELEASE, protocol: PROTOCOL, generation: 2, startFrame: frame, gap: frame === 0, buffer: chunk.buffer } });
       frame += 2048;
     }
     const before = posted.length;
     const next = sineChunks(440, 0.05)[0];
-    port.onmessage({ data: { type: 'audio', release: RELEASE, protocol: 1, generation: 2, startFrame: frame + 512, gap: false, buffer: next.buffer } });
+    port.onmessage({ data: { type: 'audio', release: RELEASE, protocol: PROTOCOL, generation: 2, startFrame: frame + 512, gap: false, buffer: next.buffer } });
     const after = posted.slice(before).map((p) => p.message);
     expect(after[0]).toMatchObject({ type: 'gap', droppedFrames: 512 });
     expect(after.some((m) => m.type === 'pitch')).toBe(false);

@@ -63,12 +63,13 @@ function fakeAudio() {
 }
 
 describe('reference-tone input', () => {
-  it('accepts 32.0-4400.0 Hz in 0.1 Hz steps and explains rejections', () => {
+  // Design range 28.0-4,700.0 Hz (C1 at A4 = 390 Hz is 28.99 Hz, C8 at A4 = 480 Hz is 4,566.56 Hz).
+  it('accepts 28.0-4700.0 Hz in 0.1 Hz steps and explains rejections', () => {
     expect(playback.parseHzInput('440')).toEqual({ ok: true, value: 440 });
-    expect(playback.parseHzInput(' 32.0 ')).toEqual({ ok: true, value: 32 });
-    expect(playback.parseHzInput('4400.0')).toEqual({ ok: true, value: 4400 });
+    expect(playback.parseHzInput(' 28.0 ')).toEqual({ ok: true, value: 28 });
+    expect(playback.parseHzInput('4700.0')).toEqual({ ok: true, value: 4700 });
     expect(playback.parseHzInput('４４０．５')).toEqual({ ok: true, value: 440.5 }); // full-width
-    for (const [text, reason] of [['', 'empty'], ['   ', 'empty'], ['31.9', 'range'], ['4400.1', 'range'], ['440.25', 'format'], ['abc', 'format'], ['-440', 'format'], ['4e2', 'format'], ['440.', 'format']]) {
+    for (const [text, reason] of [['', 'empty'], ['   ', 'empty'], ['27.9', 'range'], ['4700.1', 'range'], ['440.25', 'format'], ['abc', 'format'], ['-440', 'format'], ['4e2', 'format'], ['440.', 'format']]) {
       const result = playback.parseHzInput(text);
       expect(result.ok, text).toBe(false);
       expect(result.reason, text).toBe(reason);
@@ -76,15 +77,18 @@ describe('reference-tone input', () => {
     }
   });
 
-  it('disables note names outside 32-4400 Hz for the current A4', () => {
-    const at430 = playback.noteOptions(430);
-    expect(at430[0].note.label).toBe('C1');
-    expect(at430[0].enabled).toBe(false); // 31.95 Hz
-    expect(at430[1].enabled).toBe(true);
-    const at442 = playback.noteOptions(442);
-    expect(at442[0].enabled).toBe(true); // 32.85 Hz
-    expect(at442.at(-1)).toMatchObject({ enabled: true });
-    expect(at442.at(-1).note.label).toBe('C8');
+  it('offers C1-C8 and enables every note inside 28-4700 Hz for A4 = 390-480 Hz', () => {
+    const at390 = playback.noteOptions(390);
+    expect(at390[0].note.label).toBe('C1');
+    expect(at390[0].frequency).toBeCloseTo(28.987, 3); // still playable
+    expect(at390.every((o) => o.enabled)).toBe(true);
+    const at480 = playback.noteOptions(480);
+    expect(at480.at(-1).note.label).toBe('C8');
+    expect(at480.at(-1).frequency).toBeCloseTo(4566.555, 3);
+    expect(at480.every((o) => o.enabled)).toBe(true);
+    // A note outside the range is disabled (e.g. a reference beyond the A4 range).
+    expect(playback.noteOptions(500).at(-1).enabled).toBe(false); // C8 = 4,756.8 Hz
+    expect(playback.noteOptions(370)[0].enabled).toBe(false); // C1 = 27.50 Hz
     expect(playback.DEFAULT_MIDI).toBe(69);
   });
 
@@ -96,7 +100,7 @@ describe('reference-tone input', () => {
     const hz = { source: 'hz', hz: pure };
     expect(playback.resolveFrequency(hz, 442).frequency).toBe(pure); // not rounded
     expect(playback.resolveFrequency(hz, 450).frequency).toBe(pure);
-    expect(playback.resolveFrequency({ source: 'note', midi: 24 }, 430)).toMatchObject({ ok: false, reason: 'range' });
+    expect(playback.resolveFrequency({ source: 'note', midi: 24 }, 370)).toMatchObject({ ok: false, reason: 'range' });
     expect(playback.resolveFrequency({ source: 'hz', hz: 20 }, 442)).toMatchObject({ ok: false, reason: 'range' });
     expect(playback.resolveFrequency({ source: 'hz', hz: 440, error: { reason: 'format', message: 'x' } }, 442)).toMatchObject({ ok: false });
     expect(music.noteFrequency(69, 442)).toBe(442);

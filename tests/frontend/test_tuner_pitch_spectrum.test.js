@@ -49,8 +49,8 @@ function testFrequency(midi) {
   return 440 * 2 ** ((midi - 69) / 12) * 2 ** (8.1 / 1200);
 }
 
-function sweep(sampleRate, kind, fromMidi, toMidi) {
-  const detector = pitch.createPitchDetector({ sampleRate });
+function sweep(sampleRate, kind, fromMidi, toMidi, options = {}) {
+  const detector = pitch.createPitchDetector({ sampleRate, ...options });
   const rows = [];
   for (let midi = fromMidi; midi <= toMidi; midi += 1) {
     const f = testFrequency(midi);
@@ -112,12 +112,16 @@ describe('tuner YIN difference function', () => {
     for (let tau = 0; tau < 60; tau += 1) expect(fast[tau]).toBeCloseTo(direct[tau], 8);
   });
 
-  it('searches roughly 31-4,400 Hz (C1-C8 for A4 = 430-450 Hz)', () => {
+  it('searches the design range 28-4,700 Hz (C1 at A4 = 390 Hz to C8 at A4 = 480 Hz)', () => {
     const detector = pitch.createPitchDetector({ sampleRate: 48000 });
-    expect(48000 / detector.tauMax).toBeLessThanOrEqual(31);
-    expect(48000 / detector.tauMin).toBeGreaterThanOrEqual(4400);
-    expect(440 * 2 ** ((24 - 69) / 12) * (430 / 440)).toBeGreaterThan(31);
-    expect(440 * 2 ** ((108 - 69) / 12) * (450 / 440)).toBeLessThan(4400);
+    const c1At390 = 390 * 2 ** ((24 - 69) / 12);
+    const c8At480 = 480 * 2 ** ((108 - 69) / 12);
+    expect(c1At390).toBeCloseTo(28.987, 3);
+    expect(c8At480).toBeCloseTo(4566.555, 3);
+    expect(48000 / detector.tauMax).toBeLessThanOrEqual(c1At390);
+    expect(48000 / detector.tauMin).toBeGreaterThanOrEqual(c8At480);
+    expect(detector.options.minFrequency).toBe(28);
+    expect(detector.options.maxFrequency).toBe(4700);
   });
 });
 
@@ -139,14 +143,40 @@ describe('tuner pitch accuracy on synthetic tones', () => {
       }
     });
 
-    it(`noise-mixed tones: SNR 30 dB within ±2 cents C2-C8, SNR 20 dB within ±6 cents C1-C8 at ${sampleRate} Hz`, () => {
-      for (const row of sweep(sampleRate, 'noise30', 36, 108)) {
+    // The single-draw thresholds below were set for the former 31-4,400 Hz
+    // window; they are kept unchanged for that configuration.
+    it(`noise-mixed tones (31-4,400 Hz window): SNR 30 dB within ±2 cents C2-C8, SNR 20 dB within ±6 cents C1-C8 at ${sampleRate} Hz`, () => {
+      const legacy = { minFrequency: 31, maxFrequency: 4400 };
+      for (const row of sweep(sampleRate, 'noise30', 36, 108, legacy)) {
         expect(row.valid, `30dB midi ${row.midi}`).toBe(true);
         expect(Math.abs(row.error), `30dB midi ${row.midi}`).toBeLessThanOrEqual(2);
       }
-      for (const row of sweep(sampleRate, 'noise20', 24, 108)) {
+      for (const row of sweep(sampleRate, 'noise20', 24, 108, legacy)) {
         expect(row.valid, `20dB midi ${row.midi}`).toBe(true);
         expect(Math.abs(row.error), `20dB midi ${row.midi}`).toBeLessThanOrEqual(6);
+      }
+    });
+
+    // The design range 28-4,700 Hz changes the window length, so one noise
+    // draw per note is no longer comparable. Over many draws the default
+    // detector must be as accurate as the former window (non-regression).
+    it(`design range 28-4,700 Hz is not less accurate in noise than the former window at ${sampleRate} Hz`, () => {
+      const p95 = (values) => { const v = values.slice().sort((a, b) => a - b); return v[Math.floor(0.95 * (v.length - 1))]; };
+      for (const [kind, from, to] of [['noise30', 36, 108], ['noise20', 24, 108]]) {
+        for (let midi = from; midi <= to; midi += 12) {
+          const errors = { legacy: [], design: [] };
+          for (let seed = 1; seed <= 40; seed += 1) {
+            const f = testFrequency(midi);
+            for (const [name, opts] of [['legacy', { minFrequency: 31, maxFrequency: 4400 }], ['design', {}]]) {
+              const detector = pitch.createPitchDetector({ sampleRate, ...opts });
+              const result = detector.detect(synth(sampleRate, f, detector.frameLength, kind, seed * 97 + midi));
+              expect(result.valid, `${name} ${kind} midi ${midi}`).toBe(true);
+              errors[name].push(Math.abs(centsError(result.frequency, f)));
+            }
+          }
+          expect(p95(errors.design), `${kind} midi ${midi}`).toBeLessThanOrEqual(p95(errors.legacy) * 1.15 + 0.2);
+          if (kind === 'noise30') expect(p95(errors.design), `${kind} midi ${midi}`).toBeLessThanOrEqual(2);
+        }
       }
     });
   }

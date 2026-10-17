@@ -27,6 +27,7 @@
 
 - [ ] 本番 DB 接続確認を実施した
 - [ ] マイグレーション適用状態を確認した
+- [ ] チューナーの履歴を公開する版では、`017_tuner_practice.sql` が `schema_migrations` に記録され、`members` のトリガー `trg_tuner_members_owner_guard_delete`／`_insert` があることを確認した（手順と戻し方は `docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md` の8章）
 - [ ] テーブル件数/主要データをスポット確認した
 - [ ] バックアップ取得時刻を確認した
 - [ ] 復元手順を確認した
