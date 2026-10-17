@@ -364,6 +364,8 @@ def get_item_raw(name: str, item_id: int) -> dict[str, Any]:
 
 
 async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
+    if name == "promotions":
+        raise HTTPException(status_code=409, detail="Use the promotion API with an operation key")
     items = collection_items(name, load_json_data)
     upsert = parse_extra_upsert_request(raw_body)
     normalized_body = normalize_extra_for_collection(name, upsert.payload)
@@ -439,6 +441,8 @@ async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any
 
 
 async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
+    if name == "promotions":
+        raise HTTPException(status_code=409, detail="Use the promotion API with an operation key")
     items = collection_items(name, load_json_data)
     index, current = find_item(items, item_id)
     upsert = parse_extra_upsert_request(raw_body)
@@ -525,6 +529,8 @@ async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device:
 
 
 def delete_item(name: str, item_id: int, device: dict[str, Any]) -> None:
+    if name == "promotions":
+        raise HTTPException(status_code=409, detail="Use the promotion API with an operation key")
     items = collection_items(name, load_json_data)
     _, current = find_item(items, item_id)
     assert_extra_collection_permission(name, device, current=current)

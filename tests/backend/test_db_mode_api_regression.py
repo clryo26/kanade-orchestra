@@ -513,7 +513,7 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
         "sns_settings": {"x_url": "https://example.com/x", "extra_links": [{"label": "Web", "url": "https://example.com"}]},
         "connection_settings": {"google_cloud_storage_bucket": "bucket", "google_cloud_storage_data_prefix": "app-data"},
         "desired_pieces": {"title": "Request", "piece": "Sym", "member_id": 1, "registered_by": "Admin", "votes": []},
-        "promotions": {"title": "Promo", "summary": "summary", "member_id": 1, "registered_by": "Admin"},
+        # Promotion persistence is tested against real PG in test_promotion_postgres.py.
     }
 
     for collection, payload in payloads.items():

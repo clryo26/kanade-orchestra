@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 
 def _headers(device_id: str) -> dict[str, str]:
     return {"X-Device-Id": device_id}
@@ -103,7 +105,7 @@ def test_general_member_can_manage_only_own_promotion(client, seed_device_fn):
     _seed_general_members(seed_device_fn)
     created = client.post(
         "/api/extra/promotions",
-        headers=_headers("dev-owner"),
+        headers={**_headers("dev-owner"), "Idempotency-Key": str(uuid4())},
         json={
             "title": "Owner promotion",
             "description": "Initial",
@@ -118,26 +120,26 @@ def test_general_member_can_manage_only_own_promotion(client, seed_device_fn):
 
     updated = client.put(
         f"/api/extra/promotions/{body['id']}",
-        headers=_headers("dev-owner"),
+        headers={**_headers("dev-owner"), "Idempotency-Key": str(uuid4())},
         json={
-            "payload": {**body, "description": "Updated"},
-            "expected_updated_at": body["updated_at"],
+            "title": body["title"], "summary": "Updated", "expected_revision": body["revision"],
         },
     )
     assert updated.status_code == 200
 
     denied_update = client.put(
         f"/api/extra/promotions/{body['id']}",
-        headers=_headers("dev-other"),
+        headers={**_headers("dev-other"), "Idempotency-Key": str(uuid4())},
         json={
-            "payload": {**updated.json(), "description": "Unauthorized"},
-            "expected_updated_at": updated.json()["updated_at"],
+            "title": body["title"], "summary": "Unauthorized", "expected_revision": updated.json()["revision"],
         },
     )
     assert denied_update.status_code == 403
 
-    denied_delete = client.delete(
+    denied_delete = client.request(
+        "DELETE",
         f"/api/extra/promotions/{body['id']}",
-        headers=_headers("dev-other"),
+        headers={**_headers("dev-other"), "Idempotency-Key": str(uuid4())},
+        json={"expected_revision": updated.json()["revision"]},
     )
     assert denied_delete.status_code == 403

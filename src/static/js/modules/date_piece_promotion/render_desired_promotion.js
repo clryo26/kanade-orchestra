@@ -58,14 +58,46 @@ function renderPaymentFeeSettings() {
 function renderPromotionView() {
     const c = $('memberPromotionInfo');
     if (!c) return;
+    // Keep the actual form node: recreating file inputs loses the selected image.
+    const existingForm = c.querySelector('.promotion-form');
     const items = [...(appState.promotions || [])].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    const loadState = appState.promotionLoadState || 'idle';
+    const message = loadState === 'error' ? '最新情報を取得できていません。再読み込みしてください'
+        : loadState !== 'loaded' ? '宣伝を読み込み中です' : '';
     c.innerHTML = `
-        <div class="info-block"><input type="hidden" id="promotionId"><div class="row g-3"><div class="col-md-6"><label class="form-label">タイトル</label><input class="form-control" id="promotionTitle"></div><div class="col-12"><label class="form-label">概要</label><textarea class="form-control" id="promotionSummary" rows="3"></textarea></div><div class="col-md-6"><label class="form-label">画像登録</label><input class="form-control" id="promotionImageFile" type="file" accept="image/*"></div><div class="col-md-6"><div id="promotionImagePreview"></div></div><div class="col-12 d-flex flex-wrap gap-2"><button class="btn btn-success" id="promotionSaveBtn" type="button">登録</button><button class="btn btn-outline-secondary" id="promotionClearBtn" type="button">クリア</button></div></div></div>
-        <div class="mt-3">${items.length ? items.map((item) => { const own = promotionIsOwner(item); const registeredAt = item.created_at || item.updated_at || ''; return `<article class="info-block desired-piece-card"><div class="d-flex flex-wrap justify-content-between gap-3 align-items-start"><div class="flex-grow-1"><h5 class="mb-1">${escapeHtml(item.title || '')}</h5>${item.summary ? `<div class="small multiline-text mt-2">${escapeHtml(item.summary)}</div>` : ''}<div class="small text-muted mt-2">登録者: ${escapeHtml(item.registered_by || '未登録')}</div><div class="small text-muted">登録日: ${escapeHtml(registeredAt ? formatDateTimeLabel(registeredAt) : '未登録')}</div></div>${item.image_url ? `<div style="max-width: 240px;"><img src="${escapeHtml(item.image_url)}" class="img-fluid rounded border" alt="宣伝画像"></div>` : ''}</div>${own ? `<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-sm btn-outline-primary promotion-edit-btn" type="button" data-promotion-id="${escapeHtml(String(item.id || ''))}">編集</button><button class="btn btn-sm btn-outline-danger promotion-delete-btn" type="button" data-promotion-id="${escapeHtml(String(item.id || ''))}">削除</button></div>` : ''}</article>`; }).join('') : '<p class="text-muted mb-0">宣伝はまだ登録されていません</p>'}</div>
-    `;
-    $('promotionSaveBtn')?.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePromotion()));
-    $('promotionClearBtn')?.addEventListener('click', clearPromotionForm);
-    $('promotionImageFile')?.addEventListener('change', previewPromotionImage);
-    c.querySelectorAll('.promotion-edit-btn').forEach((button) => button.addEventListener('click', () => fillPromotionForm(button.dataset.promotionId || '')));
-    c.querySelectorAll('.promotion-delete-btn').forEach((button) => button.addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePromotion(button.dataset.promotionId || ''))));
+        <div class="mb-3"><span role="status">${escapeHtml(message)}</span>
+          <button type="button" class="btn btn-outline-secondary" id="promotionReloadBtn">再読み込み</button>
+          <button type="button" class="btn btn-outline-secondary" id="promotionCheckBtn">操作の状態確認</button>
+          <button type="button" class="btn btn-outline-secondary" id="promotionDiscardBtn">確認待ち操作の破棄</button></div>
+        <div class="info-block promotion-form"><input type="hidden" id="promotionId"><input type="hidden" id="promotionRevision">
+          <div class="row g-3"><div class="col-md-6"><label class="form-label" for="promotionTitle">タイトル</label>
+          <input class="form-control" id="promotionTitle" maxlength="200"></div>
+          <div class="col-12"><label class="form-label" for="promotionSummary">概要</label>
+          <textarea class="form-control" id="promotionSummary" rows="3" maxlength="10000"></textarea></div>
+          <div class="col-md-6"><label class="form-label" for="promotionImageFile">画像登録</label>
+          <input class="form-control" id="promotionImageFile" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+          <label class="form-check-label mt-2"><input type="checkbox" id="promotionRemoveImage"> 登録済みの画像を削除する</label></div>
+          <div class="col-md-6"><div id="promotionImagePreview"></div></div>
+          <div class="col-12 d-flex flex-wrap gap-2"><button class="btn btn-success" id="promotionSaveBtn" type="button">登録</button>
+          <button class="btn btn-outline-secondary" id="promotionClearBtn" type="button">クリア</button></div></div></div>
+        <div class="mt-3">${items.map((item) => {
+            const own = promotionIsOwner(item);
+            return `<article class="info-block"><h5>${escapeHtml(item.title || '')}</h5>
+                <div class="small multiline-text">${escapeHtml(item.summary || '')}</div>
+                <div class="small text-muted">登録者: ${escapeHtml(item.registered_by || '未登録')}</div>
+                <div class="small text-muted">登録日: ${escapeHtml(formatDateTimeLabel(item.created_at || ''))}</div>
+                ${item.image_url ? `<img src="${escapeHtml(item.image_url)}" class="img-fluid rounded border promotion-image" style="max-width:240px" alt="宣伝画像"><span class="d-none promotion-image-error">画像を取得できませんでした。再読み込みしてください</span>` : ''}
+                ${own ? `<div class="d-flex gap-2 mt-3"><button type="button" class="btn btn-outline-primary promotion-edit-btn" data-promotion-id="${escapeHtml(String(item.id))}">編集</button><button type="button" class="btn btn-outline-danger promotion-delete-btn" data-promotion-id="${escapeHtml(String(item.id))}">削除</button></div>` : ''}</article>`;
+        }).join('')}${!items.length && loadState === 'loaded' ? '<p class="text-muted">宣伝はまだ登録されていません</p>' : ''}</div>`;
+    if (existingForm) c.querySelector('.promotion-form').replaceWith(existingForm);
+    else restorePromotionForm();
+    $('promotionSaveBtn').onclick = (event) => withButtonStatus(event.currentTarget, '保存中...', () => savePromotion());
+    $('promotionClearBtn').onclick = clearPromotionForm;
+    $('promotionImageFile').onchange = previewPromotionImage;
+    $('promotionReloadBtn').onclick = () => loadExtraData(['promotions']);
+    $('promotionCheckBtn').onclick = checkPromotionOperation;
+    $('promotionDiscardBtn').onclick = discardPromotionOperation;
+    c.querySelectorAll('.promotion-edit-btn').forEach((button) => button.onclick = () => fillPromotionForm(button.dataset.promotionId));
+    c.querySelectorAll('.promotion-delete-btn').forEach((button) => button.onclick = (event) => withButtonStatus(event.currentTarget, '削除中...', () => deletePromotion(button.dataset.promotionId)));
+    c.querySelectorAll('.promotion-image').forEach((image) => image.onerror = () => { image.hidden = true; image.nextElementSibling.classList.remove('d-none'); });
 }

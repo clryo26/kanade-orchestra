@@ -13,6 +13,13 @@ EXCLUDED_DB_TABLES = (
     "access_logs",
     "audit_logs",
     "portal_json_collections",
+    # Promotion images and durable operation IDs must never be copied separately.
+    # Preserve this environment's complete promotion dataset during general sync.
+    "promotions",
+    "promotion_operations",
+    "promotion_image_assets",
+    "promotion_reset_runs",
+    "promotion_reset_items",
 )
 
 EXCLUDED_DB_COLLECTIONS = (
@@ -41,7 +48,6 @@ TARGET_DB_TABLES = (
     "casting_extras",
     "desired_pieces",
     "desired_piece_votes",
-    "promotions",
     "albums",
     "album_photos",
     "part_settings",

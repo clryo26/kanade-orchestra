@@ -21,6 +21,11 @@ def get_memory_cache_instance():
     return app_core._memory_cache
 
 
+def get_runtime_data_paths():
+    """Respect legacy runtime/test path overrides at the compatibility boundary."""
+    return app_core.DATA_DIR, app_core.UPLOAD_DIR
+
+
 def load_json_data(name: str):
     return app_core.load_json_data(name)
 

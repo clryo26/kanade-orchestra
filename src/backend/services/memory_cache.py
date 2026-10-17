@@ -24,9 +24,10 @@ class MemoryCache:
 
     def set(self, name: str, data: list[dict[str, Any]]) -> None:
         """Cache collection data and update its ETag."""
-        self._cache[name] = data
         json_str = json.dumps(data, ensure_ascii=False, sort_keys=True)
-        self._etags[name] = hashlib.sha256(json_str.encode()).hexdigest()
+        etag = hashlib.sha256(json_str.encode()).hexdigest()
+        self._cache[name] = data
+        self._etags[name] = etag
         self._indexes.pop(name, None)
 
     def clear(self, name: str | None = None) -> None:

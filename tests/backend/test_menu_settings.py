@@ -140,7 +140,7 @@ def test_settings_api_auth_validation_and_shared_bootstrap(client, seed_device_f
         assert result.json()["menu_visibility"] == expected
 
 
-@pytest.mark.parametrize("path", ["/api/bootstrap-lite", "/api/bootstrap-core", "/api/bootstrap"])
+@pytest.mark.parametrize("path", ["/api/bootstrap-lite", "/api/bootstrap-core"])
 def test_bootstrap_etag_revalidates_settings_and_tenant(client, repository, path):
     first = client.get(path)
     assert first.status_code == 200
@@ -157,6 +157,18 @@ def test_bootstrap_etag_revalidates_settings_and_tenant(client, repository, path
     other = client.get(path, headers={"X-Organization-Id": "other", "If-None-Match": changed.headers["etag"]})
     assert other.status_code == 200
     assert other.json()["menu_visibility"]["member-schedule"] is True
+
+
+def test_full_bootstrap_reloads_menu_and_promotions_without_cache(client, repository):
+    first = client.get("/api/bootstrap")
+    assert first.status_code == 200
+    assert first.headers["cache-control"] == "no-store"
+    settings = service.visibility_settings()
+    settings["member-schedule"] = False
+    service.save_settings(settings)
+    changed = client.get("/api/bootstrap", headers={"If-None-Match": "old"})
+    assert changed.status_code == 200
+    assert changed.json()["menu_visibility"]["member-schedule"] is False
 
 
 def test_repository_parameterized_read_and_atomic_save(monkeypatch):

@@ -29,9 +29,10 @@ def _public_performances(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _public_promotions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from .promotion_service import public
     public_items: list[dict[str, Any]] = []
     for item in items:
-        payload = dict(item)
+        payload = public(item)
         promotion_id = int(payload.get("id") or 0)
         if promotion_id:
             payload["image_url"] = ensure_public_image_url(
@@ -73,6 +74,8 @@ def combined_collection_etag(
 
 
 def request_not_modified(request: Request, etag: str) -> bool:
+    if request.url.path == "/api/bootstrap":
+        return False  # Full bootstrap includes live promotion image references.
     request_etag = str(request.headers.get("if-none-match", ""))
     return request_etag == etag
 
@@ -82,6 +85,9 @@ def not_modified_response(etag: str) -> Response:
 
 
 def bootstrap_response(request: Request, data: dict[str, Any], etag: str) -> dict[str, Any] | Response:
+    if request.url.path == "/api/bootstrap":
+        return Response(content=json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                        media_type="application/json", headers={"Cache-Control": "no-store"})
     if request.headers.get("if-none-match", "") == etag:
         return Response(status_code=304, headers={"ETag": etag})
     return Response(
