@@ -171,8 +171,8 @@ jobs:
         run: mkdir -p coverage/backend
 
       - name: Run backend DB profile tests with coverage
-        # Include notification contracts: their service/router code is in the coverage denominator.
-        run: uv run pytest -q tests/backend/test_db_json_layer.py tests/backend/test_db_mode_api_regression.py tests/backend/test_json_db_response_parity.py tests/backend/test_access_log_repository.py tests/backend/test_db_connection_pool_phase1.py tests/backend/test_notifications.py --cov=src/backend --cov-report=term-missing --cov-report=xml:coverage/backend/coverage.xml
+        # Include notification and tuner contracts: both are in the coverage denominator.
+        run: uv run pytest -q tests/backend/test_db_json_layer.py tests/backend/test_db_mode_api_regression.py tests/backend/test_json_db_response_parity.py tests/backend/test_access_log_repository.py tests/backend/test_db_connection_pool_phase1.py tests/backend/test_notifications.py tests/backend/test_tuner_practice_contract.py --cov=src/backend --cov-report=term-missing --cov-report=xml:coverage/backend/coverage.xml
 
       - name: Upload backend coverage artifact
         uses: actions/upload-artifact@v4
