@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -22,12 +23,12 @@ def failure(status, code, message):
     return status, {"detail": {"code": code, "message": message}}
 
 
-def public(item):
+def public(item: dict[str, Any]) -> dict[str, Any]:
     fields = ("id", "title", "summary", "image_url", "member_id", "registered_by", "created_at", "updated_at", "revision")
     return {key: repo.iso(item.get(key)) for key in fields}
 
 
-def list_items():
+def list_items() -> list[dict[str, Any]]:
     try:
         return [public(item) for item in repo.list_items()]
     except Exception as exc:
@@ -94,7 +95,7 @@ def operation_status(device, operation_id):
     return 200, {"state": op["state"], "result_status": op["result_status"], "result_body": op["result_body"]}
 
 
-def http_result(status, body):
+def http_result(status: int, body: dict[str, Any]) -> JSONResponse:
     headers = {"Cache-Control": "no-store"}
     if status == 202:
         headers["Retry-After"] = "2"

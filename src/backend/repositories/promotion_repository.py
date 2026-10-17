@@ -9,7 +9,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from psycopg.rows import dict_row
@@ -106,11 +106,11 @@ def row(cur, item_id, lock=False):
     return cur.fetchone()
 
 
-def list_items():
+def list_items() -> list[dict[str, Any]]:
     with transaction() as cur:
         cur.execute("SELECT * FROM promotions WHERE organization_id=%s ORDER BY created_at DESC,id DESC",
                     (get_current_tenant_id(),))
-        return cur.fetchall()
+        return cast(list[dict[str, Any]], cur.fetchall())
 
 
 def get_item(item_id):

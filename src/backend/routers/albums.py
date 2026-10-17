@@ -23,12 +23,12 @@ async def get_extra_items(name: str, response: Response) -> list[dict[str, Any]]
     return extra_service.list_items(name)
 
 
-@router.post("/api/extra/{name}")
+@router.post("/api/extra/{name}", response_model=dict[str, Any])
 async def create_extra_item(
     name: str,
     request: Request,
     device: dict[str, Any] = Depends(get_device_auth),
-) -> dict[str, Any]:
+) -> dict[str, Any] | Response:
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         raw_body = dict(await request.form())
     else:
@@ -38,13 +38,13 @@ async def create_extra_item(
     return await extra_service.create_item(name, raw_body, device)
 
 
-@router.put("/api/extra/{name}/{item_id}")
+@router.put("/api/extra/{name}/{item_id}", response_model=dict[str, Any])
 async def update_extra_item(
     name: str,
     item_id: int,
     request: Request,
     device: dict[str, Any] = Depends(get_device_auth),
-) -> dict[str, Any]:
+) -> dict[str, Any] | Response:
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         raw_body = dict(await request.form())
     else:
@@ -54,13 +54,13 @@ async def update_extra_item(
     return await extra_service.update_item(name, item_id, raw_body, device)
 
 
-@router.delete("/api/extra/{name}/{item_id}")
+@router.delete("/api/extra/{name}/{item_id}", response_model=dict[str, str])
 async def delete_extra_item(
     name: str,
     item_id: int,
     request: Request,
     device: dict[str, Any] = Depends(get_device_auth),
-) -> dict[str, str]:
+) -> dict[str, str] | Response:
     if name == "promotions":
         return promotion_service.http_result(*await promotion_service.mutate("DELETE", item_id, await read_json_body(request), device, request.headers.get("Idempotency-Key")))
     extra_service.delete_item(name, item_id, device)
