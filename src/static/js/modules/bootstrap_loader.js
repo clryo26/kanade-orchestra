@@ -734,6 +734,9 @@ async function loadExtraData(collectionNames = null) {
     const requestSpecs = selectedSpecs.map(
         ([name, url]) => [name, request(url)]
     );
+    if (selectedSpecs.some(([name]) => name === 'promotions')) {
+        appState.promotionLoadState = 'loading';
+    }
 
     const settled = await Promise.allSettled(
         requestSpecs.map(([, promise]) => promise)
@@ -747,8 +750,10 @@ async function loadExtraData(collectionNames = null) {
 
         if (item.status === 'fulfilled') {
             resultMap.set(key, item.value);
+            if (key === 'promotions') appState.promotionLoadState = 'loaded';
         } else {
             failed.push(key);
+            if (key === 'promotions') appState.promotionLoadState = 'error';
         }
     });
 

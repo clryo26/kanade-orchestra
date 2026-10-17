@@ -96,7 +96,8 @@ def test_dependency_order_rejects_cycle() -> None:
 
 
 def test_approved_table_policy_is_used_without_expansion() -> None:
-    assert len(TARGET_DB_TABLES) == 34
+    assert len(TARGET_DB_TABLES) == 33
+    assert "promotions" in EXCLUDED_DB_TABLES
     assert set(TARGET_DB_TABLES).isdisjoint(EXCLUDED_DB_TABLES)
     assert "members" in TARGET_DB_TABLES
     assert "auth_devices" in EXCLUDED_DB_TABLES

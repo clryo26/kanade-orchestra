@@ -21,7 +21,7 @@ TARGET_COLLECTIONS = (
     "sns_settings",
     "connection_settings",
     "desired_pieces",
-    "promotions",
+    # Promotions use row transactions; covered by test_promotion_postgres.py.
     "albums",
 )
 

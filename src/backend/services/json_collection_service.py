@@ -44,6 +44,14 @@ def load_json_data(
     data_dir: Path,
     logger,
 ) -> list[dict[str, Any]]:
+    if name == "promotions" and not local_json_fallback_enabled():
+        # Keep injected DB readers used by compatibility callers; bypass cache
+        # entirely so another Cloud Run instance cannot serve stale image refs.
+        ensure_db_expected_is_ready()
+        return db_load_json_data(name)
+    if name == "promotions" and local_json_fallback_enabled():
+        from ..repositories import promotion_repository
+        return promotion_repository.list_items()
     cached = cache.get(name)
     if cached is not None:
         return cast(list[dict[str, Any]], cached)
@@ -78,6 +86,13 @@ def save_json_data(
     extra_collections: set[str] | list[str] | tuple[str, ...],
     data_dir: Path,
 ) -> None:
+    if name == "promotions":
+        from ..repositories import promotion_repository
+        if local_json_fallback_enabled():
+            promotion_repository.seed_local(data)
+            cache.clear(name)
+            return
+        raise HTTPException(status_code=409, detail="Promotions require the row-level API")
     if not local_json_fallback_enabled():
         ensure_db_expected_is_ready()
         if name in db_writable_collections:

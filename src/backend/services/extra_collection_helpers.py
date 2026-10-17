@@ -4,6 +4,7 @@ import json
 from typing import Any, Callable
 
 from fastapi import HTTPException, Request
+from starlette.datastructures import UploadFile
 
 from ..models.schemas import ExtraUpsertRequest
 
@@ -132,14 +133,16 @@ def parse_extra_upsert_request(raw_body: dict[str, Any]) -> ExtraUpsertRequest:
     elif isinstance(raw_payload, str) and raw_payload.strip():
         try:
             parsed_payload = json.loads(raw_payload)
-        except Exception:
-            parsed_payload = {}
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid JSON payload") from exc
         payload = dict(parsed_payload) if isinstance(parsed_payload, dict) else {}
         expected_updated_at = str(raw_body.get("expected_updated_at") or "")
     else:
         payload = dict(raw_body or {})
         expected_updated_at = str(raw_body.get("expected_updated_at") or "")
         payload.pop("expected_updated_at", None)
+    # Form files belong to asset storage, never the JSON/DB/cache payload.
+    payload = {key: value for key, value in payload.items() if not isinstance(value, UploadFile)}
     return ExtraUpsertRequest(payload=payload, expected_updated_at=expected_updated_at)
 
 

@@ -63,19 +63,24 @@ function promotionIsOwner(item) {
 }
 
 function fillPromotionForm(id) {
+    if (appState.promotionOperationBusy) return;
     const item = appState.promotions.find((promotion) => String(promotion.id || '') === String(id));
     if (!item) return;
     if ($('promotionId')) $('promotionId').value = item.id || '';
+    if ($('promotionRevision')) $('promotionRevision').value = item.revision || '';
     if ($('promotionTitle')) $('promotionTitle').value = item.title || '';
     if ($('promotionSummary')) $('promotionSummary').value = item.summary || item.description || '';
     if ($('promotionImageFile')) $('promotionImageFile').value = '';
+    if ($('promotionRemoveImage')) $('promotionRemoveImage').checked = false;
     if ($('promotionImagePreview')) $('promotionImagePreview').innerHTML = item.image_url ? `<img src="${escapeHtml(item.image_url)}" class="img-fluid rounded border" alt="宣伝画像">` : '';
 }
 
 function clearPromotionForm() {
     if ($('promotionId')) $('promotionId').value = '';
+    if ($('promotionRevision')) $('promotionRevision').value = '';
     if ($('promotionTitle')) $('promotionTitle').value = '';
     if ($('promotionSummary')) $('promotionSummary').value = '';
     if ($('promotionImageFile')) $('promotionImageFile').value = '';
     if ($('promotionImagePreview')) $('promotionImagePreview').innerHTML = '';
+    if ($('promotionRemoveImage')) $('promotionRemoveImage').checked = false;
 }

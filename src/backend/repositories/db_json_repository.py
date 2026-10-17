@@ -313,6 +313,8 @@ def delete_auth_device(device_id: str) -> None:
 
 
 def replace_collection(name: str, data: list[dict[str, Any]]) -> None:
+    if name == "promotions":
+        raise HTTPException(status_code=409, detail="Promotions require the row-level API")
     table_name = JSON_COLLECTION_TABLES.get(name)
     if table_name not in DB_WRITABLE_COLLECTIONS:
         raise HTTPException(status_code=500, detail=f"DB write is not implemented for {name}")

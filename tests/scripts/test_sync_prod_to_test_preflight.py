@@ -73,7 +73,6 @@ def test_preflight_generates_fixed_backup_path_and_policy_lists():
         "casting_extras",
         "desired_pieces",
         "desired_piece_votes",
-        "promotions",
         "albums",
         "album_photos",
         "part_settings",
@@ -92,6 +91,11 @@ def test_preflight_generates_fixed_backup_path_and_policy_lists():
         "access_logs",
         "audit_logs",
         "portal_json_collections",
+        "promotions",
+        "promotion_operations",
+        "promotion_image_assets",
+        "promotion_reset_runs",
+        "promotion_reset_items",
     )
     assert result.excluded_db_collections == ("production_operation_histories",)
     assert result.gcs_target_prefixes == ("sheets/", "albums/")

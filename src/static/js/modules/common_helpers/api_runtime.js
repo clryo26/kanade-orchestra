@@ -277,6 +277,33 @@ function hasFreshCacheEntry(cacheEntry, url, forceRevalidate) {
     return ageMs >= 0 && ageMs < ttlMs;
 }
 
+function isLivePromotionRequest(url) {
+    const path = String(url || '').split('?')[0];
+    return path === '/api/bootstrap' || path === '/api/extra/promotions'
+        || path.startsWith('/api/extra/promotions/') || path.startsWith('/api/promotions/operations/');
+}
+
+async function purgePromotionCache() {
+    const cache = window.portalRuntimeContext.dbCache;
+    if (!cache?.db || cache.promotionPurge) return cache?.promotionPurge;
+    cache.promotionPurge = new Promise((resolve, reject) => {
+        const transaction = cache.db.transaction(['bootstrap_cache'], 'readwrite');
+        const cursor = transaction.objectStore('bootstrap_cache').openCursor();
+        cursor.onsuccess = () => {
+            const entry = cursor.result;
+            if (!entry) return;
+            if (isLivePromotionRequest(entry.key)) {
+                entry.delete();
+                cache.etags?.delete(entry.key);
+            }
+            entry.continue();
+        };
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+    }).catch(() => { /* Excluded requests never read these entries, even if deletion fails. */ });
+    return cache.promotionPurge;
+}
+
 async function request(url, options = {}) {
     const method = options.method || 'GET';
     const cacheKey = url;
@@ -286,6 +313,25 @@ async function request(url, options = {}) {
     const allowCacheFallback = options._allowCacheFallback !== false;
     const forceRevalidate = Boolean(options._forceRevalidate);
     const timeoutMs = _resolveTimeoutMs(url, method);
+    if (isLivePromotionRequest(url)) {
+        await purgePromotionCache();
+        // IndexedDB fallback would hide failed refreshes and stale operation results.
+        const identity = `${deviceId}:${appState.currentUserMemberId}:${appState.currentUserPermission}`;
+        let response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+        if (response.status === 401 && !skipAuthRecovery && await tryRecoverPortalSession(deviceId)) {
+            response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+        }
+        const currentDevice = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
+        if (identity !== `${currentDevice}:${appState.currentUserMemberId}:${appState.currentUserPermission}`) {
+            throw new Error('認証情報が変わりました。再読み込みしてください');
+        }
+        const data = await response.json();
+        if (options._structuredResult) return { status: response.status, data, retryAfter: response.headers.get('Retry-After') };
+        if (!response.ok) {
+            throw new Error(data?.detail?.message || data?.detail || '宣伝の読み込みに失敗しました');
+        }
+        return data;
+    }
     if (method === 'GET') {
         if (window.portalRuntimeContext.inFlightGetRequests.has(cacheKey)) return window.portalRuntimeContext.inFlightGetRequests.get(cacheKey);
         const pending = (async () => {
