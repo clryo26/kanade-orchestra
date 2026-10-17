@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const root = process.cwd();
-const { createTunerController } = require(path.join(root, 'src/static/js/modules/tuner/controller.js'));
+const { createTunerController, PROTOCOL } = require(path.join(root, 'src/static/js/modules/tuner/controller.js'));
 const { createTunerLauncher } = require(path.join(root, 'src/static/js/modules/tuner/launcher.js'));
 
 const RELEASE = 't-test-release';
@@ -304,13 +304,13 @@ describe('tuner controller lifecycle', () => {
     const h = createHarness();
     await h.controller.start({ generation: 5 });
     const worker = h.log.workers[0];
-    worker.emit({ type: 'pitch', release: RELEASE, protocol: 1, generation: 4, frame: { valid: true } });
+    worker.emit({ type: 'pitch', release: RELEASE, protocol: PROTOCOL, generation: 4, frame: { valid: true } });
     expect(h.events.pitches).toHaveLength(0);
-    worker.emit({ type: 'pitch', release: RELEASE, protocol: 1, generation: 5, frame: { valid: true, frequency: 440 } });
+    worker.emit({ type: 'pitch', release: RELEASE, protocol: PROTOCOL, generation: 5, frame: { valid: true, frequency: 440 } });
     expect(h.events.pitches).toHaveLength(1);
-    worker.emit({ type: 'gap', release: RELEASE, protocol: 1, generation: 5, droppedFrames: 128 });
+    worker.emit({ type: 'gap', release: RELEASE, protocol: PROTOCOL, generation: 5, droppedFrames: 128 });
     expect(h.events.gaps).toBe(1);
-    worker.emit({ type: 'pitch', release: 'other-release', protocol: 1, generation: 5, frame: {} });
+    worker.emit({ type: 'pitch', release: 'other-release', protocol: PROTOCOL, generation: 5, frame: {} });
     expect(h.controller.getState()).toBe('unavailable');
     expect(h.controller.getStateCode()).toBe('version-mismatch');
     expectAllReleased(h.log);
@@ -396,7 +396,7 @@ describe('tuner controller lifecycle', () => {
     const h = createHarness();
     await h.controller.start({ generation: 1 });
     h.setAllowed(false);
-    h.log.workers[0].emit({ type: 'status', release: RELEASE, protocol: 1, generation: 1 });
+    h.log.workers[0].emit({ type: 'status', release: RELEASE, protocol: PROTOCOL, generation: 1 });
     expect(h.events.leaves).toContain('guard');
     expectAllReleased(h.log);
   });

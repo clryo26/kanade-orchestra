@@ -194,7 +194,7 @@ describe('tuner body: playback and measurement switching', () => {
     h.handlers.onPlaybackSource('hz');
     expect(h.playbackView().hzText).toBe('442.0'); // starts from the selected note (A4)
     h.handlers.onPlaybackHzInput('9999');
-    expect(h.playbackView().error).toContain('32.0～4,400.0 Hz');
+    expect(h.playbackView().error).toContain('28.0～4,700.0 Hz'); // design range
     h.handlers.onPlay();
     expect(h.contexts).toHaveLength(0);
     h.handlers.onPlaybackHzInput('');
@@ -216,11 +216,11 @@ describe('tuner body: playback and measurement switching', () => {
     await h.body.start(h.startOptions);
     h.handlers.onPlay(); // A4 note, 442 Hz
     const freq = h.contexts[0].oscillators[0].frequency.events;
-    h.handlers.onStep(1); // A4 = 443
+    h.handlers.onStep(10); // A4 = 443.0 (ten 0.1 Hz steps)
     expect(freq.at(-1)).toEqual(['exp', 443, lib.playback.FREQUENCY_GLIDE_SECONDS]);
     h.handlers.onPlaybackSource('hz'); // starts from the current note value 443.0
     const count = freq.length;
-    h.handlers.onStep(1); // A4 = 444: Hz mode keeps 443.0
+    h.handlers.onStep(10); // A4 = 444.0: Hz mode keeps 443.0
     expect(freq.length).toBe(count);
     expect(h.playbackView().summary).toContain('443.000 Hz');
   });
@@ -343,7 +343,7 @@ describe('tuner body: playback and measurement switching', () => {
       now += 50;
       h.controllerCallbacks().onPitch({ valid: true, frequency: target442, reason: 'ok' });
     }
-    h.handlers.onStep(1); // A4 442 -> 443
+    h.handlers.onStep(10); // A4 442.0 -> 443.0 (ten 0.1 Hz steps)
     const shown = h.view.showReading.mock.calls.filter((c) => c[0]).at(-1)[0];
     expect(shown.cents).toBeCloseTo(1200 * Math.log2(target442 / lib.temperament.justTarget('major-third', 60, 443).targetFrequency), 6);
     expect(shown.cents).toBeCloseTo(-3.91, 2);

@@ -53,11 +53,26 @@ describe('tuner module boundaries', () => {
     }
   });
 
-  it('never sends audio or results to a server and never records', () => {
+  // Design (Phase 4): opt-in history on this device (storage_local.js) and
+  // summary sync to the own account (storage_remote.js). Every other file
+  // stays without storage/network access; nothing records or sends audio.
+  it('never records, never sends audio; storage and network only in the two storage modules', () => {
     for (const name of tunerScripts) {
       const code = stripComments(read(`${tunerDir}/${name}`));
-      expect(code, name).not.toMatch(/\bfetch\(|XMLHttpRequest|sendBeacon|MediaRecorder|indexedDB/);
+      expect(code, name).not.toMatch(/MediaRecorder|sendBeacon|XMLHttpRequest/);
+      if (name !== 'storage_local.js') expect(code, name).not.toMatch(/indexedDB/);
+      if (name !== 'storage_remote.js') expect(code, name).not.toMatch(/\bfetch\b/);
     }
+    for (const name of ['storage_local.js', 'storage_remote.js']) {
+      const code = stripComments(read(`${tunerDir}/${name}`));
+      expect(code, name).not.toMatch(/getUserMedia|MediaStream|AudioContext|AudioWorklet|createAnalyser|getChannelData|spectrogram/i);
+    }
+    // The upload whitelist carries summaries only (no series, no spectra).
+    const remote = require(path.join(root, tunerDir, 'storage_remote.js'));
+    const fields = [...remote.SESSION_FIELDS, ...remote.EVENT_FIELDS].join(',');
+    expect(fields).not.toMatch(/series|chunk|hz\b|frame|spectr|pcm|audio/i);
+    const cleaned = remote.sanitizeSession({ sessionId: 'x', series: [1], chunks: [new Float32Array(4)], summary: { a: NaN, b: new Float32Array(2) } });
+    expect(cleaned).toEqual({ sessionId: 'x', summary: { a: null, b: null } });
   });
 
   it('adds no shared state and only reads auth/permission through portalRuntimeContext', () => {
@@ -114,8 +129,10 @@ describe('tuner module boundaries', () => {
     expect(onStop).not.toMatch(/await|\.then\(/);
   });
 
-  it('keeps the new settings in memory only (A4 stays the only stored value)', () => {
-    for (const name of ['temperament.js', 'playback.js', 'graph.js', 'index.js', 'display_filter.js']) {
+  // Settings persistence lives in settings.js (A4 always, other display
+  // settings only after "save on this device"); history in storage_local.js.
+  it('keeps persistence out of the measuring, playback and drawing modules', () => {
+    for (const name of ['temperament.js', 'target_model.js', 'playback.js', 'scheduler.js', 'graph.js', 'index.js', 'display_filter.js', 'controller.js', 'measurement_store.js', 'analysis_stats.js']) {
       const code = stripComments(read(`${tunerDir}/${name}`));
       expect(code, name).not.toMatch(/\.setItem\(|sessionStorage|indexedDB/);
     }
@@ -216,5 +233,24 @@ describe('tuner connection to the portal', () => {
     expect(clear.indexOf("portalTunerLeave('auth-cleared')")).toBeLessThan(clear.indexOf('localStorage.removeItem'));
     const events = read('src/static/js/modules/navigation/events.js');
     expect(events.slice(events.indexOf('function logoutPortal()'))).toContain("portalTunerLeave('logout')");
+  });
+
+  // tuner.css promises that nothing outside the tuner is styled.
+  it('scopes every tuner style rule under .tuner', () => {
+    const css = read('src/static/css/tuner.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const outside = [];
+    for (const match of css.matchAll(/([^{}]+)\{/g)) {
+      const selector = match[1].trim();
+      if (selector.startsWith('@')) continue;
+      let depth = 0;
+      let current = '';
+      for (const ch of selector) {
+        if (ch === '(') depth += 1;
+        if (ch === ')') depth -= 1;
+        if (ch === ',' && depth === 0) { outside.push(current.trim()); current = ''; } else current += ch;
+      }
+      outside.push(current.trim());
+    }
+    expect(outside.filter((sel) => !sel.startsWith('.tuner'))).toEqual([]);
   });
 });

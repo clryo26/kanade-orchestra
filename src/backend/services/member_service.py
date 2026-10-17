@@ -185,3 +185,8 @@ def delete_member(member_id: int) -> None:
     _, current = _repo.find_by_id(member_id)
     _delete_member_photo(member_id, str(current.get("photo_url") or ""))
     _repo.delete(member_id)
+    # The tuner history of this member is revoked and deleted (the DB trigger
+    # does the same; this call covers databases where it is missing).
+    from .tuner_service import revoke_member
+
+    revoke_member(member_id)

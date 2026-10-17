@@ -754,6 +754,13 @@
 - 複合主キー `(organization_id, menu_key)`。団体内で共有、未登録はON。
 - DDL: `migrations/016_menu_visibility_settings.sql`。認証・認可テーブルとは独立する。
 
+### tuner_owners ほか（チューナーの練習要約、システム管理者のみ）
+
+- `tuner_owners`: id UUID（所有者、再利用しない）、organization_id、member_id、member_birth（団員の作成時刻）、history_epoch、revoked_at／revoked_reason。有効な所有者は団体・member_idごとに1件（部分一意索引）。
+- `tuner_preferences`／`tuner_instruments`／`tuner_presets`／`tuner_sessions`／`tuner_upload_parts`／`tuner_note_events`／`tuner_tombstones`: owner_id で `tuner_owners` を参照（削除は連鎖）。保存するのは要約（条件・統計・結果）だけで、音声・pitch系列・スペクトログラムは持たない。
+- 関数 `tuner_revoke_member_owner`、`members` の AFTER DELETE／AFTER INSERT トリガー（`tuner_members_owner_guard`）で、団員の削除・ID再利用時に所有者を失効し練習要約を削除する。
+- DDL: `migrations/017_tuner_practice.sql`。仕様は `../docs/TUNER_ADVANCED_DATA_API_DESIGN.md`、適用・戻し方は `../docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md` の8章。
+
 ## 3. 補足
 
 - `practice_instructions.performance_instruction` は現行UIでは未使用。移行第2段階で削除候補。

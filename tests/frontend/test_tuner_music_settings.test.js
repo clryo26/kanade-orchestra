@@ -55,7 +55,8 @@ describe('tuner note names and cents', () => {
 });
 
 describe('tuner reference A4 setting', () => {
-  it('defaults to 442 and accepts only whole integers 430-450 from storage', () => {
+  // Migration source: the legacy key holds whole integers 430-450 only.
+  it('defaults to 442 and accepts only whole integers 430-450 from the legacy key', () => {
     const cases = {
       '430': 430, '442': 442, '450': 450,
       '429': 442, '451': 442, '442.0': 442, '442.5': 442, ' 442': 442, '442 ': 442,
@@ -69,21 +70,79 @@ describe('tuner reference A4 setting', () => {
     expect(settings.createSettingsStore(null).load()).toBe(442);
   });
 
-  it('steps by 1 Hz and stops at the range ends', () => {
+  // Design T-011: 390.0-480.0 Hz in 0.1 Hz steps, stored as integer tenths.
+  it('steps by 0.1 Hz, stops at 390.0 / 480.0 Hz and never rewrites the legacy key', () => {
     const storage = memoryStorage({ [settings.STORAGE_KEY]: '431' });
     const store = settings.createSettingsStore(storage);
-    store.load();
+    expect(store.load()).toBe(431); // migrated x10
+    expect(store.getTenths()).toBe(4310);
+    store.setTenths(3901);
     expect(store.canDecrease()).toBe(true);
-    expect(store.step(-1)).toMatchObject({ value: 430, saved: true, changed: true });
+    expect(store.step(-1)).toMatchObject({ value: 390, tenths: 3900, saved: true, changed: true });
     expect(store.canDecrease()).toBe(false);
-    expect(store.step(-1)).toMatchObject({ value: 430, changed: false });
-    expect(storage.data[settings.STORAGE_KEY]).toBe('430');
-    store.set(449);
+    expect(store.step(-1)).toMatchObject({ value: 390, changed: false });
+    expect(JSON.parse(storage.data[settings.SETTINGS_KEY]).a4Tenths).toBe(3900);
+    expect(storage.data[settings.STORAGE_KEY]).toBe('431'); // legacy key untouched
+    store.setTenths(4799);
     store.step(1);
-    expect(store.get()).toBe(450);
+    expect(store.get()).toBe(480);
     expect(store.canIncrease()).toBe(false);
-    expect(store.step(1).value).toBe(450);
-    expect(store.set(442.5)).toMatchObject({ value: 450, saved: false, changed: false });
+    expect(store.step(1).value).toBe(480);
+    expect(store.set(442.5)).toMatchObject({ value: 442.5, tenths: 4425, changed: true });
+    expect(store.set(442.55)).toMatchObject({ value: 442.5, changed: false }); // 0.01 Hz is refused
+    expect(store.setTenths(3899)).toMatchObject({ changed: false });
+    expect(store.setTenths(4801)).toMatchObject({ changed: false });
+  });
+
+  it('parses typed A4 values (one decimal, full-width digits) and refuses the rest', () => {
+    expect(settings.parseA4Input('442')).toEqual({ ok: true, tenths: 4420 });
+    expect(settings.parseA4Input(' 441.5 ')).toEqual({ ok: true, tenths: 4415 });
+    expect(settings.parseA4Input('４４３．２')).toEqual({ ok: true, tenths: 4432 });
+    expect(settings.parseA4Input('390.0')).toEqual({ ok: true, tenths: 3900 });
+    expect(settings.parseA4Input('480.0')).toEqual({ ok: true, tenths: 4800 });
+    for (const [text, reason] of [['', 'empty'], ['389.9', 'range'], ['480.1', 'range'], ['442.25', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
+      expect(settings.parseA4Input(text), text).toMatchObject({ ok: false, reason });
+    }
+    expect(settings.PRESETS_TENTHS).toEqual([4400, 4410, 4420, 4430]);
+  });
+
+  it('keeps an unknown settings schema untouched and works with defaults', () => {
+    const raw = JSON.stringify({ schemaVersion: 99, a4Tenths: 4500, future: true });
+    const storage = memoryStorage({ [settings.SETTINGS_KEY]: raw });
+    const store = settings.createSettingsStore(storage);
+    expect(store.load()).toBe(442);
+    expect(store.isReadOnly()).toBe(true);
+    store.step(1);
+    expect(store.get()).toBe(442.1);
+    expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
+  });
+
+  it('saves display preferences only after "save on this device" and can reset them', () => {
+    const storage = memoryStorage();
+    const store = settings.createSettingsStore(storage);
+    store.load();
+    expect(store.setPrefs({ toleranceCents: 5 })).toMatchObject({ saved: false, persisted: false });
+    expect(store.getPrefs().toleranceCents).toBe(5); // in memory
+    expect(storage.data[settings.SETTINGS_KEY]).toBeUndefined();
+    store.setPersist(true);
+    store.setPrefs({ toleranceCents: 7.5, meterRangeCents: 25, responsePreset: 'custom', smoothingMs: 333 });
+    const saved = JSON.parse(storage.data[settings.SETTINGS_KEY]);
+    expect(saved.prefs).toMatchObject({ toleranceCents: 7.5, meterRangeCents: 25, smoothingMs: 330 });
+    const again = settings.createSettingsStore(storage);
+    again.load();
+    expect(again.getPrefs()).toMatchObject({ toleranceCents: 7.5, responsePreset: 'custom' });
+    expect(again.resetPrefs()).toMatchObject({ toleranceCents: 3, meterRangeCents: 50, responsePreset: 'standard' });
+    store.setPersist(false);
+    expect(JSON.parse(storage.data[settings.SETTINGS_KEY]).prefs).toBeUndefined();
+  });
+
+  it('maps response presets and tolerance to display-only filter options', () => {
+    expect(settings.displayOptions({ responsePreset: 'fast' })).toMatchObject({ smoothingTimeMs: 40, onsetConfirmFrames: 1, holdMs: 500 });
+    expect(settings.displayOptions({ responsePreset: 'standard' })).toMatchObject({ smoothingTimeMs: 120, onsetConfirmFrames: 2, holdMs: 1000, enterInTuneCents: 3, exitInTuneCents: 4 });
+    expect(settings.displayOptions({ responsePreset: 'stable', toleranceCents: 10 })).toMatchObject({ smoothingTimeMs: 240, onsetConfirmFrames: 3, holdMs: 1500, enterInTuneCents: 10, exitInTuneCents: 11 });
+    expect(settings.normalizePrefs({ toleranceCents: 0.2 }).toleranceCents).toBe(0.5);
+    expect(settings.normalizePrefs({ toleranceCents: 99 }).toleranceCents).toBe(25);
+    expect(settings.normalizePrefs({ inputThreshold: { mode: 'manual', dbfs: -200 } }).inputThreshold.dbfs).toBe(-90);
   });
 
   it('keeps working in memory when storage throws (read or write)', () => {
@@ -93,7 +152,7 @@ describe('tuner reference A4 setting', () => {
     };
     const store = settings.createSettingsStore(throwing);
     expect(store.load()).toBe(442);
-    const result = store.step(1);
+    const result = store.step(10); // +1.0 Hz
     expect(result).toMatchObject({ value: 443, saved: false, changed: true });
     expect(store.get()).toBe(443);
     expect(store.lastSaveFailed()).toBe(true);
@@ -106,7 +165,7 @@ describe('tuner reference A4 setting', () => {
     first.step(1);
     first.step(1);
     const second = settings.createSettingsStore(storage);
-    expect(second.load()).toBe(444);
+    expect(second.load()).toBe(442.2);
   });
 
   it('does not touch storage while loading the module', () => {
@@ -132,5 +191,31 @@ describe('tuner reference A4 setting', () => {
     storage.removeItem('portalAuth');
     storage.removeItem('userRole');
     expect(settings.createSettingsStore(storage).load()).toBe(445);
+    for (const file of files) {
+      expect(fs.readFileSync(path.join(root, file), 'utf8')).not.toContain('portalTunerSettings');
+    }
+  });
+});
+
+describe('named presets in the device settings (M-010 / D-008)', () => {
+  const settingsLib = require(path.join(process.cwd(), 'src/static/js/modules/tuner/settings.js'));
+  it('validates entries, limits the count and size, and survives "back to defaults"', () => {
+    const ok = { id: 'p-1', name: '  B♭管\u0007 ', savedAt: 1, data: { temperament: 'pythagorean', rootMidi: 58 } };
+    const list = [ok, { id: 'p-1', name: 'dup', data: {} }, { id: 'bad id', name: 'x', data: {} }, { id: 'p-2', name: 'big', data: { text: 'x'.repeat(9000) } }, { id: 'p-3', name: 3, data: {} }];
+    const presets = settingsLib.normalizePresets({ temperament: list, sound: Array.from({ length: 30 }, (_, i) => ({ id: `s${i}`, name: `s${i}`, data: { voices: [] } })) });
+    expect(presets.temperament).toEqual([{ id: 'p-1', name: 'B♭管', savedAt: 1, data: { temperament: 'pythagorean', rootMidi: 58 } }]);
+    expect(presets.sound).toHaveLength(settingsLib.MAX_PRESETS);
+    const data = {};
+    const storage = { getItem: (k) => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); } };
+    const store = settingsLib.createSettingsStore(storage);
+    store.load();
+    store.setPrefs({ presets: { temperament: [ok], sound: [] } });
+    expect(data.portalTunerSettings && JSON.parse(data.portalTunerSettings).prefs).toBeUndefined(); // not persisted while "save" is off
+    store.setPersist(true);
+    store.setPrefs({ theme: 'dark' });
+    expect(JSON.parse(data.portalTunerSettings).prefs.presets.temperament[0].id).toBe('p-1');
+    const reset = store.resetPrefs();
+    expect(reset.theme).toBe('auto');
+    expect(reset.presets.temperament).toHaveLength(1);
   });
 });

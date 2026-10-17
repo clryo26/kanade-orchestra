@@ -116,3 +116,7 @@ erDiagram
 ### メニュー表示設定
 
 `menu_visibility_settings` は団体IDとメニューキーの複合主キーを持つ。表示値と更新日時だけを保存し、メンバーIDや機能権限との関連は持たない。DDLは `migrations/016_menu_visibility_settings.sql`、仕様は `../docs/MENU_MANAGEMENT.md` を参照。
+
+### チューナーの練習要約
+
+`tuner_owners` は団員ごとの所有者（UUID）で、`member_birth`（団員の作成時刻）と照合して同じ member_id の別人に履歴を渡さない。ほかの `tuner_*` 表は owner_id で所有者を参照し、要約だけを保存する。`members` のトリガーで団員の削除・ID再利用時に失効する。DDLは `migrations/017_tuner_practice.sql`、仕様は `../docs/TUNER_ADVANCED_DATA_API_DESIGN.md` を参照。

@@ -337,6 +337,7 @@ function renderMemberSchedules() {
                         <span>${escapeHtml(formatScheduleDate(sched.date))}</span>
                         ${scheduleIsConductorTraining(sched) ? '<span class="schedule-conductor-training">※指揮トレ</span>' : ''}
                     </div>
+                    <div class="schedule-detail-line">練習時間: ${escapeHtml(scheduleTimeLabel(sched) || '未定')}</div>
                     <!-- 保存済みの会場を団員にも表示し、未登録時は未定とする。 -->
                     <div class="schedule-detail-line">練習場所: ${escapeHtml(sched.venue || '未定')}</div>
                     <div class="schedule-detail-line">練習可能時間: ${escapeHtml(scheduleAvailableLabel(sched) || '未定')}</div>

@@ -41,6 +41,7 @@ def register_routes(app: FastAPI) -> FastAPI:
     schedules_router = _import_router("..routers.schedules", "routers.schedules")
     scores_router = _import_router("..routers.scores", "routers.scores")
     system_router = _import_router("..routers.system", "routers.system")
+    tuner_router = _import_router("..routers.tuner", "routers.tuner")
     auth_router = _import_router("..auth_api", "auth_api")
 
     for router in (
@@ -57,6 +58,7 @@ def register_routes(app: FastAPI) -> FastAPI:
         access_logs_router,
         maintenance_router,
         improvement_suggestions_router,
+        tuner_router,
         bootstrap_router,
         meta_router,
         auth_router,
