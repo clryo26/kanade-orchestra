@@ -18,7 +18,7 @@ import math
 import random
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable, ParamSpec, TypeVar
 
 from fastapi import HTTPException
 
@@ -35,6 +35,9 @@ from ..repositories.tuner_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 SCHEMA_VERSION = 1
 LIMITS = {
@@ -179,7 +182,7 @@ def resolve_owner(device: dict[str, Any], *, create: bool = True) -> dict[str, A
     if not db_data_enabled():
         raise _unavailable("db-unavailable")
     member_id = device.get("member_id")
-    if member_id in (None, "") or bool(device.get("hidden_user")):
+    if member_id is None or member_id == "" or bool(device.get("hidden_user")):
         raise _unavailable("no-member")
     try:
         member_id = int(member_id)
@@ -212,10 +215,10 @@ def identity(device: dict[str, Any]) -> dict[str, Any]:
     return {"schemaVersion": SCHEMA_VERSION, "accountStorageAvailable": True, "ownerId": owner["ownerId"], "historyEpoch": owner["historyEpoch"]}
 
 
-def _guarded(fn):  # type: ignore[no-untyped-def]
+def _guarded(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     """Maps repository conditions to the API's status codes."""
 
-    def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         try:
             return fn(*args, **kwargs)
         except OwnerRevoked:
@@ -260,7 +263,7 @@ def put_preferences(device: dict[str, Any], body: dict[str, Any]) -> dict[str, A
 
 def _instrument_profile(raw: Any) -> dict[str, Any]:
     profile = _object(raw, "instrument", LIMITS["json_bytes"])
-    out = {
+    out: dict[str, Any] = {
         "name": _text(profile.get("name"), "name", 80),
         "kind": _text(profile.get("kind"), "kind", 40),
         "maker": _text(profile.get("maker"), "maker", 80),
@@ -562,7 +565,7 @@ def _summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
     interval = None
     if len(session_means) >= 2:
         rng = random.Random(12345)
-        means = sorted(sum(rng.choice(session_means) for _ in session_means) / len(session_means) for _ in range(DIAGNOSIS_RULES["bootstrap"]))
+        means = sorted(sum(rng.choice(session_means) for _ in session_means) / len(session_means) for _ in range(int(DIAGNOSIS_RULES["bootstrap"])))
         interval = [means[int(0.025 * (len(means) - 1))], means[math.ceil(0.975 * (len(means) - 1))]]
     if n_events < DIAGNOSIS_RULES["min_events"] or len(session_means) < DIAGNOSIS_RULES["min_sessions"]:
         status = "insufficient"

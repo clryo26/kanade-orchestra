@@ -503,7 +503,7 @@ class TunerRepository:
                     (owner_id, session_id, epoch),
                 )
                 cur.execute("DELETE FROM tuner_sessions WHERE owner_id = %s AND session_uuid = %s", (owner_id, session_id))
-                deleted = cur.rowcount > 0
+                deleted = int(cur.rowcount) > 0
             conn.commit()
         return deleted
 
