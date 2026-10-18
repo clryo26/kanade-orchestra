@@ -197,6 +197,22 @@ describe('workspace simultaneous mode', () => {
   });
 });
 
+describe('workspace external output (metronome clicks beside the tuner)', () => {
+  it('excludes reported metronome clicks while measuring, also without the simultaneous declaration', () => {
+    const { ws, coordinator, playbackStates } = setup();
+    ws.onSession({ captureEpoch: 1, sampleRate: 48000 });
+    ws.onClock({ captureEpoch: 1, contextTime: 1, performanceTime: 1000, sampleRate: 48000 });
+    coordinator.setCapture('running');
+    ws.onOutput({ type: 'click', external: true, frequencies: [] });
+    ws.store.flush();
+    const intervals = ws.store.snapshot().intervals;
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0].kind).toBe('output');
+    expect(intervals[0].endFrame2).toBeGreaterThan(intervals[0].startFrame2);
+    expect(playbackStates).toEqual([]); // the tuner's own playback state is not touched
+  });
+});
+
 describe('statistics client', () => {
   it('falls back to the same pure functions without a Worker and supersedes older requests', async () => {
     const client = L.workspace.createStatsClient({ release: 'x' });

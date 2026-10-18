@@ -1,0 +1,611 @@
+/* メトロノーム専用スタイル。すべて .metronome 配下に限定し、他画面へ影響させない。
+   iPhone縦画面を基準に、操作は44px以上、277～430pxの幅で横スクロールを出さない。
+   拍の表示は点滅させず、小さな点と振り子の位置で示す（WCAG 2.3.1、設計11章）。 */
+.metronome {
+    --metronome-accent: var(--brand, #235789);
+    --metronome-muted: #6b7280;
+    --metronome-line: var(--line, #d9dee7);
+    --metronome-surface: #ffffff;
+    --metronome-text: var(--text, #1f2933);
+    --metronome-warn-bg: #fff4e5;
+    --metronome-warn-line: #f0b46c;
+    --metronome-error: #b42318;
+    color: var(--metronome-text);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0 auto;
+    max-width: 640px;
+    min-width: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+    .metronome {
+        --metronome-muted: #9ca3af;
+        --metronome-line: #374151;
+        --metronome-surface: #111827;
+        --metronome-text: #f3f4f6;
+        --metronome-warn-bg: #3a2a10;
+        --metronome-warn-line: #a16207;
+        --metronome-error: #fca5a5;
+    }
+}
+
+.metronome *,
+.metronome *::before,
+.metronome *::after {
+    box-sizing: border-box;
+}
+
+.metronome :where(p, label, span, output, legend) {
+    overflow-wrap: anywhere;
+}
+
+.metronome-statusbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.metronome-chip {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    color: #1f2933;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    padding: 3px 10px;
+}
+
+.metronome[data-state="running"] [data-metronome-chip-state] {
+    background: #e8f3ec;
+    border-color: #2f855a;
+}
+
+.metronome[data-state="interrupted"] [data-metronome-chip-state],
+.metronome[data-state="waiting"] [data-metronome-chip-state],
+.metronome[data-state="busy"] [data-metronome-chip-state] {
+    background: var(--metronome-warn-bg);
+    border-color: var(--metronome-warn-line);
+    color: var(--metronome-text);
+}
+
+.metronome-message {
+    background: var(--metronome-warn-bg);
+    border: 1px solid var(--metronome-warn-line);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    padding: 8px 10px;
+}
+
+.metronome-message[data-kind="error"] {
+    border-color: var(--metronome-error);
+}
+
+.metronome-tabbar {
+    border-bottom: 1px solid var(--metronome-line);
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.metronome-tabbar::-webkit-scrollbar {
+    display: none;
+}
+
+.metronome-tab {
+    background: transparent;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    color: var(--metronome-text);
+    flex: 1 0 auto;
+    font-size: 0.95rem;
+    min-height: 44px;
+    padding: 6px 10px;
+    touch-action: manipulation;
+    white-space: nowrap;
+}
+
+.metronome-tab[aria-selected="true"] {
+    border-bottom-color: var(--metronome-accent);
+    color: var(--metronome-accent);
+    font-weight: 700;
+}
+
+.metronome-tab:focus-visible,
+.metronome-accent:focus-visible,
+.metronome-play:focus-visible {
+    outline: 3px solid var(--metronome-accent);
+    outline-offset: 2px;
+}
+
+.metronome-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.metronome-panel[hidden] {
+    display: none;
+}
+
+.metronome-tempo {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metronome-bpm-line {
+    align-items: baseline;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.metronome-bpm {
+    font-size: clamp(2.6rem, 14vw, 4rem);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.metronome-bpm-ref {
+    font-size: 1.6rem;
+}
+
+.metronome-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.metronome-step {
+    font-size: 1.05rem;
+    font-weight: 700;
+    min-height: 48px;
+    min-width: 56px;
+    touch-action: manipulation;
+}
+
+.metronome-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.metronome-field label {
+    font-size: 0.9rem;
+}
+
+.metronome-select,
+.metronome-input {
+    font-size: 1rem; /* 16px 以上: iPhone で入力時の自動拡大を防ぐ */
+    min-height: 44px;
+}
+
+.metronome-inline {
+    align-items: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.metronome-inline > .metronome-field {
+    flex: 1 1 10em;
+}
+
+.metronome-inline > .btn,
+.metronome-tap-row > .btn {
+    min-height: 44px;
+}
+
+.metronome-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 8em), 1fr));
+}
+
+.metronome-hint {
+    color: var(--metronome-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.metronome-error {
+    color: var(--metronome-error);
+    font-weight: 600;
+    margin: 0;
+}
+
+.metronome-error[hidden],
+.metronome-message[hidden] {
+    display: none;
+}
+
+.metronome-check {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    min-height: 44px;
+}
+
+.metronome-check input {
+    flex: 0 0 auto;
+    height: 22px;
+    width: 22px;
+}
+
+.metronome-section-label {
+    color: var(--metronome-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.metronome-section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 8px 0 0;
+}
+
+/* 拍の点: 現在の拍だけ枠と塗りを変える（点滅はしない） */
+.metronome-beat {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    min-height: 28px;
+}
+
+.metronome-beat-dot {
+    background: transparent;
+    border: 2px solid var(--metronome-line);
+    border-radius: 50%;
+    height: 18px;
+    width: 18px;
+}
+
+.metronome-beat-dot[data-current="true"] {
+    background: var(--metronome-accent);
+    border-color: var(--metronome-accent);
+}
+
+.metronome-beat[data-text]:not([data-text=""])::after {
+    content: attr(data-text);
+    font-size: 1.6rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+
+.metronome-pendulum {
+    --metronome-swing: 0;
+    height: 60px;
+    margin: 0 auto;
+    position: relative;
+    width: min(100%, 280px);
+}
+
+.metronome-pendulum[hidden] {
+    display: none;
+}
+
+.metronome-pendulum-bob {
+    background: var(--metronome-accent);
+    border-radius: 50%;
+    height: 20px;
+    left: calc(50% - 10px + var(--metronome-swing) * (50% - 12px));
+    position: absolute;
+    top: 20px;
+    width: 20px;
+}
+
+.metronome-tap-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.metronome-tap {
+    flex: 1 1 8em;
+    font-size: 1.2rem;
+    font-weight: 700;
+    min-height: 64px;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+.metronome-accents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.metronome-accent {
+    background: var(--metronome-surface);
+    border: 2px solid var(--metronome-line);
+    border-radius: 8px;
+    color: var(--metronome-text);
+    min-height: 44px;
+    min-width: 56px;
+    padding: 4px 8px;
+}
+
+.metronome-accent[data-level="強"] {
+    border-color: var(--metronome-accent);
+    font-weight: 700;
+}
+
+.metronome-accent[data-level="休"] {
+    border-style: dashed;
+    color: var(--metronome-muted);
+}
+
+.metronome-preset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.metronome-preset {
+    align-items: center;
+    border-bottom: 1px solid var(--metronome-line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 0;
+}
+
+.metronome-preset-title {
+    flex: 1 1 8em;
+    font-weight: 600;
+}
+
+.metronome-preset .btn {
+    min-height: 44px;
+}
+
+/* 再生・停止はスマートフォンで画面下に固定（スクロールしても押せる） */
+.metronome-transport {
+    align-items: center;
+    background: var(--metronome-surface);
+    border-top: 1px solid var(--metronome-line);
+    bottom: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    position: sticky;
+    z-index: 3;
+}
+
+.metronome-position {
+    flex: 1 1 6em;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    min-width: 0;
+}
+
+.metronome-play {
+    flex: 1 1 7em;
+    font-size: 1.15rem;
+    font-weight: 700;
+    min-height: 56px;
+    touch-action: manipulation;
+}
+
+.metronome-pause,
+.metronome-resume-fermata {
+    flex: 1 1 7em;
+    min-height: 56px;
+}
+
+.metronome-resume-fermata[hidden] {
+    display: none;
+}
+
+.metronome-announcer {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+.metronome-fallback {
+    border: 1px solid var(--metronome-line);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.metronome-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.metronome-table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 100%;
+}
+
+.metronome-table th,
+.metronome-table td {
+    border-bottom: 1px solid var(--metronome-line);
+    padding: 6px;
+    text-align: left;
+    vertical-align: top;
+}
+
+/* 高度なリズム: 層の編集と重なり方の格子 */
+.metronome-layer {
+    border: 1px solid var(--metronome-line);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    min-width: 0;
+    padding: 8px 10px;
+}
+
+.metronome-layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metronome-poly {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.metronome-poly-row {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+}
+
+.metronome-poly-label {
+    flex: 0 0 3.5em;
+    font-size: 0.85rem;
+}
+
+.metronome-poly-cells {
+    display: flex;
+    flex: 1 1 auto;
+    gap: 1px;
+    min-width: 0;
+}
+
+.metronome-poly-cell {
+    background: var(--metronome-surface);
+    border: 1px solid var(--metronome-line);
+    flex: 1 1 0;
+    height: 18px;
+    min-width: 0;
+}
+
+.metronome-poly-cell[data-hit="true"] {
+    background: var(--metronome-accent);
+    border-color: var(--metronome-accent);
+}
+
+.metronome-density[data-ok="false"],
+.metronome-hint[data-ok="false"] {
+    color: var(--metronome-error);
+    font-weight: 600;
+}
+
+/* 楽曲: 現在位置・長休符・出番予告（数字で示し、点滅しない） */
+.metronome-score-live {
+    border: 1px solid var(--metronome-line);
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+
+.metronome-cue {
+    font-size: 1.6rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    margin: 0;
+    min-height: 1.4em;
+}
+
+.metronome-conductor {
+    display: block;
+    height: auto;
+    margin: 0 auto;
+    max-width: 260px;
+    width: 100%;
+}
+
+.metronome-conductor-point {
+    fill: var(--metronome-surface);
+    stroke: var(--metronome-line);
+    stroke-width: 1.5;
+}
+
+.metronome-conductor-point[data-current="true"] {
+    stroke: var(--metronome-accent);
+    stroke-width: 2.5;
+}
+
+.metronome-conductor-label {
+    fill: var(--metronome-text);
+    font-size: 7px;
+}
+
+.metronome-conductor-marker {
+    fill: var(--metronome-accent);
+}
+
+/* 練習: テンポ当ての回答 */
+.metronome-guess {
+    border: 1px solid var(--metronome-warn-line);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.metronome-guess[hidden] {
+    display: none;
+}
+
+.metronome[data-conceal-tempo="true"] [data-metronome-bpm-input] {
+    visibility: hidden;
+}
+
+/* 指揮の図の打点編集: ドラッグ中にページがスクロールしないようにする */
+.metronome-conductor {
+    touch-action: none;
+}
+
+.metronome-conductor-point-row {
+    align-items: flex-end;
+}
+
+.metronome-conductor-point-row .metronome-field {
+    flex: 1 1 4.5em;
+}
+
+.metronome-nudge {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+.metronome-takeover[hidden] {
+    display: none;
+}
+
+.metronome-takeover {
+    flex: 1 1 100%;
+    min-height: 44px;
+}
+
+.metronome-tuner-host:empty {
+    display: none;
+}
+
+.metronome-tuner-host {
+    border: 1px solid var(--metronome-line);
+    border-radius: 8px;
+    min-width: 0;
+    padding: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .metronome-pendulum {
+        display: none;
+    }
+}

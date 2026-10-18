@@ -544,8 +544,13 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     await expect(tuner.locator('[data-tuner-status]')).toBeHidden({ timeout: 15000 });
     await expectMeasuringA4(page); // back to the fake microphone (440 Hz), not the 523.3 Hz tone
     state = await probe(page);
-    expect(state.playbackContexts).toEqual(['closed']);
+    // Shared output (metronome design 4.1): stopping ends the tuner's lease at
+    // once (nothing can sound); the page manager keeps the context until it is
+    // idle for 60 s or every consumer left, and leaving closes it.
+    expect(await page.evaluate(() => window.PortalAudioLib.pageManager.consumers())).toEqual([]);
     expect(state.gum).toBe(2);
+    await page.locator('#systemPanel .toolbar').getByRole('button', { name: '実験室', exact: true }).click();
+    await expect.poll(async () => (await probe(page)).playbackContexts).toEqual(['closed']);
   });
 
   test('just-intonation values go to the player unrounded and only on request', async ({ page }) => {
