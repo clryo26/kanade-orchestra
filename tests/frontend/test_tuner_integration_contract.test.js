@@ -114,7 +114,10 @@ describe('tuner module boundaries', () => {
 
   it('keeps playback on its own audio path, separate from the capture graph', () => {
     const playbackCode = stripComments(read(`${tunerDir}/playback.js`));
-    expect(playbackCode).toContain('gain.connect(ctx.destination)');
+    // Its own context or a lease of the shared output manager (behaviour:
+    // test_tuner_shared_output.test.js); never the capture graph.
+    expect(playbackCode).toContain('gain.connect(out.destination)');
+    expect(playbackCode).toContain('env.createContext()');
     expect(playbackCode).toContain("oscillator.type = 'sine'");
     expect(playbackCode).not.toMatch(/getUserMedia|createMediaStreamSource|AudioWorklet|createCaptureGraph/);
     const indexCode = stripComments(read(`${tunerDir}/index.js`));
@@ -193,7 +196,11 @@ describe('tuner connection to the portal', () => {
     // Before the launcher exists, background/page hide release the pending tap's context here.
     expect(lab).toContain("document.addEventListener('visibilitychange'");
     expect(lab).toContain("window.addEventListener('pagehide', handleTunerPageHidden);");
-    expect(lab).toContain('window.portalTunerLeave = leaveTuner;');
+    // The common exit releases the tuner first and then the metronome (same laboratory).
+    const commonLeave = lab.slice(lab.indexOf('window.portalTunerLeave = function (reason) {'));
+    expect(commonLeave.indexOf('leaveTuner(reason);')).toBeGreaterThan(0);
+    expect(commonLeave.indexOf('leaveTuner(reason);')).toBeLessThan(commonLeave.indexOf('leaveMetronome(reason);'));
+    expect(commonLeave.indexOf('leaveMetronome(reason);')).toBeLessThan(commonLeave.indexOf('};'));
     const showSuggestions = lab.slice(lab.indexOf('async function showImprovementSuggestions()'));
     expect(showSuggestions.indexOf("leaveTuner('improvement-suggestions')")).toBeLessThan(showSuggestions.indexOf("$('systemPanel').hidden = true"));
   });
@@ -212,13 +219,15 @@ describe('tuner connection to the portal', () => {
 
   it('history restore of the tuner checks auth, loads the laboratory, then the tuner body', () => {
     const routes = read('src/static/js/modules/navigation/routes.js');
-    const prepare = routes.slice(routes.indexOf('async function preparePortalTunerHistoryRestore(ticket)'));
+    const prepare = routes.slice(routes.indexOf('async function preparePortalTunerHistoryRestore(ticket, tabId)'));
     const order = ['isPortalAuthenticated()', 'canAccessSystemAdmin()', 'ensureImprovementSuggestionsLoaded()', 'preloadPortalTuner()'];
     const positions = order.map((needle) => prepare.indexOf(needle));
     expect(positions.every((p) => p > 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
     const restore = routes.slice(routes.indexOf('async function restorePortalHistoryState('));
     expect(restore.indexOf("tabName === 'system-tuner'")).toBeLessThan(restore.indexOf("$('portalLoginPanel')"));
+    // The metronome screen of the laboratory is restored the same way.
+    expect(restore.indexOf("tabName === 'system-metronome'")).toBeLessThan(restore.indexOf("$('portalLoginPanel')"));
   });
 
   it('logout, login screen and auth clearing release the tuner first', () => {

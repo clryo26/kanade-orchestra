@@ -394,7 +394,7 @@
     // not grow. It must be present before the tuner button is tapped because
     // the tap creates the AudioContext synchronously (iOS Safari). The rev
     // value is maintained by scripts/generate_tuner_release.mjs.
-    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-5c2ad5661ae9';
+    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-b0635dde6c4d';
     var tunerLauncherPromise = null;
 
     function ensureTunerLauncherLoaded() {
@@ -419,6 +419,54 @@
             });
         }
         return tunerLauncherPromise;
+    }
+
+    // Metronome launcher (modules/metronome/launcher.js), loaded like the
+    // tuner launcher. Unlike the tuner, entering the metronome screen needs
+    // no audio: its AudioContext is created by its own play button. The rev
+    // value is maintained by scripts/generate_metronome_release.mjs.
+    var METRONOME_LAUNCHER_URL = '/static/js/modules/metronome/launcher.js?rev=m-d398086cbcb2';
+    var metronomeLauncherPromise = null;
+
+    function ensureMetronomeLauncherLoaded() {
+        if (window.PortalMetronomeLauncher) return Promise.resolve(window.PortalMetronomeLauncher);
+        if (!metronomeLauncherPromise) {
+            metronomeLauncherPromise = new Promise(function (resolve, reject) {
+                var script = document.createElement('script');
+                script.src = METRONOME_LAUNCHER_URL;
+                script.async = true;
+                script.addEventListener('load', function () {
+                    if (window.PortalMetronomeLauncher) resolve(window.PortalMetronomeLauncher);
+                    else reject(new Error('Metronome launcher loaded without its API'));
+                }, { once: true });
+                script.addEventListener('error', function () {
+                    script.remove();
+                    reject(new Error('Metronome launcher failed to load'));
+                }, { once: true });
+                document.head.appendChild(script);
+            }).catch(function (error) {
+                metronomeLauncherPromise = null; // allow a retry on the next attempt
+                throw error;
+            });
+        }
+        return metronomeLauncherPromise;
+    }
+
+    function leaveMetronome(reason) {
+        if (window.PortalMetronomeLauncher) window.PortalMetronomeLauncher.leave(reason);
+    }
+
+    function enterMetronome() {
+        var host = $('systemMetronomeHost');
+        if (!host || !isSystemAdministrator()) return;
+        ensureMetronomeLauncherLoaded().then(function (launcher) {
+            // Only while the screen is still showing (a newer navigation may have left).
+            var tab = $('system-metronomeTab');
+            if (tab && !tab.hidden) void launcher.enter(host);
+        }).catch(function (error) {
+            console.warn('[メトロノーム] 起動処理の読込に失敗しました', error);
+            if (typeof showAlert === 'function') showAlert('メトロノームを読み込めませんでした。再度開いてください。', 'warning');
+        });
     }
 
     function isSystemAdministrator() {
@@ -537,6 +585,7 @@
                         <div class="card-body d-flex flex-wrap gap-2">
                             <button class="btn btn-primary" data-tab="system-pdf-editor" type="button">PDF編集</button>
                             <button class="btn btn-primary" data-tab="system-tuner" type="button">チューナー</button>
+                            <button class="btn btn-primary" data-tab="system-metronome" type="button">メトロノーム</button>
                         </div>
                     </div>
                 </div>
@@ -545,6 +594,23 @@
         var laboratoryBody = $('system-laboratoryTab') ? $('system-laboratoryTab').querySelector('.card-body') : null;
         if (laboratoryBody && !laboratoryBody.querySelector('[data-tab="system-tuner"]')) {
             laboratoryBody.insertAdjacentHTML('beforeend', '<button class="btn btn-primary" data-tab="system-tuner" type="button">チューナー</button>');
+        }
+        if (laboratoryBody && !laboratoryBody.querySelector('[data-tab="system-metronome"]')) {
+            laboratoryBody.insertAdjacentHTML('beforeend', '<button class="btn btn-primary" data-tab="system-metronome" type="button">メトロノーム</button>');
+        }
+        if (!$('system-metronomeTab')) {
+            // The metronome body renders into #systemMetronomeHost; this module
+            // only provides the container and never touches its DOM or audio.
+            panel.insertAdjacentHTML('beforeend', `
+                <div id="system-metronomeTab" class="tab-content" hidden>
+                    <div class="card">
+                        <div class="card-header">メトロノーム</div>
+                        <div class="card-body">
+                            <div id="systemMetronomeHost"></div>
+                        </div>
+                    </div>
+                </div>
+            `);
         }
         if (!$('system-tunerTab')) {
             // The tuner body renders into #systemTunerHost; this module only
@@ -624,6 +690,15 @@
             });
         }
 
+        var metronomeButton = laboratoryTab ? laboratoryTab.querySelector('[data-tab="system-metronome"]') : null;
+        if (metronomeButton && metronomeButton.dataset.metronomeBound !== 'true') {
+            metronomeButton.dataset.metronomeBound = 'true';
+            metronomeButton.addEventListener('click', function () {
+                // switchTab() enters the metronome once its tab is visible (routes.js).
+                if (typeof switchTab === 'function') switchTab('systemPanel', 'system-metronome', false);
+            });
+        }
+
         var registerButton = $('pdfEditorRegisterBtn');
         if (registerButton && registerButton.dataset.pdfEditorRegisterBound !== 'true') {
             registerButton.dataset.pdfEditorRegisterBound = 'true';
@@ -641,6 +716,9 @@
             ensureTunerLauncherLoaded().catch(function (error) {
                 console.warn('[チューナー] 起動処理の読込に失敗しました', error);
             });
+            ensureMetronomeLauncherLoaded().catch(function (error) {
+                console.warn('[メトロノーム] 起動処理の読込に失敗しました', error);
+            });
         }
         document.querySelectorAll('[data-improvement-suggestion-open]').forEach(function (button) {
             button.addEventListener('click', showImprovementSuggestions);
@@ -649,7 +727,16 @@
 
     window.showImprovementSuggestions = showImprovementSuggestions;
     window.ensurePortalTunerLauncherLoaded = ensureTunerLauncherLoaded;
-    window.portalTunerLeave = leaveTuner;
+    // portalTunerLeave is the exit of every navigation / auth path (logout,
+    // session expiry, panel change). It releases the laboratory's audio
+    // features: the tuner and the metronome.
+    window.portalTunerLeave = function (reason) {
+        leaveTuner(reason);
+        leaveMetronome(reason);
+    };
+    window.portalMetronomeLeave = leaveMetronome;
+    window.portalMetronomeEnter = enterMetronome;
+    window.ensurePortalMetronomeLauncherLoaded = ensureMetronomeLauncherLoaded;
     window.loadImprovementSuggestions = loadSuggestions;
 
     if (document.readyState === 'loading') {

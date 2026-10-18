@@ -393,6 +393,17 @@ function leavePortalTuner(reason) {
     else if (window.PortalTunerLauncher) window.PortalTunerLauncher.leave(reason);
 }
 
+// The metronome shares the laboratory exit (portalTunerLeave releases it
+// too); only switching to the tuner tab has to release it explicitly.
+function leavePortalMetronome(reason) {
+    if (typeof window.portalMetronomeLeave === 'function') window.portalMetronomeLeave(reason);
+    else if (window.PortalMetronomeLauncher) window.PortalMetronomeLauncher.leave(reason);
+}
+
+function enterPortalMetronomeTab() {
+    if (typeof window.portalMetronomeEnter === 'function') window.portalMetronomeEnter();
+}
+
 function enterPortalTunerTab() {
     const host = $('systemTunerHost');
     if (window.PortalTunerLauncher && host) void window.PortalTunerLauncher.enter(host);
@@ -411,7 +422,7 @@ function preloadPortalTuner() {
 // History restore of the tuner tab: auth/permission first, then the
 // laboratory module that creates the tab DOM, then the tuner body. This is
 // not a user tap, so the tuner may end in "tap to resume" instead of measuring.
-async function preparePortalTunerHistoryRestore(ticket) {
+async function preparePortalTunerHistoryRestore(ticket, tabId) {
     const authResult = await isPortalAuthenticated();
     if (!isLatestPortalNavigation(ticket)) return false;
     if (authResult.status === 'unavailable') {
@@ -438,7 +449,7 @@ async function preparePortalTunerHistoryRestore(ticket) {
     await preloadPortalTuner();
     // Re-checked after the waits: a newer navigation, logout or lost rights wins.
     return isLatestPortalNavigation(ticket) && appState.portalAuthVerified === true &&
-        canAccessSystemAdmin() && Boolean($('system-tunerTab'));
+        canAccessSystemAdmin() && Boolean($(tabId || 'system-tunerTab'));
 }
 
 function showAdminPanel(role = 'admin') {
@@ -590,10 +601,11 @@ async function restorePortalHistoryState(state) {
     const tabName = String(state.tabName || '');
     if (!tabName || !['memberPanel', 'adminPanel', 'systemPanel'].includes(panelId)) return;
 
-    if (panelId === 'systemPanel' && tabName === 'system-tuner') {
+    if (panelId === 'systemPanel' && (tabName === 'system-tuner' || tabName === 'system-metronome')) {
+        // Laboratory screens: auth and the laboratory module first (it creates the tab).
         leavePortalTuner('history');
         const ticket = nextPortalNavigation();
-        if (!(await preparePortalTunerHistoryRestore(ticket))) return;
+        if (!(await preparePortalTunerHistoryRestore(ticket, `${tabName}Tab`))) return;
         if (!isLatestPortalNavigation(ticket)) return;
     } else {
         leavePortalTuner('history');
@@ -637,7 +649,9 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     if (!panel) return;
     nextPortalNavigation();
     const isTunerTab = panelId === 'systemPanel' && tabName === 'system-tuner';
+    const isMetronomeTab = panelId === 'systemPanel' && tabName === 'system-metronome';
     if (!isTunerTab) leavePortalTuner('tab');
+    else leavePortalMetronome('tab');
     if (panelId === 'memberPanel') {
         updateMemberTabHistory(tabName);
     }
@@ -670,6 +684,7 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     // Entered after the tab is visible so the tuner's visibility guard passes.
     // Runs regardless of renderOnShow because the laboratory buttons pass false.
     if (isTunerTab) enterPortalTunerTab();
+    if (isMetronomeTab) enterPortalMetronomeTab();
     if (panelId === 'systemPanel' && tabName === 'system-laboratory') void preloadPortalTuner();
     recordAccessLog(panelId, tabName);
     if (renderOnShow) {
