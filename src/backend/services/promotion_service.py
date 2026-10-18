@@ -15,6 +15,7 @@ from ..core.tenant_context import get_current_tenant_id
 from ..repositories import promotion_repository as repo
 from . import promotion_image_service as images
 from .extra_collection_helpers import parse_extra_upsert_request
+from .notification_service import emit
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,7 @@ async def mutate(method, item_id, raw, device, key):
     op = None
     asset_id = None
     generation = None
+    notification_changed = False
     try:
         op, claimed, conflict = repo.reserve(actor_key, operation_id, method, item_id, digest)
         if conflict:
@@ -214,6 +216,10 @@ async def mutate(method, item_id, raw, device, key):
                         if not cur.fetchone():
                             raise repo.LostAttempt()
                     body = public(repo.row(cur, item_id))
+                    notification_changed = method == "POST" or any(
+                        (current or {}).get(field) != body.get(field)
+                        for field in ("title", "summary", "image_url")
+                    )
                 if old_asset and (method == "DELETE" or action != "keep"):
                     cur.execute("UPDATE promotion_image_assets SET state='retired',retired_at=clock_timestamp(),"
                                 "next_attempt_at=clock_timestamp() WHERE organization_id=%s AND asset_id=%s",
@@ -222,6 +228,10 @@ async def mutate(method, item_id, raw, device, key):
                 status = 200
         if status >= 400 and asset_id:
             images.abandon(op, asset_id, generation)
+        # Emit only after the business transaction commits. Operation replays
+        # return above without creating a second notification.
+        if status == 200 and notification_changed:
+            emit("promotions", body, "created" if method == "POST" else "updated")
         return status, body
     except repo.LostAttempt:
         if asset_id:
@@ -236,6 +246,8 @@ async def mutate(method, item_id, raw, device, key):
         try:
             status, body = current_result(actor_key, operation_id)
             if status != 202:
+                if status == 200 and notification_changed:
+                    emit("promotions", body, "created" if method == "POST" else "updated")
                 return status, body
             if op:
                 repo.release(op)

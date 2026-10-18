@@ -100,8 +100,9 @@ class FakeRepository:
         if status == "invalid":
             self.active = False
 
-    def complete(self, event_id):
-        pass
+    def complete(self, event_id, *, retired=False):
+        if retired:
+            self.events.pop(event_id, None)
 
 
 @pytest.fixture
@@ -138,6 +139,9 @@ def test_all_categories_persist_defaults_and_only_expose_admin_category_to_admin
         assert result.status_code == 200
         assert result.headers["cache-control"] == "no-store"
         assert len(result.json()["categories"]) == 7
+        assert {"recordings", "sheets"}.isdisjoint(result.json()["categories"])
+        assert result.json()["categories"]["practice_instructions"] == "練習指示"
+        assert result.json()["categories"]["promotions"] == "宣伝"
         assert len(repo.settings[("default", 3)]) == 8
         assert (
             client.put(
@@ -284,6 +288,38 @@ def test_eight_kinds_deduplicate_and_keep_payloads_private(repo, kind):
     assert payload["target"] == NOTIFICATION_TYPES[kind][1]
 
 
+@pytest.mark.parametrize("kind", ["recordings", "sheets"])
+def test_retired_categories_never_enqueue_or_dispatch_even_old_pending_events(repo, monkeypatch, kind):
+    service.emit(kind, {"id": 1})
+    assert repo.events == {}
+    assert not service.eligible(recipient(), kind)
+    repo.enqueue("old-event", "default", kind, {"title": "Old"})
+    repo.deliveries[("old-event", "subscription")] = "retry"
+    monkeypatch.setattr(repo, "recipients", lambda *args: pytest.fail("Retired event queried recipients"))
+    monkeypatch.setattr(service, "send_push", lambda *args: pytest.fail("Retired event was sent"))
+    service.dispatch_pending("default")
+    assert repo.events == {}
+
+
+def test_old_preferences_preserve_other_choices_and_new_categories_can_be_saved(repo):
+    repo.settings[("default", 3)] = {"recordings": True, "sheets": False, "schedules": False}
+    app = FastAPI()
+    app.include_router(notifications.router)
+    app.dependency_overrides[get_device_auth] = lambda: {"device_id": "device", "member_id": 3}
+    with TestClient(app) as client:
+        result = client.get("/api/notifications/settings").json()["preferences"]
+        assert result["schedules"] is False
+        assert result["practice_instructions"] is True and result["promotions"] is True
+        assert {"recordings", "sheets", "improvements"}.isdisjoint(result)
+        response = client.put("/api/notifications/settings", json={"preferences": {
+            "recordings": True, "sheets": True, "practice_instructions": False, "promotions": False
+        }})
+        assert response.status_code == 200
+        assert {"recordings", "sheets", "improvements"}.isdisjoint(response.json()["preferences"])
+        saved = client.get("/api/notifications/settings").json()["preferences"]
+        assert not saved["practice_instructions"] and not saved["promotions"] and not saved["schedules"]
+
+
 @pytest.mark.parametrize("kind", list(NOTIFICATION_TYPES))
 def test_server_filters_off_users_and_multidevice_delivery(repo, monkeypatch, kind):
     repo.targets = [
@@ -384,7 +420,8 @@ def test_business_save_failure_and_unchanged_schedule_do_not_notify(monkeypatch)
     assert len(calls) == 2
 
 
-def test_piece_info_noop_and_failed_save_do_not_notify(monkeypatch):
+@pytest.mark.parametrize("collection,field", [("piece_infos", "description"), ("practice_instructions", "practice_notes")])
+def test_piece_info_noop_and_failed_save_do_not_notify(monkeypatch, collection, field):
     from src.backend.services import extra_service
 
     items = []
@@ -396,14 +433,14 @@ def test_piece_info_noop_and_failed_save_do_not_notify(monkeypatch):
         lambda name, data: items.__setitem__(slice(None), deepcopy(data)),
     )
     monkeypatch.setattr(extra_service, "emit", lambda *args: calls.append(args))
-    device = {"permission": "一般", "member_id": 2}
+    device = {"permission": "管理者", "member_id": 2}
     created = asyncio.run(
-        extra_service.create_item("piece_infos", {"piece": "Symphony", "description": "one"}, device)
+        extra_service.create_item(collection, {"piece": "Symphony", field: "one"}, device)
     )
-    asyncio.run(extra_service.update_item("piece_infos", created["id"], created, device))
+    asyncio.run(extra_service.update_item(collection, created["id"], created, device))
     assert len(calls) == 1
     asyncio.run(
-        extra_service.update_item("piece_infos", created["id"], {**created, "description": "two"}, device)
+        extra_service.update_item(collection, created["id"], {**created, field: "two"}, device)
     )
     assert len(calls) == 2
 
@@ -412,7 +449,7 @@ def test_piece_info_noop_and_failed_save_do_not_notify(monkeypatch):
 
     monkeypatch.setattr(extra_service, "save_json_data", failed_write)
     with pytest.raises(RuntimeError):
-        asyncio.run(extra_service.create_item("piece_infos", {"piece": "Other"}, device))
+        asyncio.run(extra_service.create_item(collection, {"piece": "Other"}, device))
     assert len(calls) == 2
 
 
@@ -470,14 +507,14 @@ def test_creation_hooks_run_after_success_not_after_failure(monkeypatch, module_
     assert len(calls) == 1
 
 
-def test_recording_completion_notifies_once_after_metadata_save(monkeypatch):
+def test_recording_completion_does_not_notify_after_metadata_save(monkeypatch):
     from src.backend.services import recording_upload_service as module
 
     timeline = []
     item = {"id": "object", "size": 100, "date": "2026-10-18", "modified_at": "generation-one"}
     monkeypatch.setattr(module, "storage_enabled", lambda: True)
     monkeypatch.setattr(module, "recording_item_from_blob", lambda *args, **kwargs: deepcopy(item))
-    monkeypatch.setattr(module, "emit", lambda *args: timeline.append("emit"))
+    monkeypatch.setattr(service, "emit", lambda *args: timeline.append("emit"))
 
     def call(save):
         return module.complete_recording_upload(
@@ -493,17 +530,17 @@ def test_recording_completion_notifies_once_after_metadata_save(monkeypatch):
         )
 
     call(lambda item: timeline.append("save"))
-    assert timeline == ["save", "emit"]
+    assert timeline == ["save"]
 
     def fail(item):
         raise RuntimeError("save failed")
 
     with pytest.raises(RuntimeError):
         call(fail)
-    assert timeline == ["save", "emit"]
+    assert timeline == ["save"]
 
 
-def test_sheet_upload_notifies_only_after_successful_save(monkeypatch, tmp_path):
+def test_sheet_upload_does_not_notify(monkeypatch, tmp_path):
     from io import BytesIO
     from fastapi import UploadFile
     from src.backend.services import sheet_service as module
@@ -518,7 +555,7 @@ def test_sheet_upload_notifies_only_after_successful_save(monkeypatch, tmp_path)
     module.upload_sheet_file(
         UploadFile(filename="score.pdf", file=BytesIO(b"%PDF-1.4 test")), "1", "Concert", "Symphony"
     )
-    assert timeline == ["save", "emit"]
+    assert timeline == ["save"]
 
     def fail(*args):
         raise RuntimeError("save failed")
@@ -531,7 +568,7 @@ def test_sheet_upload_notifies_only_after_successful_save(monkeypatch, tmp_path)
             "Concert",
             "Symphony",
         )
-    assert timeline == ["save", "emit"]
+    assert timeline == ["save"]
 
 
 def test_asgi_background_receives_post_save_events(repo, monkeypatch):

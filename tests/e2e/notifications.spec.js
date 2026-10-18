@@ -1,8 +1,8 @@
 const { test, expect } = require('@playwright/test');
 const { installPortalApiMocks } = require('./fixtures/mockApi');
 
-const categories = { notices: 'お知らせ', schedules: '練習予定', recordings: '録音部屋', piece_infos: '楽曲情報',
-  sheets: '楽譜ライブラリ', events: 'イベント調整', maintenance: 'メンテナンス情報', improvements: '改善要望受付' };
+const categories = { notices: 'お知らせ', schedules: '練習予定', practice_instructions: '練習指示', piece_infos: '楽曲情報',
+  promotions: '宣伝', events: 'イベント調整', maintenance: 'メンテナンス情報', improvements: '改善要望受付' };
 
 async function prepare(page, permission = '一般', options = {}) {
   await installPortalApiMocks(page, { permission });
@@ -51,15 +51,20 @@ test('notification preferences persist, default ON and never subscribe automatic
   await openSettings(page);
   await expect(page.locator('#notificationCategories input')).toHaveCount(7);
   await expect(page.locator('#notification-improvements')).toHaveCount(0);
+  await expect(page.locator('#notification-recordings, #notification-sheets')).toHaveCount(0);
   for (const key of Object.keys(categories).filter((key) => key !== 'improvements')) {
     await expect(page.locator(`#notification-${key}`)).toBeChecked();
   }
   await page.locator('#notification-schedules').uncheck();
+  await page.locator('#notification-practice_instructions').uncheck();
+  await page.locator('#notification-promotions').uncheck();
   await page.click('#notificationSaveBtn');
   await expect(page.locator('#notificationStatus')).toHaveText('通知の種類を保存しました。');
   await page.click('#notificationBackBtn');
   await openSettings(page);
   await expect(page.locator('#notification-schedules')).not.toBeChecked();
+  await expect(page.locator('#notification-practice_instructions')).not.toBeChecked();
+  await expect(page.locator('#notification-promotions')).not.toBeChecked();
   expect(controls.subscriptions()).toBe(0);
 });
 

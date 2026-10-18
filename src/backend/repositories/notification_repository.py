@@ -48,7 +48,8 @@ class NotificationRepository:
                 "SELECT preferences FROM notification_preferences WHERE organization_id=%s AND member_id=%s",
                 (organization_id, member_id),
             )
-            result = {**DEFAULT_PREFERENCES, **cur.fetchone()[0]}
+            stored = cur.fetchone()[0]
+            result = {key: stored.get(key, default) for key, default in DEFAULT_PREFERENCES.items()}
             conn.commit()
         return cast(dict[str, bool], result)
 
@@ -70,7 +71,7 @@ class NotificationRepository:
             )
             result = cur.fetchone()[0]
             conn.commit()
-        return cast(dict[str, bool], result)
+        return {key: result.get(key, default) for key, default in DEFAULT_PREFERENCES.items()}
 
     def subscribe(
         self, org: str, member_id: int, device_id: str, subscription: dict[str, Any]
@@ -207,11 +208,11 @@ class NotificationRepository:
                 )
             conn.commit()
 
-    def complete(self, event_id: str) -> None:
+    def complete(self, event_id: str, *, retired: bool = False) -> None:
         with self._connection() as conn, conn.cursor() as cur:
             cur.execute(
-                """UPDATE notification_events SET completed=TRUE WHERE id=%s AND NOT EXISTS
-                (SELECT 1 FROM notification_deliveries WHERE event_id=%s AND status='retry' AND attempts<3)""",
-                (event_id, event_id),
+                """UPDATE notification_events SET completed=TRUE WHERE id=%s AND (%s OR NOT EXISTS
+                (SELECT 1 FROM notification_deliveries WHERE event_id=%s AND status='retry' AND attempts<3))""",
+                (event_id, retired, event_id),
             )
             conn.commit()

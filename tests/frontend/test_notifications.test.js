@@ -21,6 +21,16 @@ function settingsContext({ target = '', permission = '一般', verified = true, 
 }
 
 describe('notification target routing', () => {
+    it.each(['member-practice-instruction', 'member-promotion'])('opens the new notification target %s', async (target) => {
+        const ctx = settingsContext({ target });
+        await ctx.window.PortalNotifications.restoreTarget();
+        expect(ctx.showMemberTab).toHaveBeenCalledWith(target);
+    });
+    it.each(['member-recording', 'member-sheet'])('keeps already delivered notification links usable for %s', async (target) => {
+        const ctx = settingsContext({ target });
+        await ctx.window.PortalNotifications.restoreTarget();
+        expect(ctx.showMemberTab).toHaveBeenCalledWith(target);
+    });
     it('preserves the target until authentication completes', async () => {
         const ctx = settingsContext({ target: 'member-schedule', verified: false });
         await ctx.window.PortalNotifications.restoreTarget();

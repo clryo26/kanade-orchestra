@@ -105,7 +105,7 @@ def data_changed(before: dict[str, Any], after: dict[str, Any], collection: str 
 
 
 def emit(kind: str, item: dict[str, Any], operation: str = "created") -> None:
-    if not configured():
+    if kind not in NOTIFICATION_TYPES or not configured():
         return
     try:
         org = get_current_tenant_id()
@@ -142,6 +142,8 @@ def emit(kind: str, item: dict[str, Any], operation: str = "created") -> None:
 
 
 def eligible(recipient: dict[str, Any], kind: str) -> bool:
+    if kind not in NOTIFICATION_TYPES:
+        return False
     permission = str(recipient.get("permission") or "一般")
     if recipient.get("enabled") not in (True, "true") or member_access_expired(recipient):
         return False
@@ -190,6 +192,11 @@ def _dispatch_locked(org: str) -> None:
     budget = 500
     deadline = monotonic() + 180
     for event in _repo.pending(org):
+        # Removed categories may still have queued/retry events from the old
+        # release. Retire them before looking up subscribers or sending pushes.
+        if event["kind"] not in NOTIFICATION_TYPES:
+            _repo.complete(event["id"], retired=True)
+            continue
         for recipient in _repo.recipients(org, event):
             if budget <= 0 or monotonic() >= deadline:
                 return  # Leave remaining deliveries pending for the next scan.
