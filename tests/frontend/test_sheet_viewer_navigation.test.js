@@ -219,9 +219,13 @@ function makeViewerSandbox() {
         saveOrgMembershipFee: vi.fn(),
         savePerformanceFee: vi.fn(),
         previewPromotionImage: vi.fn(),
+        openSheetSave: vi.fn(),
     };
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
+    // The library actions (showSheetViewer, openSheetFileSave) live in
+    // scores/events.js; scores.js is loaded last and must not replace them.
+    vm.runInContext(readSource('src/static/js/modules/scores/events.js'), sandbox);
     vm.runInContext(readSource('src/static/js/modules/scores.js'), sandbox);
     vm.runInContext(readSource('src/static/js/modules/date_piece_promotion/events.js'), sandbox);
     vm.runInContext(readSource('src/static/js/modules/navigation/events.js'), sandbox);
@@ -251,7 +255,8 @@ describe('sheet viewer navigation regression', () => {
 
         await sandbox.showDesiredPieceReferenceScore(9);
         expect(elements.get('sheetViewerBackBtn').hidden).toBe(true);
-        expect(elements.get('sheetViewerDownload').href).toBe('/api/extra/desired_pieces/9/reference_score');
+        // DL saves what is shown (common save dialog), never a navigation.
+        expect(sandbox.appState.sheetViewerContext).toEqual({ kind: 'url', url: '/api/extra/desired_pieces/9/reference_score', name: 'Score Piece.pdf' });
         expect(sandbox.switchTab).toHaveBeenCalledWith('memberPanel', 'member-sheet-viewer', false);
         expect(sandbox.renderPdfViewer).toHaveBeenCalledWith('/api/extra/desired_pieces/9/reference_score');
 
@@ -260,19 +265,10 @@ describe('sheet viewer navigation regression', () => {
 
         sandbox.showSheetViewer(1);
         expect(elements.get('sheetViewerBackBtn').hidden).toBe(false);
-        expect(elements.get('sheetViewerDownload').href).toBe('/api/sheets/1/download');
+        expect(sandbox.appState.sheetViewerContext).toEqual({ kind: 'sheet', sheetId: 1 });
         expect(sandbox.switchTab).toHaveBeenCalledWith('memberPanel', 'member-sheet-viewer', false);
         expect(sandbox.renderPdfViewer).toHaveBeenCalledWith('/api/sheets/1/view');
-
-        sandbox.appState.sheetPdfUrl = '/api/sheets/1/view';
-        sandbox.appState.sheetPdfScale = 1;
-        sandbox.renderPdfViewer.mockClear();
-        await sandbox.zoomSheetViewer(-0.15);
-        expect(sandbox.renderPdfViewer).toHaveBeenCalledWith('/api/sheets/1/view', 0.85);
-
-        sandbox.renderPdfViewer.mockClear();
-        await sandbox.fitSheetViewerWidth();
-        expect(sandbox.renderPdfViewer).toHaveBeenCalledWith('/api/sheets/1/view', null);
+        // Zoom and fit are covered with the real viewer in test_sheet_pdf_viewer.test.js.
     });
 
     test('sheet viewer buttons return to the correct member screen', () => {
@@ -289,6 +285,26 @@ describe('sheet viewer navigation regression', () => {
         elements.get('sheetViewerMenuBtn').click();
         expect(sandbox.clearSheetViewer).toHaveBeenCalled();
         expect(sandbox.showMemberTab).toHaveBeenCalledWith('member-desired-piece');
+
+        // Opened from the management list: back returns there.
+        sandbox.switchTab.mockClear();
+        sandbox.showMemberTab.mockClear();
+        sandbox.showSheetViewer(1, { panel: 'adminPanel', tab: 'sheet-admin' });
+        elements.get('sheetViewerBackBtn').click();
+        expect(sandbox.switchTab).toHaveBeenCalledWith('adminPanel', 'sheet-admin');
+        expect(sandbox.showMemberTab).not.toHaveBeenCalled();
+    });
+
+    test('viewer DL opens the common save dialog for the shown sheet or reference score', () => {
+        const { sandbox, elements } = makeViewerSandbox();
+        sandbox.bindNavigation();
+        sandbox.showSheetViewer(1);
+        elements.get('sheetViewerDownload').click();
+        expect(sandbox.openSheetSave).toHaveBeenCalledTimes(1);
+        expect(sandbox.openSheetSave.mock.calls[0][0]).toMatchObject({ kind: 'file', sheet: { id: 1 } });
+        sandbox.showDesiredPieceReferenceScore(9);
+        elements.get('sheetViewerDownload').click();
+        expect(sandbox.openSheetSave.mock.calls[1][0]).toEqual({ kind: 'url', url: '/api/extra/desired_pieces/9/reference_score', name: 'Score Piece.pdf' });
     });
 
     test('viewer button labels keep the requested text', () => {

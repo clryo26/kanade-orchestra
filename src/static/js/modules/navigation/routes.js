@@ -199,17 +199,31 @@ function ensureAlbumsLoaded() {
 }
 
 var memberFeatureLoadPromises = {};
+// Lazy assets must use the same deployment revision as this entry script.
+// Fixed v= URLs alone can otherwise mix an old form with a new API after release.
+var memberFeatureRevision = (typeof document !== 'undefined' && document.currentScript?.src || '').match(/[?&]rev=([^&]+)/)?.[1] || '';
 var memberFeatureScripts = {
     absence: ['/static/js/modules/absences.js?v=20260630-6'],
     recording: ['/static/js/modules/recordings.js?v=20260731-1'],
+    // The sheet library loads its own viewer (no other screen has to be
+    // opened first). scores.js stays last and defines nothing.
     sheet: [
         '/static/js/modules/practice_casting/helpers.js?v=20260701-1',
-        '/static/js/modules/scores/helpers.js?v=20260701-1',
-        '/static/js/modules/scores/render.js?v=20260701-1',
-        '/static/js/modules/scores/events.js?v=20260701-1',
-        '/static/js/modules/scores.js?v=20260701-1',
+        '/static/js/modules/scores/sheet_api.js?v=20261018-1',
+        '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
+        '/static/js/modules/scores/helpers.js?v=20261018-1',
+        '/static/js/modules/scores/render.js?v=20261018-1',
+        '/static/js/modules/scores/sync.js?v=20261018-1',
+        '/static/js/modules/scores/save_dialog.js?v=20261018-1',
+        '/static/js/modules/scores/upload_batch.js?v=20261018-1',
+        '/static/js/modules/scores/events.js?v=20261018-1',
+        '/static/js/modules/scores.js?v=20261018-1',
     ],
+    // Reference scores use the same viewer and save dialog.
     datePiecePromotion: [
+        '/static/js/modules/scores/sheet_api.js?v=20261018-1',
+        '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
+        '/static/js/modules/scores/save_dialog.js?v=20261018-1',
         '/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1',
         '/static/js/modules/date_piece_promotion/validation.js?v=20260701-3',
         '/static/js/modules/date_piece_promotion/events.js?v=20260701-3',
@@ -245,7 +259,7 @@ function ensureMemberFeatureLoaded(featureName) {
                 return;
             }
             const script = document.createElement('script');
-            script.src = scriptPath;
+            script.src = scriptPath + (memberFeatureRevision ? `&rev=${memberFeatureRevision}` : '');
             script.async = true;
             script.addEventListener('load', resolve, { once: true });
             script.addEventListener('error', () => reject(new Error(`Failed to load ${scriptPath}`)), { once: true });
@@ -668,6 +682,9 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     });
 
     const targetId = `${toPascalTab(tabName)}Tab`;
+    // Leaving the PDF viewer by any route releases the document, its worker
+    // and the canvases (the back buttons did it, the menu did not).
+    if (tabName !== 'member-sheet-viewer' && typeof clearSheetViewer === 'function' && appState.sheetPdfUrl) clearSheetViewer();
     if (tabName === 'notification-settings') {
         try {
             await ensureNotificationsLoaded();

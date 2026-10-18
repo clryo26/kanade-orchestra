@@ -47,7 +47,7 @@ test.describe('Practice attendance', () => {
     await expect(attendanceOverview).toHaveCount(1);
     await expect(scheduleCard).toContainText('2099/08/20');
     await expect(attendanceOverview).not.toContainText('2099/08/20');
-    await expect(scheduleCard).not.toContainText('13:00 - 16:30');
+    await expect(scheduleCard).toContainText('練習時間: 13:00 - 16:30');
     await expect(scheduleCard).toContainText('練習場所: 練習場');
     await expect(scheduleCard.getByRole('tab', { name: '出席 3名' })).toBeVisible();
     await scheduleCard.getByRole('tab', { name: '欠席 1名' }).click();

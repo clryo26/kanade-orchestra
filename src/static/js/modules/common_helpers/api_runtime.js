@@ -123,6 +123,9 @@ function apiTargetLabel(url) {
 function clearPortalAuthState() {
     // Authentication ended: the tuner must not keep the microphone open.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('auth-cleared');
+    // The sheet library must not apply a response of the previous account.
+    if (typeof window.resetSheetLibrarySync === 'function') window.resetSheetLibrarySync('auth-cleared');
+    if (typeof window.closeSheetSave === 'function') window.closeSheetSave();
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     appState.portalAuthVerified = false;
     appState.lastPortalSessionVerifiedAt = 0;

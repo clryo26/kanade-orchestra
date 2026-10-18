@@ -203,6 +203,9 @@ describe('desired piece reference asset frontend regression', () => {
         expect(sandbox.switchTab).toHaveBeenCalledWith('memberPanel', 'member-sheet-viewer', false);
         expect(sandbox.renderPdfViewer).toHaveBeenCalledWith('/api/extra/desired_pieces/9/reference_score');
         expect(sandbox.$('sheetViewerTitle').textContent).toBe('Score Piece');
-        expect(sandbox.$('sheetViewerDownload').href).toBe('/api/extra/desired_pieces/9/reference_score');
+        // DL in the viewer saves this file through the common save dialog.
+        expect(sandbox.window.portalRuntimeContext.appState.sheetViewerContext).toEqual({
+            kind: 'url', url: '/api/extra/desired_pieces/9/reference_score', name: 'Score Piece.pdf',
+        });
     });
 });

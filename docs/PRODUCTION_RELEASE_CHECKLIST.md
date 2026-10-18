@@ -29,6 +29,10 @@
 - [ ] マイグレーション適用状態を確認した
 - [ ] チューナーの履歴を公開する版では、`017_tuner_practice.sql` が `schema_migrations` に記録され、`members` のトリガー `trg_tuner_members_owner_guard_delete`／`_insert` があることを確認した（手順と戻し方は `docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md` の8章）
 - [ ] メトロノームの記録を使う版では、`019_metronome_practice.sql` が `schema_migrations` に記録され、`tuner_owners` のトリガー `trg_metronome_owner_revoked` があることを確認した（手順と戻し方は `docs/METRONOME_IMPLEMENTATION_STATUS.md` の8章）
+- [ ] 楽譜ライブラリの信頼性対応の版では、`020_sheet_library_reliability.sql` と `021_sheet_zip_progress.sql` が `schema_migrations` に記録され、既存の楽譜件数と `sheet_files`（`legacy`）の件数が一致し、表示・DL・ZIPのURLが変わっていないことを確認した（`docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md` の10章）
+- [ ] 楽譜の保存機能は、`docs/MANUAL_DEVICE_QA_CHECKLIST.md` の7-13を対象iPhone（ホーム画面のポータルとSafari）で完了するまで公開可能と判定しない
+- [ ] `scripts/cleanup_sheet_storage.py` を確認実行（`--execute` なし）し、削除候補が想定どおりであることを確認した
+- [ ] 楽譜のリリースでは `docs/SHEET_LIBRARY_RELEASE_READINESS.md` の残確認を完了した。ZIPの処理予算15秒は要求全体20秒の保証ではなく、実GCSで処理時間・キャンセル・復帰を確認した
 - [ ] テーブル件数/主要データをスポット確認した
 - [ ] バックアップ取得時刻を確認した
 - [ ] 復元手順を確認した

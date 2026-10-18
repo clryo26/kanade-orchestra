@@ -750,12 +750,14 @@ def test_sheet_bulk_update_permission(client, seed_device_fn):
     )
     assert denied.status_code == 403
 
+    # The permission passes; the old body (IDs without the revisions the user
+    # saw) is refused so a stale screen cannot overwrite newer changes.
     allowed = client.put(
         "/api/sheets/parts",
         headers={"X-Device-Id": "dev-sheet"},
         json={"sheet_ids": [], "part": "Vn"},
     )
-    assert allowed.status_code == 400
+    assert allowed.status_code == 428
 
 def test_general_member_can_update_only_own_profile(
     client,

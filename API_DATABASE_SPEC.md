@@ -94,6 +94,11 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - PUT /api/sheets/{sheet_id}/part
 - PUT /api/sheets/parts
 - DELETE /api/sheets
+- GET /api/sheets/version（一覧更新番号。約5秒ごとの確認用）
+- GET /api/sheets/operations/{operation_id}（操作IDの処理状況）
+- POST /api/sheets/tickets、GET /api/sheets/tickets/{ticket}（短期の保存用URL）
+- POST /api/sheets/zip-jobs、GET /api/sheets/zip-jobs/{job_id}、POST /api/sheets/zip-jobs/{job_id}/step、POST /api/sheets/zip-jobs/{job_id}/cancel、GET /api/sheets/zip-jobs/{job_id}/download（段階作成のZIP）
+- 楽譜の登録・パート変更・削除は `Idempotency-Key`（操作ID）と保存版（`expected_revision`）を使う行単位の操作。詳細は docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md
 
 ### 3.7 汎用 extra
 

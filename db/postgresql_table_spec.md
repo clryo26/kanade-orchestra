@@ -707,6 +707,8 @@
 - INDEX:
   - idx_sheet_library_performance_id (performance_id)
   - idx_sheet_library_object_name (object_name)
+  - sheet_library_file_id (file_id, UNIQUE、020)
+  - sheet_library_org_list (organization_id, performance_id, piece, id、020)
 - 列レイアウト:
   - id BIGINT IDENTITY PK （必須）
   - performance_id BIGINT （任意）
@@ -724,6 +726,44 @@
   - mime_type TEXT DEFAULT '' （任意）
   - created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
   - updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() （必須）
+
+- 020で追加した列（`db/migrations/020_sheet_library_reliability.sql`、docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md）:
+  - revision BIGINT NOT NULL DEFAULT 1 CHECK (revision > 0) （保存版。変更・削除の競合検出）
+  - file_id UUID UNIQUE （ファイルの固有ID。既存行はmigrationで付与）
+  - storage_generation BIGINT （GCSの保存版。既存行は不明（NULL））
+  - sha256 TEXT （新しい登録の内容のハッシュ）
+- IDはDBの連番（migrationで既定値と開始値を保証）。アプリは採番しない。
+
+### 2.32-1 sheet_library_state（020）
+- 用途: 組織ごとの楽譜一覧の更新番号（楽譜行の変更と同じトランザクションで加算）
+- PK: organization_id
+- 列: organization_id TEXT, list_version BIGINT NOT NULL, updated_at TIMESTAMPTZ
+
+### 2.32-2 sheet_operations（020）
+- 用途: 楽譜の登録・パート変更・一括変更・削除の操作ID（再送は同じ結果、別内容は競合）
+- PK: (organization_id, actor_key, operation_id)
+- 列: kind（upload / part / bulk_part / delete）, request_hash, state（processing / succeeded / rejected）, attempt_id, lease_until, result_status, result_body JSONB, created_at, updated_at
+- 保持: 終了から30日（清掃で削除）
+
+### 2.32-3 sheet_files（020）
+- 用途: 楽譜ファイルの実体とその状態（staged / active / retired / delete_pending / deleted）。清掃の対象と再試行の情報
+- PK: file_id
+- 主な列: organization_id, sheet_id, source, object_name, byte_size, sha256, storage_generation, legacy, retired_at, next_attempt_at, retry_count, last_error_code
+- 既存の楽譜行ごとに `legacy` の記録をmigrationで作成（同じ実体を複数行が共有している場合があるため、削除は参照確認の後）
+
+### 2.32-4 sheet_file_leases（020）
+- 用途: 使用中（ZIP作成中）のファイルの保護。期限付きで、作成中は延長する
+- PK: lease_id、UNIQUE (file_id, holder)、FK: file_id -> sheet_files.file_id
+
+### 2.32-5 sheet_zip_jobs（020）
+- 用途: 一括DLのZIP作成（対象を固定した内容、段階作成の部品、状態、保持期限）
+- PK: job_id
+- 021で追加: progress（JSONB、既定値 `{}`）。ファイル途中の読取位置・CRC・ZIP開始位置・保存版・サイズを記録し、次の段階で再開する。
+- 状態: building / ready / incomplete / failed / cancelled / expired。完成したZIPは24時間保持
+
+### 2.32-6 sheet_download_tickets（020）
+- 用途: ヘッダーを送れない保存経路の短期URL（10分）。チケットのSHA-256だけを保存
+- PK: ticket_hash
 
 ### 2.33 concert_record_videos
 - 用途: 演奏会記録の YouTube 動画

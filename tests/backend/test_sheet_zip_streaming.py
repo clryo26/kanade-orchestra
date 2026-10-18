@@ -84,11 +84,7 @@ def test_download_sheets_zip_returns_streaming_response(monkeypatch):
         "part": "Cl",
     }
 
-    monkeypatch.setattr(
-        sheet_service,
-        "load_json_data",
-        lambda name: [item] if name == "sheet_library" else [],
-    )
+    monkeypatch.setattr(sheet_service, "get_sheets_payload", lambda: {"files": [item], "list_version": 1})
     monkeypatch.setattr(sheet_service, "_sheet_exists", lambda _: True)
 
     response = sheet_service.download_sheets_zip(
@@ -99,5 +95,21 @@ def test_download_sheets_zip_returns_streaming_response(monkeypatch):
 
     assert response.media_type == "application/zip"
     assert response.headers["content-disposition"].startswith("attachment;")
-    assert response.headers["cache-control"] == "private, max-age=60"
+    assert response.headers["cache-control"] == "private, no-store"
     assert response.__class__.__name__ == "StreamingResponse"
+
+
+def test_legacy_zip_refuses_when_a_file_is_missing(monkeypatch):
+    # A ZIP that silently leaves out an unreadable file looks complete; the
+    # old route refuses instead (the new screen offers a partial ZIP only on
+    # the user's explicit choice).
+    import pytest
+    from fastapi import HTTPException
+
+    present = {"source": "local", "path": "sheets/a.pdf", "name": "a.pdf", "performance_id": "1", "piece": "Sym", "part": ""}
+    missing = {**present, "path": "sheets/b.pdf", "name": "b.pdf"}
+    monkeypatch.setattr(sheet_service, "get_sheets_payload", lambda: {"files": [present, missing], "list_version": 1})
+    monkeypatch.setattr(sheet_service, "_sheet_exists", lambda item: item is present)
+    with pytest.raises(HTTPException) as caught:
+        sheet_service.download_sheets_zip(performance_id="1")
+    assert caught.value.status_code == 409
