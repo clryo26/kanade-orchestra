@@ -30,6 +30,13 @@ htmlcov
 # Runtime-generated data and uploads
 src/data/*.json
 !src/data/.gitkeep
+# Runtime databases and SQLite journals must never enter an application image.
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/*.sqlite-*
+**/*.sqlite3-*
+**/*.db-*
 src/uploads/*
 !src/uploads/.gitkeep
 logs/*

@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import mimetypes
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
+# ES modules (vendored PDF.js) must be served as JavaScript. The slim Linux
+# image has no system MIME table, so the type is registered explicitly.
+mimetypes.add_type("text/javascript", ".mjs")
+
 
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: dict[str, Any]) -> Response:
         response = await super().get_response(path, scope)
-        if path.endswith((".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webmanifest", ".ico")):
+        if path.endswith((".js", ".mjs", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webmanifest", ".ico")):
                 query_string = scope.get("query_string", b"").decode("ascii", errors="ignore")
                 has_revision = any(part.startswith("rev=") for part in query_string.split("&"))
                 if has_revision:
@@ -18,7 +23,7 @@ class NoCacheStaticFiles(StaticFiles):
                     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
                 else:
                     # Dynamically injected assets may not have the index rewrite's rev query.
-                    response.headers["Cache-Control"] = "public, max-age=3600"
+                    response.headers["Cache-Control"] = "no-cache"
         else:
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"

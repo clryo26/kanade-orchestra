@@ -7,7 +7,10 @@ const files = [
     'auth_feature.js',
     'modules/admin_system/environment_management.js',
     'modules/navigation/helpers.js',
-    'modules/practice_casting.js',
+    // The PDF viewer moved out of practice_casting.js; the sheet library has
+    // its own helper that never falls back to cached copies.
+    'modules/scores/pdf_viewer.js',
+    'modules/scores/sheet_api.js',
     'modules/performance_day/events.js',
     'modules/improvement_suggestions.js',
 ];

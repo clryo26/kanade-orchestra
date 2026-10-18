@@ -52,6 +52,12 @@ def load_json_data(
     if name == "promotions" and local_json_fallback_enabled():
         from ..repositories import promotion_repository
         return promotion_repository.list_items()
+    if name == "sheet_library":
+        # Row-level store with a DB list version. Never the per-process cache:
+        # another Cloud Run instance's registration must be visible at once,
+        # and a cached copy must never be written back over newer rows.
+        from .sheet_library_service import list_payload
+        return cast(list[dict[str, Any]], list_payload()["files"])
     cached = cache.get(name)
     if cached is not None:
         return cast(list[dict[str, Any]], cached)
@@ -93,6 +99,15 @@ def save_json_data(
             cache.clear(name)
             return
         raise HTTPException(status_code=409, detail="Promotions require the row-level API")
+    if name == "sheet_library":
+        # Whole-list saves could delete sheets registered meanwhile elsewhere.
+        cache.clear(name)
+        if local_json_fallback_enabled():
+            # Local fixtures/imports only (same rule as promotions).
+            from ..repositories import sheet_repository
+            sheet_repository.seed_local(data)
+            return
+        raise HTTPException(status_code=409, detail="Sheets require the row-level API")
     if not local_json_fallback_enabled():
         ensure_db_expected_is_ready()
         if name in db_writable_collections:

@@ -108,8 +108,19 @@ function bindNavigation() {
     if ($('portalDrawerClose')) $('portalDrawerClose').addEventListener('click', closePortalDrawer);
     if ($('portalDrawerBackdrop')) $('portalDrawerBackdrop').addEventListener('click', closePortalDrawer);
     if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').addEventListener('click', () => {
+        // Opened from the management list: return there.
+        const returnTo = appState.sheetViewerReturn;
         clearSheetViewer();
-        showMemberTab('member-sheet');
+        appState.sheetViewerReturn = null;
+        if (returnTo?.panel && returnTo?.tab) switchTab(returnTo.panel, returnTo.tab);
+        else showMemberTab('member-sheet');
+    });
+    if ($('sheetViewerDownload')) $('sheetViewerDownload').addEventListener('click', (event) => {
+        const context = appState.sheetViewerContext;
+        if (!context || typeof openSheetSave !== 'function') return;
+        const opener = event?.currentTarget || $('sheetViewerDownload');
+        if (context.kind === 'sheet') openSheetFileSave(context.sheetId, opener);
+        else openSheetSave({ kind: 'url', url: context.url, name: context.name }, opener);
     });
     if ($('sheetViewerMenuBtn')) $('sheetViewerMenuBtn').addEventListener('click', () => {
         clearSheetViewer();

@@ -102,11 +102,19 @@ async def get_promotion_image(promotion_id: int, asset: str = "") -> Response:
     from ..repositories import promotion_repository
     from ..services import promotion_image_service
     try:
-        asset_id = str(UUID(asset))
-    except ValueError as exc:
-        raise HTTPException(404, detail="Image not found") from exc
-    try:
-        return promotion_image_service.response(promotion_repository.get_item(promotion_id), asset_id)
+        item = promotion_repository.get_item(promotion_id)
+        # Read existing pre-migration images without weakening v2 asset validation.
+        # Do not migrate/delete user files as a side effect of an image GET.
+        if not asset and item and not item.get("image_asset_id"):
+            return serve_stored_image(
+                str(item.get("image_url") or ""),
+                object_prefix=f"promotion-images/{promotion_id}/image",
+            )
+        try:
+            asset_id = str(UUID(asset))
+        except ValueError as exc:
+            raise HTTPException(404, detail="Image not found") from exc
+        return promotion_image_service.response(item, asset_id)
     except HTTPException:
         raise
     except Exception as exc:

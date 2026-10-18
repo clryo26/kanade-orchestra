@@ -139,7 +139,7 @@ async def bootstrap_payload(
     load_json_data: Callable[[str], list[dict[str, Any]]],
     public_member_payload: Callable[[dict[str, Any]], dict[str, Any]],
     recording_payload: Callable[[], dict[str, list[dict[str, Any]]]],
-    sheet_payload: Callable[[], list[dict[str, Any]]],
+    sheet_payload: Callable[[], Any],
     list_auth_devices: Callable[[], Awaitable[list[dict[str, Any]]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
@@ -165,7 +165,11 @@ async def bootstrap_payload(
         "desired_pieces",
         "promotions",
     )
-    extras = {name: load_json_data(name) for name in extra_names}
+    sheets = sheet_payload()
+    if not isinstance(sheets, dict):
+        sheets = {"files": sheets}
+    # The library list and the extras copy come from the same snapshot.
+    extras = {name: (sheets["files"] if name == "sheet_library" else load_json_data(name)) for name in extra_names}
     extras["org_settings"] = _public_org_settings(extras["org_settings"])
     return {
         "performances": _public_performances(load_json_data("performances")),
@@ -174,7 +178,7 @@ async def bootstrap_payload(
         "events": load_json_data("events"),
         "members": [public_member_payload(member) for member in load_json_data("members")],
         "recordings": recording_payload(),
-        "sheets": {"files": sheet_payload()},
+        "sheets": sheets,
         "extras": {**extras, "promotions": _public_promotions(extras["promotions"])},
         "auth_devices": await list_auth_devices(),
         "cloudRunRevision": cloud_run_revision(),

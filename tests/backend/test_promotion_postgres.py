@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -9,6 +10,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from starlette.datastructures import Headers, UploadFile
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
@@ -79,3 +81,26 @@ def test_concurrent_revision_and_expired_attempt(promotion_pg):
     with pytest.raises(repo.LostAttempt):
         repo.release(op)
     assert service.current_result("actor", key)[0] == 200
+
+
+def test_member_multipart_image_create_and_replay(promotion_pg, monkeypatch):
+    # Existing PG tests used only the hidden administrator and no images.
+    # Exercise member incarnation lookup and the image transaction on PostgreSQL.
+    with repo.transaction() as cur:
+        cur.execute("CREATE TABLE members (id BIGINT, organization_id TEXT, created_at TIMESTAMPTZ)")
+        cur.execute("INSERT INTO members VALUES (1, 'default', clock_timestamp())")
+    monkeypatch.setattr(service.images, "upload", lambda *args: 1)
+    member = {"permission": "一般", "member_id": 1, "member_name": "Test"}
+    key = str(uuid4())
+
+    def create():
+        file = UploadFile(io.BytesIO(b"\x89PNG\r\n\x1a\nimage"), filename="test.png",
+                          headers=Headers({"content-type": "image/png"}))
+        return asyncio.run(service.mutate("POST", None, {"title": "Image", "image_action": "replace",
+                                                        "image_url_file": file}, member, key))
+
+    status, body = create()
+    assert status == 200, body
+    assert "?asset=" in body["image_url"]
+    assert create() == (status, body)
+    assert len(repo.list_items()) == 1

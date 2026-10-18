@@ -7,12 +7,7 @@ function canManageSheets() {
     return canAccessAdmin() || appState.currentUserIsSheetManager;
 }
 
-function sheetViewerFitScale(page) {
-    const body = $('sheetViewerPages');
-    const viewport = page.getViewport({ scale: 1 });
-    const availableWidth = Math.max((body?.clientWidth || window.innerWidth) - 24, 280);
-    return Math.max(0.35, Math.min(2.5, availableWidth / viewport.width));
-}
+// sheetViewerFitScale lives in scores/pdf_viewer.js (the only viewer).
 
 function sheetPieceOptions(performance) {
     return normalizePerformancePieces(performance?.pieces || []).map(performancePieceLabel).filter(Boolean);

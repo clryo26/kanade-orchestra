@@ -119,7 +119,9 @@ async def mutate(method, item_id, raw, device, key):
     try:
         operation_id = str(UUID(str(key)))
     except (ValueError, TypeError, AttributeError) as exc:
-        raise HTTPException(422, detail="Idempotency-Key is required") from exc
+        # Older request helpers display detail as a string. Keep this guidance
+        # readable even before that client has reloaded the current JavaScript.
+        raise HTTPException(422, detail="画面を再読み込みしてから、もう一度操作してください") from exc
     actor_key = actor(device)
     payload = parse_extra_upsert_request(raw).payload
     if "image_url" in payload:
@@ -194,7 +196,10 @@ async def mutate(method, item_id, raw, device, key):
                     body = {"message": "Deleted"}
                 else:
                     chosen = asset_id if action == "replace" else old_asset if action == "keep" else None
-                    url = f"/api/extra/promotions/{item_id}/image?asset={chosen}" if chosen else ""
+                    # Existing images predate asset IDs. Keeping the image must
+                    # preserve that reference until the owner replaces/removes it.
+                    url = (f"/api/extra/promotions/{item_id}/image?asset={chosen}" if chosen
+                           else str((current or {}).get("image_url") or "") if action == "keep" else "")
                     if method == "POST":
                         cur.execute("INSERT INTO promotions (organization_id,title,summary,image_url,member_id,registered_by,"
                                     "created_at,updated_at,revision,image_asset_id) VALUES (%s,%s,%s,'',%s,%s,%s,%s,1,%s) RETURNING id",

@@ -19,7 +19,6 @@ from ..services import bootstrap_service, meta_service
 from ..services import menu_settings_service
 from ..repositories.db_json_repository import load_collection_etag
 from ..services.recording_asset_service import recording_payload
-from ..services.sheet_asset_service import sheet_payload
 from .notices import router as notices_router
 
 router = APIRouter()
@@ -34,8 +33,10 @@ def _recording_payload() -> dict[str, list[dict[str, object]]]:
     return recording_payload(load_json_data=load_json_data, format_duration=format_duration)
 
 
-def _sheet_payload() -> list[dict[str, object]]:
-    return sheet_payload(load_json_data("sheet_library"))
+def _sheet_payload() -> dict[str, object]:
+    # One DB snapshot with its list version (the client compares versions).
+    from ..services.sheet_library_service import list_payload
+    return list_payload()
 
 
 def _collection_etag(name: str) -> str:

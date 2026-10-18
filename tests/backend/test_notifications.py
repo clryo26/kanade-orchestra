@@ -540,35 +540,33 @@ def test_recording_completion_does_not_notify_after_metadata_save(monkeypatch):
     assert timeline == ["save"]
 
 
-def test_sheet_upload_does_not_notify(monkeypatch, tmp_path):
-    from io import BytesIO
-    from fastapi import UploadFile
-    from src.backend.services import sheet_service as module
+def test_sheet_operations_do_not_notify(backend_env, monkeypatch):
+    # Sheet registration, part changes and deletion never create member push
+    # events (the sheet library is synchronized by its list version instead).
+    from uuid import uuid4
+    from fastapi.testclient import TestClient
+    from src.backend.services import notification_service
 
     timeline = []
-    monkeypatch.setattr(module, "storage_enabled", lambda: False)
-    monkeypatch.setattr(module, "UPLOAD_DIR", tmp_path)
-    monkeypatch.setattr(module, "SHEET_DIR", tmp_path / "sheets")
-    monkeypatch.setattr(module, "load_json_data", lambda name: [])
-    monkeypatch.setattr(module, "save_json_data", lambda *args: timeline.append("save"))
-    monkeypatch.setattr(service, "emit", lambda *args: timeline.append("emit"))
-    module.upload_sheet_file(
-        UploadFile(filename="score.pdf", file=BytesIO(b"%PDF-1.4 test")), "1", "Concert", "Symphony"
-    )
-    assert timeline == ["save"]
-
-    def fail(*args):
-        raise RuntimeError("save failed")
-
-    monkeypatch.setattr(module, "save_json_data", fail)
-    with pytest.raises(RuntimeError):
-        module.upload_sheet_file(
-            UploadFile(filename="other.pdf", file=BytesIO(b"%PDF-1.4 test")),
-            "1",
-            "Concert",
-            "Symphony",
-        )
-    assert timeline == ["save"]
+    monkeypatch.setattr(notification_service, "emit", lambda *args, **kwargs: timeline.append("emit"))
+    monkeypatch.setattr(service, "emit", lambda *args, **kwargs: timeline.append("emit"))
+    backend_env.save_json_data("performances", [{"id": 1, "title": "Concert", "pieces": ["Symphony"]}])
+    backend_env.save_json_data("auth_devices", [{"id": 1, "device_id": "dev-sheet", "permission": "システム管理者",
+                                                 "hidden_user": True, "member_id": None}])
+    client = TestClient(backend_env.app)
+    headers = {"X-Device-Id": "dev-sheet"}
+    created = client.post("/api/sheets/upload", headers={**headers, "Idempotency-Key": str(uuid4())},
+                          data={"performance_id": "1", "performance_title": "Concert", "piece": "Symphony"},
+                          files={"file": ("score.pdf", b"%PDF-1.4 test", "application/pdf")})
+    assert created.status_code == 200, created.text
+    sheet = created.json()["file"]
+    changed = client.put(f"/api/sheets/{sheet['id']}/part", headers={**headers, "Idempotency-Key": str(uuid4())},
+                         json={"part": "Vn", "expected_revision": sheet["revision"]})
+    assert changed.status_code == 200, changed.text
+    removed = client.request("DELETE", "/api/sheets", headers={**headers, "Idempotency-Key": str(uuid4())},
+                             json={"items": [{"id": sheet["id"], "expected_revision": changed.json()["files"][0]["revision"]}]})
+    assert removed.status_code == 200, removed.text
+    assert timeline == []
 
 
 def test_asgi_background_receives_post_save_events(repo, monkeypatch):

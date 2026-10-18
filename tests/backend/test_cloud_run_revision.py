@@ -139,3 +139,9 @@ def test_root_without_revision_keeps_existing_html(client, monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "&rev=" not in response.text
+
+
+def test_dynamic_scripts_revalidate_and_revisioned_scripts_remain_cacheable(client):
+    path = "/static/js/modules/date_piece_promotion/api.js?v=20260701-2"
+    assert client.get(path).headers["cache-control"] == "no-cache"
+    assert "immutable" in client.get(path + "&rev=release-42").headers["cache-control"]

@@ -48,6 +48,71 @@ def test_multipart_create_replay_and_list(promotion_client):
     assert image.status_code == 200 and image.content == PNG
 
 
+def test_old_form_without_operation_key_gets_reload_guidance(promotion_client):
+    response = promotion_client.post("/api/extra/promotions", headers={"X-Device-Id": "promotion-admin"},
+                                     json={"title": "Old form"})
+    assert response.status_code == 422
+    assert "再読み込み" in response.json()["detail"]
+    assert repo.list_items() == []
+
+
+def test_notifications_follow_committed_changes_not_replay_noop_conflict_or_delete(promotion_client, monkeypatch):
+    calls = []
+
+    def notified(kind, body, operation):
+        # A separate read must already see the committed record when notified.
+        assert repo.get_item(body["id"])["title"] == body["title"]
+        calls.append((kind, operation))
+
+    monkeypatch.setattr(service, "emit", notified)
+    key = str(uuid4())
+    item = create(promotion_client, key=key, image=False).json()
+    assert create(promotion_client, key=key, image=False).status_code == 200
+    assert calls == [("promotions", "created")]
+    unchanged = promotion_client.put(f"/api/extra/promotions/{item['id']}", headers=headers(),
+                                     json={"title": item["title"], "summary": item["summary"], "expected_revision": 1}).json()
+    assert calls == [("promotions", "created")]
+    changed = promotion_client.put(f"/api/extra/promotions/{item['id']}", headers=headers(),
+                                   json={"title": "Changed", "expected_revision": unchanged["revision"]}).json()
+    assert calls == [("promotions", "created"), ("promotions", "updated")]
+    assert promotion_client.put(f"/api/extra/promotions/{item['id']}", headers=headers(),
+                                json={"title": "Stale", "expected_revision": 1}).status_code == 409
+    assert promotion_client.request("DELETE", f"/api/extra/promotions/{item['id']}", headers=headers(),
+                                    json={"expected_revision": changed["revision"]}).status_code == 200
+    assert len(calls) == 2
+
+
+def test_legacy_image_survives_list_and_summary_edit(promotion_client):
+    import base64
+
+    image_url = "data:image/png;base64," + base64.b64encode(PNG).decode()
+    repo.seed_local([{"id": 91, "title": "Existing", "image_url": image_url}])
+    image_path = "/api/extra/promotions/91/image"
+    assert promotion_client.get(image_path).content == PNG
+    updated = promotion_client.put("/api/extra/promotions/91", headers=headers(),
+                                   json={"title": "Edited", "summary": "Changed", "expected_revision": 1,
+                                         "image_action": "keep"})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["image_url"] == image_url
+    assert promotion_client.get(image_path).content == PNG
+    # A caller cannot use a missing asset ID to read an unrelated v2 asset.
+    new = create(promotion_client).json()
+    assert promotion_client.get(f"/api/extra/promotions/{new['id']}/image").status_code == 404
+
+
+def test_legacy_stored_image_is_served_without_asset_id(promotion_client):
+    from src.backend.services.image_asset_service import store_data_image
+    import base64
+
+    data_url = "data:image/png;base64," + base64.b64encode(PNG).decode()
+    route = "/api/extra/promotions/92/image"
+    image_url = store_data_image(data_url, object_prefix="promotion-images/92/image", route_path=route)
+    repo.seed_local([{"id": 92, "title": "Existing", "image_url": image_url}])
+    image = promotion_client.get(image_url)
+    assert image.status_code == 200
+    assert image.content == PNG
+
+
 def test_same_format_replace_and_delete_replay(promotion_client):
     old = create(promotion_client).json()
     updated = promotion_client.put(f"/api/extra/promotions/{old['id']}", headers=headers(),

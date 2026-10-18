@@ -174,6 +174,9 @@ test.describe('UI CSS reliability smoke', () => {
     await expect(page.locator('#memberHomeTab')).toBeVisible();
     await expect(page.locator('#memberHomeTab .portal-home')).toBeVisible();
 
+    // The home shell is visible before bootstrap data is applied.
+    await expect(page.locator('#portalMaintenanceInfoList .portal-announcement-title'))
+      .toContainText('This is a very long announcement title');
     const homeLayout = await page.evaluate(() => {
       const viewportWidth = document.documentElement.clientWidth;
       const scrollWidth = document.documentElement.scrollWidth;

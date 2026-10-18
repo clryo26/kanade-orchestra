@@ -30,14 +30,17 @@ Worker配信はルートスコープ、JavaScript MIME、`Cache-Control: no-stor
 |---|---|---|---|---|
 | notices | お知らせ | portal_notice_service.create_notice | 新規のみ | notice-history |
 | schedules | 練習予定 | schedule_service.create_schedule/update_schedule | 新規・実変更 | member-schedule |
-| recordings | 録音部屋 | recording_upload_service | GCS完了登録・既存アップロード成功 | member-recording |
+| practice_instructions | 練習指示 | extra_service.create_item/update_item | 新規・実変更 | member-practice-instruction |
 | piece_infos | 楽曲情報 | extra_service.create_item/update_item | 新規・実変更 | member-piece-info |
-| sheets | 楽譜ライブラリ | sheet_service.upload_sheet_file / extra_service.create_item | 新規のみ | member-sheet |
+| promotions | 宣伝 | promotion_service.mutate | 新規・実変更（操作IDの再送では通知しない） | member-promotion |
 | events | イベント調整 | event_service.create_event | 新規のみ | member-event |
 | maintenance | メンテナンス情報 | announcement_service.create_announcement | 新規のみ | maintenance-history |
 | improvements | 改善要望受付 | improvement_suggestion_serviceの団員・管理者向けcreate | 新規のみ | system-improvement-suggestion |
 
 現行では `/api/notices` が団員のお知らせ、旧 `/api/announcements` がメンテナンス情報である。
+録音部屋（recordings）と楽譜ライブラリ（sheets）は通知しない（`src/backend/services/notification_types.py` に分類がない）。
+楽譜の登録・変更・削除は、一覧更新番号で画面が同期する（docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md）。
+以前に届いた録音部屋・楽譜ライブラリの通知は、タップすると該当画面を開ける（遷移先として残している）。
 `maintenance_service` は孤立データ検査であり、メンテナンス情報の登録先ではない。
 練習予定・楽曲情報は実際のDB保存対象カラムを、既存リポジトリと同じ日付・時刻・ID変換で比較する。
 更新時刻だけの差、時刻表記の差（13:00/13:00:00）、保存されない追加項目は通知対象にしない。

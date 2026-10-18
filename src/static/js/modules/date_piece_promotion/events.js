@@ -15,9 +15,10 @@ function showDesiredPieceReferenceScore(id) {
     }
 
     const title = $('sheetViewerTitle');
-    const download = $('sheetViewerDownload');
     if (title) title.textContent = item.title || item.piece || '参考スコア';
-    if (download) download.href = viewUrl;
+    // DL in the viewer opens the common save dialog for this file.
+    appState.sheetViewerContext = { kind: 'url', url: viewUrl, name: (item.title || item.piece || '参考スコア') + '.pdf' };
+    appState.sheetViewerReturn = null;
     if ($('sheetViewerBackBtn')) $('sheetViewerBackBtn').hidden = true;
     switchTab('memberPanel', 'member-sheet-viewer', false);
     renderPdfViewer(viewUrl);

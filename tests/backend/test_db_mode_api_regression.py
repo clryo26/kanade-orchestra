@@ -499,7 +499,7 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
             "member_id": 1,
         },
         "date_adjustment_responses": {"adjustment_id": 1, "candidate_id": "cand-1", "member_id": 1, "name": "Admin", "status": "ok"},
-        "sheet_library": {"performance_id": 10, "performance_title": "Concert", "piece": "Sym", "part": "Vn", "name": "sym.pdf"},
+        # Sheets use the row-level /api/sheets API (tests/backend/test_sheet_library_*.py).
         "payments": {"member_id": 1, "name": "Admin", "paid_until_month": "2026-07", "performance_fees": {"10": True}},
         "castings": {"performance_id": 10, "piece": "Sym", "members": [{"member_id": 1, "part": "Vn"}], "extras": []},
         "piece_infos": {"performance_id": 10, "piece": "Sym", "description": "note"},
@@ -515,6 +515,11 @@ def test_db_mode_admin_extra_save_endpoints_persist_to_db(client, backend_env, m
         "desired_pieces": {"title": "Request", "piece": "Sym", "member_id": 1, "registered_by": "Admin", "votes": []},
         # Promotion persistence is tested against real PG in test_promotion_postgres.py.
     }
+
+    sheet = {"performance_id": 10, "performance_title": "Concert", "piece": "Sym", "part": "Vn", "name": "sym.pdf"}
+    refused = client.post("/api/extra/sheet_library", headers=headers, json=sheet)
+    assert refused.status_code == 409
+    assert "sheet_library" not in db_store or not db_store["sheet_library"]
 
     for collection, payload in payloads.items():
         created = client.post(f"/api/extra/{collection}", headers=headers, json=payload)
