@@ -6,8 +6,10 @@
     let registrationPromise;
     let savedSettings = null;
     let renderVersion = 0;
-    const targets = new Set(['notice-history', 'member-schedule', 'member-recording', 'member-piece-info',
-        'member-sheet', 'member-event', 'maintenance-history', 'system-improvement-suggestion']);
+    const targets = new Set(['notice-history', 'member-schedule', 'member-practice-instruction', 'member-piece-info',
+        'member-promotion', 'member-event', 'maintenance-history', 'system-improvement-suggestion',
+        // Already delivered notifications remain usable; the server no longer sends these categories.
+        'member-recording', 'member-sheet']);
 
     function capabilities() {
         const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
