@@ -20,7 +20,7 @@ import logging
 import math
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable, ParamSpec, TypeVar
+from typing import Any, Callable, ParamSpec, TypeVar, cast
 
 from fastapi import HTTPException
 
@@ -161,7 +161,7 @@ def _int(value: Any, path: str, lo: int, hi: int) -> int:
         raise _invalid("INVALID_SCHEMA", path)
     if value < lo or value > hi:
         raise _invalid("INVALID_SCHEMA", path)
-    return value
+    return cast(int, value)
 
 
 def _text(value: Any, path: str, max_chars: int = 200) -> str:
