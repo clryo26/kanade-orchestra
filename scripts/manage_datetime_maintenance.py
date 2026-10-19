@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import time
 import urllib.request
@@ -49,7 +50,12 @@ class MaintenanceError(RuntimeError):
 
 
 def gcloud(*args: str, json_result: bool = False) -> Any:
-    result = subprocess.run(["gcloud", *args], check=True, capture_output=True, text=True, timeout=300)
+    # Windows installs gcloud.cmd; CreateProcess does not resolve its suffix
+    # from the bare name as PowerShell does. Resolve it before invoking it.
+    executable = shutil.which("gcloud")
+    if executable is None:
+        raise MaintenanceError("gcloud CLI was not found on PATH")
+    result = subprocess.run([executable, *args], check=True, capture_output=True, text=True, encoding="utf-8", timeout=300)
     return json.loads(result.stdout) if json_result else None
 
 

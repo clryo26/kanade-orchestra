@@ -13,6 +13,28 @@ DIGEST = "asia-northeast2-docker.pkg.dev/p/r/app@sha256:" + "a" * 64
 NEW_DIGEST = "asia-northeast2-docker.pkg.dev/p/r/app@sha256:" + "b" * 64
 
 
+def test_gcloud_resolves_windows_command_suffix(monkeypatch):
+    executable = r"C:\Cloud SDK\bin\gcloud.CMD"
+    monkeypatch.setattr(tool.shutil, "which", lambda name: executable)
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(stdout='{"status":"ready"}')
+
+    monkeypatch.setattr(tool.subprocess, "run", invoke)
+    assert tool.gcloud("run", "services", "describe", "test", json_result=True) == {"status": "ready"}
+    assert calls[0][0] == [executable, "run", "services", "describe", "test"]
+    assert calls[0][1]["check"] and calls[0][1]["timeout"] == 300
+
+
+def test_gcloud_missing_cli_stops_before_any_command(monkeypatch):
+    monkeypatch.setattr(tool.shutil, "which", lambda name: None)
+    monkeypatch.setattr(tool.subprocess, "run", lambda *args, **kwargs: pytest.fail("CLI must not run"))
+    with pytest.raises(tool.MaintenanceError, match="not found"):
+        tool.gcloud("run", "services", "describe", "test")
+
+
 def _args(tmp_path, action, **overrides):
     values = dict(
         action=action, environment="test", project=TARGET["project"], region=TARGET["region"], service=TARGET["service"],
