@@ -57,9 +57,10 @@ async function prepare(page, mode, options = {}) {
     }
     if (url.pathname === '/api/sheets/tickets/file-ticket') return route.fulfill(attachment('application/pdf', PDF, 'Two.pdf'));
     if (url.pathname === '/api/sheets/tickets/zip-ticket') return route.fulfill(attachment('application/zip', ZIP, 'Concert.zip'));
+    if (/\/zip-jobs\/[^/]+\/download$/.test(url.pathname)) return route.fulfill(attachment('application/zip', ZIP, 'Concert.zip'));
     if (url.pathname.startsWith('/api/sheets/zip-jobs')) {
       return route.fulfill({ json: { job_id: '11111111-1111-4111-8111-111111111111', state: 'ready', title: 'Concert', file_count: 1, done_count: 1,
-        total_bytes: 3 * 1024 * 1024, written_bytes: 0, allow_partial: false, missing: [], zip_bytes: 3 * 1024 * 1024, list_version: 1, changed_since: false } });
+        total_bytes: 3 * 1024 * 1024, written_bytes: 0, allow_partial: false, missing: [], zip_bytes: mode === 'mobile' ? ZIP.length : 3 * 1024 * 1024, list_version: 1, changed_since: false } });
     }
     return route.fallback();
   });
@@ -150,25 +151,54 @@ test.describe('smartphone: the save dialog', () => {
     monitor.assertNoClientErrors();
   });
 
-  test('recording 一括DL shows the size; it opens in a separate screen only from the tap', async ({ page }) => {
-    const { monitor, requests } = await prepare(page, 'mobile');
+  test('recording ZIP is shared from the tap without opening a new page', async ({ page }) => {
+    const { monitor } = await prepare(page, 'mobile');
     await openMenu(page, '録音部屋', '#memberRecordingTab');
     const before = page.url();
+    const pages = page.context().pages().length;
     await page.locator('.recording-piece-summary .recording-bulk-download-btn').first().click();
     await expect(page.locator('#sheetSaveTitle')).toHaveText('録音のZIPを保存');
     await expect(page.locator('#sheetSaveCount')).toHaveText('1 件の録音・ZIP 約 12.0 MB');
-    await expect(page.locator('#sheetSaveOpen')).toHaveText('別の画面で開いて保存');
+    await expect(page.locator('#sheetSaveShare')).toBeVisible();
+    await expect(page.locator('#sheetSaveOpen')).toBeHidden();
+    await expect(page.locator('#sheetSaveShare')).toBeFocused();
+    await page.locator('#sheetSaveShare').click();
+    expect(await page.evaluate(() => window.__shared[0][0])).toMatchObject({ type: 'application/zip', size: ZIP.length });
+    expect(page.context().pages()).toHaveLength(pages);
+    expect(page.url()).toBe(before);
+    monitor.assertNoClientErrors();
+  });
+
+  test('sheet ZIP is shared without navigating the portal', async ({ page }) => {
+    const { monitor } = await prepare(page, 'mobile');
+    await openMenu(page, '楽譜ライブラリ', '#memberSheetTab');
+    const before = page.url();
+    const pages = page.context().pages().length;
+    await page.locator('details[data-sheet-key="p:1:Sym"] summary').click();
+    await page.locator('[data-sheet-zip]').first().click();
+    await expect(page.locator('#sheetSaveShare')).toBeVisible();
+    await page.locator('#sheetSaveShare').click();
+    expect(await page.evaluate(() => window.__shared[0][0])).toMatchObject({ type: 'application/zip', size: ZIP.length });
+    expect(page.context().pages()).toHaveLength(pages);
+    expect(page.url()).toBe(before);
+    monitor.assertNoClientErrors();
+  });
+
+  test('large ZIP shows Safari guidance without fetching the body or opening a page', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const { monitor, requests } = await prepare(page, 'mobile', { recordingZipBytes: 101 * 1024 * 1024 });
+    await page.evaluate(() => { navigator.clipboard.writeText = async (text) => { window.__copied = text; }; });
+    await openMenu(page, '録音部屋', '#memberRecordingTab');
+    const before = page.url();
+    const pages = page.context().pages().length;
+    await page.locator('.recording-piece-summary .recording-bulk-download-btn').first().click();
+    await expect(page.locator('#sheetSaveBrowserGuide')).toBeVisible();
+    await expect(page.locator('#sheetSaveShare')).toBeHidden();
     expect(requests.filter((r) => r === 'GET /api/recordings/download-zip')).toEqual([]);
-    // A separate tab (or its download): the portal page is not replaced.
-    const outcome = Promise.race([
-      page.waitForEvent('download').then((d) => d.url()),
-      page.context().waitForEvent('page').then(async (popup) => {
-        await popup.waitForLoadState('commit').catch(() => {});
-        return popup.url();
-      }),
-    ]);
-    await page.locator('#sheetSaveOpen').click();
-    expect(await outcome).toContain('/api/recordings/download-zip?date=2026-07-15&piece=Sym');
+    expect((await page.locator('#sheetSaveCopyUrl').boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await page.locator('#sheetSaveCopyUrl').click();
+    expect(await page.evaluate(() => window.__copied)).toBe(new URL(before).origin + '/');
+    expect(page.context().pages()).toHaveLength(pages);
     expect(page.url()).toBe(before);
     monitor.assertNoClientErrors();
   });

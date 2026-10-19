@@ -253,10 +253,10 @@ test.describe('sheet library reliability (Chromium)', () => {
     monitor.assertNoClientErrors();
   });
 
-  test('smartphone ZIP: built in steps with progress; the size is shown, then a ticket link outside the portal', async ({ page }) => {
+  test('smartphone ZIP: unsupported sharing shows size and Safari guidance', async ({ page }) => {
     await page.addInitScript(() => {
-      // Even where ZIPs could be shared, a ZIP is never read into the page.
-      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+      // A browser without file sharing gets guidance, not a binary popup.
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false });
       Object.defineProperty(navigator, 'share', { configurable: true, value: async () => { throw new Error('ZIP must not be shared'); } });
     });
     const { monitor } = await prepare(page, [sheet(1, 'Two.pdf', 'Sym'), sheet(2, 'Three.pdf', 'Sym')], { mode: 'mobile' });
@@ -291,17 +291,12 @@ test.describe('sheet library reliability (Chromium)', () => {
     await expect(page.locator('#sheetSaveStatus')).toContainText('ZIPの準備ができました（1 KB）');
     await expect(page.locator('#sheetSaveShare')).toBeHidden();
     expect(bodies[0]).toMatchObject({ performance_id: '1', piece: 'Sym', scope: 'piece' });
-    // A download (desktop) or a separate tab: either way the portal page is
-    // not replaced. (The iPhone home-screen app behaviour is not tested here.)
-    const outcome = Promise.race([
-      page.waitForEvent('download').then((d) => d.url()),
-      page.context().waitForEvent('page').then(async (popup) => {
-        await popup.waitForLoadState('commit').catch(() => {});
-        return popup.url();
-      }),
-    ]);
+    await expect(page.locator('#sheetSaveBrowserGuide')).toBeVisible();
+    const pages = page.context().pages().length;
+    const outcome = page.waitForEvent('download');
     await page.locator('#sheetSaveOpen').click();
-    expect(await outcome).toContain('/api/sheets/tickets/ticket-abc');
+    expect((await outcome).url()).toContain('/api/sheets/tickets/ticket-abc');
+    expect(page.context().pages()).toHaveLength(pages);
     expect(page.url()).toBe(before);
     await expect(page.locator('#sheetSaveStatus')).toContainText('確認してください');
     monitor.assertNoClientErrors();
