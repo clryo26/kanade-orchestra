@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..repositories.schedule_repository import ScheduleRepository
+from ..utils.datetime_utils import require_input_dates
 from .notification_service import data_changed, emit
 
 _repo = ScheduleRepository()
@@ -18,12 +19,14 @@ def get_schedule(schedule_id: int) -> dict[str, Any]:
 
 
 def create_schedule(payload: dict[str, Any]) -> dict[str, Any]:
+    require_input_dates(payload, ("date",))
     saved = cast(dict[str, Any], _repo.create(payload))
     emit('schedules', saved)
     return saved
 
 
 def update_schedule(schedule_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    require_input_dates(payload, ("date",))
     # Compare within the existing update operation, before it regenerates timestamps.
     changed = False
     def mutate(current):

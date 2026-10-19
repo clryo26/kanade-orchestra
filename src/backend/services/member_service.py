@@ -1,48 +1,30 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from ..repositories.db_item_repository import ListRowStore, PostgresRowStore
 
 from fastapi import HTTPException, UploadFile
+from fastapi.responses import Response
 
+from ..models.schemas import Member
 from ..repositories.member_repository import MemberRepository
+from . import portal_file_asset_service as file_assets
+from ..utils.datetime_utils import require_input_dates
+from ..utils.concurrency import ensure_expected_updated_at
 from .auth_service import (
     prepare_member_payload,
     public_member_list,
     public_member_payload,
     public_member_public_profile_payload,
 )
-from .image_asset_service import delete_stored_image, is_data_image, store_data_image, store_uploaded_image
 
 _repo = MemberRepository()
 
 MEMBER_PERMISSIONS = {"一般", "エキストラ", "管理者", "システム管理者"}
 SYSTEM_ADMIN_PERMISSION = "システム管理者"
-
-
-def _member_photo_route(member_id: int) -> str:
-    return f"/api/members/{member_id}/photo"
-
-
-def _member_photo_object_prefix(member_id: int) -> str:
-    return f"member-images/{member_id}/photo"
-
-
-async def _persist_member_photo(member_id: int, photo_url: str, photo_file: UploadFile | None = None) -> str:
-    if photo_file is not None:
-        return await store_uploaded_image(
-            photo_file,
-            object_prefix=_member_photo_object_prefix(member_id),
-            route_path=_member_photo_route(member_id),
-        )
-    return store_data_image(
-        photo_url,
-        object_prefix=_member_photo_object_prefix(member_id),
-        route_path=_member_photo_route(member_id),
-    )
-
-
-def _delete_member_photo(member_id: int, photo_url: str) -> None:
-    delete_stored_image(photo_url, object_prefix=_member_photo_object_prefix(member_id))
+PHOTO_KIND = "member_photo"
 
 
 def list_members() -> list[dict[str, Any]]:
@@ -71,53 +53,34 @@ def get_member_record(member_id: int) -> dict[str, Any]:
     return member
 
 
-async def create_member(member_payload: dict[str, Any], photo_file: UploadFile | None = None) -> dict[str, Any]:
-    prepared = prepare_member_payload(member_payload)
-    _validate_member_permission(prepared)
-    if prepared["permission"] == SYSTEM_ADMIN_PERMISSION:
-        raise HTTPException(status_code=400, detail="System admin permission can only be granted from system permission management")
-    photo_source = str(prepared.get("photo_url") or "")
-    if photo_file is not None or is_data_image(photo_source):
-        prepared["photo_url"] = ""
-    created = _repo.create(prepared)
-    member_id = int(created.get("id") or 0)
-    try:
-        uploaded_photo_url = await _persist_member_photo(
-            member_id,
-            photo_source,
-            photo_file,
-        )
-        created["photo_url"] = uploaded_photo_url
-        if uploaded_photo_url != str(prepared.get("photo_url") or ""):
-            _repo.update(member_id, lambda current: {**current, "photo_url": uploaded_photo_url})
-    except Exception:
-        if created.get("photo_url") and str(created.get("photo_url") or "") != str(prepared.get("photo_url") or ""):
-            _delete_member_photo(member_id, str(created.get("photo_url") or ""))
-        _repo.delete(member_id)
-        raise
-    return public_member_payload(created)
+def member_photo_response(member_id: int, asset: str | None) -> Response:
+    member = get_member_record(member_id)
+    return file_assets.deliver(PHOTO_KIND, member_id, asset, inline_value=str(member.get("photo_url") or ""))
 
 
-async def update_member(member_id: int, member_payload: dict[str, Any], photo_file: UploadFile | None = None) -> dict[str, Any]:
-    _, current = _repo.find_by_id(member_id)
-    old_photo_url = str(current.get("photo_url") or "")
-    prepared = prepare_member_payload(member_payload, current)
-    _validate_member_permission(prepared)
-    if current.get("permission") != SYSTEM_ADMIN_PERMISSION and prepared["permission"] == SYSTEM_ADMIN_PERMISSION:
-        raise HTTPException(status_code=400, detail="System admin permission can only be granted from system permission management")
-    photo_source = str(prepared.get("photo_url") or "")
-    try:
-        uploaded_photo_url = await _persist_member_photo(member_id, photo_source, photo_file)
-        prepared["photo_url"] = uploaded_photo_url
-        updated = _repo.update(member_id, lambda _current: prepared)
-    except Exception:
-        uploaded_photo_url = str(prepared.get("photo_url") or "")
-        if uploaded_photo_url and uploaded_photo_url != old_photo_url:
-            _delete_member_photo(member_id, uploaded_photo_url)
-        raise
-    if old_photo_url and old_photo_url != str(updated.get("photo_url") or ""):
-        _delete_member_photo(member_id, old_photo_url)
-    return public_member_payload(updated)
+def _photo_action(payload: dict[str, Any], photo_file: UploadFile | None, current: dict[str, Any] | None, *, replayable: bool = False) -> tuple[Any, str]:
+    """replace (file or data URL) / remove (explicit empty over an existing photo) / keep."""
+    photo_source = str(payload.get("photo_url") or "")
+    if photo_file is not None:
+        return photo_file, "replace"
+    if file_assets.is_data_image(photo_source):
+        return photo_source, "replace"
+    if "photo_url" in payload and not photo_source and (replayable or (current is not None and str(current.get("photo_url") or ""))):
+        return None, "remove"
+    return None, "keep"
+
+
+async def _photo_file(source: Any) -> Any:
+    if source is None:
+        return None
+    if isinstance(source, str):
+        return file_assets.read_data_image(source)
+    return await file_assets.read_image_upload(source)
+
+
+def _response_body(saved: dict[str, Any]) -> dict[str, Any]:
+    # Same shape as the route's response_model on the non-file path.
+    return cast(dict[str, Any], Member.model_validate(public_member_payload(saved)).model_dump())
 
 
 def _validate_member_permission(member: dict[str, Any]) -> None:
@@ -125,6 +88,141 @@ def _validate_member_permission(member: dict[str, Any]) -> None:
     if permission not in MEMBER_PERMISSIONS:
         raise HTTPException(status_code=400, detail="Invalid member permission")
     member["permission"] = permission
+
+
+def _store() -> PostgresRowStore | ListRowStore:
+    from ..core.compat_gateway import row_store
+
+    return row_store()
+
+
+def _peek(member_id: int) -> dict[str, Any] | None:
+    return _store().get("members", member_id)
+
+
+async def create_member(
+    member_payload: dict[str, Any],
+    photo_file: UploadFile | None = None,
+    *,
+    device: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> Any:
+    require_input_dates(member_payload, ("system_access_until",), month_fields=("joined_at",))
+    prepared = prepare_member_payload(member_payload)
+    _validate_member_permission(prepared)
+    if prepared["permission"] == SYSTEM_ADMIN_PERMISSION:
+        raise HTTPException(status_code=400, detail="System admin permission can only be granted from system permission management")
+    source, action = _photo_action(member_payload, photo_file, None)
+    # The photo reference is server managed (a confirmed asset only).
+    prepared["photo_url"] = ""
+    if action == "keep" and not idempotency_key:
+        return public_member_payload(_repo.create(prepared))
+    file = await _photo_file(source)
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        saved = _store().insert("members", lambda new_id: {**prepared, "photo_url": applied.url_for(new_id)}, ctx=tx.ctx)
+        if applied.asset_id:
+            applied.commit_reference(tx, int(saved["id"]))
+        return 200, _response_body(saved)
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=PHOTO_KIND, method="POST", target_id=None, action=action, file=file,
+            # Only the digest is stored, never this payload. Password changes
+            # must still distinguish different contents of the same operation.
+            fingerprint=member_payload,
+            validate=lambda tx: None, apply=apply, view_scope="admin",
+        ),
+        device or {},
+        idempotency_key,
+    )
+    return file_assets.http_result(status, body)
+
+
+async def _update_with_photo(
+    member_id: int,
+    member_payload: dict[str, Any],
+    photo_file: UploadFile | None,
+    mutate: Any,
+    *,
+    device: dict[str, Any],
+    idempotency_key: str | None,
+    view_scope: str,
+) -> Any:
+    # With an operation key, target checks belong after result replay. Derive
+    # the action from the request so removal remains identical after commit.
+    current = _peek(member_id) if not idempotency_key else None
+    if current is None and not idempotency_key:
+        raise HTTPException(status_code=404, detail="Data not found")
+    source, action = _photo_action(member_payload, photo_file, current, replayable=bool(idempotency_key))
+    if action == "keep" and not idempotency_key:
+        def keep_photo(latest: dict[str, Any]) -> dict[str, Any]:
+            updated = dict(mutate(latest))
+            updated["photo_url"] = latest.get("photo_url") or ""
+            return updated
+
+        return public_member_payload(_repo.update(member_id, keep_photo))
+    file = await _photo_file(source)
+
+    def validate(tx: Any) -> None:
+        latest = _store().get("members", member_id, ctx=tx.ctx, lock=True)
+        if latest is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+        ensure_expected_updated_at(latest, member_payload.get("expected_updated_at"))
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        def with_photo(latest: dict[str, Any]) -> dict[str, Any]:
+            updated = dict(mutate(latest))
+            if action == "replace":
+                updated["photo_url"] = applied.url_for(member_id)
+            elif action == "remove":
+                updated["photo_url"] = ""
+            else:
+                updated["photo_url"] = latest.get("photo_url") or ""
+            return updated
+
+        saved = _store().update("members", member_id, with_photo, expected_updated_at=member_payload.get("expected_updated_at"), ctx=tx.ctx)
+        if action == "replace":
+            applied.commit_reference(tx, member_id)
+        elif action == "remove":
+            applied.retire_reference(tx, member_id)
+        return 200, _response_body(saved)
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=PHOTO_KIND, method="PUT", target_id=member_id, action=action, file=file,
+            fingerprint=member_payload,
+            validate=validate, apply=apply, view_scope=view_scope,
+        ),
+        device,
+        idempotency_key,
+    )
+    return file_assets.http_result(status, body)
+
+
+async def update_member(
+    member_id: int,
+    member_payload: dict[str, Any],
+    photo_file: UploadFile | None = None,
+    *,
+    device: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> Any:
+    def mutate(current: dict[str, Any]) -> dict[str, Any]:
+        # Evaluated on the locked current row (no stale password/permission).
+        prepared = prepare_member_payload(member_payload, current)
+        _validate_member_permission(prepared)
+        if current.get("permission") != SYSTEM_ADMIN_PERMISSION and prepared["permission"] == SYSTEM_ADMIN_PERMISSION:
+            raise HTTPException(status_code=400, detail="System admin permission can only be granted from system permission management")
+        return prepared
+
+    require_input_dates(member_payload, ("system_access_until",), month_fields=("joined_at",))
+    # Same permission validation as before, before any lock or file work.
+    _validate_member_permission({"permission": member_payload.get("permission")})
+    return await _update_with_photo(
+        member_id, member_payload, photo_file, mutate,
+        device=device or {}, idempotency_key=idempotency_key, view_scope="admin",
+    )
 
 
 def grant_system_permission(member_id: int) -> dict[str, Any]:
@@ -137,9 +235,11 @@ async def update_member_profile(
     member_id: int,
     profile_payload: dict[str, Any],
     photo_file: UploadFile | None = None,
-) -> dict[str, Any]:
+    *,
+    device: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> Any:
     allowed_fields = {
-        "photo_url",
         "joined_at",
         "introducer",
         "role",
@@ -148,29 +248,20 @@ async def update_member_profile(
         "comment",
     }
 
-    def _mutate(current: dict[str, Any]) -> dict[str, Any]:
+    require_input_dates(profile_payload, (), month_fields=("joined_at",))
+
+    def mutate(current: dict[str, Any]) -> dict[str, Any]:
         updated = dict(current)
         for key in allowed_fields:
             if key in profile_payload:
                 updated[key] = profile_payload[key]
         return updated
 
-    _, current = _repo.find_by_id(member_id)
-    old_photo_url = str(current.get("photo_url") or "")
-    updated = _mutate(current)
-    photo_source = str(updated.get("photo_url") or "")
-    try:
-        uploaded_photo_url = await _persist_member_photo(member_id, photo_source, photo_file)
-        updated["photo_url"] = uploaded_photo_url
-        updated = _repo.update(member_id, lambda _current: updated)
-    except Exception:
-        uploaded_photo_url = str(updated.get("photo_url") or "")
-        if uploaded_photo_url and uploaded_photo_url != old_photo_url:
-            _delete_member_photo(member_id, uploaded_photo_url)
-        raise
-    if old_photo_url and old_photo_url != str(updated.get("photo_url") or ""):
-        _delete_member_photo(member_id, old_photo_url)
-    return public_member_payload(updated)
+    return await _update_with_photo(
+        member_id, profile_payload, photo_file, mutate,
+        device=device or {}, idempotency_key=idempotency_key, view_scope="owner",
+    )
+
 
 def reset_member_password(member_id: int) -> dict[str, Any]:
     def _mutate(current: dict[str, Any]) -> dict[str, Any]:
@@ -181,12 +272,39 @@ def reset_member_password(member_id: int) -> dict[str, Any]:
     updated = _repo.update(member_id, _mutate)
     return public_member_payload(updated)
 
-def delete_member(member_id: int) -> None:
-    _, current = _repo.find_by_id(member_id)
-    _delete_member_photo(member_id, str(current.get("photo_url") or ""))
-    _repo.delete(member_id)
+
+def requires_file_operation_for_delete(member_id: int, idempotency_key: str | None) -> bool:
+    return bool(idempotency_key) or file_assets.has_active_asset(PHOTO_KIND, member_id)
+
+
+async def delete_member(member_id: int, *, device: dict[str, Any] | None = None, idempotency_key: str | None = None) -> Any:
+    result: Any = None
+    if requires_file_operation_for_delete(member_id, idempotency_key):
+        def validate(tx: Any) -> None:
+            if _store().get("members", member_id, ctx=tx.ctx, lock=True) is None:
+                raise HTTPException(status_code=404, detail="Data not found")
+
+        def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+            _store().delete("members", member_id, lambda current: None, ctx=tx.ctx)
+            applied.retire_reference(tx, member_id)
+            return 200, {"message": "Deleted"}
+
+        status, body = await file_assets.run(
+            file_assets.FileOperation(
+                kind=PHOTO_KIND, method="DELETE", target_id=member_id, action="delete", file=None,
+                fingerprint={}, validate=validate, apply=apply, view_scope="admin",
+            ),
+            device or {},
+            idempotency_key,
+        )
+        result = file_assets.http_result(status, body)
+        if status != 200:
+            return result
+    else:
+        _repo.delete(member_id)
     # The tuner history of this member is revoked and deleted (the DB trigger
     # does the same; this call covers databases where it is missing).
     from .tuner_service import revoke_member
 
     revoke_member(member_id)
+    return result

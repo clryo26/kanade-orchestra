@@ -59,6 +59,19 @@ describe('standard series format', () => {
 });
 
 describe('local history store (fake IndexedDB)', () => {
+  it('includes the final fractional second of a JST day and excludes next midnight', async () => {
+    const { store } = await openStore();
+    const ctx = store.setOwner({ ownerId: 'day-boundary' });
+    const before = Date.parse('2026-10-20T00:00:00+09:00');
+    const last = await store.beginSession(ctx, { startedAt: before - 500 });
+    await store.finalizeSession(ctx, last.sessionId, {});
+    const next = await store.beginSession(ctx, { startedAt: before });
+    await store.finalizeSession(ctx, next.sessionId, {});
+    const rows = await store.listSessions(ctx, { from: before - 86400000, before });
+    expect(rows.map((r) => r.sessionId)).toEqual([last.sessionId]);
+    // The pre-existing inclusive "to" option keeps its contract.
+    expect(await store.listSessions(ctx, { to: before })).toHaveLength(2);
+  });
   it('opens, saves a session with chunks and events, and reads it back', async () => {
     const { store, res } = await openStore();
     expect(res).toMatchObject({ ok: true, status: 'open' });

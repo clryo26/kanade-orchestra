@@ -38,6 +38,7 @@ describe('runtime bootstrap order', () => {
             globalThis: null,
             document: { getElementById: () => null },
         };
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.portalCacheState = {
@@ -66,6 +67,7 @@ describe('runtime bootstrap order', () => {
             window: null,
             globalThis: null,
         };
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
 
@@ -120,6 +122,7 @@ describe('runtime bootstrap order', () => {
             showAlert: () => {},
             console,
         };
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.window.addEventListener = (name, handler) => {
@@ -128,6 +131,7 @@ describe('runtime bootstrap order', () => {
         };
         sandbox.portalRuntimeContext = {
             appState: { portalAuthVerified: false, essentialDataLoaded: false },
+            today: () => '2026-10-19',
             getById: () => null,
             dbCache: { init: async () => {} },
             PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
@@ -189,6 +193,7 @@ describe('runtime bootstrap order', () => {
             console,
         };
 
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.window.addEventListener = (name, handler) => {
@@ -202,6 +207,7 @@ describe('runtime bootstrap order', () => {
                 lastPortalSessionVerifiedAt: now - 1000,
                 lastEssentialDataLoadedAt: now - 1000,
             },
+            today: () => '2026-10-19',
             getById: () => null,
             dbCache: { init: async () => {} },
             PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
@@ -263,6 +269,7 @@ describe('runtime bootstrap order', () => {
             console,
         };
 
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.window.addEventListener = (name, handler) => {
@@ -276,6 +283,7 @@ describe('runtime bootstrap order', () => {
                 lastPortalSessionVerifiedAt: now - 61000,
                 lastEssentialDataLoadedAt: now - 1000,
             },
+            today: () => '2026-10-19',
             getById: () => null,
             dbCache: { init: async () => {} },
             PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
@@ -339,6 +347,7 @@ describe('runtime bootstrap order', () => {
             console,
         };
 
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.window.addEventListener = (name, handler) => {
@@ -352,6 +361,7 @@ describe('runtime bootstrap order', () => {
                 lastPortalSessionVerifiedAt: now - 1000,
                 lastEssentialDataLoadedAt: now - 61000,
             },
+            today: () => '2026-10-19',
             getById: () => null,
             dbCache: { init: async () => {} },
             PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
@@ -414,6 +424,7 @@ describe('runtime bootstrap order', () => {
             console,
         };
 
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.window.addEventListener = (name, handler) => {
@@ -427,6 +438,7 @@ describe('runtime bootstrap order', () => {
                 lastPortalSessionVerifiedAt: now - 61000,
                 lastEssentialDataLoadedAt: now - 61000,
             },
+            today: () => '2026-10-19',
             getById: () => null,
             dbCache: { init: async () => {} },
             PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
@@ -492,6 +504,7 @@ describe('runtime bootstrap order', () => {
             console,
         };
 
+        sandbox.setInterval = vi.fn();
         sandbox.window = sandbox;
         sandbox.globalThis = sandbox;
         sandbox.window.addEventListener = (name, handler) => {
@@ -505,6 +518,7 @@ describe('runtime bootstrap order', () => {
                 lastPortalSessionVerifiedAt: now - 61000,
                 lastEssentialDataLoadedAt: now - 61000,
             },
+            today: () => '2026-10-19',
             getById: () => null,
             dbCache: { init: async () => {} },
             PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',

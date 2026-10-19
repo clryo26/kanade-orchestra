@@ -805,4 +805,14 @@
 
 - `practice_instructions.performance_instruction` は現行UIでは未使用。移行第2段階で削除候補。
 - 単一レコード運用の設定テーブル（org_settings, sns_settings, connection_settings）は将来 `id=1` 制約またはCHECKで固定化を検討。
-- `updated_at` 自動更新トリガは本DDLには未定義。移行実装時に追加する。
+- `updated_at` 自動更新トリガは本DDLには未定義。JST修正の通常行は下記の行単位リポジトリで更新版を生成する。
+
+## JST修正の追加スキーマ（022、ローカル検証段階）
+
+`migrations/022_portal_file_assets.sql` は既存表を変更しないexpand。TEST/本番には未適用。
+
+- `portal_file_operations`: `(organization_id, actor_key, operation_id)` 複合主キー。要求ハッシュ、processing/succeeded/rejected、attempt/lease、結果と保持期限を記録する。日時はTIMESTAMPTZ/DB時計。
+- `portal_file_assets`: UUID主キー、tenant/kind/owner、操作/試行、UUID実体キー・generation・ハッシュ、staged/active/retired/delete_pending/deletedと回収情報を記録する。操作へのFKは同じtenant/actor/operationへ制約する。`read_protected_until TIMESTAMPTZ NULL` は配信開始時に行ロック下でDB時刻+15分まで延長し、回収が同じ行ロック下で再確認する。退役時刻とは独立し、外部I/O中はDBロックを保持しない。
+- 確定参照は所有表への4列追加案ではなく、アセット表のactive行を用いる。`(organization_id, kind, owner_id) WHERE state='active'` の部分一意索引で一意にし、業務行URLと同一TXで変更する。配信/確定/回収はtenant/kind/ownerを照合する。
+
+通常行のシステム日時は行単位リポジトリで生成する。更新版はロック取得後のDB時刻と前回+1µsの大きい方を使い、異常な未来版は停止する。コレクション全体の無保護な置換は行わない。ID採番/シーケンスの実データ調整と5秒閾値の最終判断はS00の結果待ち。詳細は `../docs/JST_DATETIME_IMPLEMENTATION_PLAN.md` 第6・10・13章。

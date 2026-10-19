@@ -168,6 +168,7 @@ async function saveOrgSetting() {
     const iconUrl = current.icon_url || current.iconUrl || '';
     const payload = {
         name,
+        expected_updated_at: current.updated_at || '',
         organization_name: name,
         organization_abbreviation: shortName,
         short_name: shortName,
@@ -182,6 +183,7 @@ async function saveOrgSetting() {
         formData.append('icon_url_file', iconFile);
     }
     await request(current.id ? `/api/extra/org_settings/${encodeURIComponent(current.id)}` : '/api/extra/org_settings', {
+        _portalFileOperation: true,
         method: current.id ? 'PUT' : 'POST',
         body: formData,
     });

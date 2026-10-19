@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from ..utils.datetime_utils import format_instant, jst_now
+
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -103,7 +104,8 @@ def upsert_role_permission(role_name: str, permission_key: str, enabled: bool) -
 
 
 def clear_system_cache() -> dict[str, Any]:
-    get_memory_cache().invalidate()
+    # Manual operations clear: every tenant (explicit path, JST spec R09).
+    get_memory_cache().clear_all_tenants()
     if db_configured(psycopg, psql):
         try:
             _repository().record_cache_invalidation("*", "manual_clear")
@@ -167,7 +169,7 @@ def get_readiness_summary() -> dict[str, Any]:
     overall = all(bool(item.get("passed")) for item in checks)
     return {
         "overall_status": "ok" if overall else "warning",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": format_instant(jst_now()),
         "runtime": {
             "data_backend": data_backend,
             "db_expected": expected_db,

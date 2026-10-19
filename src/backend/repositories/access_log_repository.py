@@ -9,6 +9,7 @@ from psycopg import sql as psql
 from ..core.db_schema import DB_COLLECTION_COLUMNS
 from ..core.tenant_context import get_current_tenant_id
 from ..db.database import db_connection_string
+from ..utils.datetime_utils import format_instant
 from .db_row_repository import db_row_to_json, db_row_tuple, table_has_organization_id
 
 
@@ -34,20 +35,25 @@ def insert_access_log(payload: dict[str, Any]) -> dict[str, Any]:
             if "organization_id" not in columns:
                 columns = (*columns, "organization_id")
 
+        # Recorded times come from the DB clock (JST spec R02), not the app.
+        db_clock_columns = ("accessed_at", "created_at", "updated_at")
+        value_columns = tuple(column for column in columns if column not in db_clock_columns)
         insert_query = psql.SQL(
-            "INSERT INTO {} ({}) VALUES ({}) RETURNING id"
+            "INSERT INTO {} ({}) VALUES ({}) RETURNING id, accessed_at, created_at, updated_at"
         ).format(
             psql.Identifier(table_name),
-            psql.SQL(", ").join(psql.Identifier(column) for column in columns),
-            psql.SQL(", ").join(psql.Placeholder() for _ in columns),
+            psql.SQL(", ").join(psql.Identifier(column) for column in (*value_columns, *db_clock_columns)),
+            psql.SQL(", ").join([*(psql.Placeholder() for _ in value_columns), *(psql.SQL("clock_timestamp()") for _ in db_clock_columns)]),
         )
 
         with conn.cursor() as cur:
-            cur.execute(insert_query, db_row_tuple(table_name, columns, row))
+            cur.execute(insert_query, db_row_tuple(table_name, value_columns, row))
             inserted = cur.fetchone()
             if not inserted:
                 raise RuntimeError("Access log insert did not return an id")
             result["id"] = int(inserted[0])
+            for column, value in zip(db_clock_columns, inserted[1:]):
+                result[column] = format_instant(value)
 
         conn.commit()
 
@@ -121,7 +127,7 @@ def query_access_logs(
             rows = cur.fetchall()
             columns = [desc[0] for desc in cur.description]
 
-    items = [db_row_to_json(dict(zip(columns, row))) for row in rows]
+    items = [db_row_to_json(dict(zip(columns, row)), table_name) for row in rows]
     return {
         "items": items,
         "page": safe_page,

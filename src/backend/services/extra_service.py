@@ -1,39 +1,49 @@
 from __future__ import annotations
 
 from datetime import time
-from typing import Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from fastapi import HTTPException, UploadFile
+if TYPE_CHECKING:
+    from ..repositories.db_item_repository import ListRowStore, PostgresRowStore
 
+from fastapi import HTTPException
+
+from ..utils.datetime_utils import require_input_dates
 from .extra_collection_helpers import (
+    EXTRA_COLLECTIONS,
+    EXTRA_INPUT_DATE_FIELDS,
     assert_extra_collection_permission,
     collection_items,
+    desired_piece_merged_votes,
+    is_admin_device,
     normalize_extra_payload,
     parse_extra_upsert_request,
 )
-from .desired_piece_asset_service import (
-    delete_reference_score_file,
-    delete_reference_score_files,
-    reference_score_route,
-    trim_reference_score_files,
-    upload_reference_score_file,
-)
 from .concert_record_video_service import (
-    append_concert_record_sort_order,
     clean_concert_record_title,
     performance_concert_record_videos,
 )
-from .image_asset_service import delete_stored_image, ensure_public_image_url, is_data_image, store_data_image, store_uploaded_image
-from .storage_service import load_json_data, save_json_data
+from . import portal_file_asset_service as file_assets
+from .image_asset_service import ensure_public_image_url
+from .storage_service import load_json_data
 from .notification_service import data_changed, emit
 from .youtube_validation_service import fetch_youtube_metadata, validate_youtube_url
 from .timetable_payload_helpers import normalize_extra_for_collection
+from ..utils.collection_utils import find_item
 from ..utils.concurrency import ensure_expected_updated_at
-from ..utils.collection_utils import find_item, next_id
-from ..utils.datetime_utils import next_updated_at
 
+T = TypeVar("T")
 
 ATTENDANCE_STATUSES = {"present", "absent", "late", "leave_early"}
+ADMIN_PERMISSIONS = {"管理者", "システム管理者"}
+
+
+def _store() -> PostgresRowStore | ListRowStore:
+    # Resolved per call so tests and the local JSON mode can swap the backend.
+    from ..core.compat_gateway import row_store
+
+    return row_store()
 
 
 def _validate_absence_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -104,20 +114,11 @@ def _matching_absence_index(items: list[dict[str, Any]], payload: dict[str, Any]
     return None
 
 
-def _promotion_route(promotion_id: int) -> str:
-    return f"/api/extra/promotions/{promotion_id}/image"
-
-
-def _promotion_object_prefix(promotion_id: int) -> str:
-    return f"promotion-images/{promotion_id}/image"
-
-
-def _org_setting_route(setting_id: int) -> str:
-    return f"/api/extra/org_settings/{setting_id}/icon"
-
-
-def _org_setting_object_prefix(setting_id: int) -> str:
-    return f"org-settings/{setting_id}/icon"
+def _absence_lock_key(payload: dict[str, Any]) -> str:
+    # One writer per member/practice so the idempotent POST cannot create
+    # duplicates when two requests race (row-level replacement of the old
+    # whole-list check).
+    return f"absence:{payload.get('schedule_id') or ''}:{payload.get('member_id') or payload.get('name') or ''}"
 
 
 def _desired_piece_has_votes(item: dict[str, Any]) -> bool:
@@ -133,7 +134,7 @@ def _desired_piece_validate_title_lock(
         return
 
     permission = str(device.get("permission") or "")
-    if permission in {"邂｡逅・・", "繧ｷ繧ｹ繝・Β邂｡逅・・"}:
+    if permission in {"邂｡逅・・", "繧ｷ繧ｹ繝・Β邂｡逅・・"}:
         return
 
     owner_member_id = str(current.get("member_id") or "")
@@ -149,17 +150,6 @@ def _desired_piece_validate_title_lock(
 
     if str(payload.get("title") or "").strip() != str(current.get("title") or "").strip():
         raise HTTPException(status_code=403, detail="投票済みの希望曲は曲名を編集できません")
-
-
-def _desired_piece_reference_audio_url(value: Any) -> str:
-    return validate_youtube_url(str(value or ""))
-
-
-def _desired_piece_reference_score_file(raw_body: dict[str, Any]) -> UploadFile | None:
-    file_obj = raw_body.get("reference_score_file")
-    if file_obj is not None and hasattr(file_obj, "read"):
-        return file_obj
-    return None
 
 
 def _concert_record_performance_id(value: Any) -> int:
@@ -196,17 +186,13 @@ def _concert_record_target_sort_order(payload: dict[str, Any], current: dict[str
         return None
 
 
-def _concert_record_group(items: list[dict[str, Any]], performance_id: int) -> list[dict[str, Any]]:
-    return performance_concert_record_videos(items, performance_id)
-
-
 def _concert_record_resequence_group(
     items: list[dict[str, Any]],
     performance_id: int,
     current: dict[str, Any] | None = None,
     target_sort_order: int | None = None,
 ) -> None:
-    group = _concert_record_group(items, performance_id)
+    group = performance_concert_record_videos(items, performance_id)
     if not group:
         return
 
@@ -222,119 +208,63 @@ def _concert_record_resequence_group(
         item["sort_order"] = index
 
 
-def _concert_record_validate_payload(
-    payload: dict[str, Any],
-    current: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+def _concert_record_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    """Network I/O (YouTube) happens before any DB lock is taken."""
     performance_id = _concert_record_performance_id(payload.get("performance_id"))
     if not _concert_record_performance_exists(performance_id):
         raise HTTPException(status_code=400, detail="演奏会を選択してください")
-
     metadata = fetch_youtube_metadata(str(payload.get("youtube_url") or ""))
-    normalized = dict(payload)
-    normalized["performance_id"] = performance_id
-    normalized["youtube_url"] = metadata.canonical_url
-    normalized["title"] = clean_concert_record_title(metadata.title)
-    normalized["thumbnail_url"] = str(metadata.thumbnail_url or "")
-    if current is not None:
-        normalized["sort_order"] = _concert_record_target_sort_order(normalized, current)
-    return normalized
+    return {
+        "performance_id": performance_id,
+        "youtube_url": metadata.canonical_url,
+        "title": clean_concert_record_title(metadata.title),
+        "thumbnail_url": str(metadata.thumbnail_url or ""),
+    }
 
 
-def _prepare_desired_piece_payload(
-    item_id: int,
-    normalized_body: dict[str, Any],
-    raw_body: dict[str, Any],
-    current: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], str | None]:
-    payload = dict(normalized_body)
-    payload["reference_audio_url"] = _desired_piece_reference_audio_url(payload.get("reference_audio_url") or "")
-
-    score_file = _desired_piece_reference_score_file(raw_body)
-    existing_score_url = str((current or {}).get("reference_score_url") or "")
-    if score_file is not None:
-        payload["reference_score_url"] = reference_score_route(item_id)
-        stored_name = upload_reference_score_file(score_file, item_id)
-        return payload, stored_name
-
-    if existing_score_url:
-        payload["reference_score_url"] = reference_score_route(item_id)
-    else:
-        payload["reference_score_url"] = str(payload.get("reference_score_url") or "")
-    return payload, None
-
-
-def _rollback_desired_piece_reference_score(item_id: int, stored_name: str | None) -> None:
-    if stored_name:
-        delete_reference_score_file(item_id, stored_name)
+def _concert_group_orders(
+    rows: list[dict[str, Any]],
+    item: dict[str, Any] | None,
+    *,
+    old_performance_id: int,
+    new_performance_id: int,
+    target_sort_order: int | None,
+    remove_item: bool = False,
+) -> dict[int, dict[str, Any]]:
+    """Final ``sort_order`` (and ``performance_id``) per row, using the existing rules."""
+    copies = [dict(row) for row in rows if not (item is not None and row.get("id") == item.get("id"))]
+    moved = None
+    if item is not None and not remove_item:
+        moved = dict(item)
+        if old_performance_id != new_performance_id:
+            # Same rule as before: a moved video is appended to the new group.
+            moved["performance_id"] = new_performance_id
+            moved["sort_order"] = max(
+                (int(row.get("sort_order") or 0) for row in copies if _concert_record_performance_id(row.get("performance_id")) == new_performance_id),
+                default=0,
+            ) + 1
+        copies.append(moved)
+    if old_performance_id and old_performance_id != new_performance_id:
+        _concert_record_resequence_group(copies, old_performance_id)
+    if new_performance_id:
+        _concert_record_resequence_group(copies, new_performance_id, moved, target_sort_order)
+    original = {row.get("id"): row for row in rows}
+    result: dict[int, dict[str, Any]] = {}
+    for row in copies:
+        row_id = row.get("id")
+        before = original.get(row_id) or {}
+        values = {"sort_order": int(row.get("sort_order") or 0)}
+        if moved is not None and row is moved:
+            values["performance_id"] = new_performance_id
+        if row_id is not None and any(before.get(key) != value for key, value in values.items()):
+            result[int(row_id)] = values
+    return result
 
 
 def _image_field_name(name: str) -> str:
-    if name == "promotions":
-        return "image_url"
     if name == "org_settings":
         return "icon_url"
     return ""
-
-
-def _image_route(name: str, item_id: int) -> str:
-    if name == "promotions":
-        return _promotion_route(item_id)
-    if name == "org_settings":
-        return _org_setting_route(item_id)
-    return ""
-
-
-def _image_object_prefix(name: str, item_id: int) -> str:
-    if name == "promotions":
-        return _promotion_object_prefix(item_id)
-    if name == "org_settings":
-        return _org_setting_object_prefix(item_id)
-    return ""
-
-
-async def _persist_collection_image(
-    name: str,
-    item_id: int,
-    image_url: str,
-    image_file: UploadFile | None = None,
-) -> str:
-    field_name = _image_field_name(name)
-    if not field_name:
-        return str(image_url or "")
-    if image_file is not None:
-        return await store_uploaded_image(
-            image_file,
-            object_prefix=_image_object_prefix(name, item_id),
-            route_path=_image_route(name, item_id),
-        )
-    return store_data_image(
-        image_url,
-        object_prefix=_image_object_prefix(name, item_id),
-        route_path=_image_route(name, item_id),
-    )
-
-
-def _delete_promotion_image(promotion_id: int, image_url: str) -> None:
-    delete_stored_image(image_url, object_prefix=_promotion_object_prefix(promotion_id))
-
-
-def _delete_collection_image(name: str, item_id: int, image_url: str) -> None:
-    field_name = _image_field_name(name)
-    if not field_name:
-        return
-    delete_stored_image(image_url, object_prefix=_image_object_prefix(name, item_id))
-
-
-def _public_promotion_item(item: dict[str, Any]) -> dict[str, Any]:
-    payload = dict(item)
-    promotion_id = int(payload.get("id") or 0)
-    if promotion_id:
-        payload["image_url"] = ensure_public_image_url(
-            payload.get("image_url") or "",
-            route_path=_promotion_route(promotion_id),
-        )
-    return payload
 
 
 def _public_org_setting_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -343,7 +273,18 @@ def _public_org_setting_item(item: dict[str, Any]) -> dict[str, Any]:
     if setting_id:
         payload["icon_url"] = ensure_public_image_url(
             payload.get("icon_url") or "",
-            route_path=_org_setting_route(setting_id),
+            route_path=f"/api/extra/org_settings/{setting_id}/icon",
+        )
+    return payload
+
+
+def _public_promotion_item(item: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(item)
+    promotion_id = int(payload.get("id") or 0)
+    if promotion_id:
+        payload["image_url"] = ensure_public_image_url(
+            payload.get("image_url") or "",
+            route_path=f"/api/extra/promotions/{promotion_id}/image",
         )
     return payload
 
@@ -363,194 +304,449 @@ def get_item_raw(name: str, item_id: int) -> dict[str, Any]:
     return item
 
 
-async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
+def _guard_dedicated_apis(name: str) -> None:
     if name == "promotions":
         raise HTTPException(status_code=409, detail="Use the promotion API with an operation key")
     if name == "sheet_library":
         # The generic collection API would save the whole list; sheets have
         # their own row-level, idempotent API (/api/sheets).
         raise HTTPException(status_code=409, detail="Use the sheet API with an operation key")
-    items = collection_items(name, load_json_data)
-    upsert = parse_extra_upsert_request(raw_body)
-    normalized_body = normalize_extra_for_collection(name, upsert.payload)
+    if name not in EXTRA_COLLECTIONS:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+
+def _public(name: str, item: dict[str, Any]) -> dict[str, Any]:
+    if name == "org_settings":
+        return _public_org_setting_item(item)
+    return item
+
+
+def _owner_fields(name: str, body: dict[str, Any], device: dict[str, Any], current: dict[str, Any] | None) -> None:
+    if name not in {"desired_pieces", "promotions"} or is_admin_device(device):
+        return
+    if current is None:
+        body["member_id"] = device.get("member_id") or ""
+        body["registered_by"] = device.get("member_name") or ""
+    else:
+        body["member_id"] = current.get("member_id") or device.get("member_id") or ""
+        body["registered_by"] = current.get("registered_by") or device.get("member_name") or ""
+
+
+def build_create_payload(name: str, upsert_payload: dict[str, Any], device: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Validation that needs no current row (and the network-bound metadata)."""
+    normalized_body = normalize_extra_for_collection(name, upsert_payload)
+    require_input_dates(normalized_body, EXTRA_INPUT_DATE_FIELDS.get(name, ()))
     if name == "absences":
         normalized_body = _validate_absence_payload(normalized_body)
     assert_extra_collection_permission(name, device, payload=normalized_body)
-    if name == "absences":
-        # The generic extra endpoint predates attendance.  Preserve its URL while
-        # making POST idempotent per member/practice to prevent duplicate replies.
-        existing_index = _matching_absence_index(items, normalized_body)
-        if existing_index is not None:
-            existing_id = int(items[existing_index].get("id") or 0)
-            if existing_id:
-                return await update_item(name, existing_id, raw_body, device)
-    if (
-        name in {"desired_pieces", "promotions"}
-        and str(device.get("permission") or "") not in {"管理者", "システム管理者"}
-    ):
-        normalized_body["member_id"] = device.get("member_id") or ""
-        normalized_body["registered_by"] = device.get("member_name") or ""
-    payload = normalize_extra_payload(
-        normalized_body,
-        next_updated_at_func=next_updated_at,
-        item_id=next_id(items),
-    )
-    desired_piece_score_stored_name: str | None = None
-    if name == "concert_record_videos":
-        payload = _concert_record_validate_payload(payload, None)
-        payload["sort_order"] = append_concert_record_sort_order(items, payload["performance_id"])
+    _owner_fields(name, normalized_body, device, None)
+    metadata = _concert_record_metadata(normalized_body) if name == "concert_record_videos" else None
     if name == "desired_pieces":
-        payload, desired_piece_score_stored_name = _prepare_desired_piece_payload(
-            int(payload.get("id") or 0),
-            payload,
-            raw_body,
-            None,
-        )
+        normalized_body["reference_audio_url"] = validate_youtube_url(str(normalized_body.get("reference_audio_url") or ""))
     if name == "sns_settings":
-        payload["youtube_url"] = str(payload.get("youtube_url") or "")
-    image_field = _image_field_name(name)
-    image_source = str(payload.get(image_field) or "") if image_field else ""
-    uploaded_image_url = ""
-    if image_field and (is_data_image(image_source) or str(raw_body.get(image_field) or "") or raw_body.get(f"{image_field}_file")):
-        payload[image_field] = ""
-    items.append(payload)
-    try:
-        if image_field:
-            image_file = raw_body.get(f"{image_field}_file")
-            uploaded_image_url = await _persist_collection_image(
-                name,
-                int(payload.get("id") or 0),
-                image_source,
-                image_file if image_file and hasattr(image_file, "read") else None,
-            )
-            payload[image_field] = uploaded_image_url
-        if name == "concert_record_videos":
-            _concert_record_resequence_group(items, int(payload.get("performance_id") or 0), payload)
-        save_json_data(name, items)
-        if name == "desired_pieces" and desired_piece_score_stored_name:
-            trim_reference_score_files(int(payload.get("id") or 0), desired_piece_score_stored_name)
-    except Exception:
-        if uploaded_image_url and uploaded_image_url != image_source:
-            _delete_collection_image(name, int(payload.get("id") or 0), uploaded_image_url)
+        normalized_body["youtube_url"] = str(normalized_body.get("youtube_url") or "")
+    return normalized_body, metadata
+
+
+def create_row(name: str, normalized_body: dict[str, Any], metadata: dict[str, Any] | None, *, ctx: Any = None, extra: dict[str, Any] | Callable[[int], dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Insert one item (with its group rules) in a row-level transaction."""
+    store = _store()
+
+    def build(new_id: int) -> dict[str, Any]:
+        payload = normalize_extra_payload(normalized_body, item_id=new_id)
+        if metadata is not None:
+            payload.update(metadata)
+        # File references are server managed: set only by a confirmed asset.
         if name == "desired_pieces":
-            _rollback_desired_piece_reference_score(int(payload.get("id") or 0), desired_piece_score_stored_name)
-        raise
-    if name in {'piece_infos', 'practice_instructions'}:
-        emit(name, payload)
-    if name == "promotions":
-        return _public_promotion_item(payload)
-    if name == "org_settings":
-        return _public_org_setting_item(payload)
-    return payload
+            payload["reference_score_url"] = ""
+        image_field = _image_field_name(name)
+        if image_field:
+            payload[image_field] = ""
+        if extra:
+            payload.update(extra(new_id) if callable(extra) else extra)
+        return payload
+
+    if name == "concert_record_videos":
+        performance_id = int((metadata or {}).get("performance_id") or 0)
+
+        def work(c: Any) -> dict[str, Any]:
+            store.lock(c, name, [f"group:performance:{performance_id}"])
+            rows = performance_concert_record_videos(store.list(name, ctx=c), performance_id)
+            orders = _concert_group_orders(rows, None, old_performance_id=0, new_performance_id=performance_id, target_sort_order=None)
+            if orders:
+                store.update_many(name, orders, ctx=c, unique_two_phase="sort_order")
+            created_build = build
+
+            def with_order(new_id: int) -> dict[str, Any]:
+                payload = created_build(new_id)
+                payload["sort_order"] = len(rows) + 1
+                return payload
+
+            return store.insert(name, with_order, ctx=c)
+
+        return _in_transaction(store, ctx, work)
+    return store.insert(name, build, ctx=ctx)
 
 
-async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device: dict[str, Any]) -> dict[str, Any]:
-    if name == "promotions":
-        raise HTTPException(status_code=409, detail="Use the promotion API with an operation key")
-    if name == "sheet_library":
-        # The generic collection API would save the whole list; sheets have
-        # their own row-level, idempotent API (/api/sheets).
-        raise HTTPException(status_code=409, detail="Use the sheet API with an operation key")
-    items = collection_items(name, load_json_data)
-    index, current = find_item(items, item_id)
-    upsert = parse_extra_upsert_request(raw_body)
-    ensure_expected_updated_at(current, upsert.expected_updated_at)
-    normalized_body = normalize_extra_for_collection(name, upsert.payload)
+def _in_transaction(store: Any, ctx: Any, work: Callable[[Any], T]) -> T:
+    if ctx is not None:
+        return work(ctx)
+    with store.transaction() as own:
+        return work(own)
+
+
+def build_update_mutate(
+    name: str,
+    item_id: int,
+    upsert_payload: dict[str, Any],
+    device: dict[str, Any],
+    metadata: dict[str, Any] | None,
+    *,
+    extra: Any = None,
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """Return a pure mutate(current) for the row-level update (no I/O inside)."""
+    normalized_body = normalize_extra_for_collection(name, upsert_payload)
+    require_input_dates(normalized_body, EXTRA_INPUT_DATE_FIELDS.get(name, ()))
     if name == "absences":
         normalized_body = _validate_absence_payload(normalized_body)
-    assert_extra_collection_permission(name, device, payload=normalized_body, current=current)
-    if (
-        name in {"desired_pieces", "promotions"}
-        and str(device.get("permission") or "") not in {"管理者", "システム管理者"}
-    ):
-        normalized_body["member_id"] = current.get("member_id") or device.get("member_id") or ""
-        normalized_body["registered_by"] = current.get("registered_by") or device.get("member_name") or ""
-    payload = normalize_extra_payload(
-        normalized_body,
-        next_updated_at_func=next_updated_at,
-        item_id=item_id,
-        current=current,
-    )
-    desired_piece_score_stored_name: str | None = None
-    concert_record_old_performance_id = _concert_record_performance_id(current.get("performance_id")) if name == "concert_record_videos" else 0
     if name == "desired_pieces":
-        _desired_piece_validate_title_lock(current, payload, device)
-        payload, desired_piece_score_stored_name = _prepare_desired_piece_payload(
-            item_id,
-            payload,
-            raw_body,
-            current,
-        )
-    if name == "concert_record_videos":
-        payload = _concert_record_validate_payload(payload, current)
-        target_performance_id = int(payload.get("performance_id") or 0)
-        if target_performance_id == concert_record_old_performance_id:
-            target_sort_order = _concert_record_target_sort_order(payload, current)
-            payload["sort_order"] = target_sort_order or int(current.get("sort_order") or 0)
-        else:
-            payload["sort_order"] = append_concert_record_sort_order(
-                [item for item in items if int(item.get("id") or 0) != item_id],
-                target_performance_id,
-            )
-    if name == "sns_settings":
-        payload["youtube_url"] = str(payload.get("youtube_url") or current.get("youtube_url") or "")
-    image_field = _image_field_name(name)
-    image_source = str(payload.get(image_field) or "") if image_field else ""
-    old_image_url = str(current.get(image_field) or "") if image_field else ""
-    uploaded_image_url = ""
-    if image_field and (is_data_image(image_source) or raw_body.get(image_field) or raw_body.get(f"{image_field}_file")):
-        payload[image_field] = ""
-    items[index] = payload
-    try:
-        if image_field:
-            image_file = raw_body.get(f"{image_field}_file")
-            uploaded_image_url = await _persist_collection_image(
-                name,
-                item_id,
-                image_source,
-                image_file if image_file and hasattr(image_file, "read") else None,
-            )
-            payload[image_field] = uploaded_image_url
-            items[index] = payload
-        if name == "concert_record_videos":
-            if concert_record_old_performance_id and concert_record_old_performance_id != int(payload.get("performance_id") or 0):
-                _concert_record_resequence_group(items, concert_record_old_performance_id)
-            _concert_record_resequence_group(items, int(payload.get("performance_id") or 0), payload, _concert_record_target_sort_order(payload, current))
-        if name == "desired_pieces" and desired_piece_score_stored_name:
-            trim_reference_score_files(item_id, desired_piece_score_stored_name)
-        save_json_data(name, items)
-    except Exception:
-        if uploaded_image_url and uploaded_image_url != old_image_url:
-            _delete_collection_image(name, item_id, uploaded_image_url)
+        normalized_body["reference_audio_url"] = validate_youtube_url(str(normalized_body.get("reference_audio_url") or ""))
+
+    def mutate(current: dict[str, Any]) -> dict[str, Any]:
+        body = dict(normalized_body)
+        if name == "desired_pieces" and not is_admin_device(device) and not _is_desired_piece_owner(current, device):
+            # Vote-only update by another member: apply the actor's vote to the
+            # *current* votes so concurrent votes of others are kept (spec 1.6).
+            merged = desired_piece_merged_votes(body, current, device)
+            if merged is None:
+                raise HTTPException(status_code=403, detail="Only owner can modify desired piece details")
+            return {**current, "votes": merged}
+        assert_extra_collection_permission(name, device, payload=body, current=current)
+        _owner_fields(name, body, device, current)
+        payload = normalize_extra_payload(body, item_id=item_id, current=current)
         if name == "desired_pieces":
-            _rollback_desired_piece_reference_score(item_id, desired_piece_score_stored_name)
-        raise
-    if image_field and old_image_url and old_image_url != str(payload.get(image_field) or ""):
-        _delete_collection_image(name, item_id, old_image_url)
-    if name in {'piece_infos', 'practice_instructions'} and data_changed(current, payload, name):
-        emit(name, payload, 'updated')
-    if name == "promotions":
-        return _public_promotion_item(payload)
-    if name == "org_settings":
-        return _public_org_setting_item(payload)
-    return payload
+            _desired_piece_validate_title_lock(current, payload, device)
+            payload["votes"] = desired_piece_merged_votes(payload, current, device, owner=True) or []
+            # The reference changes only through the file-operation protocol.
+            payload["reference_score_url"] = str(current.get("reference_score_url") or "")
+        if metadata is not None:
+            payload.update(metadata)
+        if name == "sns_settings":
+            payload["youtube_url"] = str(payload.get("youtube_url") or current.get("youtube_url") or "")
+        image_field = _image_field_name(name)
+        if image_field:
+            # The icon reference changes only through the file-operation API.
+            payload[image_field] = current.get(image_field) or ""
+        if extra is not None:
+            payload.update(extra(current, payload) if callable(extra) else extra)
+        return payload
+
+    return mutate
 
 
-def delete_item(name: str, item_id: int, device: dict[str, Any]) -> None:
-    if name == "promotions":
-        raise HTTPException(status_code=409, detail="Use the promotion API with an operation key")
-    if name == "sheet_library":
-        # The generic collection API would save the whole list; sheets have
-        # their own row-level, idempotent API (/api/sheets).
-        raise HTTPException(status_code=409, detail="Use the sheet API with an operation key")
-    items = collection_items(name, load_json_data)
-    _, current = find_item(items, item_id)
-    assert_extra_collection_permission(name, device, current=current)
-    if name in {"promotions", "org_settings"}:
-        _delete_collection_image(name, item_id, str(current.get(_image_field_name(name)) or ""))
+def _is_desired_piece_owner(current: dict[str, Any], device: dict[str, Any]) -> bool:
+    member_id = str(device.get("member_id") or "")
+    member_name = str(device.get("member_name") or "")
+    owner_id = str(current.get("member_id") or "")
+    owner_name = str(current.get("registered_by") or "")
+    return bool((member_id and owner_id and member_id == owner_id) or (member_name and owner_name and member_name == owner_name))
+
+
+def update_row(
+    name: str,
+    item_id: int,
+    mutate: Any,
+    *,
+    expected_updated_at: str | None,
+    metadata: dict[str, Any] | None,
+    target_sort_order: int | None = None,
+    ctx: Any = None,
+) -> dict[str, Any]:
+    store = _store()
+    if name != "concert_record_videos":
+        return store.update(name, item_id, mutate, expected_updated_at=expected_updated_at, ctx=ctx)
+
+    def work(c: Any) -> dict[str, Any]:
+        peek = store.get(name, item_id, ctx=c)
+        if peek is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+        old_performance_id = _concert_record_performance_id(peek.get("performance_id"))
+        new_performance_id = int((metadata or {}).get("performance_id") or old_performance_id)
+        store.lock(c, name, sorted({f"group:performance:{old_performance_id}", f"group:performance:{new_performance_id}"}))
+        current = store.get(name, item_id, ctx=c, lock=True)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+        if _concert_record_performance_id(current.get("performance_id")) != old_performance_id:
+            raise HTTPException(status_code=409, detail="Data has been updated by another user")
+        # Version check before the re-sequencing touches this row.
+        ensure_expected_updated_at(current, expected_updated_at)
+        candidate = mutate(dict(current))
+        rows = [
+            row
+            for row in store.list(name, ctx=c)
+            if _concert_record_performance_id(row.get("performance_id")) in {old_performance_id, new_performance_id}
+        ]
+        if new_performance_id == old_performance_id:
+            target = target_sort_order or int(current.get("sort_order") or 0) or None
+        else:
+            target = None
+        orders = _concert_group_orders(
+            rows,
+            current,
+            old_performance_id=old_performance_id,
+            new_performance_id=new_performance_id,
+            target_sort_order=target,
+        )
+        if orders:
+            store.update_many(name, orders, ctx=c, unique_two_phase="sort_order")
+        final = orders.get(int(current["id"]), {"sort_order": int(current.get("sort_order") or 0)})
+        return store.update(
+            name,
+            item_id,
+            lambda latest: {**candidate, "performance_id": new_performance_id, "sort_order": final["sort_order"]},
+            ctx=c,
+        )
+
+    return _in_transaction(store, ctx, work)
+
+
+async def create_item(name: str, raw_body: dict[str, Any], device: dict[str, Any], *, idempotency_key: str | None = None) -> Any:
+    _guard_dedicated_apis(name)
+    upsert = parse_extra_upsert_request(raw_body)
+    if _is_file_operation(name, "POST", raw_body, idempotency_key):
+        return await _run_file_operation(name, "POST", None, raw_body, device, idempotency_key)
+    normalized_body, metadata = build_create_payload(name, upsert.payload, device)
+    store = _store()
+    if name == "absences":
+        def work(c: Any) -> dict[str, Any]:
+            store.lock(c, name, [_absence_lock_key(normalized_body)])
+            items = store.list(name, ctx=c)
+            existing_index = _matching_absence_index(items, normalized_body)
+            if existing_index is not None and int(items[existing_index].get("id") or 0):
+                # The generic extra endpoint predates attendance. Keep its URL
+                # while making POST idempotent per member/practice.
+                mutate = build_update_mutate(name, int(items[existing_index]["id"]), upsert.payload, device, None)
+                return store.update(name, int(items[existing_index]["id"]), mutate, expected_updated_at=upsert.expected_updated_at, ctx=c)
+            return store.insert(name, lambda new_id: normalize_extra_payload(normalized_body, item_id=new_id), ctx=c)
+
+        saved = _in_transaction(store, None, work)
+    else:
+        saved = create_row(name, normalized_body, metadata)
+    # Notifications only after the row-level transaction committed.
+    if name in {"piece_infos", "practice_instructions"}:
+        emit(name, saved)
+    return _public(name, saved)
+
+
+async def update_item(name: str, item_id: int, raw_body: dict[str, Any], device: dict[str, Any], *, idempotency_key: str | None = None) -> Any:
+    _guard_dedicated_apis(name)
+    upsert = parse_extra_upsert_request(raw_body)
+    if _is_file_operation(name, "PUT", raw_body, idempotency_key, item_id=item_id):
+        return await _run_file_operation(name, "PUT", item_id, raw_body, device, idempotency_key)
+    metadata = _concert_record_metadata(normalize_extra_for_collection(name, upsert.payload)) if name == "concert_record_videos" else None
+    mutate = build_update_mutate(name, item_id, upsert.payload, device, metadata)
+    before: dict[str, Any] = {}
+
+    def capturing(current: dict[str, Any]) -> dict[str, Any]:
+        before.clear()
+        before.update(current)
+        return mutate(current)
+
+    saved = update_row(
+        name,
+        item_id,
+        capturing,
+        expected_updated_at=upsert.expected_updated_at,
+        metadata=metadata,
+        target_sort_order=_concert_record_target_sort_order(upsert.payload, None) if name == "concert_record_videos" else None,
+    )
+    if name in {"piece_infos", "practice_instructions"} and data_changed(before, saved, name):
+        emit(name, saved, "updated")
+    return _public(name, saved)
+
+
+async def delete_item(name: str, item_id: int, device: dict[str, Any], *, idempotency_key: str | None = None) -> Any:
+    _guard_dedicated_apis(name)
+    store = _store()
+    if _is_file_operation(name, "DELETE", {}, idempotency_key, item_id=item_id):
+        return await _run_file_delete(name, item_id, device, idempotency_key)
+
+    def authorize(current: dict[str, Any]) -> None:
+        assert_extra_collection_permission(name, device, current=current)
+
+    if name != "concert_record_videos":
+        store.delete(name, item_id, authorize)
+        return None
+
+    def work(c: Any) -> None:
+        peek = store.get(name, item_id, ctx=c)
+        if peek is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+        performance_id = _concert_record_performance_id(peek.get("performance_id"))
+        store.lock(c, name, [f"group:performance:{performance_id}"])
+        deleted = store.delete(name, item_id, authorize, ctx=c)
+        rows = performance_concert_record_videos(store.list(name, ctx=c), performance_id)
+        orders = _concert_group_orders(rows, deleted, old_performance_id=performance_id, new_performance_id=performance_id, target_sort_order=None, remove_item=True)
+        if orders:
+            store.update_many(name, orders, ctx=c, unique_two_phase="sort_order")
+
+    _in_transaction(store, None, work)
+    return None
+
+
+# --------------------------------------------------------------------------- file operations
+# Desired-piece reference score and organization icon (JST spec R05-A/B, R06).
+
+
+FILE_ACTION_FIELDS = {
+    "desired_pieces": ("reference_score_file", "reference_score_action", None),
+    "org_settings": ("icon_url_file", "icon_action", "icon_url"),
+}
+
+
+def _file_inputs(name: str, raw_body: dict[str, Any]) -> tuple[Any, str]:
+    file_field, action_field, data_field = FILE_ACTION_FIELDS[name]
+    upload = raw_body.get(file_field)
+    action = str(raw_body.get(action_field) or "").strip().lower()
+    if file_assets.has_upload(upload):
+        return upload, "replace"
+    if data_field:
+        payload = parse_extra_upsert_request(raw_body).payload
+        if file_assets.is_data_image(payload.get(data_field)):
+            return payload.get(data_field), "replace"
+    if action == "remove":
+        return None, "remove"
+    return None, "keep"
+
+
+def _is_file_operation(name: str, method: str, raw_body: dict[str, Any], key: Any, *, item_id: Any = None) -> bool:
+    """Requests that change a file (or delete a row owning one) use the operation protocol."""
+    if name not in FILE_ACTION_FIELDS:
+        return False
+    if key not in (None, ""):
+        return True
+    if method == "DELETE":
+        return file_assets.has_active_asset(file_assets.KIND_BY_COLLECTION[name], item_id)
+    _, action = _file_inputs(name, raw_body)
+    return action != "keep"
+
+
+async def _read_file(name: str, source: Any) -> Any:
+    if source is None:
+        return None
     if name == "desired_pieces":
-        delete_reference_score_files(item_id)
-    remaining_items = [item for item in items if item.get("id") != item_id]
-    if name == "concert_record_videos":
-        _concert_record_resequence_group(remaining_items, _concert_record_performance_id(current.get("performance_id")))
-    save_json_data(name, remaining_items)
+        return await file_assets.read_pdf(source)
+    if isinstance(source, str):
+        return file_assets.read_data_image(source)
+    return await file_assets.read_image_upload(source)
+
+
+def _fingerprint(payload: dict[str, Any], expected_updated_at: str) -> dict[str, Any]:
+    from ..utils.datetime_utils import InvalidDateTimeValue, normalize_instant_text
+
+    data = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"id", "created_at", "updated_at", "organization_id"} and not file_assets.has_upload(value)
+    }
+    expected = str(expected_updated_at or "").strip()
+    try:
+        # The same instant in any notation is the same request (R05-A).
+        expected = normalize_instant_text(expected) if expected else ""
+    except InvalidDateTimeValue:
+        pass
+    return {"payload": data, "expected_updated_at": expected}
+
+
+def _require_target(tx: Any, name: str, item_id: int, device: dict[str, Any], expected_updated_at: str | None) -> dict[str, Any]:
+    current = _store().get(name, item_id, ctx=tx.ctx, lock=True)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Data not found")
+    if name == "desired_pieces" and not is_admin_device(device) and not _is_desired_piece_owner(current, device):
+        raise HTTPException(status_code=403, detail="Only owner can modify desired piece details")
+    assert_extra_collection_permission(name, device, current=current)
+    ensure_expected_updated_at(current, expected_updated_at)
+    return current
+
+
+async def _run_file_operation(name: str, method: str, item_id: int | None, raw_body: dict[str, Any], device: dict[str, Any], key: Any) -> Any:
+    kind = file_assets.KIND_BY_COLLECTION[name]
+    url_field = file_assets.KINDS[kind].url_field
+    upsert = parse_extra_upsert_request(raw_body)
+    source, action = _file_inputs(name, raw_body)
+    file = await _read_file(name, source)
+    if method == "POST":
+        normalized_body, metadata = build_create_payload(name, upsert.payload, device)
+    else:
+        payload_for_update = dict(upsert.payload)
+        if url_field in payload_for_update and file_assets.is_data_image(payload_for_update.get(url_field)):
+            payload_for_update.pop(url_field)
+        mutate = build_update_mutate(name, int(item_id or 0), payload_for_update, device, None)
+
+    def validate(tx: Any) -> None:
+        if method != "POST":
+            _require_target(tx, name, int(item_id or 0), device, upsert.expected_updated_at)
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        if method == "POST":
+            def extra(new_id: int) -> dict[str, Any]:
+                return {url_field: applied.url_for(new_id)}
+
+            saved = create_row(name, normalized_body, metadata, ctx=tx.ctx, extra=extra)
+            applied.commit_reference(tx, int(saved["id"]))
+            return 200, _public(name, saved)
+        # Re-checked in the commit transaction (R05-B step 5).
+        _require_target(tx, name, int(item_id or 0), device, upsert.expected_updated_at)
+        new_url = applied.url_for(int(item_id or 0)) if action == "replace" else ""
+
+        def with_reference(current: dict[str, Any]) -> dict[str, Any]:
+            updated = mutate(current)
+            updated[url_field] = new_url if action != "keep" else current.get(url_field) or ""
+            return updated
+
+        saved = _store().update(name, int(item_id or 0), with_reference, ctx=tx.ctx)
+        if action == "replace":
+            applied.commit_reference(tx, int(item_id or 0))
+        elif action == "remove":
+            applied.retire_reference(tx, int(item_id or 0))
+        return 200, _public(name, saved)
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=kind,
+            method=method,
+            target_id=item_id,
+            action=action,
+            file=file,
+            fingerprint=_fingerprint(upsert.payload, upsert.expected_updated_at),
+            validate=validate,
+            apply=apply,
+            view_scope="admin" if name == "org_settings" else "owner",
+        ),
+        device,
+        key,
+    )
+    return file_assets.http_result(status, body)
+
+
+async def _run_file_delete(name: str, item_id: int, device: dict[str, Any], key: Any) -> Any:
+    kind = file_assets.KIND_BY_COLLECTION[name]
+
+    def validate(tx: Any) -> None:
+        _require_target(tx, name, item_id, device, None)
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        _store().delete(name, item_id, lambda current: assert_extra_collection_permission(name, device, current=current), ctx=tx.ctx)
+        applied.retire_reference(tx, item_id)
+        return 200, {"message": "Deleted"}
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=kind, method="DELETE", target_id=item_id, action="delete", file=None,
+            fingerprint={}, validate=validate, apply=apply,
+            view_scope="admin" if name == "org_settings" else "owner",
+        ),
+        device,
+        key,
+    )
+    return file_assets.http_result(status, body)

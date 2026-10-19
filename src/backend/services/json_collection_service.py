@@ -6,6 +6,8 @@ from typing import Any, Callable, cast
 
 from fastapi import HTTPException
 
+from ..utils.datetime_utils import instant_sort_key
+
 
 MemoryCacheLike = Any
 LoadDbCollection = Callable[[str], list[dict[str, Any]]]
@@ -116,7 +118,9 @@ def save_json_data(
             db_save_generic_json_collection(name, data)
         else:
             raise HTTPException(status_code=404, detail=f"Unknown collection: {name}")
-        cache.set(name, data)
+        # Never cache the caller-built list: the next read re-loads committed
+        # DB values (same representation on every instance, JST spec R01/R09).
+        cache.clear(name)
         return
 
     path = data_file(name, data_dir=data_dir)
@@ -128,9 +132,10 @@ def save_json_data(
 
 
 async def list_auth_devices(*, load_json_data: Callable[[str], list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    # Instants are compared as instants, not as text (mixed notations sort wrong).
     sorted_items = sorted(
         load_json_data("auth_devices"),
-        key=lambda item: str(item.get("authenticated_at") or ""),
+        key=lambda item: instant_sort_key(item.get("authenticated_at")),
         reverse=True,
     )
     return cast(list[dict[str, Any]], sorted_items)

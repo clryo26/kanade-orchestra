@@ -56,7 +56,7 @@ def test_access_log_create_uses_single_insert_in_db_mode(
     monkeypatch.setattr(access_logs_router, "db_data_enabled", lambda: True)
     monkeypatch.setattr(access_logs_router, "insert_access_log", fake_insert)
     monkeypatch.setattr(access_logs_router, "load_json_data", fail_collection_access)
-    monkeypatch.setattr(access_logs_router, "save_json_data", fail_collection_access)
+    monkeypatch.setattr(access_logs_router, "mutate_json_data", fail_collection_access)
     monkeypatch.setattr(
         access_logs_router,
         "get_memory_cache",

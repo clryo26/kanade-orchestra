@@ -9,7 +9,7 @@ function renderAlbumView() {
 
     // アルバム一覧を作成日の新しい順にソート
     const albums = [...(appState.albums || [])].sort((a, b) =>
-        String(b.created_at || '').localeCompare(String(a.created_at || ''))
+        comparePortalInstantDesc(a, b)
     );
 
     const isAdmin = isAdmin_Portal();

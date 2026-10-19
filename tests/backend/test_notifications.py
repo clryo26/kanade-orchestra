@@ -422,16 +422,16 @@ def test_business_save_failure_and_unchanged_schedule_do_not_notify(monkeypatch)
 
 @pytest.mark.parametrize("collection,field", [("piece_infos", "description"), ("practice_instructions", "practice_notes")])
 def test_piece_info_noop_and_failed_save_do_not_notify(monkeypatch, collection, field):
+    from src.backend.repositories.db_item_repository import ListRowStore
     from src.backend.services import extra_service
 
     items = []
     calls = []
+    writer = {"save": lambda name, data: items.__setitem__(slice(None), deepcopy(data))}
     monkeypatch.setattr(extra_service, "load_json_data", lambda name: deepcopy(items))
-    monkeypatch.setattr(
-        extra_service,
-        "save_json_data",
-        lambda name, data: items.__setitem__(slice(None), deepcopy(data)),
-    )
+    # Writes are row level now; the store persists through the same list.
+    store = ListRowStore(load=lambda name: deepcopy(items), save=lambda name, data: writer["save"](name, data))
+    monkeypatch.setattr(extra_service, "_store", lambda: store)
     monkeypatch.setattr(extra_service, "emit", lambda *args: calls.append(args))
     device = {"permission": "管理者", "member_id": 2}
     created = asyncio.run(
@@ -447,7 +447,7 @@ def test_piece_info_noop_and_failed_save_do_not_notify(monkeypatch, collection, 
     def failed_write(name, data):
         raise RuntimeError("save failed")
 
-    monkeypatch.setattr(extra_service, "save_json_data", failed_write)
+    writer["save"] = failed_write
     with pytest.raises(RuntimeError):
         asyncio.run(extra_service.create_item(collection, {"piece": "Other"}, device))
     assert len(calls) == 2

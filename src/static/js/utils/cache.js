@@ -3,6 +3,17 @@ function portalCacheBust(url) {
     return `${url}${separator}_=${Date.now()}`;
 }
 
+// Only the portal response cache is versioned; tuner/metronome offline stores
+// are separate databases and must never be cleared by a representation upgrade.
+window.PORTAL_DATETIME_REPRESENTATION = 'jst-us-1';
+window.portalResponseEpoch = 0;
+function portalCacheIdentity() {
+    const state = window.portalRuntimeContext?.appState || {};
+    const device = localStorage.getItem(window.portalRuntimeContext?.PORTAL_DEVICE_ID_KEY || 'kanadePortalDeviceId') || '';
+    return JSON.stringify([window.PORTAL_DATETIME_REPRESENTATION, device,
+        state.currentUserMemberId ?? '', state.currentUserPermission || '', state.portalAuthGeneration || '']);
+}
+
 class IndexedDBCache {
     constructor() {
         this.db = null;
@@ -32,6 +43,8 @@ class IndexedDBCache {
 
     async getEntry(key) {
         if (!this.db) return null;
+        const identity = portalCacheIdentity();
+        key = `${identity}:${key}`;
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readonly');
             const store = transaction.objectStore('bootstrap_cache');
@@ -39,13 +52,15 @@ class IndexedDBCache {
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
                 const entry = request.result;
+                if (identity !== portalCacheIdentity()) { resolve(null); return; }
                 if (!entry) {
                     resolve(null);
                     return;
                 }
                 if (
                     typeof entry !== 'object' ||
-                    !Object.prototype.hasOwnProperty.call(entry, 'data')
+                    !Object.prototype.hasOwnProperty.call(entry, 'data') ||
+                    entry.representation !== window.PORTAL_DATETIME_REPRESENTATION
                 ) {
                     resolve({
                         data: null,
@@ -71,10 +86,11 @@ class IndexedDBCache {
 
     async set(key, data, etag = null) {
         if (!this.db) return;
+        key = `${portalCacheIdentity()}:${key}`;
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readwrite');
             const store = transaction.objectStore('bootstrap_cache');
-            const request = store.put({ key, data, etag, timestamp: Date.now() });
+            const request = store.put({ key, data, etag, representation: window.PORTAL_DATETIME_REPRESENTATION, timestamp: Date.now() });
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
                 if (etag) this.etags.set(key, etag);
@@ -99,6 +115,7 @@ class IndexedDBCache {
 
     async delete(key) {
         if (!this.db) return;
+        key = `${portalCacheIdentity()}:${key}`;
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readwrite');
             const store = transaction.objectStore('bootstrap_cache');
@@ -112,7 +129,7 @@ class IndexedDBCache {
     }
 
     getETag(key) {
-        return this.etags.get(key);
+        return this.etags.get(`${portalCacheIdentity()}:${key}`);
     }
 }
 

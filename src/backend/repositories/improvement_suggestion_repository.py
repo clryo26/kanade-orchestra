@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date
+
+from .db_row_repository import db_json_value
 from typing import Any
 
 from ..core.db_pool import pooled_psycopg as psycopg
@@ -20,8 +22,8 @@ class ImprovementSuggestionRepository:
             "status": row[4] or "未対応",
             "resolution": row[5] or "",
             "responded_at": row[6].isoformat() if row[6] else None,
-            "created_at": row[7].isoformat() if row[7] else "",
-            "updated_at": row[8].isoformat() if row[8] else "",
+            "created_at": db_json_value(row[7]) if row[7] else "",
+            "updated_at": db_json_value(row[8]) if row[8] else "",
         }
 
     def list_all(self, organization_id: str) -> list[dict[str, Any]]:

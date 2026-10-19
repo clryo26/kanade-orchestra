@@ -1,15 +1,32 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any, cast
 
 from ..core.storage_gateway import load_json_data, save_json_data
 from ..utils.collection_utils import find_item, next_id
 
 
+def _row_store() -> Any:
+    # Resolved per call: DB mode -> PostgreSQL row store, explicit local JSON
+    # mode -> list adapter. Tests swap app_core.db_row_store.
+    from ..core.compat_gateway import row_store
+
+    return row_store()
+
+
+def _allow_all(_current: dict[str, Any]) -> None:
+    return None
+
+
 class BaseRepository:
-    """Compatibility-first repository base backed by storage gateway wrappers."""
+    """Compatibility-first repository base.
+
+    Reads keep the cached collection API. Writes are row level (JST spec
+    R05): only the target row and its children are written, the version is
+    generated from the DB clock after the row lock, and a stale list can no
+    longer overwrite other rows.
+    """
 
     collection_name: str = ""
 
@@ -32,28 +49,22 @@ class BaseRepository:
         return cast(tuple[int, dict[str, Any]], find_item(self.list_all(), item_id))
 
     def create(self, payload: dict[str, Any]) -> dict[str, Any]:
-        items = self.list_all()
-        now = datetime.now().isoformat()
-        new_item = {**payload, "id": next_id(items), "created_at": now, "updated_at": now}
-        items.append(new_item)
-        self.save_all(items)
-        return new_item
+        # id/created_at/updated_at are server managed (allocated in the store).
+        return cast(dict[str, Any], _row_store().insert(self.collection_name, lambda _new_id: dict(payload)))
 
-    def update(self, item_id: int, mutator: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
-        items = self.list_all()
-        index, current = find_item(items, item_id)
-        now = datetime.now().isoformat()
-        updated = mutator(current)
-        updated["id"] = item_id
-        # created_at is immutable. Request payloads may include null, so keep
-        # the stored value instead of letting null flow into DB NOT NULL columns.
-        updated["created_at"] = current.get("created_at") or now
-        updated["updated_at"] = now
-        items[index] = updated
-        self.save_all(items)
-        return updated
+    def update(
+        self,
+        item_id: int,
+        mutator: Callable[[dict[str, Any]], dict[str, Any]],
+        *,
+        expected_updated_at: str | None = None,
+    ) -> dict[str, Any]:
+        # created_at is immutable and updated_at comes from the store; values
+        # in the mutator's result for these keys are ignored.
+        return cast(
+            dict[str, Any],
+            _row_store().update(self.collection_name, item_id, mutator, expected_updated_at=expected_updated_at),
+        )
 
-    def delete(self, item_id: int) -> None:
-        items = self.list_all()
-        find_item(items, item_id)
-        self.save_all([item for item in items if item.get("id") != item_id])
+    def delete(self, item_id: int, authorize: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
+        return cast(dict[str, Any], _row_store().delete(self.collection_name, item_id, authorize or _allow_all))

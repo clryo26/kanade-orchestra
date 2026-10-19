@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from .utils.datetime_utils import format_instant, utc_now
+
 import json
 import logging
 import mimetypes
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -248,7 +249,7 @@ def upload_file_to_drive(local_path: str | Path, practice_date: str, song_name: 
         "piece": song_name,
         "size": blob.size or file_path.stat().st_size,
         "mime_type": blob.content_type or content_type,
-        "modified_at": blob.updated.isoformat() if blob.updated else datetime.now().isoformat(),
+        "modified_at": format_instant(blob.updated) if blob.updated else format_instant(utc_now()),
         "bucket": bucket_name,
         "object_name": object_name,
         "web_view_link": url,
@@ -298,7 +299,7 @@ def recording_item_from_blob(
         "piece": song_name,
         "size": blob.size or 0,
         "mime_type": blob.content_type or "application/octet-stream",
-        "modified_at": blob.updated.isoformat() if blob.updated else datetime.now().isoformat(),
+        "modified_at": format_instant(blob.updated) if blob.updated else format_instant(utc_now()),
         "bucket": bucket_name,
         "object_name": object_name,
         "web_view_link": url,

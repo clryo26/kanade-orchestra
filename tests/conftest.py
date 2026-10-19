@@ -47,7 +47,55 @@ def backend_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # caller shell's DB backend environment.
     monkeypatch.setenv("DATA_BACKEND", "local")
     monkeypatch.setenv("LOCAL_JSON_FALLBACK_ENABLED", "true")
-    backend._memory_cache.clear()
+    # Tests that simulate DB mode patch db_load_json_data/db_replace_collection
+    # with an in-memory store. Give them the matching simulated row store so
+    # row-level writes go to the same fake (looked up lazily, after patches).
+    # The real PostgreSQL row semantics are covered by the opt-in
+    # test_db_item_repository_postgres.py suite.
+    from src.backend.repositories.db_item_repository import ListRowStore
+
+    simulated_row_store = ListRowStore(
+        load=lambda name: backend.db_load_json_data(name),
+        save=lambda name, data: backend.db_replace_collection(name, data),
+    )
+    monkeypatch.setattr(backend, "db_row_store", lambda: simulated_row_store)
+
+    # Session writes in simulated DB mode: same contracts as the real
+    # repository (login stamped by the store; the session check touches only
+    # while the device still belongs to the same member), built on the
+    # possibly patched db_load_json_data/db_upsert_auth_device.
+    from src.backend.utils.datetime_utils import format_instant, jst_now
+
+    def simulated_record_login(device):
+        now = format_instant(jst_now())
+        return backend.db_upsert_auth_device({**device, "authenticated_at": now, "last_seen_at": now})
+
+    def simulated_touch(device_id, member_id, member_fields):
+        current = next((d for d in backend.db_load_json_data("auth_devices") if d.get("device_id") == device_id), None)
+        if not current or current.get("member_id") != member_id:
+            return None
+        generation = "authenticated_at" if member_fields.get("authenticated_at") else "created_at"
+        if member_fields.get(generation) and current.get(generation) != member_fields[generation]:
+            return None
+        allowed = ("member_name", "member_part", "permission", "system_access_until", "is_recording_manager", "is_sheet_manager")
+        updated = {**current, **{k: member_fields[k] for k in allowed if k in member_fields}, "last_seen_at": format_instant(jst_now())}
+        return backend.db_upsert_auth_device(updated)
+
+    def simulated_mutate(name, mutator):
+        # Locked read-modify-write over the same (possibly patched) DB fakes.
+        if name in backend.JSON_COLLECTION_TABLES:
+            load, save = backend.db_load_json_data, backend.db_replace_collection
+        else:
+            load, save = backend.db_load_generic_json_collection, backend.db_save_generic_json_collection
+        updated = list(mutator([dict(item) for item in load(name)]))
+        save(name, updated)
+        backend._memory_cache.invalidate(name)
+        return updated
+
+    monkeypatch.setattr(backend, "db_mutate_collection_locked", simulated_mutate)
+    monkeypatch.setattr(backend, "db_record_login", simulated_record_login)
+    monkeypatch.setattr(backend, "db_touch_auth_device", simulated_touch)
+    backend._memory_cache.clear_all_tenants()
 
     for name in backend.JSON_DATA_NAMES:
         backend.save_json_data(name, [])

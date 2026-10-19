@@ -25,10 +25,17 @@ def test_part_settings_save_uses_db_when_database_is_enabled(backend_env, monkey
     monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
     monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, rows: saved.setdefault(name, rows))
 
+    loads: list[str] = []
+    committed = [{**data[0], "updated_at": "2026-10-19T12:00:00.000000+09:00"}]
+    monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: loads.append(name) or committed)
+
     backend_env.save_json_data("part_settings", data)
 
     assert saved == {"part_settings": data}
-    assert backend_env.load_json_data("part_settings") == data
+    # JST spec R01/R09: the cache never keeps the caller-built list; the next
+    # read returns the committed DB representation.
+    assert backend_env.load_json_data("part_settings") == committed
+    assert loads == ["part_settings"]
 
 
 def test_db_write_values_accept_month_and_display_order_alias(backend_env):
@@ -519,11 +526,17 @@ def test_combined_collection_etag_prefers_db_signature_over_stale_memory_cache()
         lambda name: "stale-memory-etag",
         lambda name: "fresh-db-etag",
     )
+    version = bootstrap_router.bootstrap_service.API_DATETIME_FORMAT_VERSION
     expected = bootstrap_router.bootstrap_service.hashlib.sha256(
+        f"format:{version}\nperformances:fresh-db-etag".encode()
+    ).hexdigest()
+    pre_jst_etag = bootstrap_router.bootstrap_service.hashlib.sha256(
         b"performances:fresh-db-etag"
     ).hexdigest()
 
     assert result == expected
+    # JST spec R09: an ETag issued for the old representation is never matched.
+    assert result != pre_jst_etag
 
 
 def test_load_collection_etag_tracks_parent_and_child_row_versions(monkeypatch):

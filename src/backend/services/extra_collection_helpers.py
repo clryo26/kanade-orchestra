@@ -254,20 +254,73 @@ def assert_extra_collection_permission(
 def normalize_extra_payload(
     payload: dict[str, Any],
     *,
-    next_updated_at_func: Callable[[Any], str],
+    next_updated_at_func: Callable[[Any], str] | None = None,
     item_id: int | None = None,
     current: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    now = next_updated_at_func((current or {}).get("updated_at"))
+    """Return the payload with server-managed system fields (JST spec R02, N09).
+
+    ``created_at`` is never taken from the client: it is the stored value on
+    update and the server/DB time on create. ``updated_at`` is set by the row
+    store from the DB clock; ``next_updated_at_func`` remains for the
+    app_core compatibility facade and the local JSON mode.
+    """
     data = dict(payload or {})
-    data.update(
-        {
-            "id": item_id if item_id is not None else data.get("id"),
-            "created_at": (current or {}).get("created_at") or data.get("created_at") or now,
-            "updated_at": now,
-        }
-    )
+    data.pop("organization_id", None)
+    now = next_updated_at_func((current or {}).get("updated_at")) if next_updated_at_func else None
+    data["id"] = item_id if item_id is not None else data.get("id")
+    if current is not None:
+        data["created_at"] = current.get("created_at") or now
+    else:
+        data["created_at"] = now
+    data["updated_at"] = now
+    if now is None:
+        data.pop("created_at", None)
+        data.pop("updated_at", None)
     return data
+
+
+def is_admin_device(device: dict[str, Any]) -> bool:
+    return _is_admin(device)
+
+
+def desired_piece_merged_votes(
+    payload: dict[str, Any],
+    current: dict[str, Any],
+    device: dict[str, Any],
+    *,
+    owner: bool = False,
+) -> list[Any] | None:
+    """Apply only the actor's own vote on top of the *stored* votes.
+
+    Others' votes always come from the current DB row, so a stale screen can
+    neither drop nor resurrect someone else's vote (JST spec 1.6, R05).
+    For a non-owner the descriptive fields must be unchanged (same rule as
+    ``_desired_piece_vote_only_update``); otherwise ``None`` (403).
+    """
+    if not owner:
+        immutable_keys = {
+            "title", "piece", "composer", "duration", "genre", "formation", "notes",
+            "reference_audio_url", "member_id", "registered_by",
+        }
+        if any(payload.get(key) != current.get(key) for key in immutable_keys):
+            return None
+    actor_id = str(device.get("member_id") or "")
+    actor_name = str(device.get("member_name") or "")
+
+    def is_actor(vote: Any) -> bool:
+        vote_id, vote_name = _vote_identity(vote)
+        return bool((actor_id and vote_id == actor_id) or (actor_name and vote_name == actor_name))
+
+    actor_votes = [vote for vote in (payload.get("votes") or []) if vote is not None and is_actor(vote)]
+    if len(actor_votes) > 1:
+        return None
+    others = [vote for vote in (current.get("votes") or []) if vote is not None and not is_actor(vote)]
+    stored_actor = [vote for vote in (current.get("votes") or []) if vote is not None and is_actor(vote)]
+    if actor_votes and stored_actor:
+        # Keep the stored vote row (and its server-set voted_at).
+        return [*others, stored_actor[0]]
+    return [*others, *actor_votes]
 
 
 async def read_json_body(request: Request) -> dict[str, Any]:
@@ -287,3 +340,10 @@ def collection_items(name: str, load_json_data_func: Callable[[str], list[dict[s
 
         return sort_concert_record_videos(items)
     return items
+
+
+# User-entered calendar fields per collection (strict input, JST spec 1.6/L30).
+EXTRA_INPUT_DATE_FIELDS: dict[str, tuple[str, ...]] = {
+    "payments": ("latest_payment_date",),
+    "flyer_distribution_assignments": ("planned_date", "distributed_date"),
+}

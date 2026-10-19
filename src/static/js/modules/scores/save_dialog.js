@@ -1,16 +1,22 @@
-// Saving a sheet PDF, a piece ZIP or a concert ZIP (docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md, section 6).
+// Saving a sheet PDF, a piece ZIP, a concert ZIP, a recording or a recording
+// ZIP (docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md, section 6).
 //
-// One dialog for all three, opened over the current screen (the list, its
-// filters and an open PDF stay as they are):
-// 1. prepare: the file is fetched (PDF) or the ZIP is built on the server in
-//    steps (progress,件数, cancel);
-// 2. when ready, the user presses 「保存先を選ぶ」; the OS share/save sheet
-//    opens from that tap (sharing needs the user's gesture, so it also works
-//    after a long preparation);
-// 3. when sharing is not possible for this type, or the file is above the
-//    in-memory limit, the file is opened through a short-lived ticket URL in
-//    a separate browser context (download on desktop; on an iPhone home-screen
-//    app the in-app browser), never in place of the portal.
+// The way depends on the device (saveMode):
+// - desktop (PC browser): the browser's own download, as before the dialog.
+//   A single file starts downloading at once (no dialog). A ZIP shows a small
+//   dialog with its progress and size, and the download starts by itself
+//   when it is ready.
+// - mobile (smartphone, tablet, home-screen app): one dialog, opened over the
+//   current screen (the list, its filters and an open PDF stay as they are):
+//   1. prepare: the file is fetched (single file) or the ZIP is built on the
+//      server in steps (progress, 件数, cancel);
+//   2. single file: when ready, the user presses 「保存先を選ぶ」; the OS
+//      share/save sheet opens from that tap (sharing needs the user's gesture,
+//      so it also works after a long preparation);
+//   3. a ZIP, or a file that cannot be shared or is above the in-memory
+//      limit: the size is shown first, then the file is opened through a
+//      short-lived URL in a separate browser context (on an iPhone
+//      home-screen app the in-app browser), never in place of the portal.
 // The end of the share sheet is not a confirmation that the file was saved;
 // the dialog says so.
 (function (root) {
@@ -41,6 +47,51 @@
 
     function standalone() {
         return Boolean((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone);
+    }
+
+    // 'mobile' or 'desktop'. File sharing alone cannot tell them apart:
+    // Chrome/Edge on Windows and Safari on macOS can share files too, and
+    // there the browser's download is expected. iPads (also when they report
+    // a Mac) and Android tablets count as mobile. portalSaveDeviceMode
+    // overrides the detection (tests, support).
+    function saveMode() {
+        var forced = root.portalSaveDeviceMode;
+        if (forced === 'mobile' || forced === 'desktop') return forced;
+        if (standalone()) return 'mobile';
+        var nav = window.navigator || {};
+        if (nav.userAgentData && nav.userAgentData.mobile) return 'mobile';
+        if (/iPhone|iPad|iPod|Android/i.test(String(nav.userAgent || ''))) return 'mobile';
+        if (nav.platform === 'MacIntel' && Number(nav.maxTouchPoints) > 1) return 'mobile';
+        return 'desktop';
+    }
+
+    function desktop() {
+        return saveMode() === 'desktop';
+    }
+
+    // The browser's own download, without leaving the portal: a same-origin
+    // link with the download attribute is saved, never shown in this tab.
+    // name '' keeps the server's file name (Content-Disposition).
+    function browserDownload(url, name) {
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = name || '';
+        link.rel = 'noopener';
+        link.hidden = true;
+        // Confirmed already (DL click or the ZIP dialog): skip the portal's
+        // global "ダウンロードしますか？" (bootstrap_loader.js).
+        if (link.dataset) link.dataset.downloadConfirm = 'off';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    }
+
+    function mediaTypeFor(name) {
+        if (/\.pdf$/i.test(name)) return 'application/pdf';
+        if (/\.mp3$/i.test(name)) return 'audio/mpeg';
+        if (/\.(m4a|mp4|aac)$/i.test(name)) return 'audio/mp4';
+        if (/\.wav$/i.test(name)) return 'audio/wav';
+        return 'application/octet-stream';
     }
 
     // Asked per type: an iPhone may share PDFs but not ZIPs (or the reverse).
@@ -129,8 +180,13 @@
     }
 
     // target: { kind: 'file', sheet } | { kind: 'zip', performanceId, piece, part, title, count }
-    //         | { kind: 'url', url, name }
+    //         | { kind: 'url', url, name, media?: 'audio', size? }   (reference score, recording)
+    //         | { kind: 'recording-zip', url, infoUrl, title }
     function openSheetSave(target, opener) {
+        if (desktop() && (target.kind === 'file' || target.kind === 'url')) {
+            desktopFileDownload(target, opener);
+            return;
+        }
         var el = ensureDialog();
         if (dialog && dialog.controller) dialog.controller.abort();
         el.hidden = false;
@@ -146,19 +202,27 @@
         var title = document.getElementById('sheetSaveTitle');
         var label = document.getElementById('sheetSaveTarget');
         var count = document.getElementById('sheetSaveCount');
+        var size = target.kind === 'file' ? Number(target.sheet.size || 0) : Number(target.size || 0);
         if (target.kind === 'zip') {
             title.textContent = target.piece ? '曲のZIPを保存' : '演奏会のZIPを保存';
             label.textContent = [target.title, target.piece, target.part].filter(Boolean).join(' / ');
             count.textContent = target.count ? target.count + ' 件の楽譜' : '';
+        } else if (target.kind === 'recording-zip') {
+            title.textContent = '録音のZIPを保存';
+            label.textContent = target.title || '録音';
+            count.textContent = '大きさを確認しています...';
         } else {
-            title.textContent = 'PDFを保存';
+            title.textContent = target.media === 'audio' ? '録音を保存' : 'PDFを保存';
             label.textContent = target.kind === 'file' ? (target.sheet.name || '楽譜') : (target.name || 'PDF');
-            count.textContent = target.kind === 'file' && target.sheet.size ? '1 件・' + sizeText(Number(target.sheet.size)) : '1 件';
+            count.textContent = size ? '1 件・' + sizeText(size) : '1 件';
         }
+        // On a PC the file goes to the browser's downloads (no other screen).
+        document.getElementById('sheetSaveOpen').textContent = desktop() ? 'ダウンロード' : '別の画面で開いて保存';
         ui({ status: '準備しています...', progress: 0, share: false, open: false, partial: false, retry: false, cancel: true, close: false, missing: [] });
         focusFirst();
         var d = dialog;
-        var run = target.kind === 'zip' ? prepareZip(d, extra) : prepareFile(d);
+        var run = target.kind === 'zip' ? prepareZip(d, extra)
+            : target.kind === 'recording-zip' ? prepareRecordingZip(d) : prepareFile(d);
         d.run = run;
         run.catch(function (error) { fail(d, error); });
     }
@@ -240,13 +304,17 @@
 
     async function prepareFile(d) {
         var t = d.target;
-        var name = t.kind === 'file' ? (t.sheet.name || 'score.pdf') : (t.name || 'score.pdf');
-        if (!/\.pdf$/i.test(name)) name += '.pdf';
-        var size = t.kind === 'file' ? Number(t.sheet.size || 0) : 0;
+        var audio = t.media === 'audio';
+        var name = t.kind === 'file' ? (t.sheet.name || 'score.pdf') : (t.name || (audio ? 'recording.mp3' : 'score.pdf'));
+        if (!audio && !/\.pdf$/i.test(name)) name += '.pdf';
+        var type = mediaTypeFor(name);
+        var size = t.kind === 'file' ? Number(t.sheet.size || 0) : Number(t.size || 0);
         var url = t.kind === 'file' ? (t.sheet.download_url || t.sheet.url) : t.url;
-        if (canShareType('application/pdf', 'check.pdf') && (!size || size <= memoryLimit('application/pdf'))) {
+        // Recordings use the single-file limit; a larger one is never read
+        // into the page, it goes straight to the separate screen.
+        if (canShareType(type, 'check' + (name.match(/\.[^.]+$/) || ['.pdf'])[0]) && (!size || size <= memoryLimit(type))) {
             try {
-                d.file = await readBlob(d, url, size, 'application/pdf', name);
+                d.file = await readBlob(d, url, size, type, name);
             } catch (error) {
                 if (!error || error.kind !== 'too-large') throw error;
             }
@@ -260,7 +328,10 @@
         await prepareTicket(d, t.kind === 'file' ? { kind: 'file', id: t.sheet.id } : null, url);
     }
 
-    async function prepareTicket(d, ticketTarget, directUrl) {
+    // Ticket URLs are opened by navigation, which cannot send X-Device-Id;
+    // the short-lived ticket stands in for it. Recordings need no ticket
+    // (directUrl). lead: the size line shown before the user starts.
+    async function prepareTicket(d, ticketTarget, directUrl, lead) {
         if (ticketTarget) {
             var r = await api().call('/api/sheets/tickets', { method: 'POST', json: ticketTarget, signal: d.controller.signal });
             if (r.status !== 200) throw api().SheetApiError(api().detailMessage(r.data, '保存用のリンクを用意できませんでした'), { kind: 'http', status: r.status });
@@ -269,11 +340,49 @@
             d.ticket = { url: directUrl, expiresAt: 0, target: null };
         }
         if (!current(d)) return;
-        ui({ status: standalone()
+        var prefix = lead ? lead + ' ' : '';
+        if (desktop()) {
+            // A PC downloads at once (agreed: no second tap after a ZIP was
+            // built); the button stays for downloading again.
+            browserDownload(d.ticket.url, '');
+            ui({ status: prefix + 'ダウンロードを開始しました。ブラウザーのダウンロード一覧を確認してください。始まらない場合は「ダウンロード」を押してください。',
+                progress: 100, open: true, cancel: false, close: true });
+            focusFirst();
+            return;
+        }
+        ui({ status: prefix + (standalone()
             ? '「別の画面で開いて保存」を押すと、ポータルを開いたまま別の画面でファイルを開きます。そこで共有ボタンから保存先を選び、終わったら「完了」でポータルに戻ってください。'
-            : '「別の画面で開いて保存」を押すと、ダウンロードが始まります。',
+            : '「別の画面で開いて保存」を押すと、ダウンロードが始まります。'),
         progress: 100, open: true, cancel: false, close: true });
         focusFirst();
+    }
+
+    // PC, single file: the browser's download straight away, no dialog,
+    // after the same "ダウンロードしますか？" as the DL links before the dialog.
+    // A sheet needs a ticket first (its route requires the device header).
+    async function desktopFileDownload(target, opener) {
+        if (typeof root.confirm === 'function' && !root.confirm('ダウンロードしますか？')) return;
+        if (target.kind !== 'file') {
+            browserDownload(target.url, target.name || '');
+            return;
+        }
+        if (opener && opener.dataset) {
+            if (opener.dataset.saveBusy === '1') return; // double click
+            opener.dataset.saveBusy = '1';
+        }
+        try {
+            var r = await api().call('/api/sheets/tickets', { method: 'POST', json: { kind: 'file', id: target.sheet.id } });
+            if (r.status !== 200) throw api().SheetApiError(api().detailMessage(r.data, 'ダウンロードを開始できませんでした'), { kind: 'http', status: r.status });
+            browserDownload(r.data.url, '');
+        } catch (error) {
+            if (error && error.kind === 'account') return;
+            var message = error && error.kind === 'network' ? '通信できませんでした。通信状態を確認して、もう一度「DL」を押してください。'
+                : error && error.kind === 'timeout' ? '通信がタイムアウトしました。もう一度「DL」を押してください。'
+                    : (error && error.message) || 'ダウンロードを開始できませんでした。';
+            if (typeof root.showAlert === 'function') root.showAlert(message, 'danger');
+        } finally {
+            if (opener && opener.dataset) delete opener.dataset.saveBusy;
+        }
     }
 
     async function shareNow() {
@@ -312,7 +421,7 @@
                 if (r.status !== 200) throw new Error(api().detailMessage(r.data, '保存用のリンクを用意できませんでした'));
                 d.ticket.url = r.data.url;
                 d.ticket.expiresAt = Date.parse(r.data.expires_at) || 0;
-                ui({ status: '準備ができました。もう一度「別の画面で開いて保存」を押してください。', open: true, close: true });
+                ui({ status: '準備ができました。もう一度「' + document.getElementById('sheetSaveOpen').textContent + '」を押してください。', open: true, close: true });
             } catch (error) {
                 fail(d, error);
             } finally {
@@ -320,9 +429,13 @@
             }
             return;
         }
-        // Always a separate browsing context (never this page): the server sends
-        // the file as an attachment, so a desktop browser downloads it from the
-        // new tab, and an iPhone home-screen app shows it in its in-app browser.
+        if (desktop()) {
+            browserDownload(d.ticket.url, '');
+            if (current(d)) ui({ status: 'ダウンロードを開始しました。ブラウザーのダウンロード一覧を確認してください。', open: true, close: true });
+            return;
+        }
+        // Mobile: always a separate browsing context (never this page), so an
+        // iPhone home-screen app shows it in its in-app browser.
         var link = document.createElement('a');
         link.href = d.ticket.url;
         link.target = '_blank';
@@ -418,22 +531,37 @@
                 : 'ZIPを作成できませんでした。再試行してください。', { kind: 'job', state: job.state });
         }
         var partialNote = job.allow_partial && job.missing && job.missing.length ? '（不足している楽譜は含まれていません。ZIP内の一覧を確認してください）' : '';
-        var zipName = (t.title || 'sheets') + (t.piece ? '_' + t.piece : '') + '.zip';
-        if (canShareType('application/zip', 'check.zip') && job.zip_bytes && job.zip_bytes <= memoryLimit('application/zip')) {
-            try {
-                d.file = await readBlob(d, '/api/sheets/zip-jobs/' + encodeURIComponent(job.job_id) + '/download', job.zip_bytes, 'application/zip', zipName);
-            } catch (error) {
-                if (!error || error.kind !== 'too-large') throw error;
-            }
-            if (!current(d)) return;
-            if (d.file) {
-                ui({ status: '準備ができました' + partialNote + '。「保存先を選ぶ」を押して、保存先を選んでください。', progress: 100, share: true, cancel: false, close: true, missing: job.allow_partial ? job.missing : [] });
-                focusFirst();
-                return;
-            }
+        // The size is shown before the download starts. A ZIP is never read
+        // into the page: it goes to the browser's download (PC) or to a
+        // separate screen (mobile), whatever its size.
+        var bytes = Number(job.zip_bytes || 0);
+        if (bytes) {
+            document.getElementById('sheetSaveCount').textContent = job.file_count + ' 件の楽譜・ZIP ' + sizeText(bytes);
         }
-        await prepareTicket(d, { kind: 'zip', id: job.job_id });
+        var lead = 'ZIPの準備ができました' + (bytes ? '（' + sizeText(bytes) + '）' : '') + partialNote + '。';
+        await prepareTicket(d, { kind: 'zip', id: job.job_id }, null, lead);
         if (partialNote && current(d)) ui({ missing: job.missing });
+    }
+
+    // Recording ZIP: built by the server while it is downloaded (stored, not
+    // compressed), so its size is about the sum of the recordings. The size
+    // is asked first and shown; then the download starts (PC) or the user
+    // opens it in a separate screen (mobile). It is never read into the page.
+    async function prepareRecordingZip(d) {
+        var t = d.target;
+        var r = await api().call(t.infoUrl, { signal: d.controller.signal });
+        if (r.status !== 200 || !r.data) {
+            throw api().SheetApiError(r.status === 404 ? '保存できる録音がありません。一覧を更新してください。'
+                : api().detailMessage(r.data, '録音のZIPを準備できませんでした（' + r.status + '）'), { kind: 'http', status: r.status });
+        }
+        if (!current(d)) return;
+        var info = r.data;
+        var bytes = Number(info.total_bytes || 0);
+        var missing = Number(info.missing_count || 0);
+        document.getElementById('sheetSaveCount').textContent = info.file_count + ' 件の録音・ZIP 約 ' + sizeText(bytes);
+        var lead = '録音のZIPは約 ' + sizeText(bytes) + ' です' +
+            (missing ? '（取得できない録音 ' + missing + ' 件は含まれません）' : '') + '。';
+        await prepareTicket(d, null, t.url, lead);
     }
 
     function partialZip() {
@@ -481,6 +609,7 @@
         ZIP_MEMORY_LIMIT: ZIP_MEMORY_LIMIT,
         limit: memoryLimit,
         canShareType: canShareType,
+        mode: saveMode,
         busy: saveBusy,
         current: function () { return dialog; },
     };

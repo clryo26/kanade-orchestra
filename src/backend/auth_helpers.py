@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
+
+from .utils.datetime_utils import InvalidDateTimeValue, jst_today, parse_calendar_date
 
 
 def compact_member_name(value: Any) -> str:
@@ -89,7 +90,11 @@ def member_access_expired(member: dict[str, Any]) -> bool:
     access_until = str(member.get("system_access_until") or "").strip()
     if not access_until:
         return False
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", access_until):
+    try:
+        last_day = parse_calendar_date(access_until, field="system_access_until")
+    except InvalidDateTimeValue:
+        # Unchanged rule: a value that is not a valid date does not expire.
         return False
-    today_str = datetime.now().date().isoformat()
-    return access_until < today_str
+    # The last day is valid all day in Japan; expired from 00:00 JST the next
+    # day, independent of the server timezone (JST spec R04).
+    return last_day < jst_today()

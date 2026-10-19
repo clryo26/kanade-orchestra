@@ -1,21 +1,21 @@
 // Sheet library synchronization (docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md, sections 3-4).
 //
 // - The server's list version (one number in the DB per organization) is
-//   checked when a library tab opens, when the portal comes back, when 更新
-//   is pressed and about every 5 s while a library tab is shown. The list is
-//   fetched only when the version changed (or on 更新).
+//   checked each time a library tab is opened, so the library shows the list
+//   as it is at that moment. The list is fetched only when the version
+//   changed. There is no periodic check and no 更新 button while the tab
+//   stays open (the list rarely changes; opening the tab again is enough).
+//   After the user's own changes (register, delete, part) the list is
+//   fetched again by the caller (force).
 // - Responses are applied only when they are newer than what is shown: by
 //   request number, by list version and for the same account. Old responses,
 //   failures and cached copies never count as a successful update.
-// - Only one check runs at a time; nothing runs while no library tab is shown,
-//   the page is hidden, or nobody is signed in.
-// - An automatic update keeps filters, open sections and the scroll position,
-//   and never touches an open PDF. Push notifications are not used for this.
+// - Only one check runs at a time; nothing runs while nobody is signed in.
+// - An update keeps filters, open sections and the scroll position, and never
+//   touches an open PDF. Push notifications are not used for this.
 (function (root) {
     'use strict';
 
-    var POLL_MS = 5000;
-    var BACKOFF_MS = [5000, 10000, 20000, 30000];
     var TABS = ['memberSheetTab', 'sheetAdminTab'];
 
     var api = function () { return root.portalSheetApi; };
@@ -26,7 +26,6 @@
     };
 
     var sync = {
-        timer: null,
         checking: null,
         requestSeq: 0,
         appliedSeq: 0,
@@ -34,7 +33,6 @@
         lastOkAt: 0,
         lastError: '',
         account: '',
-        listeners: false,
         notice: '',
     };
 
@@ -53,41 +51,26 @@
     }
 
     function time(ts) {
-        var d = new Date(ts);
+        var d = new Date(ts + 9 * 3600000);
         var pad = function (n) { return String(n).padStart(2, '0'); };
-        return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
     }
 
-    // The bar above both lists: update button, last update, failure + retry.
-    function renderStatus(mode) {
+    // The line above both lists: shown only for a failure or a newer release.
+    // Normally it is empty (no button, no "last checked" time).
+    function renderStatus() {
         ['memberSheetSync', 'sheetAdminSync'].forEach(function (id) {
             var bar = byId(id);
             if (!bar) return;
-            var busy = mode === 'loading';
-            var text;
-            var tone = 'text-muted';
-            if (sync.lastError) {
-                tone = 'text-danger';
-                text = '一覧を更新できませんでした（' + sync.lastError + '）。' +
-                    (sync.lastOkAt ? '表示中の一覧は ' + time(sync.lastOkAt) + ' 時点のものです。' : '表示中の一覧は最新ではない可能性があります。');
-            } else if (busy) {
-                text = '一覧を確認しています...';
-            } else if (sync.lastOkAt) {
-                text = '最終確認 ' + time(sync.lastOkAt);
-            } else {
-                text = '';
-            }
-            bar.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2 mb-2">' +
-                '<button class="btn btn-sm btn-outline-primary sheet-sync-refresh" type="button"' + (busy ? ' disabled' : '') + '>' +
-                (busy ? '確認中...' : '更新') + '</button>' +
-                (sync.lastError ? '<button class="btn btn-sm btn-primary sheet-sync-retry" type="button">再試行</button>' : '') +
-                '<span class="small ' + tone + '" role="status" aria-live="polite"></span></div>' +
+            var text = sync.lastError
+                ? '一覧を更新できませんでした（' + sync.lastError + '）。' +
+                    (sync.lastOkAt ? '表示中の一覧は ' + time(sync.lastOkAt) + ' 時点のものです。' : '表示中の一覧は最新ではない可能性があります。') +
+                    '楽譜ライブラリを開き直すと、もう一度取得します。'
+                : '';
+            bar.innerHTML = (text ? '<p class="small text-danger mb-2 sheet-sync-error" role="status" aria-live="polite"></p>' : '') +
                 (sync.notice ? '<div class="alert alert-info py-2 small mb-2 sheet-sync-notice"></div>' : '');
-            bar.querySelector('[role=status]').textContent = text;
+            if (text) bar.querySelector('.sheet-sync-error').textContent = text;
             if (sync.notice) bar.querySelector('.sheet-sync-notice').textContent = sync.notice;
-            bar.querySelectorAll('.sheet-sync-refresh, .sheet-sync-retry').forEach(function (button) {
-                button.addEventListener('click', function () { refreshSheetLibrary({ force: true, reason: 'button' }); });
-            });
         });
     }
 
@@ -143,13 +126,13 @@
         return result.data;
     }
 
-    // force: fetch the list even if the version did not change (更新).
+    // force: fetch the list even if the version did not change (after the
+    // user's own change, or when nothing is known yet).
     async function refreshSheetLibrary(options) {
         var o = options || {};
         if (!signedIn()) return { ok: false, reason: 'signed-out' };
         if (sync.account !== api().accountKey()) resetSheetLibrarySync('account-changed');
         if (sync.checking && !o.force) return sync.checking;
-        renderStatus('loading');
         var run = (async function () {
             try {
                 var shown = state().sheetListVersion;
@@ -162,7 +145,7 @@
                     changed = Number(v.data.list_version) !== Number(shown);
                     reset = Number(v.data.list_version) < Number(shown);
                 }
-                // 更新 always takes the server's list (newest request wins).
+                // A forced fetch always takes the server's list (newest request wins).
                 if (changed) await loadList(reset);
                 sync.lastOkAt = Date.now();
                 sync.lastError = '';
@@ -200,51 +183,16 @@
         }
     }
 
-    function schedule() {
-        clearTimeout(sync.timer);
-        sync.timer = null;
-        if (!visibleTab() || !signedIn()) return;
-        var delay = sync.failures ? BACKOFF_MS[Math.min(sync.failures, BACKOFF_MS.length) - 1] : POLL_MS;
-        sync.timer = setTimeout(function () {
-            sync.timer = null;
-            if (!visibleTab() || !signedIn()) return; // left the screen meanwhile
-            refreshSheetLibrary({ reason: 'poll' }).then(schedule, schedule);
-        }, delay);
-    }
-
-    function onReturn() {
-        if (!visibleTab() || !signedIn()) {
-            clearTimeout(sync.timer);
-            sync.timer = null;
-            return;
-        }
-        refreshSheetLibrary({ reason: 'return' }).then(schedule, schedule);
-    }
-
-    function bindListeners() {
-        if (sync.listeners) return;
-        sync.listeners = true;
-        document.addEventListener('visibilitychange', onReturn);
-        window.addEventListener('pageshow', onReturn);
-        window.addEventListener('online', onReturn);
-    }
-
-    // Called when a library tab is shown.
+    // Called each time a library tab is shown: one check, no follow-up timer.
     function startSheetLibrarySync() {
-        bindListeners();
         if (sync.account !== api().accountKey()) resetSheetLibrarySync('account-changed');
         sync.account = api().accountKey();
         renderStatus();
-        return refreshSheetLibrary({ reason: 'open', force: state().sheetListVersion == null }).then(function (r) {
-            schedule();
-            return r;
-        });
+        return refreshSheetLibrary({ reason: 'open', force: state().sheetListVersion == null });
     }
 
     // Logout / account switch: stop everything, forget in-flight results.
     function resetSheetLibrarySync() {
-        clearTimeout(sync.timer);
-        sync.timer = null;
         sync.checking = null;
         sync.requestSeq += 1;
         sync.appliedSeq = sync.requestSeq;
@@ -259,5 +207,5 @@
     root.startSheetLibrarySync = startSheetLibrarySync;
     root.refreshSheetLibrary = refreshSheetLibrary;
     root.resetSheetLibrarySync = resetSheetLibrarySync;
-    root.portalSheetSync = { state: sync, apply: apply, POLL_MS: POLL_MS, visibleTab: visibleTab };
+    root.portalSheetSync = { state: sync, apply: apply, visibleTab: visibleTab };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

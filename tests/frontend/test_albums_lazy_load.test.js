@@ -80,11 +80,11 @@ describe('albums lazy loading', () => {
         expect(indexHtml).not.toContain('/static/js/modules/albums.js');
     });
 
-    test('initial script count in index.html is 66', () => {
+    test('initial script count in index.html is 44', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(43);
+        expect(matches.length).toBe(44);
     });
 
     test('app.js legacy list does not include albums.js', () => {
@@ -101,7 +101,7 @@ describe('albums lazy loading', () => {
 
     test('loader uses the correct versioned URL', () => {
         const source = readSource('src/static/js/modules/navigation/routes.js');
-        expect(source).toContain('/static/js/modules/albums.js?v=20260630-6');
+        expect(source).toContain('/static/js/modules/albums.js?v=20261019-jst1');
     });
 
     test('loader uses a dedicated Promise variable', () => {

@@ -121,6 +121,7 @@ function apiTargetLabel(url) {
 }
 
 function clearPortalAuthState() {
+    window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     // Authentication ended: the tuner must not keep the microphone open.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('auth-cleared');
     // The sheet library must not apply a response of the previous account.
@@ -133,6 +134,7 @@ function clearPortalAuthState() {
     appState.essentialDataLoaded = false;
     appState.dataLoaded = false;
     appState.currentUserMemberId = null;
+    appState.portalAuthGeneration = '';
     appState.currentUserName = '';
     appState.currentUserPermission = '';
     appState.currentUserPart = '';
@@ -146,6 +148,7 @@ function clearPortalAuthState() {
 
 function applyPortalAuthDevice(device) {
     if (!device || typeof device !== 'object') return;
+    appState.portalAuthGeneration = device.authenticated_at || device.created_at || '';
     appState.portalAuthVerified = true;
     appState.lastPortalSessionVerifiedAt = Date.now();
     appState.currentUserMemberId = device.member_id ?? null;
@@ -156,6 +159,7 @@ function applyPortalAuthDevice(device) {
     appState.currentUserIsRecordingManager = Boolean(device.is_recording_manager);
     appState.currentUserIsSheetManager = Boolean(device.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
+    if (typeof window.portalFileOperationsResume === 'function') void window.portalFileOperationsResume();
 }
 
 function buildApiFailureMessage(url, method, status, detail) {
@@ -245,6 +249,8 @@ function mutationRelatedCacheKeys(url) {
 }
 
 async function invalidateCacheForMutation(url) {
+    // An older GET must not repopulate the cache after a successful mutation.
+    window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     const keys = mutationRelatedCacheKeys(url);
     await Promise.all(keys.map((key) => window.portalRuntimeContext.dbCache.delete(key)));
 }
@@ -308,8 +314,18 @@ async function purgePromotionCache() {
 }
 
 async function request(url, options = {}) {
+    if (options._portalFileOperation) {
+        const { _portalFileOperation, ...fileOptions } = options;
+        return window.portalFileRequest(url, fileOptions);
+    }
     const method = options.method || 'GET';
     const cacheKey = url;
+    const contextKey = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalResponseEpoch || 0}`;
+    const startedContext = contextKey();
+    const flightKey = `${startedContext}:${cacheKey}`;
+    const requireCurrentContext = () => {
+        if (startedContext !== contextKey()) throw new Error('表示情報が更新されました。もう一度読み込んでください');
+    };
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const baseHeaders = { ...(options.headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) };
     const skipAuthRecovery = Boolean(options._skipAuthRecovery);
@@ -336,9 +352,10 @@ async function request(url, options = {}) {
         return data;
     }
     if (method === 'GET') {
-        if (window.portalRuntimeContext.inFlightGetRequests.has(cacheKey)) return window.portalRuntimeContext.inFlightGetRequests.get(cacheKey);
+        if (window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) return window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
         const pending = (async () => {
             const cacheEntry = await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+            requireCurrentContext();
             const cached = cacheEntry?.data ?? null;
             const etag = cacheEntry?.etag ?? null;
             if (hasFreshCacheEntry(cacheEntry, url, forceRevalidate)) {
@@ -350,6 +367,7 @@ async function request(url, options = {}) {
             try {
                 response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
             } catch (networkError) {
+                requireCurrentContext();
                 if (networkError instanceof PortalTimeoutError) {
                     if (allowCacheFallback && cached) {
                         showTransientNetworkNotice();
@@ -373,6 +391,7 @@ async function request(url, options = {}) {
                     response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
                 }
             }
+            requireCurrentContext();
             if (response.status === 304 && cached) return cached;
             if (!response.ok) {
                 const contentType = response.headers.get('content-type') || '';
@@ -388,11 +407,12 @@ async function request(url, options = {}) {
             const contentType = response.headers.get('content-type') || '';
             const data = contentType.includes('application/json') ? await response.json() : await response.text();
             const newETag = response.headers.get('ETag');
+            requireCurrentContext();
             if (newETag) await window.portalRuntimeContext.dbCache.set(cacheKey, data, newETag);
             return data;
         })();
-        window.portalRuntimeContext.inFlightGetRequests.set(cacheKey, pending);
-        try { return await pending; } finally { window.portalRuntimeContext.inFlightGetRequests.delete(cacheKey); }
+        window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
+        try { return await pending; } finally { window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
     }
     let response;
     try {

@@ -100,11 +100,11 @@ describe('changed asset versions', () => {
     const indexHtml = readSource('src/index.html');
 
     test.each([
-        '/static/js/modules/bootstrap_loader.js?v=20260802-1',
+        '/static/js/modules/bootstrap_loader.js?v=20261019-dl1',
         '/static/js/modules/navigation/menu.js?v=20260802-1',
         '/static/js/modules/navigation/events.js?v=20260802-1',
-        '/static/js/modules/admin_system/diagnostics.js?v=20260802-1',
-        '/static/js/modules/portal_views.js?v=20260802-1',
+        '/static/js/modules/admin_system/diagnostics.js?v=20261019-jst1',
+        '/static/js/modules/portal_views.js?v=20261019-jst1',
         '/static/js/modules/members/render.js?v=20260802-1',
     ])('includes %s', (assetUrl) => {
         expect(indexHtml).toContain(assetUrl);

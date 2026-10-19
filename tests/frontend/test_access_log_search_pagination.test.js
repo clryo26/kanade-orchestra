@@ -13,7 +13,7 @@ describe('access log search and pagination', () => {
         expect(content).toContain('accessLogDateTo');
         expect(content).toContain('accessLogMemberId');
         expect(content).toContain('accessLogMemberPart');
-        expect(content).toContain("date.setDate(date.getDate() + 1)");
+        expect(content).toContain('portalJstDateBoundaryIso(value, exclusiveEnd)');
         expect(content).toContain("params.set('page', String(page))");
         expect(content).toContain('accessLogPagination');
         expect(content).toContain('条件なしの場合は全ログを対象にします。');
@@ -26,7 +26,7 @@ describe('access log search and pagination', () => {
             'utf8'
         );
 
-        expect(routes).toContain('/static/js/modules/admin_system/access_logs.js?v=20260812-1');
+        expect(routes).toContain('/static/js/modules/admin_system/access_logs.js?v=20261019-jst1');
         expect(routes).toContain("if (typeof prepareAccessLogView !== 'function')");
         expect(routes).toContain('prepareAccessLogView();');
         expect(routes).not.toContain(

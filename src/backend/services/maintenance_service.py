@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from ..utils.datetime_utils import format_instant, jst_now
+
 from typing import Any
 
 
@@ -38,5 +39,5 @@ def find_orphans(
         "total": total,
         "summary": summary,
         "orphans": grouped_orphans,
-        "checked_at": datetime.now().isoformat(),
+        "checked_at": format_instant(jst_now()),
     }

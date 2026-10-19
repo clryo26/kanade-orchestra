@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from fastapi.responses import FileResponse, Response
 from google.api_core.exceptions import NotFound
 
@@ -90,11 +90,11 @@ def store_data_image(
     object_prefix: str,
     route_path: str,
 ) -> str:
-    """Persist a data URL image and return the public route URL.
+    """Write a data URL image in the *legacy fixed-name* format.
 
-    The backend stores image bytes in GCS or local uploads, while the DB keeps
-    only the lightweight route URL. This keeps bootstrap payloads small and lets
-    the route serve either legacy inline data or the stored blob.
+    Not used by any request path (JST spec R06/D09: fixed names overwrite).
+    Kept only to build legacy-format fixtures (e.g. the promotions legacy
+    read-path test). New images go through portal_file_asset_service.
     """
 
     if not is_data_image(value):
@@ -105,54 +105,6 @@ def store_data_image(
     _write_image_bytes(content, ref=ref, media_type=media_type)
 
     return f"{route_path}?ext={ext.lstrip('.')}"
-
-
-async def store_uploaded_image(
-    file: UploadFile,
-    *,
-    object_prefix: str,
-    route_path: str,
-) -> str:
-    """Persist an uploaded image file and return the public route URL."""
-
-    filename = str(file.filename or "").strip()
-    media_type = str(file.content_type or mimetypes.guess_type(filename)[0] or "").lower()
-    if not media_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Please upload an image file")
-
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Image file is empty")
-
-    ext = _image_extension(media_type)
-    ref = _storage_ref(object_prefix, ext)
-    _write_image_bytes(content, ref=ref, media_type=media_type)
-    return route_image_url(route_path, ext=ext)
-
-
-def delete_stored_image(value: str, *, object_prefix: str) -> None:
-    """Delete a stored image if the value points at an uploaded variant."""
-
-    _, ext = _split_stored_url(value)
-    if not ext:
-        return
-
-    ref = _storage_ref(object_prefix, ext)
-    if storage_enabled():
-        try:
-            blob = get_storage_bucket().blob(ref.object_name)
-            if blob.exists():
-                blob.delete()
-        except Exception:
-            # Deletion is best-effort. The record itself is already being removed.
-            return
-        return
-
-    try:
-        if ref.local_path.exists():
-            ref.local_path.unlink()
-    except Exception:
-        return
 
 
 def _read_file_response(path: Path, media_type: str) -> FileResponse:

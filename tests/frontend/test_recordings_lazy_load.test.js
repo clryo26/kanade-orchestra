@@ -29,7 +29,7 @@ describe('recordings lazy loading', () => {
             'function ensureRecordingsFeatureLoaded()'
         );
         expect(source).toContain(
-            "script.src = '/static/js/recordings_feature.js?v=20260912-1';"
+            "script.src = '/static/js/recordings_feature.js?v=20261019-dl1';"
         );
         expect(source).toMatch(
             /async function loadRecordings\(\)\s*\{\s*await ensureRecordingsFeatureLoaded\(\);/

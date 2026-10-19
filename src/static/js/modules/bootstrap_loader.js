@@ -43,6 +43,9 @@ function bindDownloadConfirmations() {
     document.addEventListener('click', (event) => {
         const link = event.target.closest('a');
         if (!link) return;
+        // Already confirmed elsewhere: the save dialog (smartphone, ZIP size)
+        // or its own download link (scores/save_dialog.js).
+        if (link.dataset.downloadConfirm === 'off') return;
         const label = String(link.textContent || '').trim();
         const href = link.getAttribute('href') || '';
         const isDownload = link.hasAttribute('download') || /DL|ダウンロード/.test(label) || href.includes('/download') || href.includes('download-zip');

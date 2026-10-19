@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from ..utils.datetime_utils import format_instant, jst_now
+
 
 
 def current_timestamp() -> str:
     """Return the timestamp format already used by API payloads."""
-    return datetime.now().isoformat()
+    return format_instant(jst_now())

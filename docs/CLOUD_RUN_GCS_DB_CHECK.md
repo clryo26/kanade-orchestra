@@ -133,3 +133,11 @@ npm run test:e2e
 
 - iPhone 実機確認は [docs/MANUAL_DEVICE_QA_CHECKLIST.md](docs/MANUAL_DEVICE_QA_CHECKLIST.md) を参照する。
 - 本番反映前の最終判定は [docs/PRODUCTION_RELEASE_CHECKLIST.md](docs/PRODUCTION_RELEASE_CHECKLIST.md) を使用する。
+
+## JST日時対応の環境確認（2026-10-19）
+
+実環境の読取確認は[計画書10.2/10.5節](JST_DATETIME_IMPLEMENTATION_PLAN.md)のQ01〜Q16を利用者が実施し、件数・設定値・有無だけを記録する。ローカルの試験DBの結果をTEST/本番の結果として転記しない。
+
+隔離TESTでは、DB時計/接続TimeZone/列精度/旧期限/採番/旧ファイルの根拠を確認したうえで、GCSのcreate-onlyアップロード、記録したgenerationだけの削除、応答喪失、古いattemptの遅延アップロード、参照取得と回収の競合、回収失敗の再試行を確認する。現在のGCS保存先や秘密値は報告へ記載しない。
+
+`migrate_reference_assets.py` のplan/マニフェスト照合、`migrate_base64_images.py` の既定ドライラン、`cleanup_portal_file_assets.py` のドライランを先に確認する。候補が1件という理由では旧参照を確定しない。実行は環境別の反映指示に従い、移行完了まではメンテナンスを維持する。ローカル実装段階では実環境の各操作は未実施。

@@ -121,7 +121,7 @@ function ensureAdminEnvironmentManagementLoaded() {
     }
     adminEnvironmentManagementLoadPromise = new Promise(function (resolve, reject) {
         var script = document.createElement('script');
-        script.src = '/static/js/modules/admin_system/environment_management.js?v=20260707-1';
+        script.src = '/static/js/modules/admin_system/environment_management.js?v=20261019-jst1';
         script.async = true;
         script.addEventListener('load', function () {
             if (typeof refreshSystemEnvironmentMenuVisibility === 'function' &&
@@ -169,7 +169,7 @@ function ensureAdminSystemApiLoaded() {
     }
     adminSystemApiLoadPromise = new Promise(function (resolve, reject) {
         var script = document.createElement('script');
-        script.src = '/static/js/modules/admin_system/api.js?v=20260701-2';
+        script.src = '/static/js/modules/admin_system/api.js?v=20261019-jst1';
         script.async = true;
         script.addEventListener('load', function () {
             if (_adminSystemApiReady()) {

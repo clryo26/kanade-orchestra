@@ -7,6 +7,20 @@ var $ = window.portalRuntimeContext.getById;
 var PORTAL_RESUME_SYNC_MAX_AGE_MS = 60 * 1000;
 var portalResumeSyncInFlight = false;
 var portalWasOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+var portalLastCalendarDay = window.portalRuntimeContext.today();
+
+function refreshPortalCalendarDay() {
+    if (document.visibilityState === 'hidden') return;
+    const today = window.portalRuntimeContext.today();
+    if (today === portalLastCalendarDay) return;
+    portalLastCalendarDay = today;
+    // Render date-derived lists only. Reinitializing forms would discard edits
+    // and selected files when resuming across Japan midnight.
+    if (!appState.portalAuthVerified) return;
+    for (const name of ['renderPortalHome', 'renderMemberPerformances', 'renderMemberSchedules', 'renderPaymentAdmin']) {
+        if (typeof window[name] === 'function') window[name](...(name === 'renderPaymentAdmin' ? [{ preserveForm: true }] : []));
+    }
+}
 
 if (window.__KANADE_BOOTSTRAP_INIT_BOUND__) {
     // Avoid duplicate listeners when legacy compatibility loaders re-inject scripts.
@@ -55,6 +69,7 @@ async function _runAuthAndStart() {
 
 // セッション復帰時の再認証・状態対応
 async function syncPortalSessionOnResume() {
+    refreshPortalCalendarDay();
     if (portalResumeSyncInFlight) return;
     if (document.visibilityState === 'hidden') return;
     if (localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') return;
@@ -147,6 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Phase 2計測: 認証処理開始
     if (window.portalStartup) window.portalStartup.mark('AUTH_START');
     await _runAuthAndStart();
+    if (typeof window.portalFileOperationsResume === 'function') void window.portalFileOperationsResume();
     // Phase 2計測: 認証処理完了(AUTH_END は isPortalAuthenticated内で記録)
 
     document.addEventListener('visibilitychange', () => {
@@ -157,6 +173,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('offline', () => {
         portalWasOffline = true;
     });
+    window.addEventListener('pageshow', () => { refreshPortalCalendarDay(); syncPortalSessionOnResume(); });
+    // A visible page also crosses midnight without a lifecycle event.
+    window.setInterval(refreshPortalCalendarDay, 30000);
     window.addEventListener('online', () => {
         if (!portalWasOffline) return;
         portalWasOffline = false;

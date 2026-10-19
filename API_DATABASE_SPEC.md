@@ -74,6 +74,7 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - POST /api/convert
 - GET /api/recordings
 - GET /api/recordings/download-zip
+- GET /api/recordings/download-zip/info（一括DLの前に表示する件数・合計バイト数・取得できない件数）
 - GET /api/recordings/play/{path}
 - GET /api/recordings/download/{path}
 - DELETE /api/recordings
@@ -94,7 +95,7 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - PUT /api/sheets/{sheet_id}/part
 - PUT /api/sheets/parts
 - DELETE /api/sheets
-- GET /api/sheets/version（一覧更新番号。約5秒ごとの確認用）
+- GET /api/sheets/version（一覧更新番号。楽譜ライブラリを開いた時の確認用）
 - GET /api/sheets/operations/{operation_id}（操作IDの処理状況）
 - POST /api/sheets/tickets、GET /api/sheets/tickets/{ticket}（短期の保存用URL）
 - POST /api/sheets/zip-jobs、GET /api/sheets/zip-jobs/{job_id}、POST /api/sheets/zip-jobs/{job_id}/step、POST /api/sheets/zip-jobs/{job_id}/cancel、GET /api/sheets/zip-jobs/{job_id}/download（段階作成のZIP）
@@ -379,3 +380,15 @@ detail フィールドでメッセージを返す。
 - main.py のコメント付き API 定義
 - DESIGN_WEB.md
 - SYSTEM_DESIGN.md
+
+## JST日時・ファイル操作の契約（2026-10-19、ローカル実装）
+
+通常業務APIの瞬間は `YYYY-MM-DDTHH:mm:ss.ffffff+09:00`。日付/年月/時刻/経過時間は区別し、既存専用APIのUTC契約、識別・署名・ICSを一律に変更しない。日時入力はoffset付きの有効な値を要求する。競合トークンは瞬間で比較し、旧naiveは409、不正入力422、DB保存値不正500となる。
+
+`events.deadline` は暦日として往復し、DBのUTC 0時エンコードを維持する。不明な旧形式は表示を空にするが、空の再保存で元値を消さない。新たな回答締切制限は追加しない。API/IndexedDBの日時表現版は `jst-us-1`。
+
+参考楽譜・共通画像の作成/置換/削除、確定参照を持つ所有行の削除は、UUIDの `Idempotency-Key` を使用する。対象でキーなしは428。同じ操作・内容は保存済み成功/拒否結果を返し、別内容は409。処理中は202。認証付き `GET /api/portal-file-operations/{operation_id}` は元添付や現在対象の存在を要求しない。正常照会の不存在404とDB照会不能503を区別する。
+
+操作記録・業務行・確定アセット参照は同じDB接続/TXで確定し、回収は確定後に行う。通常の非ファイルAPIへ操作キーを一律必須化しない。詳細と未確認事項は[修正仕様](docs/JST_DATETIME_REMEDIATION_SPEC.md)と[計画書第13章](docs/JST_DATETIME_IMPLEMENTATION_PLAN.md#13-ローカル実装と検証の記録2026-10-19)を参照。
+
+認証付き `GET /api/portal-file-actor` は、テナントとアカウント世代を表す不透明なscopeをno-storeで返す。保留操作のブラウザー保存キーはこのscopeへ結び付ける。同じアカウントの再ログイン後も結果を回復でき、IDを再利用した別世代には引き継がない。元の会員登録日時や内部actorキーは返さない。通信中の応答適用は別途、現在の認証世代でも照合する。

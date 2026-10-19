@@ -113,11 +113,11 @@ describe('performance day events lazy loading', () => {
         expect(indexHtml).not.toContain('/static/js/modules/performance_day/events.js');
     });
 
-    test('initial script count in index.html is 66', () => {
+    test('initial script count in index.html is 44', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(43);
+        expect(matches.length).toBe(44);
     });
 
     test('app.js legacy list does not include performance_day/events.js', () => {
@@ -316,27 +316,29 @@ describe('performance day events lazy loading', () => {
 
         expect(sandbox.window.requestIdleCallback).toHaveBeenCalledTimes(1);
         expect(scripts.map((script) => script.src)).toEqual([
-            '/static/js/modules/recordings.js?v=20260731-1',
+            '/static/js/modules/scores/sheet_api.js?v=20261018-1',
+            '/static/js/modules/scores/save_dialog.js?v=20261019-dl1',
+            '/static/js/modules/recordings.js?v=20261019-dl1',
             '/static/js/modules/practice_casting/helpers.js?v=20260701-1',
             '/static/js/modules/scores/sheet_api.js?v=20261018-1',
             '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
             '/static/js/modules/scores/helpers.js?v=20261018-1',
             '/static/js/modules/scores/render.js?v=20261018-1',
-            '/static/js/modules/scores/sync.js?v=20261018-1',
-            '/static/js/modules/scores/save_dialog.js?v=20261018-1',
+            '/static/js/modules/scores/sync.js?v=20261019-dl1',
+            '/static/js/modules/scores/save_dialog.js?v=20261019-dl1',
             '/static/js/modules/scores/upload_batch.js?v=20261018-1',
             '/static/js/modules/scores/events.js?v=20261018-1',
             '/static/js/modules/scores.js?v=20261018-1',
             '/static/js/modules/scores/sheet_api.js?v=20261018-1',
             '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
-            '/static/js/modules/scores/save_dialog.js?v=20261018-1',
-            '/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1',
+            '/static/js/modules/scores/save_dialog.js?v=20261019-dl1',
+            '/static/js/modules/date_piece_promotion/helpers.js?v=20261019-jst1',
             '/static/js/modules/date_piece_promotion/validation.js?v=20260701-3',
             '/static/js/modules/date_piece_promotion/events.js?v=20260701-3',
             '/static/js/modules/date_piece_promotion/state.js?v=20260701-2',
-            '/static/js/modules/date_piece_promotion/api.js?v=20260701-2',
+            '/static/js/modules/date_piece_promotion/api.js?v=20261019-jst1',
             '/static/js/modules/date_piece_promotion/render_piece_practice.js?v=20260701-1',
-            '/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20260701-1',
+            '/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20261019-jst1',
             '/static/js/modules/date_piece_promotion/render.js?v=20260701-3',
             '/static/js/modules/date_piece_promotion.js?v=20260630-6',
         ]);

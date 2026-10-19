@@ -67,11 +67,11 @@ describe('admin database viewer lazy loading', () => {
         expect(indexHtml).not.toContain('/static/js/modules/admin_system/database_viewer.js');
     });
 
-    test('initial script count in index.html is 66', () => {
+    test('initial script count in index.html is 44', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(43);
+        expect(matches.length).toBe(44);
     });
 
     test('admin_system.js defines ensureAdminDatabaseViewerLoaded', () => {
@@ -153,7 +153,7 @@ describe('admin database viewer lazy loading', () => {
     test('recordings lazy load implementation is unchanged', () => {
         const source = readSource('src/static/js/modules/recordings.js');
         expect(source).toContain('function ensureRecordingsFeatureLoaded()');
-        expect(source).toContain("script.src = '/static/js/recordings_feature.js?v=20260912-1'");
+        expect(source).toContain("script.src = '/static/js/recordings_feature.js?v=20261019-dl1'");
         expect(source).toContain('recordingsFeatureLoadPromise = null');
         expect(source).toMatch(/async function loadRecordings\(\)\s*\{\s*await ensureRecordingsFeatureLoaded\(\)/);
     });
