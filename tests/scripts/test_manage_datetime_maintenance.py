@@ -69,7 +69,7 @@ class FakeCloud:
         raise AssertionError(args)
 
     def health(self, url):
-        return {"mode": self.health_mode}
+        return {"mode": self.health_mode, "status": "healthy", "maintenance": "disabled"}
 
 
 def _facts(**overrides):
@@ -184,3 +184,29 @@ def test_promotion_reset_tool_is_unchanged():
 
     source = open(legacy.__file__, encoding="utf-8").read()
     assert "locked_run" in source and 'reset["state"] != "completed"' in source
+
+
+@pytest.mark.parametrize("environment", ["test", "production"])
+def test_missing_photo_report_is_only_accepted_for_test(tmp_path, environment):
+    state = {"old_revision": "old", "maintenance_revision": "maint", "environment": environment,
+             "service": tool.TARGETS[environment]["service"]}
+    report = {"state": "completed", "unresolved": 0, "executed": True, "environment": "test",
+              "exception_scope": "test-existing-member-photo-404", "approval_reference": "user-approval-test",
+              "accepted_missing": [{"kind": "member_photo", "owner_id": i, "checked_missing": True,
+                                    "db_reference_preserved": True} for i in (1, 2, 3)]}
+    kwargs = dict(new_revision_info=FakeCloud().run("run", "revisions", "describe", "new-rev"),
+                  new_revision="new-rev", image=NEW_DIGEST, facts=_facts(), db_name="portal", migration_report=report)
+    if environment == "test":
+        tool.check_release_gates(state, **kwargs)
+    else:
+        with pytest.raises(tool.MaintenanceError, match="restricted"):
+            tool.check_release_gates(state, **kwargs)
+
+
+def test_release_refuses_a_candidate_still_in_maintenance():
+    info = FakeCloud().run("run", "revisions", "describe", "new-rev")
+    info["spec"]["containers"][0]["env"] = [{"name": "MAINTENANCE_MODE", "value": "true"}]
+    with pytest.raises(tool.MaintenanceError, match="maintenance disabled"):
+        tool.check_release_gates({"old_revision": "old", "maintenance_revision": "maint"},
+                                 new_revision_info=info, new_revision="new-rev", image=NEW_DIGEST,
+                                 facts=_facts(), db_name="portal", migration_report={"state": "completed", "unresolved": 0})

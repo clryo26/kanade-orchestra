@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -85,7 +86,50 @@ def plan(organization: str) -> dict[str, Any]:
     return {"organization": organization, "entries": entries}
 
 
-def apply(organization: str, manifest: dict[str, Any], run_id: str, execute: bool) -> dict[str, Any]:
+TEST_MISSING_SCOPE = "test-existing-member-photo-404"
+
+
+def _accepted_test_missing(organization: str, manifest: dict[str, Any], enabled: bool) -> list[dict[str, Any]]:
+    """The 2026-10-19 operator decision accepts exactly three existing TEST 404s.
+
+    Re-plan against the current DB/storage before accepting the exception. It
+    never creates assets, deletes references, or applies to production.
+    """
+    policy = manifest.get("test_missing_reference_acceptance")
+    if not policy:
+        return []
+    if (
+        not enabled or os.getenv("APP_ENV") != "test"
+        or os.getenv("CLOUD_RUN_SERVICE") != "kanade-orchestra-test"
+        or policy.get("scope") != TEST_MISSING_SCOPE or policy.get("approved") is not True
+        or not str(policy.get("approval_reference") or "").strip()
+    ):
+        raise SystemExit("Missing-reference acceptance requires explicit TEST-only approval")
+    entries = manifest.get("entries", [])
+    current = plan(organization)["entries"]
+    def key(entry: dict[str, Any]) -> tuple[Any, Any, Any]:
+        return (entry["kind"], entry["owner_id"], entry["db_value"])
+    if len(entries) != 3 or len(current) != 3 or {key(e) for e in entries} != {key(e) for e in current}:
+        raise SystemExit("TEST missing-reference set changed; stop for review")
+    current_by_key = {key(e): e for e in current}
+    accepted = []
+    for entry in entries:
+        object_name = _legacy_image_candidate(entry["kind"], entry["owner_id"], entry["db_value"])
+        if (
+            entry["kind"] != "member_photo" or entry.get("accepted_missing") is not True
+            or not object_name or entry.get("object_name") != object_name
+            or current_by_key[key(entry)]["candidates"]
+            or entry.get("preexisting_http_status") != 404
+            or entry.get("noncurrent_versions") != 0 or entry.get("soft_deleted_versions") != 0
+        ):
+            raise SystemExit("TEST missing-reference evidence is incomplete or changed")
+        accepted.append({"kind": "member_photo", "owner_id": entry["owner_id"], "object_name": object_name,
+                         "db_reference_preserved": True, "checked_missing": True})
+    return accepted
+
+
+def apply(organization: str, manifest: dict[str, Any], run_id: str, execute: bool,
+          *, accept_test_missing_photos: bool = False) -> dict[str, Any]:
     from src.backend import main as _backend  # noqa: F401
     from src.backend.core.tenant_context import set_current_tenant_id
     from src.backend.services import portal_file_asset_service as files
@@ -93,10 +137,13 @@ def apply(organization: str, manifest: dict[str, Any], run_id: str, execute: boo
     if manifest.get("organization") != organization:
         raise SystemExit("Manifest organization mismatch")
     set_current_tenant_id(organization)
+    accepted_missing = _accepted_test_missing(organization, manifest, accept_test_missing_photos)
     applied: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     unresolved = 0
     for entry in manifest.get("entries", []):
+        if accepted_missing:
+            continue  # The exact three entries were rechecked; preserve their URLs.
         chosen = entry.get("chosen_object")
         if not entry.get("confirmed") or not chosen or not str(entry.get("evidence") or "").strip():
             unresolved += 1
@@ -113,8 +160,12 @@ def apply(organization: str, manifest: dict[str, Any], run_id: str, execute: boo
         )
         (applied if status == 200 else errors).append({"kind": entry["kind"], "owner_id": entry["owner_id"], "status": status, **body})
     complete = execute and unresolved == 0 and not errors
-    return {"state": "completed" if complete else "incomplete", "run_id": run_id, "unresolved": unresolved,
-            "applied": applied, "errors": errors, "executed": execute}
+    report = {"state": "completed" if complete else "incomplete", "run_id": run_id, "unresolved": unresolved,
+              "applied": applied, "errors": errors, "executed": execute, "accepted_missing": accepted_missing}
+    if accepted_missing:
+        report.update(environment="test", exception_scope=TEST_MISSING_SCOPE,
+                      approval_reference=manifest["test_missing_reference_acceptance"]["approval_reference"])
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -126,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report")
     parser.add_argument("--run-id")
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--accept-test-missing-photos", action="store_true",
+                        help="accept the approved three existing TEST 404s after rechecking the exact manifest")
     args = parser.parse_args(argv)
     if args.action == "plan":
         result = plan(args.organization)
@@ -136,7 +189,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.manifest or not args.run_id:
         raise SystemExit("apply requires --manifest and --run-id")
-    report = apply(args.organization, json.loads(Path(args.manifest).read_text(encoding="utf-8")), args.run_id, args.execute)
+    report = apply(args.organization, json.loads(Path(args.manifest).read_text(encoding="utf-8")), args.run_id, args.execute,
+                   accept_test_missing_photos=args.accept_test_missing_photos)
     if args.report:
         Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({key: report[key] for key in ("state", "unresolved", "executed")}))

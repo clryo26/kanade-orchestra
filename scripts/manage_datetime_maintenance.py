@@ -131,6 +131,22 @@ def check_release_gates(
         raise MaintenanceError("Other DB transactions are still active")
     if not migration_report or migration_report.get("state") != "completed" or migration_report.get("unresolved", 1) != 0:
         raise MaintenanceError("Legacy reference migration is not completed (plan S17)")
+    accepted = migration_report.get("accepted_missing", [])
+    if accepted and (
+        state.get("environment") != "test" or state.get("service") != TARGETS["test"]["service"]
+        or migration_report.get("environment") != "test"
+        or migration_report.get("exception_scope") != "test-existing-member-photo-404"
+        or not migration_report.get("approval_reference") or migration_report.get("executed") is not True
+        or len(accepted) != 3 or len({e.get("owner_id") for e in accepted}) != 3
+        or any(e.get("kind") != "member_photo" or e.get("checked_missing") is not True
+               or e.get("db_reference_preserved") is not True for e in accepted)
+    ):
+        raise MaintenanceError("Missing-reference exception is restricted to the approved three TEST photos")
+    for entry in container.get("env", []):
+        if entry.get("name") == "MAINTENANCE_MODE" and (
+            "valueFrom" in entry or str(entry.get("value", "")).lower() not in {"", "0", "false", "no", "off"}
+        ):
+            raise MaintenanceError("The release revision must have maintenance disabled")
 
 
 def check_rollback_old(state: dict[str, Any], facts: dict[str, Any]) -> None:
@@ -182,6 +198,7 @@ def execute(
         staged = run("run", "deploy", service_name, "--project", project, "--region", region,
                      "--image", args.image, "--command", ".venv/bin/uvicorn",
                      "--args", "src.backend.production_maintenance:app,--host,0.0.0.0,--port,8080",
+                     "--update-env-vars", "MAINTENANCE_MODE=true",
                      "--no-traffic", "--format=json", json_result=True)
         name = staged["status"]["latestCreatedRevisionName"]
         info = revision(name)
@@ -245,7 +262,9 @@ def execute(
             return {"mode": "dry-run", "new_revision": args.new_revision}
         switch(args.new_revision)
         try:
-            if not traffic_only(service(), args.new_revision) or health(state["url"]).get("mode") == MAINTENANCE_MODE:
+            payload = health(state["url"])
+            if (not traffic_only(service(), args.new_revision) or payload.get("status") != "healthy"
+                    or payload.get("mode") == MAINTENANCE_MODE or payload.get("maintenance") == "enabled"):
                 raise MaintenanceError("Release verification failed")
         except Exception:
             switch(state["maintenance_revision"])

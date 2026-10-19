@@ -922,3 +922,14 @@ S00の取得に際し、接続時の `statement_timeout` 追加指定は接続�
 ### 13.7 WindowsでのメンテナンスCLI事前確認
 
 Windowsで `subprocess.run(["gcloud", ...])` がFileNotFoundErrorになることを、外部変更を伴わない `--version` で確認した。`shutil.which` で実際のgcloud.CMDを解決してから実行するよう修正し、CLI不在時は操作前に停止する。回帰試験13件、実CLIの `--version`、ruffが合格した。実環境のメンテナンス切替を検証したという意味ではない。
+
+### 13.8 TEST限定の既存404受容と反映手順
+
+2026-10-19、利用者はTEST反映（022、採番追従、参照移行、メンテナンス切替）を承認した。旧会員画像3件は現行TESTでも404で、TESTバケットに現行・非現行・ソフト削除世代が存在しないことを確認した。その後、利用者は「TEST限定で既存404の3件を除外して反映する」を明示的に選択した。既存URLを保持し、画像や参照は削除しない。本番へこの受容を引き継がない。
+
+- `migrate_reference_assets.py apply --accept-test-missing-photos` は、承認情報付きマニフェストと実環境 `APP_ENV=test` / `CLOUD_RUN_SERVICE=kanade-orchestra-test` を必須とする。現在の未移行参照を再調査し、対象がちょうど承認済み3件であること、DB値不変・実体未復元・事前404の根拠を照合する。変化や追加参照があれば停止する。
+- レポートは移行済み `applied` と受容した欠損 `accepted_missing` を分け、欠損を正常移行済みと偽装しない。解除ゲートは後者を承認済み3件・TESTサービスだけに限定し、本番では拒否する。
+- 旧DB内のGCS設定には環境変数との不一致がある。反映時の接続先はTESTサービスから取得したTEST DB・TESTバケットに固定し、他環境の実体をコピーしない。既存DB設定の書き換えは今回の対象外。
+- 専用メンテナンスrevisionは `MAINTENANCE_MODE=true` も明示する。通常Deploy Testは今回のメンテナンスと競合するため、実行中の外部writerがないことを確認し、当該TESTデプロイworkflowを停止してから切り替える。解除・検証後に元のworkflow状態へ戻す。自動反映ガードを弱めない。
+- 非公開候補は通常入口とTEST用メンテナンスガードを併用し、healthだけで時計差を検証する。公開用revisionは同じimage digest・通常入口・ガード無効を明示し、解除ゲートで確認する。公開後のhealthはhealthyかつmaintenance無効を要求し、不一致ならmaintenanceへ戻す。
+- 関連の移行・専用メンテナンス試験27件が合格。画像復元・削除・参照消去は行っていない。

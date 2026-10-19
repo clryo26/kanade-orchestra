@@ -1,6 +1,8 @@
 """Legacy reference migration (spec R06/C03; T11/T15/T23): evidence-based, never by candidate count."""
 from __future__ import annotations
 
+import pytest
+
 from scripts import migrate_reference_assets as module
 from src.backend.services import portal_file_asset_service as files
 
@@ -67,3 +69,48 @@ def test_chosen_object_must_be_a_listed_candidate(backend_env, monkeypatch):
     manifest["entries"][0].update(confirmed=True, chosen_object="other/tenant/file.pdf", evidence="e")
     report = module.apply("default", manifest, "run-1", execute=False)
     assert report["errors"][0]["detail"] == "chosen object is not a listed candidate"
+
+
+def _missing_manifest(backend_env, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("CLOUD_RUN_SERVICE", "kanade-orchestra-test")
+    backend_env.save_json_data("members", [
+        {"id": i, "name": "member", "photo_url": f"/api/members/{i}/photo?ext=png"} for i in (1, 2, 3)
+    ])
+    manifest = module.plan("default")
+    manifest["test_missing_reference_acceptance"] = {
+        "scope": module.TEST_MISSING_SCOPE, "approved": True, "approval_reference": "user-approval-test"
+    }
+    for entry in manifest["entries"]:
+        entry.update(accepted_missing=True, object_name=f"member-images/{entry['owner_id']}/photo.png",
+                     preexisting_http_status=404, noncurrent_versions=0, soft_deleted_versions=0)
+    return manifest
+
+
+def test_approved_test_missing_photos_preserve_rows_and_create_no_assets(backend_env, monkeypatch):
+    manifest = _missing_manifest(backend_env, monkeypatch)
+    before = backend_env.load_json_data("members")
+    report = module.apply("default", manifest, "missing-test", True, accept_test_missing_photos=True)
+    assert report["state"] == "completed" and len(report["accepted_missing"]) == 3
+    assert report["applied"] == [] and report["unresolved"] == 0
+    assert backend_env.load_json_data("members") == before
+    assert not any(files.has_active_asset("member_photo", i) for i in (1, 2, 3))
+
+
+@pytest.mark.parametrize("changed", ["production", "no_flag", "changed_row", "object_restored", "extra_reference"])
+def test_test_missing_exception_stops_on_scope_or_evidence_changes(backend_env, monkeypatch, changed):
+    manifest = _missing_manifest(backend_env, monkeypatch)
+    if changed == "production":
+        monkeypatch.setenv("APP_ENV", "production")
+    elif changed == "changed_row":
+        members = backend_env.load_json_data("members")
+        members[0]["photo_url"] = ""
+        backend_env.save_json_data("members", members)
+    elif changed == "object_restored":
+        path = backend_env.UPLOAD_DIR / "member-images/1/photo.png"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"restored")
+    elif changed == "extra_reference":
+        backend_env.save_json_data("org_settings", [{"id": 1, "icon_url": "/api/extra/org_settings/1/icon?ext=png"}])
+    with pytest.raises(SystemExit):
+        module.apply("default", manifest, "missing-test", True, accept_test_missing_photos=changed != "no_flag")
