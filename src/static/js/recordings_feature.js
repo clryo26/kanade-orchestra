@@ -60,7 +60,7 @@ function renderRecordingList(containerId, canDelete) {
             });
         } else {
             dateDetails.querySelectorAll('.recording-bulk-download-btn').forEach((link) => {
-                link.addEventListener('click', (event) => event.stopPropagation());
+                bindRecordingDownload(link, recordingZipTarget(dateGroup.date, '', formatDateWithWeekday(dateGroup.date, '未分類')));
             });
         }
         dateGroup.pieces.forEach((pieceGroup) => {
@@ -81,7 +81,7 @@ function renderRecordingList(containerId, canDelete) {
             }
             if (!canDelete) {
                 pieceDetails.querySelectorAll('.recording-bulk-download-btn').forEach((link) => {
-                    link.addEventListener('click', (event) => event.stopPropagation());
+                    bindRecordingDownload(link, recordingZipTarget(dateGroup.date, pieceGroup.piece, `${formatDateWithWeekday(dateGroup.date, '未分類')} / ${pieceGroup.piece || '未分類'}`));
                 });
             }
             const list = document.createElement('div');
@@ -96,11 +96,34 @@ function renderRecordingList(containerId, canDelete) {
     });
 }
 
-function recordingZipUrl(date = '', piece = '') {
+function recordingZipUrl(date = '', piece = '', suffix = '') {
     const params = new URLSearchParams();
     if (date) params.set('date', date);
     if (piece) params.set('piece', piece);
-    return `/api/recordings/download-zip?${params.toString()}`;
+    return `/api/recordings/download-zip${suffix}?${params.toString()}`;
+}
+
+function recordingZipTarget(date, piece, title) {
+    return { kind: 'recording-zip', url: recordingZipUrl(date, piece), infoUrl: recordingZipUrl(date, piece, '/info'), title };
+}
+
+// DL / 一括DL follow the same rules as the sheet library
+// (scores/save_dialog.js): a PC keeps the browser's own download for a single
+// recording (the <a download> link), a ZIP first shows its size; a smartphone
+// uses the save dialog so a home-screen app never loses the portal.
+// Without the save dialog (older loader) the plain link is used.
+function bindRecordingDownload(link, target) {
+    const mode = window.portalSheetSave?.mode?.() || 'desktop';
+    // The dialog replaces the portal's "ダウンロードしますか？" (a PC's single
+    // recording keeps it, as before).
+    if (typeof openSheetSave === 'function' && (target.kind !== 'url' || mode !== 'desktop')) link.dataset.downloadConfirm = 'off';
+    link.addEventListener('click', (event) => {
+        event.stopPropagation(); // inside <summary>: do not toggle the section
+        if (typeof openSheetSave !== 'function') return;
+        if (target.kind === 'url' && mode === 'desktop') return;
+        event.preventDefault();
+        openSheetSave(target, link);
+    });
 }
 
 function recordingFilterHtml() {
@@ -222,7 +245,7 @@ function recordingFileItem(file, canDelete) {
     item.recordingCanDelete = canDelete;
     const actionButton = canDelete
         ? '<button class="btn btn-sm btn-outline-danger delete-recording-btn" type="button">削除</button>'
-        : `<a class="btn btn-sm btn-primary" href="${escapeHtml(downloadUrl)}">DL</a>`;
+        : `<a class="btn btn-sm btn-primary recording-download-btn" href="${escapeHtml(downloadUrl)}" download>DL</a>`;
     item.innerHTML = `
         <div class="recording-row">
             <span class="recording-meta">
@@ -237,6 +260,11 @@ function recordingFileItem(file, canDelete) {
         <div class="recording-player-area mt-2"></div>
     `;
     bindRecordingFileItem(item, file, playUrl, canDelete);
+    if (!canDelete && downloadUrl) {
+        bindRecordingDownload(item.querySelector('.recording-download-btn'), {
+            kind: 'url', media: 'audio', url: downloadUrl, name: file.name || 'recording.mp3', size: Number(file.size || 0),
+        });
+    }
     if (canDelete) {
         item.querySelector('.delete-recording-btn').addEventListener('click', (event) => withButtonStatus(event.currentTarget, '削除中...', () => deleteRecording(file)));
     }

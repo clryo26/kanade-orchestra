@@ -91,8 +91,11 @@ async function openLibrary(page) {
   await expect(page.locator('#memberSheetTab')).toBeVisible();
 }
 
+// options.mode: 'mobile' | 'desktop' for the save dialog (headless Chromium
+// would be detected as a PC); the smartphone flow is forced where tested.
 async function prepare(page, files, options = {}) {
   const monitor = attachErrorMonitor(page);
+  if (options.mode) await page.addInitScript((mode) => { window.portalSaveDeviceMode = mode; }, options.mode);
   await installPortalApiMocks(page, { bootstrapOverrides: { sheets: { files } } });
   const lib = library(page, files);
   await lib.install();
@@ -188,34 +191,42 @@ test.describe('sheet library reliability (Chromium)', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('a sheet registered elsewhere appears within about 5 s; filters and open sections stay; 更新 waits; failures keep the list', async ({ page }) => {
+  test('the library shows the server list when opened; no automatic checks or 更新 button; filters stay; failures keep the list', async ({ page }) => {
     test.setTimeout(60000);
     const { lib } = await prepare(page, [sheet(1, 'Two.pdf', 'Sym')]);
+    const reopen = async () => {
+      await page.evaluate(() => window.showMemberTab('member-home'));
+      await expect(page.locator('#memberSheetTab')).toBeHidden();
+      await openLibrary(page);
+    };
     await page.selectOption('#memberSheetPartFilter', 'Violin');
-    await page.locator('details[data-sheet-key="p:1:Sym"] summary').click();
+    await expect(page.locator('#memberSheetSync button')).toHaveCount(0);
+    await expect(page.locator('#memberSheetSync')).toHaveText('');
+    // Registered elsewhere while the library stays open: no check runs.
     lib.server.version = 2;
     lib.server.files = [sheet(1, 'Two.pdf', 'Sym'), sheet(2, 'New.pdf', 'Sym')];
-    await expect(page.locator('[data-sheet-view="2"]')).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('#memberSheetPartFilter')).toHaveValue('Violin');
-    await expect(page.locator('details[data-sheet-key="p:1:Sym"]')).toHaveAttribute('open', '');
-    // 更新 with a failing server: the shown list stays, the failure is visible.
-    lib.server.failList = true;
-    await page.locator('#memberSheetSync .sheet-sync-refresh').click();
-    await expect(page.locator('#memberSheetSync')).toContainText('一覧を更新できませんでした');
-    await expect(page.locator('#memberSheetSync .sheet-sync-retry')).toBeVisible();
-    await expect(page.locator('[data-sheet-view="2"]')).toBeVisible();
-    lib.server.failList = false;
-    lib.server.files = [sheet(2, 'New.pdf', 'Sym')];
-    lib.server.version = 3;
-    await page.locator('#memberSheetSync .sheet-sync-retry').click();
-    await expect(page.locator('#memberSheetSync')).toContainText('最終確認');
-    await expect(page.locator('[data-sheet-view="1"]')).toHaveCount(0);
-    // Leaving the library stops the checks.
-    await page.evaluate(() => window.showMemberTab('member-home'));
-    await expect(page.locator('#memberSheetTab')).toBeHidden();
     const before = lib.server.requests.length;
     await page.waitForTimeout(6500);
     expect(lib.server.requests.length).toBe(before);
+    await expect(page.locator('[data-sheet-view="2"]')).toHaveCount(0);
+    // Opening the library again shows the list as it is now.
+    await reopen();
+    await page.locator('details[data-sheet-key="p:1:Sym"] summary').click();
+    await expect(page.locator('[data-sheet-view="2"]')).toBeVisible();
+    await expect(page.locator('#memberSheetPartFilter')).toHaveValue('Violin');
+    // A failing server: the shown list stays and the failure is said (no button).
+    lib.server.failList = true;
+    lib.server.version = 3;
+    await reopen();
+    await expect(page.locator('#memberSheetSync')).toContainText('一覧を更新できませんでした');
+    await expect(page.locator('#memberSheetSync button')).toHaveCount(0);
+    await page.locator('details[data-sheet-key="p:1:Sym"] summary').click();
+    await expect(page.locator('[data-sheet-view="2"]')).toBeVisible();
+    lib.server.failList = false;
+    lib.server.files = [sheet(2, 'New.pdf', 'Sym')];
+    await reopen();
+    await expect(page.locator('#memberSheetSync')).toHaveText('');
+    await expect(page.locator('[data-sheet-view="1"]')).toHaveCount(0);
   });
 
   test('DL of a PDF opens the save dialog over the list; the share sheet is opened from the tap; nothing claims it was saved', async ({ page }) => {
@@ -224,7 +235,7 @@ test.describe('sheet library reliability (Chromium)', () => {
       Object.defineProperty(navigator, 'canShare', { configurable: true, value: (data) => data.files.every((f) => f.type === 'application/pdf') });
       Object.defineProperty(navigator, 'share', { configurable: true, value: async (data) => { window.__shared.push(data.files.map((f) => ({ name: f.name, type: f.type, size: f.size }))); } });
     });
-    const { monitor } = await prepare(page, [sheet(1, 'Two.pdf', 'Sym')]);
+    const { monitor } = await prepare(page, [sheet(1, 'Two.pdf', 'Sym')], { mode: 'mobile' });
     const before = page.url();
     await page.locator('details[data-sheet-key="p:1:Sym"] summary').click();
     await page.locator('[data-sheet-save="1"]').click();
@@ -242,12 +253,13 @@ test.describe('sheet library reliability (Chromium)', () => {
     monitor.assertNoClientErrors();
   });
 
-  test('ZIP: built in steps with progress; sharing not possible for ZIP -> ticket link outside the portal', async ({ page }) => {
+  test('smartphone ZIP: built in steps with progress; the size is shown, then a ticket link outside the portal', async ({ page }) => {
     await page.addInitScript(() => {
-      Object.defineProperty(navigator, 'canShare', { configurable: true, value: (data) => data.files.every((f) => f.type === 'application/pdf') });
-      Object.defineProperty(navigator, 'share', { configurable: true, value: async () => {} });
+      // Even where ZIPs could be shared, a ZIP is never read into the page.
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async () => { throw new Error('ZIP must not be shared'); } });
     });
-    const { monitor } = await prepare(page, [sheet(1, 'Two.pdf', 'Sym'), sheet(2, 'Three.pdf', 'Sym')]);
+    const { monitor } = await prepare(page, [sheet(1, 'Two.pdf', 'Sym'), sheet(2, 'Three.pdf', 'Sym')], { mode: 'mobile' });
     const bodies = [];
     let steps = 0;
     const job = (state, done, extra = {}) => ({ job_id: '11111111-1111-4111-8111-111111111111', state, title: 'Concert', file_count: 2,
@@ -275,6 +287,9 @@ test.describe('sheet library reliability (Chromium)', () => {
     await expect(page.locator('#sheetSaveStatus')).toContainText('ZIPを作成しています');
     await expect(page.locator('#sheetSaveCount')).toContainText('2 件');
     await expect(page.locator('#sheetSaveOpen')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#sheetSaveCount')).toHaveText('2 件の楽譜・ZIP 1 KB');
+    await expect(page.locator('#sheetSaveStatus')).toContainText('ZIPの準備ができました（1 KB）');
+    await expect(page.locator('#sheetSaveShare')).toBeHidden();
     expect(bodies[0]).toMatchObject({ performance_id: '1', piece: 'Sym', scope: 'piece' });
     // A download (desktop) or a separate tab: either way the portal page is
     // not replaced. (The iPhone home-screen app behaviour is not tested here.)
@@ -293,7 +308,7 @@ test.describe('sheet library reliability (Chromium)', () => {
   });
 
   test('ZIP with a missing file: no silent partial ZIP; a partial one only on explicit choice; cancel stops the job', async ({ page }) => {
-    await prepare(page, [sheet(1, 'Two.pdf', 'Sym'), sheet(2, 'Three.pdf', 'Sym')]);
+    await prepare(page, [sheet(1, 'Two.pdf', 'Sym'), sheet(2, 'Three.pdf', 'Sym')], { mode: 'mobile' });
     const created = [];
     const cancelled = [];
     let hang = false;
@@ -333,7 +348,7 @@ test.describe('sheet library reliability (Chromium)', () => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false });
     });
-    await prepare(page, [sheet(1, 'Two.pdf', 'Sym')]);
+    await prepare(page, [sheet(1, 'Two.pdf', 'Sym')], { mode: 'mobile' });
     let issued = 0;
     await page.route('**/api/sheets/tickets', async (route) => {
       issued += 1;

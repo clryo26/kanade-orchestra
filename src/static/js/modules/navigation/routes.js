@@ -204,7 +204,12 @@ var memberFeatureLoadPromises = {};
 var memberFeatureRevision = (typeof document !== 'undefined' && document.currentScript?.src || '').match(/[?&]rev=([^&]+)/)?.[1] || '';
 var memberFeatureScripts = {
     absence: ['/static/js/modules/absences.js?v=20260630-6'],
-    recording: ['/static/js/modules/recordings.js?v=20260731-1'],
+    // Recording DL uses the sheet library's save dialog (same PC/smartphone rules).
+    recording: [
+        '/static/js/modules/scores/sheet_api.js?v=20261018-1',
+        '/static/js/modules/scores/save_dialog.js?v=20261019-dl1',
+        '/static/js/modules/recordings.js?v=20261019-dl1',
+    ],
     // The sheet library loads its own viewer (no other screen has to be
     // opened first). scores.js stays last and defines nothing.
     sheet: [
@@ -213,8 +218,8 @@ var memberFeatureScripts = {
         '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
         '/static/js/modules/scores/helpers.js?v=20261018-1',
         '/static/js/modules/scores/render.js?v=20261018-1',
-        '/static/js/modules/scores/sync.js?v=20261019-jst1',
-        '/static/js/modules/scores/save_dialog.js?v=20261018-1',
+        '/static/js/modules/scores/sync.js?v=20261019-dl1',
+        '/static/js/modules/scores/save_dialog.js?v=20261019-dl1',
         '/static/js/modules/scores/upload_batch.js?v=20261018-1',
         '/static/js/modules/scores/events.js?v=20261018-1',
         '/static/js/modules/scores.js?v=20261018-1',
@@ -223,7 +228,7 @@ var memberFeatureScripts = {
     datePiecePromotion: [
         '/static/js/modules/scores/sheet_api.js?v=20261018-1',
         '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
-        '/static/js/modules/scores/save_dialog.js?v=20261018-1',
+        '/static/js/modules/scores/save_dialog.js?v=20261019-dl1',
         '/static/js/modules/date_piece_promotion/helpers.js?v=20261019-jst1',
         '/static/js/modules/date_piece_promotion/validation.js?v=20260701-3',
         '/static/js/modules/date_piece_promotion/events.js?v=20260701-3',

@@ -74,6 +74,7 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - POST /api/convert
 - GET /api/recordings
 - GET /api/recordings/download-zip
+- GET /api/recordings/download-zip/info（一括DLの前に表示する件数・合計バイト数・取得できない件数）
 - GET /api/recordings/play/{path}
 - GET /api/recordings/download/{path}
 - DELETE /api/recordings
@@ -94,7 +95,7 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - PUT /api/sheets/{sheet_id}/part
 - PUT /api/sheets/parts
 - DELETE /api/sheets
-- GET /api/sheets/version（一覧更新番号。約5秒ごとの確認用）
+- GET /api/sheets/version（一覧更新番号。楽譜ライブラリを開いた時の確認用）
 - GET /api/sheets/operations/{operation_id}（操作IDの処理状況）
 - POST /api/sheets/tickets、GET /api/sheets/tickets/{ticket}（短期の保存用URL）
 - POST /api/sheets/zip-jobs、GET /api/sheets/zip-jobs/{job_id}、POST /api/sheets/zip-jobs/{job_id}/step、POST /api/sheets/zip-jobs/{job_id}/cancel、GET /api/sheets/zip-jobs/{job_id}/download（段階作成のZIP）

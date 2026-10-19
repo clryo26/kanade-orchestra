@@ -1,6 +1,7 @@
 // Sheet library synchronization (scores/sheet_api.js + scores/sync.js) with a
-// fake network and fake timers. Real browser behaviour (visibility, PWA return)
-// is in tests/e2e/sheet_library_reliability.spec.js; a real iPhone is not.
+// fake network and fake timers. The list is checked only when a library tab is
+// opened (no periodic or return checks). Real browser behaviour is in
+// tests/e2e/sheet_library_reliability.spec.js; a real iPhone is not.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -66,21 +67,21 @@ describe('sheet library sync', () => {
         expect(calls[0].init.cache).toBe('no-store');
         expect(calls[0].init.headers['X-Device-Id']).toBe('dev-1');
         expect(appState.sheetListVersion).toBe(3);
-        await sandbox.refreshSheetLibrary({ reason: 'poll' });
+        await sandbox.startSheetLibrarySync(); // opened again
         expect(calls.map((c) => c.url)).toEqual(['/api/sheets', '/api/sheets/version']);
     });
 
-    test('a version change fetches the list; 更新 waits until the list itself arrived', async () => {
+    test('opening again after a change fetches the list; a forced refresh (own change) waits for the list', async () => {
         let version = 3;
         const { sandbox, appState, calls } = makeSync({
             responses: (url) => (url === '/api/sheets' ? json({ files: [{ id: version }], list_version: version }) : json({ list_version: version })),
         });
         await sandbox.startSheetLibrarySync();
         version = 4;
-        await sandbox.refreshSheetLibrary({ reason: 'poll' });
+        await sandbox.startSheetLibrarySync();
         expect(appState.sheetLibrary).toEqual([{ id: 4 }]);
         const before = calls.length;
-        const result = await sandbox.refreshSheetLibrary({ force: true, reason: 'button' });
+        const result = await sandbox.refreshSheetLibrary({ force: true, reason: 'delete' });
         expect(result).toMatchObject({ ok: true });
         expect(calls.slice(before).map((c) => c.url)).toEqual(['/api/sheets']); // forced: the list, not only the version
     });
@@ -117,32 +118,28 @@ describe('sheet library sync', () => {
         expect(appState.sheetLibrary).toEqual([]);
     });
 
-    test('a failure keeps the shown list, is not a success and offers retry', async () => {
+    test('a failure keeps the shown list, is not a success and is shown (without a button)', async () => {
         let fail = false;
         const { sandbox, appState, elements } = makeSync({
             responses: (url) => (fail ? new Error('offline') : json({ files: [{ id: 1 }], list_version: 2 })),
         });
         await sandbox.startSheetLibrarySync();
         fail = true;
-        const result = await sandbox.refreshSheetLibrary({ force: true, reason: 'button' });
+        const result = await sandbox.refreshSheetLibrary({ force: true, reason: 'delete' });
         expect(result.ok).toBe(false);
         expect(appState.sheetLibrary).toEqual([{ id: 1 }]);
-        expect(elements.memberSheetSync.innerHTML).toContain('sheet-sync-retry');
+        expect(elements.memberSheetSync.innerHTML).toContain('sheet-sync-error');
+        expect(elements.memberSheetSync.innerHTML).not.toContain('<button');
         expect(sandbox.portalSheetSync.state.lastError).toBe('通信できませんでした');
     });
 
-    test('checks run only while a library tab is shown and the page is visible, about every 5 s', async () => {
-        const { sandbox, timers, elements } = makeSync({ responses: () => json({ files: [], list_version: 1 }) });
+    test('the list is checked only when the library is opened: no periodic check, no 更新 button', async () => {
+        const { sandbox, timers, listeners, calls, elements } = makeSync({ responses: () => json({ files: [], list_version: 1 }) });
         await sandbox.startSheetLibrarySync();
-        expect(timers.at(-1).ms).toBe(5000);
-        elements.memberSheetTab.hidden = true; // left the screen
-        const count = timers.length;
-        await timers.at(-1).fn();
-        expect(timers.length).toBe(count); // nothing scheduled
-        elements.memberSheetTab.hidden = false;
-        sandbox.document.visibilityState = 'hidden';
-        await sandbox.startSheetLibrarySync();
-        expect(timers.length).toBe(count);
+        expect(calls).toHaveLength(1);
+        expect(timers).toEqual([]); // nothing scheduled while the tab stays open
+        expect(Object.keys(listeners)).toEqual([]); // no re-check on visibility / pageshow / online
+        expect(elements.memberSheetSync.innerHTML).toBe(''); // no button, no "last checked" line
     });
 
     test('a newer server release is shown as a notice, never as a reload', async () => {
@@ -150,12 +147,12 @@ describe('sheet library sync', () => {
             responses: (url) => (url === '/api/sheets' ? json({ files: [], list_version: 1 }) : json({ list_version: 1, release: 'rev-2' })),
         });
         await sandbox.startSheetLibrarySync();
-        await sandbox.refreshSheetLibrary({ reason: 'poll' });
+        await sandbox.startSheetLibrarySync(); // opened again: the version check carries the release
         expect(sandbox.portalSheetSync.state.notice).toContain('新しい版');
         expect(elements.memberSheetSync.innerHTML).toContain('sheet-sync-notice');
     });
 
-    test('open sections stay open over an automatic update', () => {
+    test('open sections stay open over an update', () => {
         const { sandbox, elements, appState } = makeSync({ responses: () => json({}) });
         const open = { dataset: { sheetKey: 'p:1' }, open: true };
         const closed = { dataset: { sheetKey: 'p:2' }, open: false };
@@ -178,7 +175,7 @@ describe('sheet library sync after a DB restore or sync', () => {
         await sandbox.startSheetLibrarySync();
         expect(appState.sheetListVersion).toBe(50);
         version = 3; // the test environment was synchronized from production
-        await sandbox.refreshSheetLibrary({ reason: 'poll' });
+        await sandbox.startSheetLibrarySync();
         expect(appState.sheetListVersion).toBe(3);
         expect(appState.sheetLibrary).toEqual([{ id: 3 }]);
     });

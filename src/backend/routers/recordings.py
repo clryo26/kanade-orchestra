@@ -156,14 +156,54 @@ def _stream_recordings_zip(recordings: list[dict[str, Any]]):
     yield from sink.drain()
 
 
-@router.get("/api/recordings/download-zip")
-async def download_recordings_zip(date: str = "", piece: str = "") -> StreamingResponse:
-    recordings = [
+def _zip_candidates(date: str, piece: str) -> list[dict[str, Any]]:
+    return [
         item
         for item in recording_payload(load_json_data=load_json_data, format_duration=format_duration)["files"]
         if (not date or str(item.get("date") or "") == date)
         and (not piece or str(item.get("piece") or "") == piece)
     ]
+
+
+def _recording_size(item: dict[str, Any]) -> int | None:
+    """Bytes of one recording, or None when it cannot be included in a ZIP
+    (the same rule as _recording_exists). One storage request per object."""
+    if item.get("source") == "google_cloud_storage":
+        object_name = str(item.get("object_name") or "")
+        if not object_name or not storage_enabled():
+            return None
+        # Bound each metadata request before download, without automatic SDK
+        # retries. On a transient failure the UI offers a retry instead.
+        blob = get_storage_bucket().get_blob(object_name, timeout=10, retry=None)
+        return int(blob.size or 0) if blob is not None else None
+    path = str(item.get("path") or "")
+    if not path:
+        return None
+    try:
+        return local_recording_path(path).stat().st_size
+    except (HTTPException, OSError):
+        return None
+
+
+@router.get("/api/recordings/download-zip/info")
+def recordings_zip_info(date: str = "", piece: str = "") -> dict[str, int]:
+    # Shown before a 一括DL starts (the ZIP itself is streamed without a
+    # Content-Length). The ZIP is stored, not compressed, so its size is the
+    # recordings' total plus a small header per file: reported as "about".
+    sizes = [_recording_size(item) for item in _zip_candidates(date, piece)]
+    available = [size for size in sizes if size is not None]
+    if not available:
+        raise HTTPException(status_code=404, detail="Recording files not found")
+    return {
+        "file_count": len(available),
+        "missing_count": len(sizes) - len(available),
+        "total_bytes": sum(available),
+    }
+
+
+@router.get("/api/recordings/download-zip")
+async def download_recordings_zip(date: str = "", piece: str = "") -> StreamingResponse:
+    recordings = _zip_candidates(date, piece)
     if not recordings:
         raise HTTPException(status_code=404, detail="Recordings not found")
 
