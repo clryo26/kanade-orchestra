@@ -439,7 +439,7 @@ jobs:
           PY
 
       - name: Post sticky PR coverage comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: coverage-summary
           path: coverage-summary.md
