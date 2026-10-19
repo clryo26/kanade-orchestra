@@ -7,7 +7,7 @@ var $ = window.portalRuntimeContext.getById;
 function sortedDateAdjustments(items) {
     return [...(items || [])].sort((a, b) =>
         String(a.deadline || '').localeCompare(String(b.deadline || '')) ||
-        String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+        comparePortalInstantAsc(a, b) ||
         String(a.title || '').localeCompare(String(b.title || ''), 'ja')
     );
 }

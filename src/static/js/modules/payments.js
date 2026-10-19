@@ -304,9 +304,10 @@ function currentMonthValue() {
 
 function addMonths(dateText, months) {
     if (!dateText) return null;
-    const date = new Date(`${dateText}T00:00:00`);
+    const date = new Date(`${dateText}T00:00:00Z`);
     if (Number.isNaN(date.getTime())) return null;
-    date.setMonth(date.getMonth() + months);
+    // Preserve setMonth's overflow rule (Jan 31 + 1 month -> March), in UTC.
+    date.setUTCMonth(date.getUTCMonth() + months);
     return date;
 }
 
@@ -345,7 +346,7 @@ function paymentAlertInfo(payment = null, memberId = '') {
         paymentChargeablePerformanceIdsForMember(member.id);
 
     const now = new Date(
-        `${window.portalRuntimeContext.today()}T00:00:00`
+        `${window.portalRuntimeContext.today()}T00:00:00Z`
     );
 
     appState.performances.forEach((perf) => {
@@ -543,7 +544,7 @@ function renderPaymentAdminSortControls() {
     });
 }
 
-function renderPaymentAdmin() {
+function renderPaymentAdmin({ preserveForm = false } = {}) {
     const memberSelect = $('paymentMemberId');
     const feeContainer = $('paymentPerformanceFees');
     const list = $('paymentAdminList');
@@ -551,22 +552,24 @@ function renderPaymentAdmin() {
 
     renderPaymentAdminSortControls();
 
-    const selected = memberSelect.value;
-    memberSelect.innerHTML = paymentMemberOptionsById(selected);
-    if ([...memberSelect.options].some((option) => option.value === selected)) {
-        memberSelect.value = selected;
-    }
+    if (!preserveForm) {
+        const selected = memberSelect.value;
+        memberSelect.innerHTML = paymentMemberOptionsById(selected);
+        if ([...memberSelect.options].some((option) => option.value === selected)) {
+            memberSelect.value = selected;
+        }
 
-    feeContainer.innerHTML = appState.performances.length
-        ? appState.performances.map((perf) => `
+        feeContainer.innerHTML = appState.performances.length
+            ? appState.performances.map((perf) => `
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <label class="form-check mb-0">
                     <input class="form-check-input payment-performance-checkbox" type="checkbox" value="${escapeHtml(String(perf.id))}">
                     <span class="form-check-label">${escapeHtml(perf.title)}（${escapeHtml(performanceFeeAmountLabel(perf))}）</span>
                 </label>
             </div>
-        `).join('')
-        : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
+            `).join('')
+            : '<p class="text-muted mb-0">演奏会情報はまだありません</p>';
+    }
 
     const allMembers = paymentAdminVisibleMembers()
         .map((member) => ({

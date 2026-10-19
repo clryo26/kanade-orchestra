@@ -122,6 +122,7 @@ async function saveOwnProfile(memberId) {
     const photoUrl = current.photo_url || '';
     const payload = {
         photo_url: photoUrl,
+        expected_updated_at: current.updated_at || '',
         joined_at: $('profileJoinedAt')?.value || '',
         introducer: $('profileIntroducer')?.value.trim() || '',
         role: $('profileRole')?.value.trim() || '',
@@ -137,6 +138,7 @@ async function saveOwnProfile(memberId) {
         formData.append('photo_file', photoFile);
     }
     const updatedMember = await request(`/api/members/${encodeURIComponent(memberId)}/profile`, {
+        _portalFileOperation: true,
         method: 'PUT',
         body: formData,
     });
@@ -174,7 +176,7 @@ function ensurePortalNoticesModuleLoaded() {
 
     portalNoticesModuleLoadPromise = new Promise(function (resolve, reject) {
         var script = document.createElement('script');
-        script.src = '/static/js/modules/notices.js?v=20260812-2';
+        script.src = '/static/js/modules/notices.js?v=20261019-jst1';
         script.async = true;
         script.addEventListener('load', function () {
             if (window.__KANADE_PORTAL_NOTICES_MODULE_LOADED__) {

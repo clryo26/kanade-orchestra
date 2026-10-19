@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..repositories.announcement_repository import AnnouncementRepository
+from ..utils.datetime_utils import require_input_dates
 from .notification_service import emit
 
 _repo = AnnouncementRepository()
@@ -18,12 +19,14 @@ def get_announcement(announcement_id: int) -> dict[str, Any]:
 
 
 def create_announcement(payload: dict[str, Any]) -> dict[str, Any]:
+    require_input_dates(payload, ("date",))
     saved = cast(dict[str, Any], _repo.create(payload))
     emit('maintenance', saved)
     return saved
 
 
 def update_announcement(announcement_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    require_input_dates(payload, ("date",))
     return cast(dict[str, Any], _repo.update(announcement_id, lambda current: {**current, **payload}))
 
 

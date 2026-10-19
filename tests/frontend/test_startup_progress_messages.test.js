@@ -39,9 +39,9 @@ describe('startup progress messages', () => {
         expect(bootstrapInit).toContain('データを読み込んでいます');
     });
 
-    it('does not add another initial script tag', () => {
+    it('includes the file operation helper in the initial script set', () => {
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(43);
+        expect(matches.length).toBe(44);
     });
 });

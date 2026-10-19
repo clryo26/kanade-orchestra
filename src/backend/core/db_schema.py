@@ -468,3 +468,51 @@ DB_COLLECTION_ORDER_BY = {
     "part_settings": "sort_order",
     "venue_settings": "sort_order",
 }
+
+# JST remediation (spec R04/R05). A TIMESTAMPTZ column that semantically holds
+# a calendar date: written as UTC 00:00 (the existing encoding), returned as
+# YYYY-MM-DD. Any other time of day is reported as unknown, never guessed.
+DATE_ENCODED_TIMESTAMP_COLUMNS = {
+    "events": {"deadline"},
+}
+
+# Collections written row by row (db_item_repository). In DB mode a whole-list
+# replace of these is refused so no stale list can overwrite newer rows.
+ROW_LEVEL_COLLECTIONS = {
+    "performances",
+    "schedules",
+    "announcements",
+    "events",
+    "members",
+    "auth_devices",
+    "absences",
+    "event_responses",
+    "date_adjustments",
+    "date_adjustment_responses",
+    "piece_infos",
+    "practice_instructions",
+    "performance_day_infos",
+    "payments",
+    "castings",
+    "desired_pieces",
+    "albums",
+    "concert_record_videos",
+    "part_settings",
+    "venue_settings",
+    "flyer_distributions",
+    "flyer_distribution_assignments",
+    "org_settings",
+    "sns_settings",
+    "connection_settings",
+}
+
+# Collections still saved as a list. Every writer (including row-level writers
+# of the same collection and the startup seed) takes the same
+# collection:<tenant>:<name> advisory lock and re-reads from the DB first.
+LIST_LOCKED_COLLECTIONS = {
+    "drive_files",
+    "recording_metadata",
+    "connection_settings",
+    "production_operation_histories",
+    "access_logs",
+}

@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import Response
 
+from ..utils.datetime_utils import API_DATETIME_FORMAT_VERSION
 from .image_asset_service import ensure_public_image_url
 
 
@@ -62,7 +63,9 @@ def combined_collection_etag(
     cache_etag: Callable[[str], str],
     collection_etag: Callable[[str], str] | None = None,
 ) -> str:
-    parts: list[str] = []
+    # Representation version first: a client holding an old-format payload
+    # never gets 304 for it (JST spec R09).
+    parts: list[str] = [f"format:{API_DATETIME_FORMAT_VERSION}"]
     for name in dict.fromkeys(names):
         resolved = ""
         if collection_etag is not None:

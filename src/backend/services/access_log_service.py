@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from ..utils.datetime_utils import instant_or_none
 from typing import Any
 
 
 def _access_log_sort_key(item: dict[str, Any]) -> tuple[float, str]:
+    # Instants only; a naive (legacy local) value is never given a zone by the
+    # server's local timezone and sorts as unknown.
     value = str(item.get("accessed_at") or item.get("created_at") or "").strip()
-    if not value:
-        return (float("-inf"), "")
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return (parsed.timestamp(), value)
-    except ValueError:
+    parsed = instant_or_none(value)
+    if parsed is None:
         return (float("-inf"), value)
+    return (parsed.timestamp(), value)
 
 
 def create_access_log_payload(

@@ -54,7 +54,10 @@ def test_migration_runner_applies_001_through_021_and_repeats_safely():
             assert result.returncode == 0, result.stdout + result.stderr
         with psycopg.connect(isolated) as conn:
             versions = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-            assert versions == [(f"{n:03d}",) for n in range(1, 22)]
+            # Every migration file is applied once (022 added by the JST remediation).
+            expected = sorted(path.name.split("_", 1)[0] for path in (Path(__file__).resolve().parents[2] / "db" / "migrations").glob("*.sql"))
+            assert versions == [(version,) for version in expected]
+            assert ("021",) in versions and ("022",) in versions
             assert conn.execute("SELECT id,name,path FROM sheet_library").fetchall() == [(41, "kept.pdf", "sheets/kept.pdf")]
             assert conn.execute("SELECT COUNT(*) FROM sheet_files WHERE legacy").fetchone() == (1,)
             assert conn.execute("SELECT progress FROM sheet_zip_jobs").fetchall() == []

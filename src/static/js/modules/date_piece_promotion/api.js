@@ -53,6 +53,7 @@ async function saveDesiredPiece() {
         registered_by: current?.registered_by || currentUserMemberName(),
         votes: desiredPieceVotes(current || [])
     };
+    const operationPayload = { payload, expected_updated_at: current?.updated_at || '' };
     if (referenceScoreFile) {
         const formData = new FormData();
         formData.append('payload', JSON.stringify(payload));
@@ -61,13 +62,14 @@ async function saveDesiredPiece() {
         }
         formData.append('reference_score_file', referenceScoreFile);
         await request(id ? `/api/extra/desired_pieces/${encodeURIComponent(id)}` : '/api/extra/desired_pieces', {
+            _portalFileOperation: true,
             method: id ? 'PUT' : 'POST',
             body: formData,
         });
     } else if (id) {
-        await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, jsonOptions('PUT', payload));
+        await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, { ...jsonOptions('PUT', operationPayload), _portalFileOperation: true });
     } else {
-        await saveExtra('desired_pieces', payload);
+        await request('/api/extra/desired_pieces', { ...jsonOptions('POST', operationPayload), _portalFileOperation: true });
     }
     clearDesiredPieceForm();
     await loadExtraData(['desiredPieces']);
@@ -89,7 +91,7 @@ async function toggleDesiredPieceVote(id) {
 
 async function deleteDesiredPiece(id) {
     if (!id || !confirmDelete()) return;
-    await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await request(`/api/extra/desired_pieces/${encodeURIComponent(id)}`, { method: 'DELETE', _portalFileOperation: true });
     clearDesiredPieceForm();
     await loadExtraData(['desiredPieces']);
     showAlert('演奏希望曲を削除しました', 'success');

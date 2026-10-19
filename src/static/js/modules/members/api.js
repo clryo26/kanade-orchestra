@@ -11,6 +11,7 @@ async function saveMember() {
     const lastName = $('memberLastName') ? $('memberLastName').value.trim() : '';
     const firstName = $('memberFirstName') ? $('memberFirstName').value.trim() : '';
     const payload = {
+        expected_updated_at: current?.updated_at || '',
         name: `${lastName}${firstName}`,
         last_name: lastName,
         first_name: firstName,
@@ -57,6 +58,7 @@ async function saveMember() {
         formData.append('photo_file', photoFile);
     }
     const savedMember = await request(id ? `/api/members/${id}` : '/api/members', {
+        _portalFileOperation: true,
         method: id ? 'PUT' : 'POST',
         body: formData,
     });
@@ -98,7 +100,7 @@ async function deleteMember() {
         return;
     }
     if (!confirmDelete()) return;
-    await request(`/api/members/${id}`, { method: 'DELETE' });
+    await request(`/api/members/${id}`, { method: 'DELETE', _portalFileOperation: true });
     clearMemberForm();
     clearMemberSummaryAndDetail(id);
     renderMembers();

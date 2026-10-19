@@ -18,6 +18,7 @@ from ..auth_helpers import member_access_expired
 from ..core.db_schema import DB_COLLECTION_COLUMNS
 from ..core.tenant_context import get_current_tenant_id
 from ..repositories.db_row_repository import db_item_value, db_json_value, db_write_value
+from ..utils.datetime_utils import format_instant, instant_or_none
 from ..repositories.notification_repository import NotificationRepository
 from .notification_types import NOTIFICATION_TYPES
 
@@ -125,6 +126,10 @@ def emit(kind: str, item: dict[str, Any], operation: str = "created") -> None:
             or item.get("created_at")
             or ""
         )
+        # The same version in another notation is the same event (N11).
+        parsed_version = instant_or_none(version)
+        if parsed_version is not None:
+            version = format_instant(parsed_version)
         event_id = hashlib.sha256(
             json.dumps(
                 [org, kind, str(identity), str(version), operation], ensure_ascii=False

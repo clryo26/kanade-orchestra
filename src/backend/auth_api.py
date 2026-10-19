@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Protocol, cast
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -17,6 +16,7 @@ from .services.auth_session_fallback import fallback_auth_device, forget_auth_de
 from .services.auth_session_fallback import list_fallback_auth_devices
 from .services.auth_service import normalized_permission
 from .services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
+from .utils.datetime_utils import format_instant, instant_sort_key, jst_now
 
 router = APIRouter(prefix="/api/auth")
 
@@ -29,6 +29,12 @@ class AuthPersistenceGateway(Protocol):
     def db_replace_collection(self, name: str, data: list[dict[str, Any]]) -> None: ...
 
     def db_upsert_auth_device(self, device: dict[str, Any]) -> dict[str, Any]: ...
+
+    def db_record_login(self, device: dict[str, Any]) -> dict[str, Any]: ...
+
+    def db_touch_auth_device(self, device_id: str, member_id: Any, member_fields: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    def row_store(self) -> Any: ...
 
     def db_delete_auth_device(self, device_id: str) -> None: ...
 
@@ -70,9 +76,12 @@ def save_collection(name: str, data: list[dict[str, Any]]) -> None:
     api.save_json_data(name, data)
 
 
-def save_auth_device(device: dict[str, Any]) -> dict[str, Any]:
+def save_auth_device(device: dict[str, Any], *, login: bool = False) -> dict[str, Any]:
     api = persistence_api()
     if api.db_data_enabled():
+        if login:
+            # authenticated_at/last_seen_at are taken from the DB clock.
+            return api.db_record_login(device)
         return api.db_upsert_auth_device(device)
 
     devices = api.load_json_data("auth_devices")
@@ -127,19 +136,22 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
         if not verify_password(login.password, member_password):
             raise HTTPException(status_code=401, detail="Invalid member password")
         if not is_hashed_password(member_password):
-            members = load_collection("members")
-            for m in members:
-                if m.get("id") == member.get("id"):
-                    m["password"] = hash_password(login.password)
-                    m["updated_at"] = datetime.now().isoformat()
-                    break
-            save_collection("members", members)
+            # Row-level and conditional (JST spec R05/R08, N04): only this
+            # member's password column, and only while it still holds the
+            # value that was verified. Other members' rows are never rewritten.
+            persistence_api().row_store().update_columns(
+                "members",
+                member.get("id"),
+                {"password": hash_password(login.password)},
+                where={"password": member_password},
+            )
 
     device_id = login.device_id.strip()
     if not device_id:
         raise HTTPException(status_code=400, detail="device_id is required")
 
-    now = datetime.now().isoformat()
+    # Aware app time for the fallback path; the DB row is stamped from the DB clock.
+    now = format_instant(jst_now())
     payload = {
         "device_id": device_id,
         "device_name": login.device_name or "Unknown device",
@@ -157,7 +169,7 @@ async def portal_login(login: PortalLoginRequest, request: Request) -> dict[str,
     }
     used_fallback_session = False
     try:
-        payload = save_auth_device(payload)
+        payload = save_auth_device(payload, login=True)
     except Exception:
         remember_auth_device(payload)
         used_fallback_session = True
@@ -182,13 +194,18 @@ async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, 
     if not password:
         raise HTTPException(status_code=400, detail="password is required")
     members = load_collection("members")
-    index, member = find_member_by_login_name(members, payload.name, payload.part)
+    _, member = find_member_by_login_name(members, payload.name, payload.part)
     if member.get("password"):
         raise HTTPException(status_code=409, detail="Member password is already set")
-    member["password"] = hash_password(password)
-    member["updated_at"] = datetime.now().isoformat()
-    members[index] = member
-    save_collection("members", members)
+    # Conditional row update: a password set concurrently is not overwritten.
+    saved = persistence_api().row_store().update_columns(
+        "members",
+        member.get("id"),
+        {"password": hash_password(password)},
+        where={"password": member.get("password")},
+    )
+    if saved is None:
+        raise HTTPException(status_code=409, detail="Member password is already set")
     return {"password_registered": True, "member_id": member.get("id")}
 
 
@@ -228,7 +245,23 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
                 "is_sheet_manager": bool(member.get("is_sheet_manager")),
             }
 
-    item["last_seen_at"] = datetime.now().isoformat()
+    api = persistence_api()
+    if api.db_data_enabled():
+        try:
+            touched = api.db_touch_auth_device(device_id, item.get("member_id"), item)
+        except Exception:
+            remember_auth_device({**item, "last_seen_at": format_instant(jst_now())})
+            return {"authenticated": True, "device": item}
+        if touched is None:
+            # A newer login or a logout changed this device meanwhile. Never
+            # write this older snapshot back; answer from the current row.
+            current = next((device for device in load_collection("auth_devices") if device.get("device_id") == device_id), None)
+            if not current:
+                return {"authenticated": False}
+            return {"authenticated": True, "device": current}
+        return {"authenticated": True, "device": {**touched, **{k: item[k] for k in ("member_name", "member_part", "permission", "system_access_until", "is_recording_manager", "is_sheet_manager") if k in item}}}
+
+    item["last_seen_at"] = format_instant(jst_now())
     try:
         save_auth_device(item)
     except Exception:
@@ -248,9 +281,10 @@ async def get_auth_devices() -> list[dict[str, Any]]:
         key = str(fallback.get("device_id") or "").strip()
         if key:
             merged[key] = fallback
+    # Instants are ordered as instants (mixed notations sort wrong as text).
     return sorted(
         merged.values(),
-        key=lambda item: str(item.get("authenticated_at") or item.get("last_seen_at") or ""),
+        key=lambda item: instant_sort_key(item.get("authenticated_at") or item.get("last_seen_at")),
         reverse=True,
     )
 

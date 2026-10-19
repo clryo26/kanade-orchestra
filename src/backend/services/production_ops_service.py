@@ -8,6 +8,7 @@ from urllib import error, parse, request
 from uuid import uuid4
 
 from ..core.config import app_env_for_production_operations, production_operations_allowed_env
+from ..core.compat_gateway import mutate_json_data
 from ..core.storage_gateway import load_json_data, save_json_data
 
 HISTORY_COLLECTION = "production_operation_histories"
@@ -248,18 +249,28 @@ def _refresh_sync_histories_from_github() -> None:
     except Exception:
         return
 
-    changed = False
+    # The GitHub request happened outside any lock; apply the result to the
+    # list re-read inside the collection lock, by operation ID.
+    matches: dict[str, dict[str, Any]] = {}
     for item in pending:
         operation_id = str(item.get("operation_id") or "")
         matched = next(
             (run for run in runs if isinstance(run, dict) and _workflow_run_matches_operation(run, operation_id)),
             None,
         )
-        if matched and _apply_github_run_to_history(item, matched):
-            changed = True
+        if matched:
+            matches[operation_id] = matched
+    if not matches:
+        return
 
-    if changed:
-        _save_histories(histories)
+    def mutate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for item in items:
+            matched = matches.get(str(item.get("operation_id") or ""))
+            if matched and str(item.get("execution_status") or "") in {"queued", "running"}:
+                _apply_github_run_to_history(item, matched)
+        return items
+
+    _mutate_histories(mutate)
 
 
 def _load_histories() -> list[dict[str, Any]]:
@@ -271,12 +282,21 @@ def _save_histories(items: list[dict[str, Any]]) -> None:
     save_json_data(HISTORY_COLLECTION, items)
 
 
+def _mutate_histories(mutator: Any) -> None:
+    # Locked read-modify-write through the real storage gateway (JST spec
+    # R05); injected test doubles keep the plain load/save behaviour.
+    if getattr(save_json_data, "supports_locked_mutation", False):
+        mutate_json_data(HISTORY_COLLECTION, mutator)
+        return
+    _save_histories(mutator(_load_histories()))
+
+
 def _append_history(item: dict[str, Any]) -> dict[str, Any]:
-    histories = _load_histories()
-    histories.append(item)
-    if len(histories) > _MAX_HISTORY:
-        histories = histories[-_MAX_HISTORY:]
-    _save_histories(histories)
+    def mutate(histories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        histories.append(item)
+        return histories[-_MAX_HISTORY:] if len(histories) > _MAX_HISTORY else histories
+
+    _mutate_histories(mutate)
     return item
 
 

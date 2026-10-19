@@ -93,7 +93,7 @@ describe('maintenance information and new notice board separation', () => {
     });
 
     it('shows new notices at portal top sorted by created_at and truncated with existing classes', () => {
-        expect(notices).toContain("String(b.created_at || '').localeCompare(String(a.created_at || ''))");
+        expect(notices).toContain('comparePortalInstantDesc(a, b)');
         expect(notices).toContain('sortedPortalNotices().slice(0, 5)');
         expect(notices).toContain('portal-announcement-one-line');
         expect(notices).toContain('portal-announcement-title');
@@ -120,7 +120,7 @@ describe('maintenance information and new notice board separation', () => {
         const portalViews = read('src/static/js/modules/portal_views.js');
         expect(index).not.toContain('/static/js/modules/notices.js');
         expect(portalViews).toContain('function ensurePortalNoticesModuleLoaded()');
-        expect(portalViews).toContain("script.src = '/static/js/modules/notices.js?v=20260812-2'");
+        expect(portalViews).toContain("script.src = '/static/js/modules/notices.js?v=20261019-jst1'");
         expect(portalViews.indexOf('ensurePortalNoticesModuleLoaded()'))
             .toBeLessThan(portalViews.indexOf("const announceContainer = $('portalHomeAnnouncements');"));
         expect(portalViews).toContain('portalNoticesModuleLoadPromise');

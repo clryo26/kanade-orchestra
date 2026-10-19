@@ -9,7 +9,7 @@ from ..core.auth_dependencies import get_device_auth
 from ..services.extra_collection_helpers import read_json_body
 from ..services import album_service, extra_service
 from ..services import promotion_service
-from ..services.desired_piece_asset_service import desired_piece_reference_score_response
+from ..services import portal_file_asset_service
 from ..services.image_asset_service import serve_stored_image
 
 router = APIRouter()
@@ -35,7 +35,7 @@ async def create_extra_item(
         raw_body = await read_json_body(request)
     if name == "promotions":
         return promotion_service.http_result(*await promotion_service.mutate("POST", None, raw_body, device, request.headers.get("Idempotency-Key")))
-    return await extra_service.create_item(name, raw_body, device)
+    return await extra_service.create_item(name, raw_body, device, idempotency_key=request.headers.get("Idempotency-Key"))
 
 
 @router.put("/api/extra/{name}/{item_id}", response_model=dict[str, Any])
@@ -51,7 +51,7 @@ async def update_extra_item(
         raw_body = await read_json_body(request)
     if name == "promotions":
         return promotion_service.http_result(*await promotion_service.mutate("PUT", item_id, raw_body, device, request.headers.get("Idempotency-Key")))
-    return await extra_service.update_item(name, item_id, raw_body, device)
+    return await extra_service.update_item(name, item_id, raw_body, device, idempotency_key=request.headers.get("Idempotency-Key"))
 
 
 @router.delete("/api/extra/{name}/{item_id}", response_model=dict[str, str])
@@ -63,7 +63,9 @@ async def delete_extra_item(
 ) -> dict[str, str] | Response:
     if name == "promotions":
         return promotion_service.http_result(*await promotion_service.mutate("DELETE", item_id, await read_json_body(request), device, request.headers.get("Idempotency-Key")))
-    extra_service.delete_item(name, item_id, device)
+    result = await extra_service.delete_item(name, item_id, device, idempotency_key=request.headers.get("Idempotency-Key"))
+    if isinstance(result, Response):
+        return result
     return {"message": "Deleted"}
 
 
@@ -134,17 +136,44 @@ async def get_promotion_operation(operation_id: str, device: dict[str, Any] = De
 
 
 @router.get("/api/extra/org_settings/{setting_id}/icon")
-async def get_org_setting_icon(setting_id: int) -> Response:
+async def get_org_setting_icon(setting_id: int, asset: str = "") -> Response:
+    # Only a DB-confirmed asset (or legacy inline data stored in the row) is
+    # served; never a guessed fixed-name file (JST spec R06-5).
     try:
         setting = extra_service.get_item_raw("org_settings", setting_id)
     except Exception:
         setting = {}
-    return serve_stored_image(
-        setting.get("icon_url") or "",
-        object_prefix=f"org-settings/{setting_id}/icon",
+    return portal_file_asset_service.deliver(
+        "org_icon", setting_id, asset or None, inline_value=str(setting.get("icon_url") or "")
     )
 
 
 @router.get("/api/extra/desired_pieces/{item_id}/reference_score")
-async def get_desired_piece_reference_score(item_id: int) -> Response:
-    return desired_piece_reference_score_response(item_id)
+async def get_desired_piece_reference_score(item_id: int, asset: str = "") -> Response:
+    extra_service.get_item_raw("desired_pieces", item_id)  # 404 for an unknown piece
+    return portal_file_asset_service.deliver("desired_piece_reference_score", item_id, asset or None)
+
+
+@router.get("/api/portal-file-operations/{operation_id}")
+async def get_portal_file_operation(operation_id: str, device: dict[str, Any] = Depends(get_device_auth)) -> Response:
+    """Authenticated status of a file operation (JST spec R05-A/R05-B)."""
+    try:
+        status, body = portal_file_asset_service.operation_status(device, operation_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # DB not reachable: unknown, never "not found" or "not executed".
+        raise HTTPException(503, detail={"code": "file_operation_unknown_now", "message": "操作の状態を確認できません。少し待ってから再確認してください"}) from exc
+    return portal_file_asset_service.http_result(status, body)
+
+
+@router.get("/api/portal-file-actor")
+async def get_portal_file_actor(device: dict[str, Any] = Depends(get_device_auth)) -> Response:
+    """Stable, opaque browser scope for this tenant/account generation only."""
+    try:
+        scope = portal_file_asset_service.public_actor_scope(device)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, detail="操作主体を確認できません。再試行してください") from exc
+    return portal_file_asset_service.http_result(200, {"scope": scope})

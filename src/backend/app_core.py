@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io  # noqa: F401
 import os
+import sys as _sys
 import re  # noqa: F401
 from functools import partial
 from datetime import date as date  # noqa: F401
@@ -230,10 +231,13 @@ from .services.recording_asset_service import remember_recording_duration as _re
 from .services.json_collection_service import data_file as _data_file
 from .services.json_collection_service import load_local_json_data as _load_local_json_data
 from .services.meta_service import cloud_run_revision as cloud_run_revision
+from .services.row_storage_service import bind_row_storage as _bind_row_storage
 from .repositories.db_json_repository import load_json_data as db_load_json_data
 from .repositories.db_json_repository import replace_collection as db_replace_collection
 from .repositories.db_json_repository import upsert_auth_device as db_upsert_auth_device  # noqa: F401
 from .repositories.db_json_repository import delete_auth_device as db_delete_auth_device  # noqa: F401
+from .repositories.db_json_repository import touch_auth_device as db_touch_auth_device  # noqa: F401
+from .repositories.db_json_repository import record_login as db_record_login  # noqa: F401
 from .repositories.db_json_repository import load_generic_json_collection as db_load_generic_json_collection  # noqa: F401
 from .repositories.db_json_repository import save_generic_json_collection as db_save_generic_json_collection  # noqa: F401
 from .repositories.db_row_repository import db_child_rows_for_collection as db_child_rows_for_collection
@@ -367,6 +371,11 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
     )
 
 
+db_row_store, db_mutate_collection_locked, mutate_json_data, row_store = _bind_row_storage(
+    lambda: _sys.modules[__name__]
+)
+
+
 def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
     compat_save_json_data(
         name,
@@ -385,6 +394,10 @@ def save_json_data(name: str, data: list[dict[str, Any]]) -> None:
         extra_collections=EXTRA_COLLECTIONS,
         data_dir=DATA_DIR,
     )
+
+
+# Marker: the real storage gateway can be upgraded to the locked list mutation.
+save_json_data.supports_locked_mutation = True  # type: ignore[attr-defined]
 
 
 has_connection_setting = startup_has_connection_setting

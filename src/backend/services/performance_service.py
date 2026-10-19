@@ -4,45 +4,29 @@ import logging
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
+from fastapi.responses import Response
 try:
     from openpyxl import load_workbook
 except Exception:  # pragma: no cover - optional dependency guard
     load_workbook = None
 
 from ..core.runtime_paths import TIMETABLE_TEMPLATE_PATH
+from ..models.schemas import Performance
+from ..utils.concurrency import ensure_expected_updated_at
 from ..repositories.performance_repository import PerformanceRepository
-from .image_asset_service import delete_stored_image, ensure_public_image_url, is_data_image, store_data_image, store_uploaded_image
+from . import portal_file_asset_service as file_assets
+from .image_asset_service import ensure_public_image_url
+from ..utils.datetime_utils import require_input_dates
 from .storage_service import load_json_data
 from .timetable_payload_helpers import build_timetable_workbook_bytes, excel_safe_filename, performance_day_info_for_performance
 
 _repo = PerformanceRepository()
 logger = logging.getLogger(__name__)
+FLYER_KIND = "performance_flyer"
 
 
 def _flyer_route(performance_id: int) -> str:
     return f"/api/performances/{performance_id}/flyer-image"
-
-
-def _flyer_object_prefix(performance_id: int) -> str:
-    return f"performance-flyers/{performance_id}/flyer"
-
-
-async def _persist_flyer_image(
-    performance_id: int,
-    flyer_image: str,
-    flyer_file: UploadFile | None = None,
-) -> str:
-    if flyer_file is not None:
-        return await store_uploaded_image(
-            flyer_file,
-            object_prefix=_flyer_object_prefix(performance_id),
-            route_path=_flyer_route(performance_id),
-        )
-    return store_data_image(
-        flyer_image,
-        object_prefix=_flyer_object_prefix(performance_id),
-        route_path=_flyer_route(performance_id),
-    )
 
 
 def _public_flyer_image(performance_id: int, flyer_image: str) -> str:
@@ -52,8 +36,34 @@ def _public_flyer_image(performance_id: int, flyer_image: str) -> str:
     )
 
 
-def _delete_flyer_image(performance_id: int, flyer_image: str) -> None:
-    delete_stored_image(flyer_image, object_prefix=_flyer_object_prefix(performance_id))
+def flyer_response(performance_id: int, asset: str | None) -> Response:
+    performance = get_performance_record(performance_id)
+    return file_assets.deliver(FLYER_KIND, performance_id, asset, inline_value=str(performance.get("flyer_image") or ""))
+
+
+def _store():
+    from ..core.compat_gateway import row_store
+
+    return row_store()
+
+
+def _flyer_action(payload: dict[str, Any], flyer_file: UploadFile | None, current: dict[str, Any] | None, *, replayable: bool = False) -> tuple[Any, str]:
+    flyer_source = str(payload.get("flyer_image") or "")
+    if flyer_file is not None:
+        return flyer_file, "replace"
+    if file_assets.is_data_image(flyer_source):
+        return flyer_source, "replace"
+    if "flyer_image" in payload and not flyer_source and (replayable or (current is not None and str(current.get("flyer_image") or ""))):
+        return None, "remove"
+    return None, "keep"
+
+
+async def _flyer_file(source: Any) -> Any:
+    if source is None:
+        return None
+    if isinstance(source, str):
+        return file_assets.read_data_image(source)
+    return await file_assets.read_image_upload(source)
 
 
 def _safe_fee_amount(value: Any) -> float:
@@ -121,71 +131,130 @@ def get_performance_record(performance_id: int) -> dict[str, Any]:
     return item
 
 
-async def create_performance(payload: dict[str, Any], flyer_file: UploadFile | None = None) -> dict[str, Any]:
-    created: dict[str, Any] | None = None
-    try:
-        normalized_payload = _normalize_performance(payload)
-        flyer_source = str(normalized_payload.get("flyer_image") or "")
-        if flyer_file is not None or is_data_image(flyer_source):
-            normalized_payload["flyer_image"] = ""
-        created = _normalize_performance(_repo.create(normalized_payload))
-        performance_id = int(created.get("id") or 0)
-        flyer_image = await _persist_flyer_image(performance_id, flyer_source, flyer_file)
-        created["flyer_image"] = flyer_image
-        if flyer_image != str(normalized_payload.get("flyer_image") or ""):
-            _repo.update(performance_id, lambda current: {**current, "flyer_image": flyer_image})
-        return created
-    except HTTPException:
-        if created is not None:
-            performance_id = int(created.get("id") or 0)
-            flyer_image = str(created.get("flyer_image") or "")
-            if flyer_image:
-                _delete_flyer_image(performance_id, flyer_image)
-            _repo.delete(performance_id)
-        raise
-    except Exception as exc:
-        if created is not None:
-            performance_id = int(created.get("id") or 0)
-            flyer_image = str(created.get("flyer_image") or "")
-            if flyer_image:
-                _delete_flyer_image(performance_id, flyer_image)
-            _repo.delete(performance_id)
-        raise _save_error("create", exc) from exc
+async def create_performance(
+    payload: dict[str, Any],
+    flyer_file: UploadFile | None = None,
+    *,
+    device: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> Any:
+    require_input_dates(payload, ("date",))
+    normalized_payload = _normalize_performance(payload)
+    source, action = _flyer_action(normalized_payload, flyer_file, None)
+    # The flyer reference is server managed (a confirmed asset only).
+    normalized_payload["flyer_image"] = ""
+    if action == "keep" and not idempotency_key:
+        try:
+            return _normalize_performance(_repo.create(normalized_payload))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _save_error("create", exc) from exc
+    file = await _flyer_file(source)
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        saved = _store().insert("performances", lambda new_id: {**normalized_payload, "flyer_image": applied.url_for(new_id)}, ctx=tx.ctx)
+        if applied.asset_id:
+            applied.commit_reference(tx, int(saved["id"]))
+        return 200, Performance.model_validate(_normalize_performance(saved)).model_dump()
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=FLYER_KIND, method="POST", target_id=None, action=action, file=file,
+            fingerprint=normalized_payload, validate=lambda tx: None, apply=apply, view_scope="admin",
+        ),
+        device or {},
+        idempotency_key,
+    )
+    return file_assets.http_result(status, body)
 
 
 async def update_performance(
     performance_id: int,
     payload: dict[str, Any],
     flyer_file: UploadFile | None = None,
-) -> dict[str, Any]:
+    *,
+    device: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> Any:
+    require_input_dates(payload, ("date",))
     normalized_payload = _normalize_performance(payload)
     normalized_payload.pop("created_at", None)
-    uploaded_flyer_url = ""
-    try:
-        _, current = _repo.find_by_id(performance_id)
-        old_flyer_image = str(current.get("flyer_image") or "")
-        merged = _normalize_performance({**current, **normalized_payload})
-        flyer_source = str(merged.get("flyer_image") or "")
-        uploaded_flyer_url = await _persist_flyer_image(performance_id, flyer_source, flyer_file)
-        merged["flyer_image"] = uploaded_flyer_url
-        updated = _normalize_performance(_repo.update(performance_id, lambda _current: merged))
-        if old_flyer_image and old_flyer_image != str(updated.get("flyer_image") or ""):
-            _delete_flyer_image(performance_id, old_flyer_image)
-        return updated
-    except HTTPException:
-        if uploaded_flyer_url:
-            _delete_flyer_image(performance_id, uploaded_flyer_url)
-        raise
-    except Exception as exc:
-        if uploaded_flyer_url:
-            _delete_flyer_image(performance_id, uploaded_flyer_url)
-        raise _save_error("update", exc) from exc
+    current = _store().get("performances", performance_id) if not idempotency_key else None
+    if current is None and not idempotency_key:
+        raise HTTPException(status_code=404, detail="Data not found")
+    source, action = _flyer_action(payload, flyer_file, current, replayable=bool(idempotency_key))
+
+    def merge(latest: dict[str, Any]) -> dict[str, Any]:
+        merged = _normalize_performance({**latest, **normalized_payload})
+        merged["flyer_image"] = latest.get("flyer_image") or ""
+        return merged
+
+    if action == "keep" and not idempotency_key:
+        try:
+            return _normalize_performance(_repo.update(performance_id, merge))
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _save_error("update", exc) from exc
+    file = await _flyer_file(source)
+
+    def validate(tx: Any) -> None:
+        latest = _store().get("performances", performance_id, ctx=tx.ctx, lock=True)
+        if latest is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+        ensure_expected_updated_at(latest, payload.get("expected_updated_at"))
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        def with_flyer(latest: dict[str, Any]) -> dict[str, Any]:
+            merged = merge(latest)
+            if action == "replace":
+                merged["flyer_image"] = applied.url_for(performance_id)
+            elif action == "remove":
+                merged["flyer_image"] = ""
+            return merged
+
+        saved = _store().update("performances", performance_id, with_flyer, expected_updated_at=payload.get("expected_updated_at"), ctx=tx.ctx)
+        if action == "replace":
+            applied.commit_reference(tx, performance_id)
+        elif action == "remove":
+            applied.retire_reference(tx, performance_id)
+        return 200, Performance.model_validate(_normalize_performance(saved)).model_dump()
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=FLYER_KIND, method="PUT", target_id=performance_id, action=action, file=file,
+            fingerprint=normalized_payload, validate=validate, apply=apply, view_scope="admin",
+        ),
+        device or {},
+        idempotency_key,
+    )
+    return file_assets.http_result(status, body)
 
 
-def delete_performance(performance_id: int) -> None:
-    _, current = _repo.find_by_id(performance_id)
-    _delete_flyer_image(performance_id, str(current.get("flyer_image") or ""))
-    _repo.delete(performance_id)
+async def delete_performance(performance_id: int, *, device: dict[str, Any] | None = None, idempotency_key: str | None = None) -> Any:
+    if not idempotency_key and not file_assets.has_active_asset(FLYER_KIND, performance_id):
+        _repo.delete(performance_id)
+        return None
+
+    def validate(tx: Any) -> None:
+        if _store().get("performances", performance_id, ctx=tx.ctx, lock=True) is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+
+    def apply(tx: Any, applied: Any) -> tuple[int, dict[str, Any]]:
+        _store().delete("performances", performance_id, lambda current: None, ctx=tx.ctx)
+        applied.retire_reference(tx, performance_id)
+        return 200, {"message": "Deleted"}
+
+    status, body = await file_assets.run(
+        file_assets.FileOperation(
+            kind=FLYER_KIND, method="DELETE", target_id=performance_id, action="delete", file=None,
+            fingerprint={}, validate=validate, apply=apply, view_scope="admin",
+        ),
+        device or {},
+        idempotency_key,
+    )
+    return file_assets.http_result(status, body)
 
 
 def build_timetable_report(performance_id: int) -> tuple[bytes, str]:

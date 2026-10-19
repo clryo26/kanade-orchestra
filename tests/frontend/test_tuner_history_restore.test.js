@@ -68,6 +68,31 @@ function makeSandbox() {
 
 const flush = async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve(); };
 
+test.each([false, true])('delayed system-panel initialization respects a newer navigation (%s)', async (newer) => {
+    const { sandbox, appState } = makeSandbox();
+    const loading = deferred();
+    const started = deferred();
+    sandbox.isPortalAuthenticated = async () => ({ status: 'authenticated' });
+    for (const name of ['ensureAdminSystemModuleLoaded', 'ensureAdminSystemApiLoaded', 'ensureImprovementSuggestionsLoaded',
+        'ensurePartSettingsMigrated', 'ensureAdminEnvironmentManagementLoaded', 'refreshSystemEnvironmentMenuVisibility']) {
+        sandbox[name] = vi.fn(async () => {});
+    }
+    for (const name of ['renderOrgManagement', 'renderSnsManagement', 'renderConnectionSettingsManagement', 'renderPartManagement']) {
+        sandbox[name] = vi.fn();
+    }
+    sandbox.loadAuthManagement = vi.fn(() => { started.resolve(); return loading.promise; });
+    sandbox.switchTab = vi.fn();
+    appState.connectionSettings = [{}];
+    const opening = sandbox.showSystemPanel();
+    await started.promise;
+    expect(sandbox.loadAuthManagement).toHaveBeenCalledTimes(1);
+    if (newer) sandbox.nextPortalNavigation();
+    loading.resolve();
+    await opening;
+    if (newer) expect(sandbox.switchTab).not.toHaveBeenCalled();
+    else expect(sandbox.switchTab).toHaveBeenCalledWith('systemPanel', 'system-auth');
+});
+
 describe('tuner history restore never overrides a newer navigation', () => {
     test('a newer history restore wins over a tuner restore still waiting for auth', async () => {
         const { elements, launcher, auth, restore } = makeSandbox();

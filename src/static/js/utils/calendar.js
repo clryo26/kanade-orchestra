@@ -1,3 +1,5 @@
 function portalIsoDate(value) {
-    return value ? new Date(value).toISOString().slice(0, 10) : '';
+    if (!value) return '';
+    if (typeof value === 'string' && portalCalendarDayNumber(value) !== null) return value;
+    return formatPortalJstDate(value instanceof Date ? value.getTime() : value);
 }

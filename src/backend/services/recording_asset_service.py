@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, cast
 from urllib.parse import quote
 
 from fastapi import HTTPException
 
+from ..utils.datetime_utils import format_instant, utc_now
 from ..core.runtime_paths import CONVERTED_DIR, UPLOAD_DIR
 from ..drive_storage import get_storage_bucket, storage_enabled
 
@@ -50,6 +51,19 @@ def recording_metadata_map(*, load_json_data: LoadJsonData) -> dict[str, dict[st
     return {str(item.get("path") or item.get("object_name") or item.get("id") or ""): item for item in items}
 
 
+def _mutate_list(name: str, mutator: Callable[[list[dict[str, Any]]], list[dict[str, Any]]], load_json_data: LoadJsonData, save_json_data: SaveJsonData) -> None:
+    """Locked read-modify-write when the real storage gateway is used (JST spec R05, C04).
+
+    Injected test doubles keep the plain load/save behaviour.
+    """
+    if getattr(save_json_data, "supports_locked_mutation", False):
+        from ..core.compat_gateway import mutate_json_data
+
+        mutate_json_data(name, mutator)
+        return
+    save_json_data(name, mutator(load_json_data(name)))
+
+
 def remember_recording_duration(
     path_key: str,
     duration_seconds: float | None,
@@ -62,28 +76,28 @@ def remember_recording_duration(
     if not path_key or duration_seconds is None:
         return
 
-    items = load_json_data("recording_metadata")
-    now = datetime.now().isoformat()
-    for item in items:
-        item_key = str(item.get("path") or item.get("object_name") or item.get("id") or "")
-        if item_key == path_key:
-            item["duration_seconds"] = duration_seconds
-            item["duration"] = format_duration(duration_seconds)
-            item["updated_at"] = now
-            save_json_data("recording_metadata", items)
-            return
+    def mutate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        now = format_instant(utc_now())
+        for item in items:
+            item_key = str(item.get("path") or item.get("object_name") or item.get("id") or "")
+            if item_key == path_key:
+                item["duration_seconds"] = duration_seconds
+                item["duration"] = format_duration(duration_seconds)
+                item["updated_at"] = now
+                return items
+        items.append(
+            {
+                "id": next_id(items),
+                "path": path_key,
+                "duration_seconds": duration_seconds,
+                "duration": format_duration(duration_seconds),
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        return items
 
-    items.append(
-        {
-            "id": next_id(items),
-            "path": path_key,
-            "duration_seconds": duration_seconds,
-            "duration": format_duration(duration_seconds),
-            "created_at": now,
-            "updated_at": now,
-        }
-    )
-    save_json_data("recording_metadata", items)
+    _mutate_list("recording_metadata", mutate, load_json_data, save_json_data)
 
 
 def local_recording_metadata(
@@ -105,7 +119,8 @@ def local_recording_metadata(
         "date": recording_date,
         "piece": piece,
         "size": stat.st_size,
-        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        # mtime is an epoch: convert as an instant, never as server local time.
+        "modified_at": format_instant(datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)),
         "path": rel,
         "play_url": f"/api/recordings/play/{rel}",
         "download_url": f"/api/recordings/download/{rel}",
@@ -141,7 +156,7 @@ def cloud_recording_metadata(
 
 def remember_drive_file(item: dict[str, Any], *, load_json_data: LoadJsonData, save_json_data: SaveJsonData) -> None:
     object_name = str(item.get("object_name") or item.get("id") or "").strip()
-    now = datetime.now().isoformat()
+    now = format_instant(utc_now())
     normalized_item = dict(item)
     normalized_item["created_at"] = normalized_item.get("created_at") or now
     normalized_item["updated_at"] = now
@@ -149,26 +164,28 @@ def remember_drive_file(item: dict[str, Any], *, load_json_data: LoadJsonData, s
         inferred_date, inferred_piece = _infer_date_and_piece(object_name)
         normalized_item["date"] = normalized_item.get("date") or inferred_date
         normalized_item["piece"] = normalized_item.get("piece") or inferred_piece
-    items = load_json_data("drive_files")
-    items = [
-        existing
-        for existing in items
-        if str(existing.get("object_name") or existing.get("id") or "").strip() != object_name
-    ]
-    items.insert(0, normalized_item)
-    save_json_data("drive_files", items[:500])
+
+    def mutate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        kept = [
+            existing
+            for existing in items
+            if str(existing.get("object_name") or existing.get("id") or "").strip() != object_name
+        ]
+        kept.insert(0, normalized_item)
+        return kept[:500]
+
+    _mutate_list("drive_files", mutate, load_json_data, save_json_data)
 
 
 def forget_drive_file(object_name: str, *, load_json_data: LoadJsonData, save_json_data: SaveJsonData) -> None:
-    items = load_json_data("drive_files")
-    save_json_data(
-        "drive_files",
-        [
+    def mutate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
             item
             for item in items
             if item.get("object_name") != object_name and item.get("id") != object_name
-        ],
-    )
+        ]
+
+    _mutate_list("drive_files", mutate, load_json_data, save_json_data)
 
 
 def local_recording_path(path: str) -> Path:

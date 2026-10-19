@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from ..utils.datetime_utils import format_instant, instant_sort_key
+
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -26,7 +28,8 @@ PDF_EDITOR_LOCAL_DIR = UPLOAD_DIR / PDF_EDITOR_PREFIX
 
 
 def _sort_pdf_editor_files(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(items, key=lambda item: str(item.get("modified_at") or ""), reverse=True)
+    # Ordered as instants (mixed notations would sort wrong as text).
+    return sorted(items, key=lambda item: instant_sort_key(item.get("modified_at")), reverse=True)
 
 
 def _list_pdf_editor_files() -> list[dict[str, Any]]:
@@ -42,7 +45,7 @@ def _list_pdf_editor_files() -> list[dict[str, Any]]:
                     "name": name,
                     "size": int(blob.size or 0),
                     "mime_type": blob.content_type or "application/pdf",
-                    "modified_at": blob.updated.isoformat() if blob.updated else "",
+                    "modified_at": format_instant(blob.updated) if blob.updated else "",
                     "source": "google_cloud_storage",
                     "object_name": blob.name,
                 }
@@ -63,7 +66,7 @@ def _list_pdf_editor_files() -> list[dict[str, Any]]:
                 "name": path.name,
                 "size": int(stat.st_size),
                 "mime_type": "application/pdf",
-                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "modified_at": format_instant(datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)),
                 "source": "local",
                 "path": path.relative_to(UPLOAD_DIR).as_posix(),
             }
@@ -86,7 +89,7 @@ def _upload_pdf_editor_file(file: UploadFile) -> dict[str, Any]:
             "name": safe_name,
             "size": int(blob.size or 0),
             "mime_type": blob.content_type or "application/pdf",
-            "modified_at": blob.updated.isoformat() if blob.updated else "",
+            "modified_at": format_instant(blob.updated) if blob.updated else "",
             "source": "google_cloud_storage",
             "object_name": object_name,
         }
@@ -98,7 +101,7 @@ def _upload_pdf_editor_file(file: UploadFile) -> dict[str, Any]:
         "name": local_path.name,
         "size": int(stat.st_size),
         "mime_type": "application/pdf",
-        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        "modified_at": format_instant(datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)),
         "source": "local",
         "path": local_path.relative_to(UPLOAD_DIR).as_posix(),
     }

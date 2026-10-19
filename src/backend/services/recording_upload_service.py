@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from ..utils.datetime_utils import jst_today
+
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,7 +26,7 @@ MAX_RECORDING_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 def _recording_object_name(file_name: str, date: str, piece: str) -> tuple[str, str, str, str]:
     safe_name = safe_upload_name(file_name)
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
+    date_dir = safe_segment(date, jst_today().isoformat())
     piece_dir = safe_segment(piece, "uncategorized")
     return f"{date_dir}/{piece_dir}/{safe_name}", safe_name, date_dir, piece_dir
 
@@ -120,7 +121,7 @@ def _store_local_upload(
     format_duration: FormatDuration,
 ) -> tuple[Path, float | None, str, str, dict[str, Any]]:
     ensure_audio_file(file)
-    date_dir = safe_segment(date, datetime.now().date().isoformat())
+    date_dir = safe_segment(date, jst_today().isoformat())
     piece_dir = safe_segment(piece, "uncategorized")
     output_dir = CONVERTED_DIR / date_dir / piece_dir
     output_path = save_upload_to_path(file, output_dir)

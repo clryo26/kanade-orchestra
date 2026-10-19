@@ -31,9 +31,11 @@ function canAccessSystemAdmin() { return appState.currentUserPermission === 'シ
 function formatClockTime(value) { const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?/); return match ? `${match[1].padStart(2, '0')}:${match[2]}` : String(value || '').trim(); }
 function formatTimeRange(start, end) { const formattedStart = formatClockTime(start); const formattedEnd = formatClockTime(end); return formattedStart && formattedEnd ? `${formattedStart} - ${formattedEnd}` : formattedStart || formattedEnd || ''; }
 function splitTimeRange(value) { const match = String(value || '').match(/(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|〜|~|～)\s*(\d{1,2}:\d{2}(?::\d{2})?)/); return match ? { start: formatClockTime(match[1]), end: formatClockTime(match[2]) } : { start: '', end: '' }; }
-function addHoursToTime(time, hours) { const match = String(time || '').match(/^(\d{1,2}):(\d{2})$/); if (!match) return ''; const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2])); date.setHours(date.getHours() + hours); return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`; }
+// Clock arithmetic on minutes (wraps at 24h like before); no Date, so a DST
+// change on the device can never shift the result.
+function addHoursToTime(time, hours) { const match = String(time || '').match(/^(\d{1,2}):(\d{2})$/); if (!match) return ''; const total = Number(match[1]) * 60 + Number(match[2]) + Math.trunc(Number(hours) || 0) * 60; const wrapped = ((total % 1440) + 1440) % 1440; return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`; }
 function compactCalendarDate(date, time = '') { const ymd = String(date || '').replaceAll('-', ''); if (!ymd) return ''; const normalizedTime = formatClockTime(time); if (!normalizedTime) return ymd; return `${ymd}T${normalizedTime.replaceAll(':', '')}00`; }
-function nextAllDayDate(date) { if (!date) return ''; const value = new Date(`${date}T00:00:00`); value.setDate(value.getDate() + 1); const y = value.getFullYear(); const m = String(value.getMonth() + 1).padStart(2, '0'); const d = String(value.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; }
+function nextAllDayDate(date) { if (!date) return ''; const days = portalCalendarDayNumber(date); if (days === null) return ''; return portalCalendarDateFromDayNumber(days + 1); }
 function icsEscape(value) { return String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(',', '\\,').replaceAll(';', '\\;'); }
 function icsDateTime(date, time = '') { const compact = compactCalendarDate(date, time); return time ? compact : compact; }
 function partSortIndex(partName) { const index = currentPartNames().indexOf(String(partName || '')); return index === -1 ? 9999 : index; }
@@ -65,11 +67,59 @@ function paymentPaymentRangeLabel(payment) {
 function integerAmountNumber(value) { const amount = Number(value || 0); return Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0; }
 function integerAmountInputValue(value) { const amount = integerAmountNumber(value); return amount > 0 ? String(amount) : ''; }
 function yenAmountLabel(value, fallback = '未設定') { const amount = integerAmountNumber(value); return amount > 0 ? `${amount.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}円` : fallback; }
-function formatDateWithWeekday(dateText, fallback = '未定') { if (!dateText) return fallback; const date = new Date(`${dateText}T00:00:00`); if (Number.isNaN(date.getTime())) return dateText; const weekdays = ['日', '月', '火', '水', '木', '金', '土']; const formattedDate = dateText.replace(/-/g, '/'); return `${formattedDate}（${weekdays[date.getDay()]}）`; }
-function formatDateTimeLabel(value) { if (!value) return '未記録'; const date = new Date(value); if (Number.isNaN(date.getTime())) return value; const dateText = date.toISOString().slice(0, 10); const timeText = date.toTimeString().slice(0, 5); return `${formatDateWithWeekday(dateText)} ${timeText}`; }
-function daysUntil(dateText) { const target = new Date(`${dateText}T00:00:00`); const base = new Date(`${window.portalRuntimeContext.today()}T00:00:00`); if (Number.isNaN(target.getTime())) return null; return Math.ceil((target - base) / 86400000); }
+// ---- JST date/time contract (JST spec R03/R04) -----------------------------
+// Calendar dates are pure calendar arithmetic (UTC day numbers, never the
+// device timezone). Instants must carry an explicit offset; values without
+// one are not guessed and display as 日時不明.
+var PORTAL_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+var PORTAL_INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|z|[+-]\d{2}:\d{2})$/;
+function portalCalendarDayNumber(dateText) { const match = String(dateText || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!match) return null; const y = Number(match[1]); const m = Number(match[2]); const d = Number(match[3]); const ms = Date.UTC(y, m - 1, d); const check = new Date(ms); if (check.getUTCFullYear() !== y || check.getUTCMonth() !== m - 1 || check.getUTCDate() !== d) return null; return Math.round(ms / 86400000); }
+function portalCalendarDateFromDayNumber(days) { const value = new Date(days * 86400000); return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`; }
+// Display only: milliseconds are enough to render; the original string stays
+// the version token (never compare/identify with this number).
+function parsePortalInstantMs(value) {
+    const match = String(value ?? '').trim().match(PORTAL_INSTANT_RE);
+    if (!match) return NaN;
+    const [, y, mo, d, h, mi, sec = '0', fraction = '', offset] = match;
+    const date = new Date(0);
+    date.setUTCFullYear(Number(y), Number(mo) - 1, Number(d));
+    date.setUTCHours(Number(h), Number(mi), Number(sec), Number(fraction.slice(0, 3).padEnd(3, '0')));
+    if (Number(y) < 1 || date.getUTCFullYear() !== Number(y) || date.getUTCMonth() !== Number(mo) - 1
+        || date.getUTCDate() !== Number(d) || Number(h) > 23 || Number(mi) > 59 || Number(sec) > 59) return NaN;
+    if (offset === 'Z' || offset === 'z') return date.getTime();
+    const hours = Number(offset.slice(1, 3)); const minutes = Number(offset.slice(4, 6));
+    if (hours > 23 || minutes > 59) return NaN;
+    return date.getTime() - (offset[0] === '-' ? -1 : 1) * (hours * 60 + minutes) * 60000;
+}
+// Fixed +09:00 (same rule as runtime_context.jst and the backend).
+function portalJstParts(ms) { const shifted = new Date(Number(ms) + 9 * 3600000); return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate(), hour: shifted.getUTCHours(), minute: shifted.getUTCMinutes(), second: shifted.getUTCSeconds(), weekday: shifted.getUTCDay() }; }
+function formatPortalJstTime(value, withSeconds = false) { const ms = typeof value === 'number' ? value : parsePortalInstantMs(value); if (!Number.isFinite(ms)) return ''; const p = portalJstParts(ms); const hm = `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`; return withSeconds ? `${hm}:${String(p.second).padStart(2, '0')}` : hm; }
+function formatPortalJstDate(value) { const ms = typeof value === 'number' ? value : parsePortalInstantMs(value); if (!Number.isFinite(ms)) return ''; const p = portalJstParts(ms); return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`; }
+// Start (00:00+09:00) of a JST day; with exclusiveEnd the start of the next day.
+function portalJstDateBoundaryIso(dateText, exclusiveEnd = false) { const days = portalCalendarDayNumber(String(dateText || '').trim()); if (days === null) return ''; return `${portalCalendarDateFromDayNumber(exclusiveEnd ? days + 1 : days)}T00:00:00+09:00`; }
+// Newest first by instant; unknown values last; ties by id (newest first).
+function portalInstantOrder(value) {
+    const ms = parsePortalInstantMs(value);
+    if (!Number.isFinite(ms)) return null;
+    const fraction = String(value).trim().match(PORTAL_INSTANT_RE)[7] || '';
+    return BigInt(ms) * 1000000n + BigInt(fraction.padEnd(9, '0').slice(3));
+}
+function comparePortalInstantDesc(a, b, field = 'created_at') {
+    const left = portalInstantOrder(a?.[field]); const right = portalInstantOrder(b?.[field]);
+    if ((left === null) !== (right === null)) return left === null ? 1 : -1;
+    if (left !== null && left !== right) return left > right ? -1 : 1;
+    return Number(b?.id || 0) - Number(a?.id || 0);
+}
+function comparePortalInstantAsc(a, b, field = 'created_at') {
+    const left = portalInstantOrder(a?.[field]); const right = portalInstantOrder(b?.[field]);
+    if ((left === null) !== (right === null)) return left === null ? 1 : -1;
+    return left === right ? 0 : left < right ? -1 : 1;
+}
+function formatDateWithWeekday(dateText, fallback = '未定') { if (!dateText) return fallback; const days = portalCalendarDayNumber(dateText); if (days === null) return '日付不明'; const weekday = new Date(days * 86400000).getUTCDay(); return `${String(dateText).replace(/-/g, '/')}（${PORTAL_WEEKDAYS[weekday]}）`; }
+function formatDateTimeLabel(value) { if (!value) return '未記録'; const ms = parsePortalInstantMs(value); if (!Number.isFinite(ms)) return '日時不明'; return `${formatDateWithWeekday(formatPortalJstDate(ms))} ${formatPortalJstTime(ms)}`; }
+function daysUntil(dateText) { const target = portalCalendarDayNumber(dateText); const base = portalCalendarDayNumber(window.portalRuntimeContext.today()); if (target === null || base === null) return null; return target - base; }
 // YYYY-MM-DD 形式かつ実在する日付かを判定する
-function isValidPerformanceDate(dateStr) { if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false; const [y, m, d] = dateStr.split('-').map(Number); const dt = new Date(y, m - 1, d); return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d; }
+function isValidPerformanceDate(dateStr) { return portalCalendarDayNumber(dateStr) !== null; }
 // YYYY-MM-DD 形式かつ実在する日付で、today()以降であるか判定する
 function isUpcomingPerformanceDate(dateStr) { return isValidPerformanceDate(dateStr) && dateStr >= window.portalRuntimeContext.today(); }
 function formatDurationLabel(file) { if (file.duration) return file.duration; if (file.duration_seconds || file.duration_seconds === 0) { const total = Math.round(Number(file.duration_seconds)); const minutes = Math.floor(total / 60); const seconds = total % 60; return `${minutes}:${String(seconds).padStart(2, '0')}`; } return '長さ未取得'; }

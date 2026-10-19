@@ -427,7 +427,8 @@ def test_concert_record_video_db_replace_collection_handles_sort_order_swaps(mon
         {"id": 30, "organization_id": "default", "performance_id": 2, "youtube_url": _video_url("ccccccccccc"), "title": "B1", "thumbnail_url": "https://img.example/b1.jpg", "sort_order": 1},
     ]
 
-    db_json_repository.replace_collection("concert_record_videos", final_rows)
+    # Explicit maintenance-time bulk path (normal requests are row level).
+    db_json_repository.replace_collection("concert_record_videos", final_rows, allow_bulk=True)
 
     assert [
         (int(row["id"]), int(row["performance_id"]), int(row["sort_order"]))

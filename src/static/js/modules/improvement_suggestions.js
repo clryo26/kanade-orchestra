@@ -146,9 +146,7 @@
 
     function formatDateTime(value) {
         if (!value) return '';
-        var date = new Date(value);
-        if (Number.isNaN(date.getTime())) return String(value);
-        return date.toLocaleString('ja-JP');
+        return window.formatDateTimeLabel(value);
     }
 
     function memberCard(item, completed) {
@@ -394,7 +392,7 @@
     // not grow. It must be present before the tuner button is tapped because
     // the tap creates the AudioContext synchronously (iOS Safari). The rev
     // value is maintained by scripts/generate_tuner_release.mjs.
-    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-b0635dde6c4d';
+    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-e9e90e4b853c';
     var tunerLauncherPromise = null;
 
     function ensureTunerLauncherLoaded() {

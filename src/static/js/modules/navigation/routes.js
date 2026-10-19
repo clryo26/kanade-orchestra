@@ -132,7 +132,7 @@ function ensureImprovementSuggestionsLoaded() {
 
     improvementSuggestionsLoadPromise = new Promise(function (resolve, reject) {
         var script = document.createElement('script');
-        script.src = '/static/js/modules/improvement_suggestions.js?v=20260808-2';
+        script.src = '/static/js/modules/improvement_suggestions.js?v=20261019-jst1';
         script.async = true;
 
         script.addEventListener('load', function () {
@@ -179,7 +179,7 @@ function ensureAlbumsLoaded() {
     }
     albumsLoadPromise = new Promise(function (resolve, reject) {
         var script = document.createElement('script');
-        script.src = '/static/js/modules/albums.js?v=20260630-6';
+        script.src = '/static/js/modules/albums.js?v=20261019-jst1';
         script.async = true;
         script.addEventListener('load', function () {
             if (_albumsReady()) {
@@ -213,7 +213,7 @@ var memberFeatureScripts = {
         '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
         '/static/js/modules/scores/helpers.js?v=20261018-1',
         '/static/js/modules/scores/render.js?v=20261018-1',
-        '/static/js/modules/scores/sync.js?v=20261018-1',
+        '/static/js/modules/scores/sync.js?v=20261019-jst1',
         '/static/js/modules/scores/save_dialog.js?v=20261018-1',
         '/static/js/modules/scores/upload_batch.js?v=20261018-1',
         '/static/js/modules/scores/events.js?v=20261018-1',
@@ -224,13 +224,13 @@ var memberFeatureScripts = {
         '/static/js/modules/scores/sheet_api.js?v=20261018-1',
         '/static/js/modules/scores/pdf_viewer.js?v=20261018-1',
         '/static/js/modules/scores/save_dialog.js?v=20261018-1',
-        '/static/js/modules/date_piece_promotion/helpers.js?v=20260701-1',
+        '/static/js/modules/date_piece_promotion/helpers.js?v=20261019-jst1',
         '/static/js/modules/date_piece_promotion/validation.js?v=20260701-3',
         '/static/js/modules/date_piece_promotion/events.js?v=20260701-3',
         '/static/js/modules/date_piece_promotion/state.js?v=20260701-2',
-        '/static/js/modules/date_piece_promotion/api.js?v=20260701-2',
+        '/static/js/modules/date_piece_promotion/api.js?v=20261019-jst1',
         '/static/js/modules/date_piece_promotion/render_piece_practice.js?v=20260701-1',
-        '/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20260701-1',
+        '/static/js/modules/date_piece_promotion/render_desired_promotion.js?v=20261019-jst1',
         '/static/js/modules/date_piece_promotion/render.js?v=20260701-3',
         '/static/js/modules/date_piece_promotion.js?v=20260630-6',
     ],
@@ -519,6 +519,7 @@ function showSystemPanel() {
         if ($('improvementSuggestionPanel')) $('improvementSuggestionPanel').hidden = true;
         $('systemPanel').hidden = false;
         localStorage.setItem('userRole', 'system-admin');
+        const initialTabTicket = portalNavigationSequence;
         await ensurePartSettingsMigrated();
         await loadAuthManagement();
         await ensureAdminEnvironmentManagementLoaded()
@@ -531,6 +532,9 @@ function showSystemPanel() {
         renderSnsManagement();
         renderConnectionSettingsManagement();
         renderPartManagement();
+        // The panel is already interactive while these loads run. A later
+        // tab choice must win over this delayed default selection.
+        if (!isLatestPortalNavigation(initialTabTicket)) return;
         switchTab('systemPanel', 'system-auth');
         window.scrollTo({ top: 0, behavior: 'auto' });
     })();
@@ -773,7 +777,7 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
             if (!window.accessLogAdminLoadPromise) {
                 window.accessLogAdminLoadPromise = new Promise((resolve, reject) => {
                     const script = document.createElement('script');
-                    script.src = '/static/js/modules/admin_system/access_logs.js?v=20260812-1';
+                    script.src = '/static/js/modules/admin_system/access_logs.js?v=20261019-jst1';
                     script.async = true;
                     script.addEventListener('load', () => {
                         if (typeof prepareAccessLogView === 'function') {

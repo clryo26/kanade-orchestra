@@ -47,7 +47,7 @@ async function loadAccessLogs() {
 function accessLogSortValue(item) {
     const value = String(item?.accessed_at || item?.created_at || '').trim();
     if (!value) return Number.NEGATIVE_INFINITY;
-    const parsed = Date.parse(value);
+    const parsed = parsePortalInstantMs(value);
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 

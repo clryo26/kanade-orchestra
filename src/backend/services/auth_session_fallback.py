@@ -1,21 +1,25 @@
 from __future__ import annotations
 
+import time
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
+from ..utils.datetime_utils import format_instant, jst_now
 
+# Lifetime unchanged (8 hours). Measured on a monotonic clock so wall-clock
+# or timezone changes never shorten/extend it (JST spec R08).
 _FALLBACK_TTL = timedelta(hours=8)
 _fallback_devices: dict[str, dict[str, Any]] = {}
 
 
-def _now() -> datetime:
-    return datetime.now()
+def _now() -> float:
+    return time.monotonic()
 
 
-def _is_expired(device: dict[str, Any], now: datetime) -> bool:
+def _is_expired(device: dict[str, Any], now: float) -> bool:
     expires_at = device.get("_fallback_expires_at")
-    if not isinstance(expires_at, datetime):
+    if not isinstance(expires_at, (int, float)):
         return True
     return expires_at <= now
 
@@ -32,7 +36,7 @@ def remember_auth_device(device: dict[str, Any]) -> dict[str, Any]:
     if not device_id:
         return device
     stored = deepcopy(device)
-    stored["_fallback_expires_at"] = _now() + _FALLBACK_TTL
+    stored["_fallback_expires_at"] = _now() + _FALLBACK_TTL.total_seconds()
     _fallback_devices[device_id] = stored
     return public_auth_device(stored)
 
@@ -54,7 +58,7 @@ def fallback_auth_device(device_id: str) -> dict[str, Any] | None:
     if _is_expired(device, now):
         _fallback_devices.pop(key, None)
         return None
-    device["last_seen_at"] = now.isoformat()
+    device["last_seen_at"] = format_instant(jst_now())
     return public_auth_device(device)
 
 

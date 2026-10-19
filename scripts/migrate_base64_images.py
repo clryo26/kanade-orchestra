@@ -1,15 +1,23 @@
+"""Migrate legacy inline base64 images (data URLs stored in rows) to confirmed assets.
+
+Dry-run by default. ``--apply`` runs one audited internal file operation per
+row (JST spec R06/F02): UUID object key with a create-only precondition, the
+row updated only while it still holds the same data URL, and the confirmed
+asset reference committed in the same transaction. No fixed-name object and
+no whole-list save is used. A re-run with the same ``--run-id`` joins the same
+operations (idempotent); rows already migrated are skipped.
+
+Promotions are excluded: they have their own image mechanism.
+"""
 from __future__ import annotations
 
 import argparse
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from src.backend.services.image_asset_service import (
-    delete_stored_image,
-    is_data_image,
-    store_data_image,
-)
-from src.backend.services.storage_service import load_json_data, save_json_data
+from src.backend.services.portal_file_asset_service import is_data_image, migrate_inline_image
+from src.backend.services.storage_service import load_json_data
 
 
 @dataclass(frozen=True)
@@ -17,14 +25,13 @@ class MigrationTarget:
     collection: str
     field: str
     route_path: str
-    object_prefix: str
+    kind: str
 
 
 TARGETS: tuple[MigrationTarget, ...] = (
-    MigrationTarget("members", "photo_url", "/api/members/{id}/photo", "member-images/{id}/photo"),
-    MigrationTarget("performances", "flyer_image", "/api/performances/{id}/flyer-image", "performance-flyers/{id}/flyer"),
-    MigrationTarget("promotions", "image_url", "/api/extra/promotions/{id}/image", "promotion-images/{id}/image"),
-    MigrationTarget("org_settings", "icon_url", "/api/extra/org_settings/{id}/icon", "org-settings/{id}/icon"),
+    MigrationTarget("members", "photo_url", "/api/members/{id}/photo", "member_photo"),
+    MigrationTarget("performances", "flyer_image", "/api/performances/{id}/flyer-image", "performance_flyer"),
+    MigrationTarget("org_settings", "icon_url", "/api/extra/org_settings/{id}/icon", "org_icon"),
 )
 
 
@@ -32,103 +39,66 @@ def _format_route(template: str, item_id: int) -> str:
     return template.format(id=item_id)
 
 
-def _migrate_items(target: MigrationTarget, *, apply: bool) -> dict[str, Any]:
-    items = [dict(item) for item in load_json_data(target.collection)]
+def _migrate_items(target: MigrationTarget, *, apply: bool, run_id: str) -> dict[str, Any]:
     changed: list[dict[str, Any]] = []
-    uploaded_refs: list[tuple[str, str]] = []
-
-    for item in items:
+    failed: list[dict[str, Any]] = []
+    for item in load_json_data(target.collection):
         item_id = int(item.get("id") or 0)
-        if not item_id:
-            continue
         current_value = str(item.get(target.field) or "").strip()
-        if not is_data_image(current_value):
+        if not item_id or not is_data_image(current_value):
             continue
-        proposed_url = _format_route(target.route_path, item_id)
+        entry = {"collection": target.collection, "id": item_id, "field": target.field, "from": current_value[:48]}
         if not apply:
-            changed.append(
-                {
-                    "collection": target.collection,
-                    "id": item_id,
-                    "field": target.field,
-                    "from": current_value[:48],
-                    "to": proposed_url,
-                }
-            )
+            changed.append({**entry, "to": _format_route(target.route_path, item_id)})
             continue
-
-        new_value = store_data_image(
-            current_value,
-            object_prefix=_format_route(target.object_prefix, item_id),
-            route_path=_format_route(target.route_path, item_id),
-        )
-        item[target.field] = new_value
-        uploaded_refs.append((new_value, _format_route(target.object_prefix, item_id)))
-        changed.append(
-            {
-                "collection": target.collection,
-                "id": item_id,
-                "field": target.field,
-                "from": current_value[:48],
-                "to": new_value,
-            }
-        )
-
-    if apply and changed:
-        try:
-            save_json_data(target.collection, items)
-        except Exception:
-            for url, object_prefix in uploaded_refs:
-                delete_stored_image(url, object_prefix=object_prefix)
-            raise
-
+        status, body = asyncio.run(migrate_inline_image(target.kind, item_id, current_value, run_id=run_id))
+        if status == 200:
+            changed.append({**entry, "to": body.get("to")})
+        else:
+            failed.append({**entry, "status": status})
     return {
         "collection": target.collection,
         "field": target.field,
         "migrated": len(changed) if apply else 0,
         "planned": len(changed) if not apply else 0,
+        "failed": failed,
         "changes": changed,
     }
 
 
-def run_migration(*, apply: bool, collections: Iterable[str] | None = None) -> list[dict[str, Any]]:
+def run_migration(*, apply: bool, collections: Iterable[str] | None = None, run_id: str = "manual") -> list[dict[str, Any]]:
     selected = {name for name in collections} if collections else {target.collection for target in TARGETS}
-    results: list[dict[str, Any]] = []
-    for target in TARGETS:
-        if target.collection not in selected:
-            continue
-        results.append(_migrate_items(target, apply=apply))
-    return results
+    return [
+        _migrate_items(target, apply=apply, run_id=run_id)
+        for target in TARGETS
+        if target.collection in selected
+    ]
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Migrate legacy base64 image payloads to stored image URLs.")
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--apply", action="store_true", help="Write migrated image URLs back to storage.")
+    mode.add_argument("--apply", action="store_true", help="Run the audited file operations.")
     mode.add_argument("--dry-run", action="store_true", help="Show planned changes without writing anything.")
-    parser.add_argument(
-        "--collections",
-        nargs="*",
-        choices=[target.collection for target in TARGETS],
-        help="Limit migration to specific collections.",
-    )
+    parser.add_argument("--collections", nargs="*", choices=[target.collection for target in TARGETS])
+    parser.add_argument("--run-id", default="manual", help="Migration run identifier (re-use it to resume a run).")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = _build_parser().parse_args(argv)
     apply = bool(args.apply) and not bool(args.dry_run)
-    results = run_migration(apply=apply, collections=args.collections)
+    results = run_migration(apply=apply, collections=args.collections, run_id=args.run_id)
+    exit_code = 0
     for result in results:
         mode = "APPLY" if apply else "DRY-RUN"
         print(f"[{mode}] {result['collection']}: {result['migrated'] or result['planned']} image(s)")
         for change in result["changes"]:
-            print(
-                f"  - id={change['id']} field={change['field']} "
-                f"{change['from']} -> {change['to']}"
-            )
-    return 0
+            print(f"  - id={change['id']} field={change['field']} {change['from']} -> {change['to']}")
+        for failure in result["failed"]:
+            exit_code = 1
+            print(f"  ! id={failure['id']} status={failure['status']} (not changed)")
+    return exit_code
 
 
 if __name__ == "__main__":  # pragma: no cover - script entry point

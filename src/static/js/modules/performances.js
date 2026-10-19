@@ -25,6 +25,7 @@ async function savePerformance() {
         ? appState.performances.find((perf) => String(perf.id || '') === String(id))
         : null;
     const payload = {
+        expected_updated_at: currentPerformance?.updated_at || '',
         title: $('perfTitle').value.trim(),
         date: $('perfDate').value,
         open_time: $('perfOpenTime').value,
@@ -51,6 +52,7 @@ async function savePerformance() {
         formData.append('flyer_file', flyerFile);
     }
     await request(id ? `/api/performances/${id}` : '/api/performances', {
+        _portalFileOperation: true,
         method: id ? 'PUT' : 'POST',
         body: formData,
     });
@@ -84,7 +86,7 @@ async function deletePerformance() {
         return;
     }
     if (!confirmDelete()) return;
-    await request(`/api/performances/${id}`, { method: 'DELETE' });
+    await request(`/api/performances/${id}`, { method: 'DELETE', _portalFileOperation: true });
     clearPerformanceForm();
     await loadPerformances();
     showAlert('演奏会情報を削除しました', 'success');

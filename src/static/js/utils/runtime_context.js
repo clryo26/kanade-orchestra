@@ -25,6 +25,31 @@
         return readOwnDataProperty('appState');
     };
 
+    // Japan Standard Time with a fixed +09:00 offset (no DST since 1951), the
+    // same rule as the backend. Calendar parts come from the UTC getters of a
+    // shifted instant, so the device timezone never changes the result.
+    const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+    const pad2 = (value) => String(value).padStart(2, '0');
+    const jst = {
+        parts(ms) {
+            const shifted = new Date(Number(ms) + JST_OFFSET_MS);
+            return {
+                year: shifted.getUTCFullYear(),
+                month: shifted.getUTCMonth() + 1,
+                day: shifted.getUTCDate(),
+                hour: shifted.getUTCHours(),
+                minute: shifted.getUTCMinutes(),
+                second: shifted.getUTCSeconds(),
+                weekday: shifted.getUTCDay(),
+            };
+        },
+        dateKey(ms) {
+            const p = jst.parts(ms);
+            return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
+        },
+        now: () => Date.now(),
+    };
+
     const context = {
         dbCache: globalObj.portalCacheState.dbCache,
         inFlightGetRequests: globalObj.portalCacheState.inFlightGetRequests,
@@ -32,13 +57,9 @@
         get appState() {
             return resolveAppState();
         },
-        today: () => {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const d = String(now.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
-        },
+        jst,
+        // "Today" is the Japan calendar day, independent of the device timezone.
+        today: () => jst.dateKey(jst.now()),
         getById: (id) => document.getElementById(id),
         PORTAL_AUTH_KEY: 'kanadePortalAuthenticated',
         PORTAL_DEVICE_ID_KEY: 'kanadePortalDeviceId',

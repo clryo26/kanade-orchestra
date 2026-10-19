@@ -21,9 +21,9 @@
     function addHoursToTime(time, hours) {
         const match = String(time || '').match(/^(\d{1,2}):(\d{2})$/);
         if (!match) return '';
-        const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
-        date.setHours(date.getHours() + hours);
-        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        const minutes = Number(match[1]) * 60 + Number(match[2]) + Math.trunc(Number(hours) || 0) * 60;
+        const wrapped = ((minutes % 1440) + 1440) % 1440;
+        return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
     }
     function compactCalendarDate(date, time = '') {
         const ymd = String(date || '').replaceAll('-', '');
@@ -34,11 +34,12 @@
     }
     function nextAllDayDate(date) {
         if (!date) return '';
-        const value = new Date(`${date}T00:00:00`);
-        value.setDate(value.getDate() + 1);
-        const y = value.getFullYear();
-        const m = String(value.getMonth() + 1).padStart(2, '0');
-        const d = String(value.getDate()).padStart(2, '0');
+        const value = new Date(`${date}T00:00:00Z`);
+        if (!Number.isFinite(value.getTime())) return '';
+        value.setUTCDate(value.getUTCDate() + 1);
+        const y = value.getUTCFullYear();
+        const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(value.getUTCDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     }
     function icsEscape(value) {
@@ -68,7 +69,7 @@
     function paymentCurrentMonthValue() {
         const today = typeof window !== 'undefined' && window.portalRuntimeContext && typeof window.portalRuntimeContext.today === 'function'
             ? window.portalRuntimeContext.today()
-            : new Date().toISOString().slice(0, 10);
+            : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
         return paymentMonthValue(String(today || '').slice(0, 7));
     }
     function paymentRemainingMonthCount(payment) {

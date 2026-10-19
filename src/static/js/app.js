@@ -17,6 +17,7 @@
         '/static/js/utils/dialog.js',
         '/static/js/store/app_state.js',
         '/static/js/utils/runtime_context.js',
+        '/static/js/utils/portal_file_operations.js',
         '/static/js/main.js',
         '/static/js/modules/common_helpers/pure.js',
         '/static/js/modules/common_helpers/ui.js',

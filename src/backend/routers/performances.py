@@ -12,7 +12,6 @@ from ..core.auth_dependencies import get_admin_device_auth
 from ..models.schemas import Performance
 from ..services import performance_service
 from ..services.extra_collection_helpers import read_json_body
-from ..services.image_asset_service import serve_stored_image
 
 router = APIRouter()
 
@@ -27,6 +26,7 @@ async def _read_performance_payload(request: Request) -> tuple[dict[str, Any], U
         except Exception:
             pieces = []
         payload = {
+            "expected_updated_at": str(form.get("expected_updated_at") or "").strip(),
             "title": str(form.get("title") or "").strip(),
             "date": str(form.get("date") or "").strip(),
             "open_time": str(form.get("open_time") or "").strip(),
@@ -50,9 +50,11 @@ async def get_performances() -> list[dict[str, Any]]:
 async def create_performance(
     request: Request,
     _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
-) -> dict[str, Any]:
+) -> Any:
     payload, flyer_file = await _read_performance_payload(request)
-    return await performance_service.create_performance(payload, flyer_file)
+    return await performance_service.create_performance(
+        payload, flyer_file, device=_admin_device, idempotency_key=request.headers.get("Idempotency-Key")
+    )
 
 
 @router.get("/api/performances/{performance_id}", response_model=Performance)
@@ -61,12 +63,9 @@ async def get_performance(performance_id: int) -> dict[str, Any]:
 
 
 @router.get("/api/performances/{performance_id}/flyer-image")
-async def get_performance_flyer_image(performance_id: int) -> Response:
-    performance = performance_service.get_performance_record(performance_id)
-    return serve_stored_image(
-        performance.get("flyer_image") or "",
-        object_prefix=f"performance-flyers/{performance_id}/flyer",
-    )
+async def get_performance_flyer_image(performance_id: int, asset: str = "") -> Response:
+    # Only a DB-confirmed asset (or legacy inline data in the row) is served.
+    return performance_service.flyer_response(performance_id, asset or None)
 
 
 @router.get("/api/reports/performance-timetable/{performance_id}/xlsx")
@@ -91,15 +90,22 @@ async def update_performance(
     performance_id: int,
     request: Request,
     _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
-) -> dict[str, Any]:
+) -> Any:
     payload, flyer_file = await _read_performance_payload(request)
-    return await performance_service.update_performance(performance_id, payload, flyer_file)
+    return await performance_service.update_performance(
+        performance_id, payload, flyer_file, device=_admin_device, idempotency_key=request.headers.get("Idempotency-Key")
+    )
 
 
 @router.delete("/api/performances/{performance_id}")
 async def delete_performance(
     performance_id: int,
+    request: Request,
     _admin_device: dict[str, Any] = Depends(get_admin_device_auth),
-) -> dict[str, str]:
-    performance_service.delete_performance(performance_id)
+) -> Any:
+    result = await performance_service.delete_performance(
+        performance_id, device=_admin_device, idempotency_key=request.headers.get("Idempotency-Key")
+    )
+    if isinstance(result, Response):
+        return result
     return {"message": "Deleted"}

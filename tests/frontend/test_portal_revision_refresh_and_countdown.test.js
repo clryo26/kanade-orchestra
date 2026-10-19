@@ -103,8 +103,8 @@ describe('changed asset versions', () => {
         '/static/js/modules/bootstrap_loader.js?v=20260802-1',
         '/static/js/modules/navigation/menu.js?v=20260802-1',
         '/static/js/modules/navigation/events.js?v=20260802-1',
-        '/static/js/modules/admin_system/diagnostics.js?v=20260802-1',
-        '/static/js/modules/portal_views.js?v=20260802-1',
+        '/static/js/modules/admin_system/diagnostics.js?v=20261019-jst1',
+        '/static/js/modules/portal_views.js?v=20261019-jst1',
         '/static/js/modules/members/render.js?v=20260802-1',
     ])('includes %s', (assetUrl) => {
         expect(indexHtml).toContain(assetUrl);

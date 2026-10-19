@@ -104,12 +104,14 @@ def test_csv_cells_never_start_a_formula():
 def test_member_deletion_calls_the_tuner_revoke_hook(monkeypatch):
     from src.backend.services import member_service
 
+    import asyncio
+
     seen = []
-    monkeypatch.setattr(member_service._repo, "find_by_id", lambda member_id: (0, {"photo_url": ""}))
-    monkeypatch.setattr(member_service._repo, "delete", lambda member_id: None)
-    monkeypatch.setattr(member_service, "_delete_member_photo", lambda *args: None)
+    # A member without a confirmed photo is deleted row level (no file operation).
+    monkeypatch.setattr(member_service.file_assets, "has_active_asset", lambda kind, owner_id: False)
+    monkeypatch.setattr(member_service._repo, "delete", lambda member_id, authorize=None: None)
     monkeypatch.setattr(tuner_service, "revoke_member", lambda member_id: seen.append(member_id))
-    member_service.delete_member(42)
+    asyncio.run(member_service.delete_member(42))
     assert seen == [42]
 
 

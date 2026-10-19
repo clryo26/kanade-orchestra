@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 
+from ..utils.datetime_utils import require_input_dates
+
 
 def normalize_bool_text(value: Any) -> str:
     text = str(value or "").strip().lower()
@@ -46,6 +48,7 @@ def validate_date_adjustment_payload(payload: dict[str, Any]) -> dict[str, Any]:
         note = str(item.get("note") or "").strip()
         if not date:
             raise HTTPException(status_code=400, detail=f"candidates[{index}].date is required")
+        require_input_dates({"date": date}, ("date",))
         candidate_id = str(item.get("id") or f"cand-{index + 1}").strip()
         normalized = {
             "id": candidate_id,
@@ -63,6 +66,7 @@ def validate_date_adjustment_payload(payload: dict[str, Any]) -> dict[str, Any]:
     data = dict(payload)
     data["title"] = title
     data["deadline"] = str(payload.get("deadline") or "").strip()
+    require_input_dates(data, ("deadline",))
     data["notes"] = str(payload.get("notes") or "").strip()
     data["delete_phrase"] = str(payload.get("delete_phrase") or "").strip()
     data["created_by"] = str(payload.get("created_by") or "").strip()

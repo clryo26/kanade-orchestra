@@ -45,7 +45,7 @@ function canEditPortalNotice(notice) {
 
 function sortedPortalNotices() {
     return [...(appState.notices || [])].sort((a, b) =>
-        String(b.created_at || '').localeCompare(String(a.created_at || ''))
+        comparePortalInstantDesc(a, b)
         || Number(b.id || 0) - Number(a.id || 0)
     );
 }

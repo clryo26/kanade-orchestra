@@ -67,11 +67,11 @@ describe('admin database viewer lazy loading', () => {
         expect(indexHtml).not.toContain('/static/js/modules/admin_system/database_viewer.js');
     });
 
-    test('initial script count in index.html is 66', () => {
+    test('initial script count in index.html is 44', () => {
         const indexHtml = readSource('src/index.html');
         const matches = indexHtml.match(/<script\b/g);
         expect(matches).not.toBeNull();
-        expect(matches.length).toBe(43);
+        expect(matches.length).toBe(44);
     });
 
     test('admin_system.js defines ensureAdminDatabaseViewerLoaded', () => {

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 import mimetypes
-from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, Response
@@ -12,7 +12,8 @@ from google.api_core.exceptions import NotFound
 from ..core.runtime_paths import UPLOAD_DIR
 from ..drive_storage import get_storage_bucket, storage_enabled
 from .file_service import safe_upload_name
-from .storage_service import load_json_data, save_json_data
+from .storage_service import load_json_data
+from ..utils.datetime_utils import jst_today
 from ..repositories.album_repository import AlbumRepository
 from ..utils.collection_utils import find_item
 
@@ -36,6 +37,46 @@ def delete_album(album_id: int) -> None:
     _repo.delete(album_id)
 
 
+def _store() -> Any:
+    from ..core.compat_gateway import row_store
+
+    return row_store()
+
+
+def _write_new_object(object_name: str, content: bytes, content_type: str) -> None:
+    """Create-only write: a UUID key never overwrites another photo (N05, R06-3)."""
+    if storage_enabled():
+        blob = get_storage_bucket().blob(object_name)
+        blob.upload_from_string(content, content_type=content_type or "application/octet-stream", if_generation_match=0, timeout=60)
+        return
+    path = UPLOAD_DIR / object_name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as target:
+        target.write(content)
+
+
+def _delete_unreferenced(photo: dict[str, Any]) -> None:
+    """After COMMIT: delete exactly this photo's object, unless another photo row still uses it."""
+    object_name = str(photo.get("object_name") or "").strip()
+    rel_path = str(photo.get("path") or "").strip()
+    for album in _store().list("albums"):
+        for other in album.get("photos") or []:
+            if (object_name and other.get("object_name") == object_name) or (rel_path and other.get("path") == rel_path):
+                logger.warning("Album photo object is still referenced; not deleted")
+                return
+    try:
+        if storage_enabled() and object_name:
+            get_storage_bucket().blob(object_name).delete(timeout=60)
+        elif rel_path:
+            (UPLOAD_DIR / rel_path).unlink(missing_ok=True)
+    except NotFound:
+        return
+    except Exception:
+        # The DB change is committed; a failed delete leaves only an
+        # unreferenced object (logged for the operations cleanup).
+        logger.exception("Album photo object deletion failed after commit")
+
+
 def upload_album_photo(
     album_id: int,
     filename: str,
@@ -43,58 +84,44 @@ def upload_album_photo(
     file_content: bytes,
     device: dict[str, Any],
 ) -> dict[str, Any]:
-    albums = load_json_data("albums")
-    index, album = find_item(albums, album_id)
-
+    store = _store()
+    if store.get("albums", album_id) is None:
+        raise HTTPException(status_code=404, detail="Data not found")
     member_id = device.get("member_id")
     member_name = device.get("member_name") or str(device.get("member_id") or "")
-    now = datetime.now().isoformat()
-    photos = album.get("photos") or []
-    next_photo_id = max([p.get("id", 0) for p in photos], default=0) + 1
     filename = safe_upload_name(filename or "photo.jpg")
-    date_dir = datetime.now().strftime("%Y-%m-%d")
+    # Operational date folder in JST; uniqueness comes from the UUID (L40).
+    object_key = f"albums/{album_id}/{jst_today().isoformat()}/{uuid4().hex}_{filename}"
+    try:
+        _write_new_object(object_key, file_content, content_type)
+    except Exception as exc:
+        logger.exception("Album photo upload failed")
+        raise HTTPException(status_code=502, detail=f"Photo upload failed: {exc}") from exc
+    reference = {"object_name": object_key} if storage_enabled() else {"path": object_key}
+    created: dict[str, Any] = {}
+    try:
+        with store.transaction() as ctx:
+            photo_id = store.allocate_child_id(ctx, "album_photos")
 
-    if storage_enabled():
-        try:
-            bucket = get_storage_bucket()
-            object_name = f"albums/{album_id}/{date_dir}/{next_photo_id}_{filename}"
-            blob = bucket.blob(object_name)
-            blob.upload_from_string(
-                file_content,
-                content_type=content_type or "application/octet-stream",
-            )
-            photo_metadata = {
-                "id": next_photo_id,
-                "filename": filename,
-                "url": f"/api/albums/{album_id}/photos/{next_photo_id}",
-                "uploaded_by_member_id": member_id,
-                "uploaded_by_member_name": member_name,
-                "uploaded_at": now,
-                "object_name": object_name,
-            }
-        except Exception as exc:
-            logger.exception("Album photo upload to GCS failed")
-            raise HTTPException(status_code=502, detail=f"Photo upload failed: {exc}") from exc
-    else:
-        photo_dir = UPLOAD_DIR / "albums" / str(album_id) / date_dir
-        photo_dir.mkdir(parents=True, exist_ok=True)
-        photo_path = photo_dir / f"{next_photo_id}_{filename}"
-        photo_path.write_bytes(file_content)
-        photo_metadata = {
-            "id": next_photo_id,
-            "filename": filename,
-            "url": f"/api/albums/{album_id}/photos/{next_photo_id}",
-            "uploaded_by_member_id": member_id,
-            "uploaded_by_member_name": member_name,
-            "uploaded_at": now,
-            "path": str(photo_path.relative_to(UPLOAD_DIR).as_posix()),
-        }
+            def mutate(current: dict[str, Any]) -> dict[str, Any]:
+                photo = {
+                    "id": photo_id,
+                    "filename": filename,
+                    "url": f"/api/albums/{album_id}/photos/{photo_id}",
+                    "uploaded_by_member_id": member_id,
+                    "uploaded_by_member_name": member_name,
+                    **reference,
+                }
+                return {**current, "photos": [*(current.get("photos") or []), photo]}
 
-    album.setdefault("photos", []).append(photo_metadata)
-    album["updated_at"] = now
-    albums[index] = album
-    save_json_data("albums", albums)
-    return photo_metadata
+            saved = store.update("albums", album_id, mutate, ctx=ctx)
+            created = next(photo for photo in saved.get("photos") or [] if photo.get("id") == photo_id)
+    except Exception:
+        # Not committed: this request's own UUID object is unreferenced.
+        _delete_unreferenced({**reference})
+        raise
+    keys = ("id", "filename", "url", "uploaded_by_member_id", "uploaded_by_member_name", "uploaded_at", "object_name", "path")
+    return {key: created.get(key) for key in keys if key in created or key in reference}
 
 
 def get_album_photo_response(album_id: int, photo_id: int) -> Response:
@@ -148,30 +175,20 @@ def _can_delete_photo(photo: dict[str, Any], device: dict[str, Any]) -> bool:
 
 
 def delete_album_photo(album_id: int, photo_id: int, device: dict[str, Any]) -> dict[str, str]:
-    albums = load_json_data("albums")
-    index, album = find_item(albums, album_id)
-    photos = album.get("photos") or []
-    photo_to_delete = next((p for p in photos if p.get("id") == photo_id), None)
-    if not photo_to_delete:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    if not _can_delete_photo(photo_to_delete, device):
-        raise HTTPException(status_code=403, detail="Only uploader or admin can delete this photo")
+    removed: dict[str, Any] = {}
 
-    if storage_enabled() and photo_to_delete.get("object_name"):
-        try:
-            bucket = get_storage_bucket()
-            bucket.blob(photo_to_delete["object_name"]).delete()
-        except Exception:
-            logger.exception("Album photo deletion from GCS failed")
+    def mutate(current: dict[str, Any]) -> dict[str, Any]:
+        photos = current.get("photos") or []
+        photo = next((p for p in photos if p.get("id") == photo_id), None)
+        if not photo:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        if not _can_delete_photo(photo, device):
+            raise HTTPException(status_code=403, detail="Only uploader or admin can delete this photo")
+        removed.clear()
+        removed.update(photo)
+        return {**current, "photos": [p for p in photos if p.get("id") != photo_id]}
 
-    if photo_to_delete.get("path"):
-        try:
-            (UPLOAD_DIR / photo_to_delete["path"]).unlink()
-        except Exception:
-            logger.exception("Album photo deletion from local storage failed")
-
-    album["photos"] = [p for p in photos if p.get("id") != photo_id]
-    album["updated_at"] = datetime.now().isoformat()
-    albums[index] = album
-    save_json_data("albums", albums)
+    _store().update("albums", album_id, mutate)
+    # Files are removed only after the DB change committed (R06-6).
+    _delete_unreferenced(removed)
     return {"message": "Photo deleted"}

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from ..utils.datetime_utils import format_instant, jst_now
+
 import json
 import os
 import re
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -67,7 +68,7 @@ def manifest_response_payload(title: str) -> str:
 def health_payload(storage_configured: bool, db_expected: bool, db_configured: bool) -> dict[str, str]:
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": format_instant(jst_now()),
         "service": "Orchestra Activity Tool",
         "storage_configured": str(storage_configured).lower(),
         "db_expected": str(db_expected).lower(),

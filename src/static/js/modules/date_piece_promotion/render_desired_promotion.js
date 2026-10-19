@@ -60,7 +60,7 @@ function renderPromotionView() {
     if (!c) return;
     // Keep the actual form node: recreating file inputs loses the selected image.
     const existingForm = c.querySelector('.promotion-form');
-    const items = [...(appState.promotions || [])].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    const items = [...(appState.promotions || [])].sort((a, b) => comparePortalInstantDesc(a, b));
     const loadState = appState.promotionLoadState || 'idle';
     const message = loadState === 'error' ? '最新情報を取得できていません。再読み込みしてください'
         : loadState !== 'loaded' ? '宣伝を読み込み中です' : '';

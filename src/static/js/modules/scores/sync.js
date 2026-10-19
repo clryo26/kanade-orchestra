@@ -53,9 +53,9 @@
     }
 
     function time(ts) {
-        var d = new Date(ts);
+        var d = new Date(ts + 9 * 3600000);
         var pad = function (n) { return String(n).padStart(2, '0'); };
-        return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
     }
 
     // The bar above both lists: update button, last update, failure + retry.

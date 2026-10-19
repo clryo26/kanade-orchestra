@@ -132,7 +132,7 @@ async function renderSystemEnvironmentManagement() {
         _setEnvironmentField('environmentCurrentEnvironment', status.current_environment || '未設定');
         _setEnvironmentField('environmentAppEnv', status.app_env || '未設定');
         _setEnvironmentField('environmentGitSha', status.deploy_info?.git_sha || '未設定');
-        _setEnvironmentField('environmentBuildTime', status.deploy_info?.build_time || '未設定');
+        _setEnvironmentField('environmentBuildTime', status.deploy_info?.build_time ? formatDateTimeLabel(status.deploy_info.build_time) : '未設定');
         _setEnvironmentField('environmentCloudRunRevision', status.deploy_info?.cloud_run_revision || '未設定');
         _setEnvironmentField('environmentCloudRunService', status.deploy_info?.cloud_run_service || '未設定');
         _setEnvironmentField('environmentImageUri', status.deploy_info?.image_uri || '未設定');

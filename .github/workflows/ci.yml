@@ -161,6 +161,7 @@ jobs:
       LOCAL_JSON_FALLBACK_ENABLED: "false"
       PROMOTION_TEST_DB_URL: "postgresql://postgres@127.0.0.1:5432/postgres"
       SHEET_TEST_DB_URL: "postgresql://postgres@127.0.0.1:5432/postgres"
+      PORTAL_TEST_DB_URL: "postgresql://postgres@127.0.0.1:5432/postgres"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -193,6 +194,9 @@ jobs:
 
       - name: Run sheet PostgreSQL integration and migration tests
         run: uv run pytest -q tests/backend/test_sheet_library_postgres.py
+
+      - name: Run JST PostgreSQL concurrency and file operation tests
+        run: uv run pytest -q tests/backend/test_db_item_repository_postgres.py tests/backend/test_auth_session_postgres.py tests/backend/test_access_logs_list_lock_postgres.py tests/backend/test_portal_file_operations_postgres.py
 
       - name: Run backend DB profile tests with coverage
         # Include sheet storage/cleanup/ZIP regressions in the measured profile;

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from ..utils.datetime_utils import format_instant, utc_now
+
 import os
 from time import perf_counter
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -64,24 +65,28 @@ def seed_connection_settings_from_legacy_env(
     next_id: Callable[[list[dict[str, Any]]], int],
     logger: Any,
 ) -> None:
-    items = load_json_data("connection_settings")
-    if has_connection_setting(items):
-        return
-
     legacy = legacy_connection_setting_from_env()
     if not legacy:
         return
+    seeded: list[bool] = []
 
-    now = datetime.now().isoformat()
-    payload = {
-        "id": next_id(items),
-        "created_at": now,
-        "updated_at": now,
-        **legacy,
-    }
-    items.append(payload)
-    save_json_data("connection_settings", items)
-    logger.info("Seeded connection_settings from legacy environment variables")
+    def mutate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Re-checked on the list read inside the collection lock: a setting
+        # saved meanwhile (row-level, same lock key) is never overwritten.
+        if has_connection_setting(items):
+            return items
+        now = format_instant(utc_now())
+        seeded.append(True)
+        return [*items, {"id": next_id(items), "created_at": now, "updated_at": now, **legacy}]
+
+    if getattr(save_json_data, "supports_locked_mutation", False):
+        from .compat_gateway import mutate_json_data
+
+        mutate_json_data("connection_settings", mutate)
+    else:
+        save_json_data("connection_settings", mutate(load_json_data("connection_settings")))
+    if seeded:
+        logger.info("Seeded connection_settings from legacy environment variables")
 
 
 async def seed_cloud_data_from_local(

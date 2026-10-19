@@ -35,12 +35,7 @@ function accessLogPartOptionsHtml(selected = '') {
 }
 
 function accessLogDateBoundary(value, exclusiveEnd = false) {
-    const normalized = String(value || '').trim();
-    if (!normalized) return '';
-    const date = new Date(`${normalized}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return '';
-    if (exclusiveEnd) date.setDate(date.getDate() + 1);
-    return date.toISOString();
+    return portalJstDateBoundaryIso(value, exclusiveEnd);
 }
 
 function prepareAccessLogView() {

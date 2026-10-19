@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -16,6 +17,7 @@ except Exception:  # pragma: no cover - optional dependency guard
     Jsonb = None
 
 from ..core.db_schema import (
+    DATE_ENCODED_TIMESTAMP_COLUMNS,
     DB_BOOL_COLUMNS,
     DB_CHILD_COLUMNS,
     DB_CHILD_TABLES,
@@ -30,7 +32,17 @@ from ..core.db_schema import (
     PORTAL_DB_TABLES,
 )
 from ..core.tenant_context import get_current_tenant_id
+from ..utils.datetime_utils import (
+    decode_utc_midnight_date,
+    format_instant,
+    parse_calendar_date,
+    parse_instant,
+    utc_midnight_of,
+    utc_now,
+)
 
+
+logger = logging.getLogger(__name__)
 
 _ORG_COLUMN_CACHE: dict[str, bool] = {}
 
@@ -69,6 +81,12 @@ def table_has_organization_id(conn: Any, table_name: str) -> bool:
 
 def db_json_value(value: Any) -> Any:
     if isinstance(value, datetime):
+        # TIMESTAMPTZ values are instants: emit the business API contract
+        # (JST, 6 fraction digits) regardless of the session TimeZone. A naive
+        # datetime (TIMESTAMP WITHOUT TIME ZONE) is left as-is: its zone is
+        # never guessed.
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            return format_instant(value)
         return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
@@ -79,8 +97,16 @@ def db_json_value(value: Any) -> Any:
     return value
 
 
-def db_row_to_json(row: dict[str, Any]) -> dict[str, Any]:
+def db_row_to_json(row: dict[str, Any], table_name: str | None = None) -> dict[str, Any]:
     data = {key: db_json_value(value) for key, value in row.items()}
+    if table_name:
+        for column in DATE_ENCODED_TIMESTAMP_COLUMNS.get(table_name, set()):
+            if column in row:
+                data[column] = decode_date_encoded_timestamp(row[column])
+                if not data[column] and row[column] not in (None, ""):
+                    # Internal only (response models do not include it): lets
+                    # an update keep an unknown value instead of erasing it.
+                    data[f"{column}_raw"] = db_json_value(row[column])
     if "sort_order" in data and "display_order" not in data:
         data["display_order"] = data["sort_order"]
     if "organization_name" in data and not data.get("name"):
@@ -134,19 +160,42 @@ def parse_db_time(value: Any) -> str | None:
 
 
 def parse_db_timestamp(value: Any) -> str | None:
+    """Write-side codec for TIMESTAMPTZ columns.
+
+    Only instants with an explicit offset are accepted and normalized to the
+    JST API form; naive values are rejected (their zone would otherwise be
+    decided by the DB session TimeZone). A bare ``YYYY-MM-DD`` keeps the
+    legacy ``events.deadline`` encoding (calendar date stored as UTC 00:00).
+    """
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
-        return value.isoformat()
+        return format_instant(parse_instant(value))
     if isinstance(value, date):
-        return datetime.combine(value, time.min).isoformat()
-    value_text = str(value).strip().replace("/", "-").replace("Z", "+00:00")
+        return format_instant(utc_midnight_of(value))
+    value_text = str(value).strip()
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value_text):
-        value_text = f"{value_text}T00:00:00+00:00"
-    try:
-        return datetime.fromisoformat(value_text).isoformat()
-    except ValueError:
+        return format_instant(utc_midnight_of(parse_calendar_date(value_text)))
+    return format_instant(parse_instant(value_text))
+
+
+def encode_date_encoded_timestamp(value: Any) -> str | None:
+    """``events.deadline`` writer: strict calendar date -> UTC 00:00 instant."""
+    if value in (None, ""):
         return None
+    if isinstance(value, datetime) or (isinstance(value, str) and "T" in value):
+        # An instant read back from the DB (encoded or preserved unknown) is
+        # kept exactly; request input is validated as a date by the service.
+        return format_instant(parse_instant(value))
+    return format_instant(utc_midnight_of(parse_calendar_date(value, field="deadline")))
+
+
+def decode_date_encoded_timestamp(value: Any) -> str:
+    """``events.deadline`` reader: UTC 00:00 -> ``YYYY-MM-DD``; anything else is unknown ("")."""
+    decoded = decode_utc_midnight_date(value)
+    if decoded is None and value not in (None, ""):
+        logger.warning("Date-encoded timestamp is not at UTC midnight; returned as unknown")
+    return decoded or ""
 
 
 def parse_db_month(value: Any) -> str:
@@ -189,7 +238,10 @@ def db_write_value(table_name: str, column: str, value: Any) -> Any:
         return parse_db_date(value)
     if column in DB_TIME_COLUMNS.get(table_name, set()):
         return parse_db_time(value)
-    if column in DB_TIMESTAMP_COLUMNS.get(table_name, set()):
+    if column in DATE_ENCODED_TIMESTAMP_COLUMNS.get(table_name, set()):
+        return encode_date_encoded_timestamp(value)
+    if column in DB_TIMESTAMP_COLUMNS.get(table_name, set()) or column in {"created_at", "updated_at"}:
+        # created_at/updated_at are TIMESTAMPTZ on every table (db_runtime).
         return parse_db_timestamp(value)
     if column in DB_MONTH_COLUMNS.get(table_name, set()):
         return parse_db_month(value)
@@ -219,7 +271,7 @@ def db_fetch_all(conn: Any, table_name: str, *, order_by: str = "id") -> list[di
         cur.execute(query, params)
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
-    return [db_row_to_json(dict(zip(columns, row))) for row in rows]
+    return [db_row_to_json(dict(zip(columns, row)), table_name) for row in rows]
 
 
 def db_item_value(table_name: str, item: dict[str, Any], column: str) -> Any:
@@ -252,7 +304,7 @@ def db_prepare_timestamp_columns_for_upsert(table_name: str, rows: list[dict[str
     columns = DB_COLLECTION_COLUMNS.get(table_name) or DB_CHILD_COLUMNS.get(table_name, ())
     if "created_at" not in columns and "updated_at" not in columns:
         return
-    now = datetime.now().isoformat()
+    now = format_instant(utc_now())
     for row in rows:
         # Inserts need a non-null created_at, while ON CONFLICT keeps the
         # existing created_at because db_upsert_rows excludes it from updates.
@@ -266,7 +318,7 @@ def db_collection_rows_for_save(name: str, data: list[dict[str, Any]]) -> list[d
     if name != "drive_files":
         return data
 
-    now = datetime.now().isoformat()
+    now = format_instant(utc_now())
     rows: list[dict[str, Any]] = []
     for item in data:
         row = dict(item)
@@ -360,8 +412,14 @@ def db_delete_collection_children(cur: Any, name: str) -> None:
         cur.execute(psql.SQL("DELETE FROM {}").format(psql.Identifier(child_table)))
 
 
-def db_child_rows_for_collection(name: str, data: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    now = datetime.now().isoformat()
+def db_child_rows_for_collection(
+    name: str,
+    data: list[dict[str, Any]],
+    *,
+    now: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    # Row-level writes pass the DB clock; legacy list saves use an aware app clock.
+    now = now or format_instant(utc_now())
     tenant_id = get_current_tenant_id()
     children: dict[str, list[dict[str, Any]]] = {table: [] for table in DB_CHILD_TABLES.get(name, ())}
     if name == "performances":

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .db_row_repository import db_json_value
+
 from typing import Any
 
 from ..core.db_pool import pooled_psycopg as psycopg
@@ -81,7 +83,7 @@ class SystemRepository:
                         "version": str(row[0]),
                         "name": str(row[1]),
                         "checksum": str(row[2]),
-                        "applied_at": row[3].isoformat() if row[3] else "",
+                        "applied_at": db_json_value(row[3]) if row[3] else "",
                     }
                     for row in cur.fetchall()
                 ]
@@ -160,7 +162,7 @@ class SystemRepository:
                             "user_agent": row[12],
                             "ip_address": row[13],
                             "detail": row[14],
-                            "created_at": row[15].isoformat() if row[15] else "",
+                            "created_at": db_json_value(row[15]) if row[15] else "",
                         }
                     )
                 return rows, total
@@ -192,7 +194,7 @@ class SystemRepository:
                         "role_name": row[0],
                         "permission_key": row[1],
                         "enabled": bool(row[2]),
-                        "updated_at": row[3].isoformat() if row[3] else "",
+                        "updated_at": db_json_value(row[3]) if row[3] else "",
                     }
                     for row in cur.fetchall()
                 ]
