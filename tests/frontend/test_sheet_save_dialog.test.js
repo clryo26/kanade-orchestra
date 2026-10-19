@@ -14,7 +14,7 @@ function element(id) {
     return {
         id, hidden: false, textContent: '', style: {}, firstChild: { style: {} }, children: [], listeners: {},
         addEventListener(type, fn) { this.listeners[type] = fn; },
-        setAttribute() {}, querySelectorAll: () => [], appendChild(c) { this.children.push(c); return c; }, focus() {},
+        select() {}, setAttribute() {}, querySelectorAll: () => [], appendChild(c) { this.children.push(c); return c; }, focus() {},
         set innerHTML(v) { this.children = []; }, get innerHTML() { return ''; },
     };
 }
@@ -34,7 +34,7 @@ function streamResponse(chunks, header, log) {
     };
     return {
         status: 200, ok: true,
-        headers: { get: (k) => (k.toLowerCase() === 'content-length' ? (header == null ? null : String(header)) : 'application/pdf') },
+        headers: { get: (k) => (k.toLowerCase() === 'content-length' ? (header == null ? null : String(header)) : k.toLowerCase() === 'content-type' ? 'application/pdf' : null) },
         body: { getReader: () => reader },
         json: async () => ({}),
     };
@@ -83,6 +83,7 @@ function makeDialog({ canShare = true, standalone = false, limits = { pdf: 1024,
         localStorage: { getItem: (k) => (k === 'device' ? 'dev-1' : null), setItem() {}, removeItem() {} },
         window: {
             portalRuntimeContext: { appState, PORTAL_DEVICE_ID_KEY: 'device' },
+            location: { origin: 'https://test.example', href: 'https://test.example/?private=unused' },
             matchMedia: () => ({ matches: standalone }),
             navigator: {
                 standalone,
@@ -294,34 +295,126 @@ const readyJob = (zipBytes) => ({ job_id: '11111111-1111-4111-8111-111111111111'
     total_bytes: zipBytes, written_bytes: zipBytes, allow_partial: false, missing: [], zip_bytes: zipBytes, list_version: 1, changed_since: false });
 
 describe('save dialog: the ZIP size is shown before the download', () => {
-    test('mobile: a small ZIP is not read into the page either; the size is shown, then a separate screen', async () => {
-        const d = makeDialog({ network: (url) => (url.includes('/tickets') ? ticket(600) : json(readyJob(512))) });
-        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, piece: 'Sym', part: '', title: 'C', count: 3 });
+    test('mobile sheet ZIP: fetches the authenticated job and shares a ZIP File without opening a tab', async () => {
+        const log = { reads: 0, cancelled: 0 };
+        const d = makeDialog({ network: (url) => url.endsWith('/download') ? streamResponse([bytes(512)], 512, log) : json(readyJob(512)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C', count: 3 });
         await flush();
-        expect(d.calls.map((c) => c.url)).toEqual(['/api/sheets/zip-jobs', '/api/sheets/tickets']);
-        expect(d.el('sheetSaveCount').textContent).toBe('3 件の楽譜・ZIP 1 KB');
-        expect(d.el('sheetSaveStatus').textContent).toContain('ZIPの準備ができました（1 KB）');
-        expect(d.el('sheetSaveShare').hidden).toBe(true);
-        expect(d.el('sheetSaveOpen').hidden).toBe(false);
-        expect(d.el('sheetSaveOpen').textContent).toBe('別の画面で開いて保存');
-        expect(d.clicks).toEqual([]); // opened only from the user's tap
-        d.el('sheetSaveOpen').listeners.click();
-        expect(d.clicks).toEqual(['/api/sheets/tickets/t-600']);
+        expect(d.calls.map((c) => c.url)).toEqual(['/api/sheets/zip-jobs', '/api/sheets/zip-jobs/11111111-1111-4111-8111-111111111111/download']);
+        expect(d.el('sheetSaveShare').hidden).toBe(false);
+        expect(d.el('sheetSaveOpen').hidden).toBe(true);
+        expect(d.shared).toEqual([]); // only the later tap may share
+        await d.el('sheetSaveShare').listeners.click();
+        expect(d.shared).toEqual([[{ name: 'C.zip', size: 512, type: 'application/zip' }]]);
+        expect(d.clicks).toEqual([]);
         expect(d.downloads).toEqual([]);
     });
 
-    test('mobile recording ZIP: the size is asked first; nothing is downloaded until the tap', async () => {
-        const d = makeDialog({ network: () => json({ file_count: 4, missing_count: 1, total_bytes: 5 * 1024 * 1024 }) });
-        d.sandbox.openSheetSave({ kind: 'recording-zip', url: '/api/recordings/download-zip?date=d', infoUrl: '/api/recordings/download-zip/info?date=d', title: 'D' });
+    test('mobile recording ZIP: the source total is approximate, not the received ZIP length', async () => {
+        const log = { reads: 0, cancelled: 0 };
+        const d = makeDialog({ network: (url) => url.endsWith('/info') ? json({ file_count: 4, missing_count: 1, total_bytes: 500 }) : streamResponse([bytes(622)], null, log) });
+        d.sandbox.openSheetSave({ kind: 'recording-zip', url: '/z', infoUrl: '/z/info', title: 'D' });
         await flush();
-        expect(d.calls.map((c) => c.url)).toEqual(['/api/recordings/download-zip/info?date=d']);
-        expect(d.el('sheetSaveTitle').textContent).toBe('録音のZIPを保存');
-        expect(d.el('sheetSaveCount').textContent).toBe('4 件の録音・ZIP 約 5.0 MB');
-        expect(d.el('sheetSaveStatus').textContent).toContain('約 5.0 MB');
         expect(d.el('sheetSaveStatus').textContent).toContain('取得できない録音 1 件');
+        await d.el('sheetSaveShare').listeners.click();
+        expect(d.shared).toEqual([[{ name: 'D.zip', size: 622, type: 'application/zip' }]]);
+        expect(d.clicks).toEqual([]);
+    });
+
+    test('a ZIP over the limit stops reading and offers Safari guidance, without a popup', async () => {
+        const log = { reads: 0, cancelled: 0 };
+        const d = makeDialog({ network: (url) => url.endsWith('/info') ? json({ file_count: 1, total_bytes: 500 }) : streamResponse([bytes(1024), bytes(1), bytes(10)], null, log) });
+        d.sandbox.openSheetSave({ kind: 'recording-zip', url: '/z', infoUrl: '/z/info', title: 'D' });
+        await flush();
+        expect(log.reads).toBe(2);
+        expect(log.cancelled).toBe(1);
+        expect(d.sandbox.portalSheetSave.current().file).toBeNull();
+        expect(d.el('sheetSaveBrowserGuide').hidden).toBe(false);
+        expect(d.el('sheetSavePortalUrl').value).toBe('https://test.example/');
         expect(d.clicks).toEqual([]);
         d.el('sheetSaveOpen').listeners.click();
-        expect(d.clicks).toEqual(['/api/recordings/download-zip?date=d']);
+        expect(d.downloads).toEqual([{ href: '/z', download: '', target: undefined }]);
+    });
+
+    test('refused ZIP sharing uses Safari guidance and never opens a blank tab', async () => {
+        const d = makeDialog({ navigatorExtra: { share: async () => { throw new Error('NotAllowedError'); } },
+            network: (url) => url.endsWith('/info') ? json({ file_count: 1, total_bytes: 100 }) : streamResponse([bytes(100)], null, { reads: 0, cancelled: 0 }) });
+        d.sandbox.openSheetSave({ kind: 'recording-zip', url: '/z', infoUrl: '/z/info', title: 'D' });
+        await flush();
+        await d.el('sheetSaveShare').listeners.click();
+        await flush();
+        expect(d.el('sheetSaveBrowserGuide').hidden).toBe(false);
+        expect(d.el('sheetSaveShare').hidden).toBe(true);
+        expect(d.clicks).toEqual([]);
+        expect(d.sandbox.portalSheetSave.current().file).toBeNull();
+    });
+
+    test('Safari instructions copy only the public portal URL, never a download ticket', async () => {
+        const copied = [];
+        const d = makeDialog({ canShare: false, navigatorExtra: { clipboard: { writeText: async (text) => copied.push(text) } }, network: (url) => url.includes('/tickets') ? ticket(600) : json(readyJob(4096)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C' });
+        await flush();
+        await d.el('sheetSaveCopyUrl').listeners.click();
+        expect(copied).toEqual(['https://test.example/']);
+        expect(d.el('sheetSaveCopyStatus').textContent).toContain('Safari');
+        expect(d.calls).toHaveLength(2); // no ZIP body is fetched
+    });
+
+    test('compressed transfer length is not compared to the decoded ZIP size', async () => {
+        const log = { reads: 0, cancelled: 0 };
+        const response = streamResponse([bytes(512)], 100, log);
+        response.headers.get = (key) => ({ 'content-type': 'application/zip', 'content-length': '100', 'content-encoding': 'gzip' }[key.toLowerCase()] || null);
+        const d = makeDialog({ network: (url) => url.endsWith('/download') ? response : json(readyJob(512)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C' });
+        await flush();
+        expect(d.el('sheetSaveShare').hidden).toBe(false);
+        expect(d.sandbox.portalSheetSave.current().file.size).toBe(512);
+    });
+
+    test('shared ZIP preserves the server filename with piece and partial markers', async () => {
+        const response = streamResponse([bytes(512)], null, { reads: 0, cancelled: 0 });
+        response.headers.get = (key) => key === 'content-disposition' ? "attachment; filename*=UTF-8''Concert_Piece_Part_partial.zip" : null;
+        const d = makeDialog({ network: (url) => url.endsWith('/download') ? response : json(readyJob(512)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C' });
+        await flush();
+        expect(d.sandbox.portalSheetSave.current().file.name).toBe('Concert_Piece_Part_partial.zip');
+    });
+
+    test('cancelling receipt keeps a completed server ZIP and never shares it later', async () => {
+        const log = { reads: 0, cancelled: 0, hang: true };
+        const d = makeDialog({ network: (url) => url.endsWith('/download') ? streamResponse([], null, log) : json(readyJob(512)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C' });
+        await flush();
+        d.el('sheetSaveCancel').listeners.click();
+        await flush();
+        expect(log.cancelled).toBeGreaterThan(0);
+        expect(d.calls.some((c) => c.url.endsWith('/cancel'))).toBe(false);
+        expect(d.sandbox.portalSheetSave.current()).toBeNull();
+        expect(d.shared).toEqual([]);
+    });
+
+    test('account switch while receiving a ZIP cannot expose a ready share button', async () => {
+        const log = { reads: 0, cancelled: 0, hang: true };
+        const d = makeDialog({ network: (url) => url.endsWith('/download') ? streamResponse([], null, log) : json(readyJob(512)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C' });
+        await flush();
+        d.appState.currentUserMemberId = 8;
+        log.pending.resolve({ done: true });
+        await flush();
+        expect(d.el('sheetSaveShare').hidden).toBe(true);
+        expect(d.sandbox.portalSheetSave.current().file).toBeNull();
+        expect(d.shared).toEqual([]);
+    });
+
+    test('unavailable clipboard falls back to manual URL selection', async () => {
+        const d = makeDialog({ canShare: false, network: (url) => url.includes('/tickets') ? ticket(600) : json(readyJob(4096)) });
+        d.sandbox.openSheetSave({ kind: 'zip', performanceId: 1, title: 'C' });
+        await flush();
+        let selected = false;
+        d.el('sheetSavePortalUrl').select = () => { selected = true; };
+        await d.el('sheetSaveCopyUrl').listeners.click();
+        expect(selected).toBe(true);
+        expect(d.el('sheetSaveCopyStatus').textContent).toContain('長押し');
     });
 
     test('a recording ZIP without recordings says so', async () => {

@@ -10,13 +10,12 @@
 //   current screen (the list, its filters and an open PDF stay as they are):
 //   1. prepare: the file is fetched (single file) or the ZIP is built on the
 //      server in steps (progress, 件数, cancel);
-//   2. single file: when ready, the user presses 「保存先を選ぶ」; the OS
+//   2. within the in-memory limit: when ready, the user presses 「保存先を選ぶ」; the OS
 //      share/save sheet opens from that tap (sharing needs the user's gesture,
 //      so it also works after a long preparation);
-//   3. a ZIP, or a file that cannot be shared or is above the in-memory
-//      limit: the size is shown first, then the file is opened through a
-//      short-lived URL in a separate browser context (on an iPhone
-//      home-screen app the in-app browser), never in place of the portal.
+//   3. ZIP sharing unavailable, refused or over the limit: explain how to
+//      open the portal directly in Safari. An in-app browser cannot be
+//      assumed to save an attachment opened with target=_blank.
 // The end of the share sheet is not a confirmation that the file was saved;
 // the dialog says so.
 (function (root) {
@@ -124,6 +123,13 @@
             '<div class="progress-bar" style="width:0%"></div></div>' +
             '<p class="mb-2" id="sheetSaveStatus" role="status" aria-live="polite"></p>' +
             '<ul class="small mb-2" id="sheetSaveMissing" hidden></ul>' +
+            '<div id="sheetSaveBrowserGuide" hidden class="alert alert-info small sheet-save-actions">' +
+            '<p>iPhone・iPadでは、Safariアプリでこのポータルを直接開き、同じ一括DLを選んでください。ホーム画面アプリやアプリ内ブラウザーでは保存できない場合があります。</p>' +
+            '<p>Safariで直接開いている場合は、下の「ダウンロード」を押してください。</p>' +
+            '<label for="sheetSavePortalUrl">Safariで開くポータルのURL</label>' +
+            '<input id="sheetSavePortalUrl" class="form-control mb-2" type="text" readonly>' +
+            '<button id="sheetSaveCopyUrl" class="btn btn-sm btn-outline-primary" type="button">URLをコピー</button>' +
+            '<p id="sheetSaveCopyStatus" class="mb-0" role="status"></p></div>' +
             '<div class="d-flex flex-wrap gap-2 sheet-save-actions">' +
             '<button class="btn btn-primary" type="button" id="sheetSaveShare" hidden>保存先を選ぶ</button>' +
             '<button class="btn btn-primary" type="button" id="sheetSaveOpen" hidden>別の画面で開いて保存</button>' +
@@ -143,6 +149,7 @@
         document.getElementById('sheetSaveClose').addEventListener('click', closeDialog);
         document.getElementById('sheetSaveShare').addEventListener('click', shareNow);
         document.getElementById('sheetSaveOpen').addEventListener('click', openTicket);
+        document.getElementById('sheetSaveCopyUrl').addEventListener('click', copyPortalUrl);
         document.getElementById('sheetSaveRetry').addEventListener('click', function () { if (dialog) start(dialog.target, dialog.opener); });
         document.getElementById('sheetSavePartial').addEventListener('click', partialZip);
         return el;
@@ -150,6 +157,7 @@
 
     function ui(patch) {
         var get = function (id) { return document.getElementById(id); };
+        if ('browserGuide' in patch) get('sheetSaveBrowserGuide').hidden = !patch.browserGuide;
         if ('status' in patch) get('sheetSaveStatus').textContent = patch.status;
         if ('progress' in patch) {
             var bar = get('sheetSaveProgress');
@@ -175,7 +183,9 @@
 
     function focusFirst() {
         var el = document.getElementById('sheetSaveDialog');
-        var button = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return !b.hidden; });
+        var button = Array.prototype.find.call(el.querySelectorAll('button'), function (b) {
+            return !b.hidden && !(b.closest && b.closest('[hidden]'));
+        });
         if (button) button.focus();
     }
 
@@ -218,7 +228,8 @@
         }
         // On a PC the file goes to the browser's downloads (no other screen).
         document.getElementById('sheetSaveOpen').textContent = desktop() ? 'ダウンロード' : '別の画面で開いて保存';
-        ui({ status: '準備しています...', progress: 0, share: false, open: false, partial: false, retry: false, cancel: true, close: false, missing: [] });
+        ui({ status: '準備しています...', progress: 0, share: false, open: false, partial: false, retry: false, cancel: true, close: false, missing: [], browserGuide: false });
+        document.getElementById('sheetSaveCopyStatus').textContent = '';
         focusFirst();
         var d = dialog;
         var run = target.kind === 'zip' ? prepareZip(d, extra)
@@ -264,7 +275,9 @@
                 throw api().SheetApiError(r.status === 404 || r.status === 410 ? 'ファイルが見つかりません。一覧を更新してください。'
                     : api().detailMessage(err, 'ファイルを取得できませんでした（' + r.status + '）'), { kind: 'http', status: r.status });
             }
-            var length = Number(r.headers.get('content-length')) || total || 0;
+            // Fetch exposes decoded bytes; a compressed wire Content-Length
+            // cannot validate their length. `total` must be exact or zero.
+            var length = (r.headers.get('content-encoding') ? 0 : Number(r.headers.get('content-length'))) || total || 0;
             var received = 0;
             reader = r.response.body.getReader();
             var limit = memoryLimit(type);
@@ -287,6 +300,9 @@
                 if (current(d) && length) ui({ status: '取得しています... ' + sizeText(received) + ' / ' + sizeText(length), progress: 100 * received / length });
             }
             if (length && received !== length) throw api().SheetApiError('ファイルを最後まで受け取れませんでした。再試行してください。', { kind: 'network' });
+            // Keep the server's ZIP name (piece/part/partial markers), as a
+            // browser download does. Never treat it as a path on the device.
+            if (type === 'application/zip') name = zipFilename(r.headers, name);
             return new File(chunks, name, { type: type });
         } catch (error) {
             if (timedOut) throw api().SheetApiError('通信がタイムアウトしました', { kind: 'timeout' });
@@ -347,6 +363,16 @@
             browserDownload(d.ticket.url, '');
             ui({ status: prefix + 'ダウンロードを開始しました。ブラウザーのダウンロード一覧を確認してください。始まらない場合は「ダウンロード」を押してください。',
                 progress: 100, open: true, cancel: false, close: true });
+            focusFirst();
+            return;
+        }
+        if (zipTarget(d.target)) {
+            // There is no reliable web API to force the full Safari app.
+            // Copy only the public portal URL, never its bearer ticket.
+            document.getElementById('sheetSavePortalUrl').value = window.location.origin + '/';
+            document.getElementById('sheetSaveOpen').textContent = 'ダウンロード';
+            ui({ status: prefix + 'このZIPは共有画面で保存できません。Safariでの保存方法を確認してください。',
+                progress: 100, share: false, open: true, browserGuide: true, cancel: false, close: true });
             focusFirst();
             return;
         }
@@ -429,7 +455,7 @@
             }
             return;
         }
-        if (desktop()) {
+        if (desktop() || zipTarget(d.target)) {
             browserDownload(d.ticket.url, '');
             if (current(d)) ui({ status: 'ダウンロードを開始しました。ブラウザーのダウンロード一覧を確認してください。', open: true, close: true });
             return;
@@ -530,23 +556,21 @@
                 ? '合計が大きすぎるためZIPを作成できませんでした。曲やパートで絞り込んでください。'
                 : 'ZIPを作成できませんでした。再試行してください。', { kind: 'job', state: job.state });
         }
+        d.zipReady = true; // cancelling the receive must not cancel a completed server ZIP
         var partialNote = job.allow_partial && job.missing && job.missing.length ? '（不足している楽譜は含まれていません。ZIP内の一覧を確認してください）' : '';
-        // The size is shown before the download starts. A ZIP is never read
-        // into the page: it goes to the browser's download (PC) or to a
-        // separate screen (mobile), whatever its size.
         var bytes = Number(job.zip_bytes || 0);
         if (bytes) {
             document.getElementById('sheetSaveCount').textContent = job.file_count + ' 件の楽譜・ZIP ' + sizeText(bytes);
         }
         var lead = 'ZIPの準備ができました' + (bytes ? '（' + sizeText(bytes) + '）' : '') + partialNote + '。';
-        await prepareTicket(d, { kind: 'zip', id: job.job_id }, null, lead);
+        var name = (job.title || t.title || '楽譜') + (partialNote ? '_一部' : '') + '.zip';
+        await prepareZipSave(d, '/api/sheets/zip-jobs/' + encodeURIComponent(job.job_id) + '/download',
+            bytes, bytes, name, { kind: 'zip', id: job.job_id }, lead);
         if (partialNote && current(d)) ui({ missing: job.missing });
     }
 
-    // Recording ZIP: built by the server while it is downloaded (stored, not
-    // compressed), so its size is about the sum of the recordings. The size
-    // is asked first and shown; then the download starts (PC) or the user
-    // opens it in a separate screen (mobile). It is never read into the page.
+    // A recording ZIP's source total excludes ZIP headers, so it is only
+    // an estimate. Enforce the memory ceiling on the actual received bytes.
     async function prepareRecordingZip(d) {
         var t = d.target;
         var r = await api().call(t.infoUrl, { signal: d.controller.signal });
@@ -561,7 +585,62 @@
         document.getElementById('sheetSaveCount').textContent = info.file_count + ' 件の録音・ZIP 約 ' + sizeText(bytes);
         var lead = '録音のZIPは約 ' + sizeText(bytes) + ' です' +
             (missing ? '（取得できない録音 ' + missing + ' 件は含まれません）' : '') + '。';
-        await prepareTicket(d, null, t.url, lead);
+        await prepareZipSave(d, t.url, bytes, 0, (t.title || '録音') + '.zip', null, lead);
+    }
+
+    function zipTarget(target) {
+        return target.kind === 'zip' || target.kind === 'recording-zip';
+    }
+
+    function zipFilename(headers, fallback) {
+        var disposition = headers.get('content-disposition') || '';
+        var encoded = /filename\*\s*=\s*UTF-8''([^;\s]+)/i.exec(disposition);
+        var plain = /filename\s*=\s*"([^"\r\n]+)"/i.exec(disposition);
+        var name = fallback;
+        if (encoded) {
+            try { name = decodeURIComponent(encoded[1]); } catch (_) { /* use the safe fallback */ }
+        } else if (plain) name = plain[1];
+        return String(name).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
+    }
+
+    async function copyPortalUrl() {
+        var d = dialog;
+        if (!d || !current(d)) return;
+        var input = document.getElementById('sheetSavePortalUrl');
+        try {
+            await window.navigator.clipboard.writeText(input.value);
+            if (current(d)) document.getElementById('sheetSaveCopyStatus').textContent = 'URLをコピーしました。Safariのアドレス欄に貼り付けて開いてください。';
+        } catch (_) {
+            if (!current(d)) return;
+            input.focus();
+            input.select();
+            document.getElementById('sheetSaveCopyStatus').textContent = 'URLを長押ししてコピーし、Safariで開いてください。';
+        }
+    }
+
+    async function prepareZipSave(d, url, estimate, exactSize, name, ticketTarget, lead) {
+        var type = 'application/zip';
+        // Only mobile needs a buffered File. A tap after preparation invokes
+        // share(); neither the ZIP fetch nor sharing navigates the portal.
+        if (!desktop() && estimate <= memoryLimit(type) && canShareType(type, 'check.zip')) {
+            try {
+                var file = await readBlob(d, url, exactSize, type, name.replace(/[\\/:*?"<>|]/g, '_'));
+                if (!current(d)) return;
+                var shareable = false;
+                try { shareable = window.navigator.canShare({ files: [file] }); } catch (_) { /* fall back to Safari guidance */ }
+                if (shareable) {
+                    d.file = file;
+                    ui({ status: lead + '「保存先を選ぶ」を押して、共有画面の「ファイルに保存」から保存してください。',
+                        progress: 100, share: true, open: false, browserGuide: false, cancel: false, close: true });
+                    focusFirst();
+                    return;
+                }
+            } catch (error) {
+                if (!error || error.kind !== 'too-large') throw error;
+            }
+        }
+        if (!current(d)) return;
+        await prepareTicket(d, ticketTarget, ticketTarget ? null : url, lead);
     }
 
     function partialZip() {
@@ -576,7 +655,7 @@
         var d = dialog;
         if (!d) return;
         var busy = !document.getElementById('sheetSaveCancel').hidden;
-        if (busy && d.jobId && d.target.kind === 'zip') {
+        if (busy && d.jobId && d.target.kind === 'zip' && !d.zipReady) {
             // Stop building on the server too; finished sheets stay as they are.
             api().call('/api/sheets/zip-jobs/' + encodeURIComponent(d.jobId) + '/cancel', { method: 'POST', json: {} }).catch(function () {});
             rememberJob(d.target, null);
