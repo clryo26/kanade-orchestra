@@ -56,6 +56,35 @@ describe('improvement suggestion UI contract', () => {
     expect(systemBlock).toContain('escapeText(item.registered_by)');
   });
 
+  it('splits the system list into pending (未対応・修正中) and completed sections', () => {
+    const systemStart = uiSource.indexOf('function renderSystemList()');
+    const systemEnd = uiSource.indexOf('async function loadSuggestions()', systemStart);
+    const systemBlock = uiSource.slice(systemStart, systemEnd);
+    expect(systemBlock).toContain('systemImprovementSuggestionPendingList');
+    expect(systemBlock).toContain('systemImprovementSuggestionCompletedList');
+    expect(systemBlock).toContain('未対応（未対応・修正中）');
+    expect(systemBlock).toContain('未対応の改善案はありません。');
+    expect(systemBlock).toContain('対応済みの改善案はありません。');
+    expect(systemBlock).toContain('.sort(compareByRespondedAtDesc)');
+  });
+
+  it('orders completed items by responded_at desc with undated items last', () => {
+    const start = uiSource.indexOf('function compareByRespondedAtDesc(a, b)');
+    const end = uiSource.indexOf('function renderMemberLists()', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const compare = new Function(`${uiSource.slice(start, end)}; return compareByRespondedAtDesc;`)();
+    const sorted = [
+      { id: 1, responded_at: '2026-10-01', created_at: '2026-09-01T00:00:00' },
+      { id: 2, responded_at: null, created_at: '2026-10-10T00:00:00' },
+      { id: 3, responded_at: '2026-10-15', created_at: '2026-08-01T00:00:00' },
+      { id: 4, responded_at: '2026-10-01', created_at: '2026-09-05T00:00:00' },
+      { id: 5, responded_at: '', created_at: '2026-10-20T00:00:00' },
+    ].sort(compare);
+    expect(sorted.map((item) => item.id)).toEqual([3, 1, 4, 2, 5]);
+    expect(compare(sorted[1], sorted[2])).toBe(0);
+    expect(compare(sorted[3], sorted[4])).toBe(0);
+  });
+
   it('provides system laboratory PDF editor controls without Create behavior', () => {
     expect(uiSource).toContain('data-tab="system-laboratory"');
     expect(uiSource).toContain('id="system-laboratoryTab"');
