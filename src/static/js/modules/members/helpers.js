@@ -212,23 +212,35 @@ async function loadMemberDetail(memberId) {
 }
 
 async function ensureMemberIntroDataLoaded() {
-    const members = Array.isArray(appState.members) ? appState.members : [];
-    const pending = members
-        .map((member) => memberDetailId(member.id))
-        .filter(Boolean)
-        .filter((id) => !memberDetailLoaded(id) && !memberDetailLoading(id))
-        .map((id) => loadMemberDetail(id));
-
-    if (!pending.length) {
+    const identity = memberIntroContext();
+    if (appState.memberIntroIdentity !== identity) clearMemberIntroCache();
+    appState.memberIntroIdentity = identity;
+    if (appState.memberIntroLoadPromise) return appState.memberIntroLoadPromise;
+    const generation = appState.memberIntroGeneration || 0;
+    const pending = (async () => {
+        const records = await request('/api/member-introductions', {
+            _forceRevalidate: true, _allowCacheFallback: false
+        });
+        if (identity !== memberIntroContext() || generation !== appState.memberIntroGeneration) return false;
+        // Public introductions never mark private/admin details as loaded.
+        appState.memberIntroRecords = Array.isArray(records) ? records : [];
         return true;
+    })();
+    appState.memberIntroLoadPromise = pending;
+    try { return await pending; } finally {
+        if (appState.memberIntroLoadPromise === pending) appState.memberIntroLoadPromise = null;
     }
+}
 
-    const settled = await Promise.allSettled(pending);
-    const failed = settled.filter((item) => item.status === 'rejected').length;
-    if (failed && typeof showAlert === 'function') {
-        showAlert('団員紹介の読み込みに失敗しました。もう一度お試しください。', 'warning');
-    }
-    return failed === 0;
+function memberIntroContext() {
+    return `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${appState.currentUserMemberId || ''}:${appState.portalAuthGeneration || ''}`;
+}
+
+function clearMemberIntroCache() {
+    appState.memberIntroGeneration = (appState.memberIntroGeneration || 0) + 1;
+    appState.memberIntroRecords = [];
+    appState.memberIntroLoadPromise = null;
+    appState.memberIntroIdentity = '';
 }
 
 function sortedMembersByPartAndKana(members) {

@@ -128,6 +128,25 @@ class MemberSummary(BaseModel):
     system_access_until: str = ""
 
 
+class MemberIntroduction(BaseModel):
+    id: int
+    name: str = ""
+    last_name: str = ""
+    first_name: str = ""
+    maiden_name: str = ""
+    last_name_kana: str = ""
+    first_name_kana: str = ""
+    part: str = ""
+    photo_url: str = ""
+    is_founder: bool = False
+    joined_at: str = ""
+    introducer: str = ""
+    role: str = ""
+    instrument_history: str = ""
+    past_orchestras: str = ""
+    comment: str = ""
+
+
 class MemberProfileUpdate(BaseModel):
     photo_url: str = ""
     joined_at: str = ""

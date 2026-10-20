@@ -81,6 +81,59 @@ def _query(sql: str, params=()):
         return cursor.fetchall() if cursor.description else []
 
 
+def test_member_photo_migration_and_public_projection_are_tenant_and_field_limited(pg):
+    import base64
+    import io
+    from PIL import Image
+    from scripts import normalize_member_photos as migration
+    from src.backend.repositories.member_introduction_repository import list_introductions
+
+    stream = io.BytesIO()
+    Image.new("RGB", (1600, 1200), "blue").save(stream, "JPEG")
+    inline = "data:image/jpeg;base64," + base64.b64encode(stream.getvalue()).decode()
+    _query("UPDATE members SET photo_url=%s,comment='public',password='private' WHERE id=1", (inline,))
+    before = _query("SELECT name,permission,password,created_at FROM members WHERE id=1")
+    public = list_introductions()
+    assert [r["id"] for r in public] == [1]
+    assert public[0]["photo_url"] == "/api/members/1/photo"
+    assert "password" not in public[0]
+    plan = migration.build_plan()
+    assert [r["id"] for r in plan["entries"]] == [1]
+    _query("UPDATE members SET comment='concurrent text' WHERE id=1")
+    report = asyncio.run(migration.apply_plan(plan, "pg-member-normalization"))
+    assert report["results"][0]["state"] == "converted"
+    assert _query("SELECT name,permission,password,created_at FROM members WHERE id=1") == before
+    assert _query("SELECT comment FROM members WHERE id=1")[0][0] == "concurrent text"
+    assert _query("SELECT photo_url FROM members WHERE id=2")[0][0] == ""
+    [(url,)] = _query("SELECT photo_url FROM members WHERE id=1")
+    assert url.endswith("ext=webp")
+    assert migration.build_plan()["entries"][0]["state"] == "normalized"
+
+
+def test_member_photo_migration_rolls_back_when_photo_changes_during_conversion(pg, monkeypatch):
+    import base64
+    import io
+    from PIL import Image
+    from scripts import normalize_member_photos as migration
+    from src.backend.services import member_photo_service as portraits
+
+    stream = io.BytesIO()
+    Image.new("RGB", (100, 80), "blue").save(stream, "PNG")
+    _query("UPDATE members SET photo_url=%s WHERE id=1", ("data:image/png;base64," + base64.b64encode(stream.getvalue()).decode(),))
+    plan = migration.build_plan()
+    normalize = portraits.normalize
+
+    def racing(file):
+        _query("UPDATE members SET photo_url='/new-user-photo',comment='keep' WHERE id=1")
+        return normalize(file)
+
+    monkeypatch.setattr(portraits, "normalize", racing)
+    report = asyncio.run(migration.apply_plan(plan, "pg-member-race"))
+    assert report["results"][0]["status"] == 409
+    assert _query("SELECT photo_url,comment FROM members WHERE id=1") == [("/new-user-photo", "keep")]
+    assert _query("SELECT COUNT(*) FROM portal_file_assets WHERE state='active'")[0][0] == 0
+
+
 def test_business_row_asset_and_result_commit_together(pg):
     key = str(uuid.uuid4())
     response = _create(key)

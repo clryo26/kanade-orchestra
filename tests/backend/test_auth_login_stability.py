@@ -8,6 +8,10 @@ from src.backend.services import auth_service
 def _setup_db_only_auth_env(backend_env, monkeypatch, db_store):
     monkeypatch.setattr(backend_env, "db_data_enabled", lambda: True)
     monkeypatch.setattr(backend_env, "db_load_json_data", lambda name: [dict(item) for item in db_store.get(name, [])])
+    monkeypatch.setattr(backend_env, "db_load_auth_device", lambda device_id: next(
+        (dict(item) for item in sorted(db_store.get("auth_devices", []), key=lambda item: item.get("id", 0)) if item.get("device_id") == device_id), None))
+    monkeypatch.setattr(backend_env, "db_load_member", lambda member_id: next(
+        (dict(item) for item in db_store.get("members", []) if item.get("id") == member_id), None))
     monkeypatch.setattr(backend_env, "db_replace_collection", lambda name, data: db_store.__setitem__(name, [dict(item) for item in data]))
     monkeypatch.setattr(backend_env, "db_delete_auth_device", lambda device_id: db_store.__setitem__(
         "auth_devices",
@@ -444,7 +448,7 @@ def test_device_auth_record_reads_auth_devices_from_db_when_cache_is_stale(backe
     ]
     backend_env._memory_cache.set("auth_devices", [])
     monkeypatch.setattr(auth_service, "db_data_enabled", lambda: True)
-    monkeypatch.setattr(auth_service, "db_load_json_data", lambda name: [dict(item) for item in db_devices])
+    monkeypatch.setattr(auth_service, "db_load_auth_device", lambda device_id: next((dict(item) for item in db_devices if item.get("device_id") == device_id), None))
 
     device = auth_service.device_auth_record("device-db-live")
 

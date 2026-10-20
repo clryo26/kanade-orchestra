@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from ..core.auth_dependencies import get_admin_device_auth, get_device_auth
 from ..models.schemas import Member, MemberSummary
 from ..services import member_service
+from ..services import member_introduction_service
 from ..services.extra_collection_helpers import read_json_body
 
 router = APIRouter()
@@ -72,6 +73,11 @@ async def get_members() -> list[dict[str, Any]]:
     return member_service.list_members()
 
 
+@router.get("/api/member-introductions")
+def get_member_introductions(request: Request, _device: dict[str, Any] = Depends(get_device_auth)) -> Response:
+    return member_introduction_service.response(request)
+
+
 @router.get("/api/members/{member_id}", response_model=None)
 async def get_member(
     member_id: int,
@@ -119,7 +125,7 @@ async def update_own_member_profile(
 
 
 @router.get("/api/members/{member_id}/photo")
-async def get_member_photo(member_id: int, asset: str = "") -> Response:
+def get_member_photo(member_id: int, asset: str = "") -> Response:
     # Only a DB-confirmed asset (or legacy inline data in the row) is served.
     return member_service.member_photo_response(member_id, asset or None)
 

@@ -233,6 +233,8 @@ from .services.json_collection_service import load_local_json_data as _load_loca
 from .services.meta_service import cloud_run_revision as cloud_run_revision
 from .services.row_storage_service import bind_row_storage as _bind_row_storage
 from .repositories.db_json_repository import load_json_data as db_load_json_data
+from .repositories.db_json_repository import load_auth_device_by_device_id as db_load_auth_device  # noqa: F401
+from .repositories.db_json_repository import load_member_by_id as db_load_member  # noqa: F401
 from .repositories.db_json_repository import replace_collection as db_replace_collection
 from .repositories.db_json_repository import upsert_auth_device as db_upsert_auth_device  # noqa: F401
 from .repositories.db_json_repository import delete_auth_device as db_delete_auth_device  # noqa: F401

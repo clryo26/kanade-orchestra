@@ -60,6 +60,7 @@ async function showOwnProfileEditForm(memberId) {
         showAlert('編集できるプロフィールが見つかりません', 'warning');
         return;
     }
+    clearMemberIntroCache();
     await loadMemberDetail(memberId);
     const detail = memberDetailById(memberId) || member;
     const joinedAtMonth = joinedAtMonthInputValue(detail.joined_at);
@@ -148,7 +149,8 @@ async function saveOwnProfile(memberId) {
     }
     renderMembers();
     renderPaymentAdmin();
-    renderMemberIntros();
+    clearMemberIntroCache();
+    await showMemberIntroView();
     showAlert('プロフィールを保存しました', 'success');
 }
 

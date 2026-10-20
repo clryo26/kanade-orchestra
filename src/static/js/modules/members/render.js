@@ -39,13 +39,13 @@ function renderMembers() {
 function renderMemberIntros() {
     const container = $('memberIntroInfo');
     if (!container) return;
-    const introMembers = appState.members.filter((member) => member.permission !== 'エキストラ');
+    const introMembers = appState.memberIntroRecords || [];
     if (!introMembers.length) {
         container.innerHTML = '<p class="text-muted mb-0">団員情報はまだありません</p>';
         return;
     }
     const grouped = groupBy(
-        sortedMembersByPartAndKana(introMembers).map((member) => publicMemberDetailById(member.id) || member),
+        sortedMembersByPartAndKana(introMembers),
         'part',
     );
     const entries = Object.entries(grouped);
@@ -60,7 +60,7 @@ function renderMemberIntros() {
             <h5>${escapeHtml(part || '未設定')}</h5>
             <div class="row g-3">${members.map((member) => `
                 <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body member-intro-card-body">
-                    ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo" loading="lazy">` : ''}
+                    ${member.photo_url ? `<img src="${escapeHtml(member.photo_url)}" alt="${escapeHtml(memberDisplayName(member))}" class="member-photo member-intro-photo" loading="lazy" decoding="async">` : ''}
                     <div class="member-intro-text mt-2">
                         <h6 class="mb-1">${escapeHtml(memberDisplayName(member))}${member.is_founder ? '<span class="member-founder-badge ms-2">創設メンバー</span>' : ''}</h6>
                         ${memberKanaName(member) ? `<div class="small text-muted">${escapeHtml(memberKanaName(member))}</div>` : ''}
@@ -76,6 +76,9 @@ function renderMemberIntros() {
                 </div></div></div>`).join('')}</div>
         </section>`;
     }).join('');
+    container.querySelectorAll('.member-intro-photo').forEach((image) => {
+        image.addEventListener('error', () => { image.hidden = true; }, { once: true });
+    });
     container.querySelectorAll('.member-profile-edit-btn').forEach((button) => {
         button.addEventListener('click', () => void showOwnProfileEditForm(button.dataset.memberId || ''));
     });
@@ -85,8 +88,17 @@ async function showMemberIntroView() {
     const container = $('memberIntroInfo');
     if (!container) return;
     container.innerHTML = '<p class="text-muted mb-0">読み込み中です...</p>';
-    await ensureMemberIntroDataLoaded();
-    renderMemberIntros();
+    const pending = ensureMemberIntroDataLoaded();
+    // Loading initializes the generation synchronously, before its first await.
+    // Ignore failures from a load invalidated by editing or opening a new view.
+    const generation = appState.memberIntroGeneration;
+    try {
+        if (await pending) renderMemberIntros();
+    } catch (_error) {
+        if (generation !== appState.memberIntroGeneration || appState.memberIntroIdentity !== memberIntroContext()) return;
+        container.innerHTML = '<p class="text-muted">団員紹介を読み込めませんでした。</p><button type="button" class="btn btn-outline-primary member-intro-retry">再試行</button>';
+        container.querySelector('.member-intro-retry')?.addEventListener('click', () => void showMemberIntroView());
+    }
 }
 
 function renderMemberViews() {

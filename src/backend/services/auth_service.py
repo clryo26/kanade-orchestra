@@ -10,7 +10,8 @@ from ..services.image_asset_service import ensure_public_image_url
 from ..services.security_service import hash_password, is_hashed_password, is_password_placeholder, verify_password
 from .storage_service import load_json_data
 from ..db.database import db_data_enabled
-from ..repositories.db_json_repository import load_json_data as db_load_json_data
+from ..repositories.db_json_repository import load_auth_device_by_device_id as db_load_auth_device
+from ..repositories.db_json_repository import load_member_by_id as db_load_member
 from ..utils.serialization import model_dump
 
 
@@ -132,13 +133,18 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
         # Auth devices are session-critical. In DB mode, bypass the per-process
         # collection cache so Cloud Run instance switching cannot read stale
         # authentication state and force a relogin.
-        devices = db_load_json_data("auth_devices") if db_data_enabled() else load_json_data("auth_devices")
+        db_mode = db_data_enabled()
+        if db_mode:
+            device = db_load_auth_device(device_id)
+        else:
+            devices = load_json_data("auth_devices")
     except Exception:
         fallback = fallback_auth_device(device_id)
         if fallback:
             return fallback
         raise
-    device = next((item for item in devices if item.get("device_id") == device_id), None)
+    if not db_mode:
+        device = next((item for item in devices if item.get("device_id") == device_id), None)
     if not device:
         fallback = fallback_auth_device(device_id)
         if fallback:
@@ -149,8 +155,11 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
         # Auth devices are sessions. Resolve a linked member's current
         # authorization state so a changed permission cannot remain cached.
         # Hidden system-admin credentials intentionally have no member_id.
-        members = db_load_json_data("members") if db_data_enabled() else load_json_data("members")
-        member = next((value for value in members if value.get("id") == member_id), None)
+        if db_data_enabled():
+            member = db_load_member(member_id)
+        else:
+            members = load_json_data("members")
+            member = next((value for value in members if value.get("id") == member_id), None)
         if member:
             if member_access_expired(member):
                 raise HTTPException(status_code=403, detail="Member access expired")

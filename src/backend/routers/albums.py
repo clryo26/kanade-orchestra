@@ -85,8 +85,15 @@ async def upload_album_photo(
 
 
 @router.get("/api/albums/{album_id}/photos/{photo_id}")
-async def get_album_photo(album_id: int, photo_id: int) -> Response:
+def get_album_photo(album_id: int, photo_id: int) -> Response:
     return album_service.get_album_photo_response(album_id, photo_id)
+
+
+@router.get("/api/albums/{album_id}/photos/{photo_id}/thumbnail")
+def get_album_thumbnail(album_id: int, photo_id: int) -> Response:
+    # Storage I/O and image decoding run in FastAPI's worker pool, leaving the
+    # event loop available for navigation/API calls while a gallery loads.
+    return album_service.get_album_photo_response(album_id, photo_id, thumbnail=True)
 
 
 @router.delete("/api/extra/albums/{album_id}/photos/{photo_id}")

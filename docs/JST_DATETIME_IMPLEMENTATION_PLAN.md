@@ -933,3 +933,23 @@ Windowsで `subprocess.run(["gcloud", ...])` がFileNotFoundErrorになること
 - 専用メンテナンスrevisionは `MAINTENANCE_MODE=true` も明示する。通常Deploy Testは今回のメンテナンスと競合するため、実行中の外部writerがないことを確認し、当該TESTデプロイworkflowを停止してから切り替える。解除・検証後に元のworkflow状態へ戻す。自動反映ガードを弱めない。
 - 非公開候補は通常入口とTEST用メンテナンスガードを併用し、healthだけで時計差を検証する。公開用revisionは同じimage digest・通常入口・ガード無効を明示し、解除ゲートで確認する。公開後のhealthはhealthyかつmaintenance無効を要求し、不一致ならmaintenanceへ戻す。
 - 関連の移行・専用メンテナンス試験27件が合格。画像復元・削除・参照消去は行っていない。
+
+### 13.9 TEST反映の実施結果（2026-10-19）
+
+以下は2026-10-19のTEST反映作業時点の記録であり、現在の稼働状態を示すものではない。利用者の「TEST反映を続行してよい」「続行」の指示により、13.8節の手順でTESTへ反映した。このTEST反映作業では、本番・本番DB・本番GCSには接続も変更もしていない。TEST接続設定はTEST旧revisionからメモリ内だけで読み込み、表示・保存していない。
+
+| 手順 | 結果 |
+|---|---|
+| メンテナンス開始 | 同日14:58に実施済み（旧revision 00175、メンテナンスrevision 00176、互換記録あり） |
+| verify | 合格。他の実行中DBトランザクション0、新方式のファイル操作・アセット0。Deploy Test・Sync Prod to Testは無効、実行中writerなし（2026-08の滞留run記録のみ） |
+| 022 | 既に適用済みで、現行ファイルとchecksum一致（再実行はskip） |
+| 採番追従 | `concert_record_videos` のsequenceを last_value 1→4（最大ID）。後退なし |
+| 参照移行 | TEST実データで再照合し、未移行参照は承認済みの会員画像3件のみ（DB値不変・実体なし）。report `completed`、applied 0、accepted_missing 3。画像・参照の作成・削除なし |
+| イメージ | `d006cd4` を `git archive` からビルドしpush。Cloud Runの解決digest `sha256:54e16507…` |
+| 非公開候補 | revision 00229（通常入口・TESTメンテナンスガード有効・tag付き・トラフィック0）でhealthy、他APIは503。Q07: healthの `+09:00` 時刻とDB時計の差 0.007〜0.065秒（3回） |
+| 公開 | revision 00178（同一digest・通常入口・メンテナンス無効）。tag除去後、解除ゲート（入口・digest・DB名・022・アクティブTX 0・移行report・TEST限定例外）合格で100%切替 |
+| 公開後確認 | 100% 00178、health `healthy`・`maintenance: disabled`。主要一覧APIは200で瞬間を `…ffffff+09:00`、`events.deadline` を `YYYY-MM-DD` で返却 |
+
+反映作業終了時点の申し送り: Deploy Testは無効のままとした。当時のmainは本変更を含んでおらず、再有効化後にmainへ別の変更が入るとTESTが旧コードへ戻るため、PR #141のマージとDeploy Test再有効化の順序を確認する必要があった。この時点では実機（iPhone/Safari）確認、TEST上の操作試験（T17/T18）、本番反映は未実施だった。
+
+2026-10-20の文書整理時にローカルGit履歴で、PR #141は2026-10-19 18:47:46（JST）に `93baca3` でマージ済みであり、現在の作業ブランチとローカルの `origin/main` がこのコミットを含むことを確認した。上記のマージ待ちは反映作業終了時点の記録として扱う。Deploy Test・Sync Prod to Testの現在の有効状態、現在のTEST稼働revision、後続の実機確認・操作試験・本番反映の実施状況は、この文書整理では再確認していない。

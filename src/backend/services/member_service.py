@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from ..models.schemas import Member
 from ..repositories.member_repository import MemberRepository
 from . import portal_file_asset_service as file_assets
+from . import member_photo_service
 from ..utils.datetime_utils import require_input_dates
 from ..utils.concurrency import ensure_expected_updated_at
 from .auth_service import (
@@ -74,8 +75,16 @@ async def _photo_file(source: Any) -> Any:
     if source is None:
         return None
     if isinstance(source, str):
+        if len(source) > member_photo_service.MAX_INPUT_BYTES * 4 // 3 + 256:
+            raise HTTPException(413, detail="写真は20MiB以下のファイルを選択してください")
         return file_assets.read_data_image(source)
-    return await file_assets.read_image_upload(source)
+    # Bound the read before copying/decoding a high-resolution upload. Other
+    # image kinds retain their existing read/validation paths.
+    content = await source.read(member_photo_service.MAX_INPUT_BYTES + 1)
+    if len(content) > member_photo_service.MAX_INPUT_BYTES:
+        raise HTTPException(413, detail="写真は20MiB以下のファイルを選択してください")
+    media_type = (source.content_type or "application/octet-stream").lower()
+    return file_assets.FileInput(content, media_type, file_assets.IMAGE_EXTENSIONS.get(media_type, ".png"), source.filename or "photo")
 
 
 def _response_body(saved: dict[str, Any]) -> dict[str, Any]:
@@ -132,6 +141,7 @@ async def create_member(
             # must still distinguish different contents of the same operation.
             fingerprint=member_payload,
             validate=lambda tx: None, apply=apply, view_scope="admin",
+            prepare_file=member_photo_service.normalize,
         ),
         device or {},
         idempotency_key,
@@ -193,6 +203,7 @@ async def _update_with_photo(
             kind=PHOTO_KIND, method="PUT", target_id=member_id, action=action, file=file,
             fingerprint=member_payload,
             validate=validate, apply=apply, view_scope=view_scope,
+            prepare_file=member_photo_service.normalize,
         ),
         device,
         idempotency_key,

@@ -91,6 +91,18 @@ async function installPortalApiMocks(page, options = {}) {
       return fulfillJson(route, bootstrapData);
     }
 
+    if (path === '/api/member-introductions' && method === 'GET') {
+      // Match the public projection without filling private member details.
+      const fields = ['id', 'name', 'last_name', 'first_name', 'maiden_name',
+        'last_name_kana', 'first_name_kana', 'part', 'photo_url', 'is_founder',
+        'joined_at', 'introducer', 'role', 'instrument_history', 'past_orchestras', 'comment'];
+      return fulfillJson(route, (bootstrapData.members || [])
+        .filter((member) => member.permission !== 'エキストラ')
+        .map((member) => Object.fromEntries(fields
+          .filter((field) => Object.hasOwn(member, field))
+          .map((field) => [field, member[field]]))));
+    }
+
     // The attendance overview lazily reloads this collection after navigation.
     // Keep that response consistent with the bootstrap fixture used by its E2E.
     if (path === '/api/extra/absences' && method === 'GET') {
