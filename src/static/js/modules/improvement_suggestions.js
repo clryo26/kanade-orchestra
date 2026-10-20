@@ -159,9 +159,30 @@
             extra + '</div>';
     }
 
+    // Member and system lists share this split so 修正中 always stays on the pending side.
+    function isPendingStatus(item) {
+        return item.status === '未対応' || item.status === '修正中';
+    }
+
+    function isCompletedStatus(item) {
+        return item.status === '対応済';
+    }
+
+    // Equal response dates retain API order through stable sort; undated items go last.
+    function compareByRespondedAtDesc(a, b) {
+        var aDate = String(a.responded_at || '');
+        var bDate = String(b.responded_at || '');
+        if (aDate !== bDate) {
+            if (!aDate) return 1;
+            if (!bDate) return -1;
+            return aDate < bDate ? 1 : -1;
+        }
+        return 0;
+    }
+
     function renderMemberLists() {
-        var pending = items.filter(function (item) { return item.status === '未対応' || item.status === '修正中'; });
-        var completed = items.filter(function (item) { return item.status === '対応済'; });
+        var pending = items.filter(isPendingStatus);
+        var completed = items.filter(isCompletedStatus);
         $('improvementSuggestionPendingList').innerHTML = pending.length ? pending.map(function (item) { return memberCard(item, false); }).join('') : '<p class="text-muted mb-0">未対応の改善案はありません。</p>';
         $('improvementSuggestionCompletedList').innerHTML = completed.length ? completed.map(function (item) { return memberCard(item, true); }).join('') : '<p class="text-muted mb-0">対応済みの改善案はありません。</p>';
     }
@@ -169,17 +190,28 @@
     function renderSystemList() {
         var target = $('systemImprovementSuggestionList');
         if (!target) return;
-        if (!items.length) {
-            target.innerHTML = '<p class="text-muted mb-0">改善案はありません。</p>';
-            return;
-        }
-        target.innerHTML = '<div class="table-responsive"><table class="table table-sm table-hover align-middle"><thead><tr><th>登録日</th><th>登録者</th><th>改善案</th><th>ステータス</th><th>修正内容</th><th>対応日</th></tr></thead><tbody>' +
-            items.map(function (item) {
-                return '<tr class="improvement-suggestion-row" data-id="' + item.id + '" role="button"><td>' + escapeText(formatDateTime(item.created_at)) + '</td><td>' + escapeText(item.registered_by) + '</td><td>' + escapeText(item.suggestion) + '</td><td>' + escapeText(item.status) + '</td><td>' + escapeText(item.resolution || '') + '</td><td>' + escapeText(item.responded_at || '') + '</td></tr>';
-            }).join('') + '</tbody></table></div>';
+        // Unlike the member list, unknown statuses stay pending so administrators can see every item.
+        var pending = items.filter(function (item) { return !isCompletedStatus(item); });
+        var completed = items.filter(isCompletedStatus).sort(compareByRespondedAtDesc);
+        target.innerHTML = '<div class="d-flex flex-column gap-4">' +
+            systemSection('systemImprovementSuggestionPendingList', '未対応（未対応・修正中）', pending, '未対応の改善案はありません。') +
+            systemSection('systemImprovementSuggestionCompletedList', '対応済み', completed, '対応済みの改善案はありません。') +
+            '</div>';
         target.querySelectorAll('.improvement-suggestion-row').forEach(function (row) {
             row.addEventListener('click', function () { selectAdminSuggestion(Number(row.dataset.id)); });
         });
+    }
+
+    function systemSection(id, title, sectionItems, emptyText) {
+        var body = sectionItems.length
+            ? '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0"><thead><tr><th>登録日</th><th>登録者</th><th>改善案</th><th>ステータス</th><th>修正内容</th><th>対応日</th></tr></thead><tbody>' +
+                sectionItems.map(function (item) {
+                    return '<tr class="improvement-suggestion-row" data-id="' + item.id + '" role="button"><td>' + escapeText(formatDateTime(item.created_at)) + '</td><td>' + escapeText(item.registered_by) + '</td><td>' + escapeText(item.suggestion) + '</td><td>' + escapeText(item.status) + '</td><td>' + escapeText(item.resolution || '') + '</td><td>' + escapeText(item.responded_at || '') + '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+            : '<p class="text-muted mb-0">' + emptyText + '</p>';
+        return '<section id="' + id + '">' +
+            '<h3 class="h6 mb-2">' + title + ' <span class="badge text-bg-secondary">' + sectionItems.length + '件</span></h3>' +
+            body + '</section>';
     }
 
     async function loadSuggestions() {
