@@ -30,11 +30,15 @@ function renderAlbumView() {
                     const photoUrl = (photo.id && album.id)
                         ? `/api/albums/${encodeURIComponent(String(album.id || ''))}/photos/${encodeURIComponent(String(photo.id || ''))}`
                         : String(photo.url || '#');
+                    // Only the album API has a thumbnail route. Legacy URLs
+                    // remain selectable without fetching their originals here.
+                    const thumbnailUrl = /^\/api\/albums\/[1-9]\d*\/photos\/[1-9]\d*$/.test(photoUrl)
+                        ? `${photoUrl}/thumbnail` : '';
                     const canDeletePhoto = isAdmin || String(photo.uploaded_by_member_id || '') === String(currentUserId || '');
                     const deleteBtn = canDeletePhoto ? `<button class="btn btn-sm btn-outline-danger album-delete-photo-btn mt-1" type="button" data-album-id="${escapeHtml(String(album.id || ''))}" data-photo-id="${escapeHtml(String(photo.id || ''))}">削除</button>` : '';
                     return `<div class="col-6 col-md-4 col-lg-3 position-relative">
                         <button class="album-photo-open-btn" type="button" data-album-photo-url="${escapeHtml(photoUrl)}" data-album-photo-title="${escapeHtml(photo.filename || '写真')}">
-                            <img src="${escapeHtml(photoUrl)}" class="album-photo" alt="${escapeHtml(photo.filename || '写真')}" loading="lazy">
+                            ${thumbnailUrl ? `<img src="${escapeHtml(thumbnailUrl)}" class="album-photo" alt="${escapeHtml(photo.filename || '写真')}" loading="lazy" decoding="async">` : '<span class="album-photo d-flex align-items-center justify-content-center text-muted">選択して写真を表示</span>'}
                         </button>
                         <div class="small mt-1 text-muted">${escapeHtml(photo.filename || '写真')}</div>
                         <div class="small text-muted">
@@ -169,6 +173,7 @@ function closeAlbumPhotoViewer() {
     const viewer = $('albumPhotoViewer');
     if (!viewer) return;
     viewer.hidden = true;
+    $('albumPhotoViewerImage')?.removeAttribute('src');
     document.body.classList.remove('album-photo-viewer-open');
 }
 

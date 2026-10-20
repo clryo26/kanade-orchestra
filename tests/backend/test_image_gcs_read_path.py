@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from fastapi import HTTPException
 from google.api_core.exceptions import NotFound
 
@@ -16,7 +17,7 @@ class _Blob:
     def exists(self) -> bool:
         raise AssertionError("a read path must not perform a separate exists() request")
 
-    def download_as_bytes(self) -> bytes:
+    def download_as_bytes(self, **_kwargs) -> bytes:
         self.download_calls += 1
         if self._missing:
             raise NotFound("missing")
@@ -65,8 +66,8 @@ def test_album_photo_reads_gcs_content_without_exists_round_trip(monkeypatch) ->
     monkeypatch.setattr(album_service, "get_storage_bucket", lambda: _Bucket(blob))
     monkeypatch.setattr(
         album_service,
-        "load_json_data",
-        lambda _name: [{"id": 1, "photos": [{"id": 2, "filename": "photo.png", "object_name": "albums/1/2.png"}]}],
+        "_store",
+        lambda: SimpleNamespace(get=lambda _name, _id: {"id": 1, "photos": [{"id": 2, "filename": "photo.png", "object_name": "albums/1/2.png"}]}),
     )
 
     response = album_service.get_album_photo_response(1, 2)
@@ -80,8 +81,8 @@ def test_album_photo_maps_gcs_not_found_to_404(monkeypatch) -> None:
     monkeypatch.setattr(album_service, "get_storage_bucket", lambda: _Bucket(_Blob(missing=True)))
     monkeypatch.setattr(
         album_service,
-        "load_json_data",
-        lambda _name: [{"id": 1, "photos": [{"id": 2, "filename": "photo.png", "object_name": "albums/1/2.png"}]}],
+        "_store",
+        lambda: SimpleNamespace(get=lambda _name, _id: {"id": 1, "photos": [{"id": 2, "filename": "photo.png", "object_name": "albums/1/2.png"}]}),
     )
 
     with pytest.raises(HTTPException) as raised:

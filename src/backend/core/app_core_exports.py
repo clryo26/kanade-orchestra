@@ -30,6 +30,8 @@ APP_CORE_EXPORTS = (
     "db_json_value",
     "db_load_generic_json_collection",
     "db_load_json_data",
+    "db_load_auth_device",
+    "db_load_member",
     "db_next_id",
     "db_replace_collection",
     "db_row_to_json",

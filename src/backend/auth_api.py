@@ -26,6 +26,10 @@ class AuthPersistenceGateway(Protocol):
 
     def db_load_json_data(self, name: str) -> list[dict[str, Any]]: ...
 
+    def db_load_auth_device(self, device_id: str) -> dict[str, Any] | None: ...
+
+    def db_load_member(self, member_id: Any) -> dict[str, Any] | None: ...
+
     def db_replace_collection(self, name: str, data: list[dict[str, Any]]) -> None: ...
 
     def db_upsert_auth_device(self, device: dict[str, Any]) -> dict[str, Any]: ...
@@ -212,13 +216,19 @@ async def set_member_password(payload: MemberPasswordSetupRequest) -> dict[str, 
 @router.get("/devices/{device_id}")
 async def get_auth_device(device_id: str) -> dict[str, Any]:
     try:
-        devices = load_collection("auth_devices")
+        api = persistence_api()
+        db_mode = api.db_data_enabled()
+        if db_mode:
+            item = api.db_load_auth_device(device_id)
+        else:
+            devices = load_collection("auth_devices")
     except Exception:
         fallback = fallback_auth_device(device_id)
         if fallback:
             return {"authenticated": True, "device": fallback}
         raise
-    item = next((device for device in devices if device.get("device_id") == device_id), None)
+    if not db_mode:
+        item = next((device for device in devices if device.get("device_id") == device_id), None)
     if not item:
         fallback = fallback_auth_device(device_id)
         if fallback:
@@ -227,8 +237,11 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
 
     member_id = item.get("member_id")
     if member_id is not None:
-        members = load_collection("members")
-        member = next((value for value in members if value.get("id") == member_id), None)
+        if api.db_data_enabled():
+            member = api.db_load_member(member_id)
+        else:
+            members = load_collection("members")
+            member = next((value for value in members if value.get("id") == member_id), None)
         if member and member_access_expired(member):
             delete_auth_device_record(device_id)
             return {"authenticated": False}
@@ -255,7 +268,7 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
         if touched is None:
             # A newer login or a logout changed this device meanwhile. Never
             # write this older snapshot back; answer from the current row.
-            current = next((device for device in load_collection("auth_devices") if device.get("device_id") == device_id), None)
+            current = api.db_load_auth_device(device_id)
             if not current:
                 return {"authenticated": False}
             return {"authenticated": True, "device": current}

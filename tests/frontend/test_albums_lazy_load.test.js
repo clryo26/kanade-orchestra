@@ -101,7 +101,7 @@ describe('albums lazy loading', () => {
 
     test('loader uses the correct versioned URL', () => {
         const source = readSource('src/static/js/modules/navigation/routes.js');
-        expect(source).toContain('/static/js/modules/albums.js?v=20261019-jst1');
+        expect(source).toContain('/static/js/modules/albums.js?v=20261020-thumbnails2');
     });
 
     test('loader uses a dedicated Promise variable', () => {

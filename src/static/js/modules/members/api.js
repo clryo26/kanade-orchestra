@@ -70,6 +70,7 @@ async function saveMember() {
     renderMembers();
     renderPaymentAdmin();
     showAlert('団員情報を保存しました', 'success');
+    clearMemberIntroCache();
 }
 
 async function resetMemberPassword() {
@@ -103,6 +104,7 @@ async function deleteMember() {
     await request(`/api/members/${id}`, { method: 'DELETE', _portalFileOperation: true });
     clearMemberForm();
     clearMemberSummaryAndDetail(id);
+    clearMemberIntroCache();
     renderMembers();
     renderPaymentAdmin();
     showAlert('団員情報を削除しました', 'success');

@@ -144,6 +144,7 @@ function clearPortalAuthState() {
     appState.memberDetailRecords = {};
     appState.memberDetailLoadStates = {};
     appState.memberDetailLoadPromises = {};
+    if (typeof clearMemberIntroCache === 'function') clearMemberIntroCache();
 }
 
 function applyPortalAuthDevice(device) {
@@ -218,7 +219,8 @@ async function tryRecoverPortalSession(deviceId) {
 
 function mutationRelatedCacheKeys(url) {
     const keys = new Set(['/api/bootstrap-lite', '/api/bootstrap-core', '/api/bootstrap']);
-    if (url.startsWith('/api/members/')) {
+    if (url === '/api/members' || url.startsWith('/api/members/')) {
+        keys.add('/api/member-introductions');
         const path = url.split('?')[0];
         keys.add('/api/members');
         keys.add(path);

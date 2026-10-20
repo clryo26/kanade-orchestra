@@ -46,6 +46,11 @@ def load_json_data(
     data_dir: Path,
     logger,
 ) -> list[dict[str, Any]]:
+    if name == "albums" and not local_json_fallback_enabled():
+        # Child photos change on other Cloud Run instances as well. An
+        # indefinite process cache would hide uploads/repairs and retain deletes.
+        ensure_db_expected_is_ready()
+        return db_load_json_data(name)
     if name == "promotions" and not local_json_fallback_enabled():
         # Keep injected DB readers used by compatibility callers; bypass cache
         # entirely so another Cloud Run instance cannot serve stale image refs.

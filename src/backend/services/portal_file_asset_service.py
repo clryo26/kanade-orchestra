@@ -124,6 +124,7 @@ class FileOperation:
     validate: Callable[[Tx], None]
     apply: Callable[[Tx, "Applied"], tuple[int, dict[str, Any]]]
     view_scope: str = "owner"
+    prepare_file: Callable[[FileInput], FileInput] | None = None
 
 
 @dataclass
@@ -435,18 +436,35 @@ async def run(spec: FileOperation, device: dict[str, Any], key: Any, *, actor: s
                 body = {"detail": error.detail}
                 repo.finish(tx.cur, op, error.status_code, body)
                 return error.status_code, body
-        if spec.file is not None:
+        stored_file = spec.file
+        if stored_file is not None and spec.kind == "member_photo" and spec.prepare_file is not None:
+            # Digest/replay above always uses the ORIGINAL bytes (including
+            # pre-deploy retries). Only the stored member portrait is resized.
+            from starlette.concurrency import run_in_threadpool
+            try:
+                stored_file = await run_in_threadpool(spec.prepare_file, stored_file)
+            except HTTPException as error:
+                with transaction() as tx:
+                    repo.require_attempt(tx.cur, op)
+                    repo.finish(tx.cur, op, error.status_code, {"detail": error.detail})
+                return error.status_code, {"detail": error.detail}
+        if stored_file is not None:
             asset_id = str(uuid4())
-            object_name = _object_name(spec.kind, asset_id, spec.file.ext)
+            object_name = _object_name(spec.kind, asset_id, stored_file.ext)
+            if spec.kind == "member_photo" and spec.prepare_file is not None and stored_file.filename == "member-photo-v1.webp":
+                # Versioned namespace proves normalization; a user's original
+                # filename alone must never make a legacy image look converted.
+                prefix, leaf = object_name.rsplit("/", 1)
+                object_name = f"{prefix}/v1/{leaf}"
             with transaction() as tx:
                 repo.require_attempt(tx.cur, op)
                 repo.stage_asset(
                     tx.cur, op, kind=spec.kind, owner_id=spec.target_id, object_name=object_name, asset_id=asset_id,
-                    source="gcs" if _storage_enabled() else "local", filename=spec.file.filename,
-                    content_type=spec.file.content_type, byte_size=len(spec.file.content), sha256=spec.file.sha256,
+                    source="gcs" if _storage_enabled() else "local", filename=stored_file.filename,
+                    content_type=stored_file.content_type, byte_size=len(stored_file.content), sha256=stored_file.sha256,
                 )
-            generation = upload(object_name, spec.file)
-        applied = Applied(op=op, asset_id=asset_id, generation=generation, file=spec.file, kind=spec.kind)
+            generation = upload(object_name, stored_file)
+        applied = Applied(op=op, asset_id=asset_id, generation=generation, file=stored_file, kind=spec.kind)
         with transaction() as tx:
             repo.require_attempt(tx.cur, op)
             try:

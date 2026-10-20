@@ -6,6 +6,10 @@ DB-confirmed references only, and reclamation after commit by ``cleanup``.
 """
 from __future__ import annotations
 
+import io
+from PIL import Image
+
+
 import asyncio
 import uuid
 from dataclasses import dataclass
@@ -16,6 +20,12 @@ from fastapi import HTTPException
 from src.backend.services import member_service, performance_service
 from src.backend.services import portal_file_asset_service as file_assets
 from src.backend.repositories import portal_file_repository as file_repo
+
+def _portrait_bytes():
+    output = io.BytesIO()
+    Image.new("RGB", (32, 24), "blue").save(output, format="PNG")
+    return output.getvalue()
+
 
 ADMIN = {"member_id": 99, "member_name": "Admin", "permission": "管理者"}
 
@@ -81,7 +91,7 @@ def test_member_create_upload_failure_leaves_no_row_and_no_referenced_file(backe
     response = asyncio.run(
         member_service.create_member(
             _member_payload(),
-            photo_file=FakeUploadFile("photo.png", "image/png", b"image-bytes"),
+            photo_file=FakeUploadFile("photo.png", "image/png", _portrait_bytes()),
             device=ADMIN,
             idempotency_key=str(uuid.uuid4()),
         )
@@ -111,7 +121,7 @@ def test_member_update_db_failure_keeps_old_photo_and_reclaims_upload_after_comm
         member_service.update_member(
             1,
             _member_payload(),
-            photo_file=FakeUploadFile("photo.png", "image/png", b"image-bytes"),
+            photo_file=FakeUploadFile("photo.png", "image/png", _portrait_bytes()),
             device=ADMIN,
             idempotency_key=str(uuid.uuid4()),
         )

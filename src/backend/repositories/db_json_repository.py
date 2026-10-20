@@ -31,6 +31,7 @@ from .db_row_repository import (
     db_collection_rows_for_save,
     db_delete_collection_children,
     db_fetch_all,
+    db_row_to_json,
     db_fill_missing_ids,
     db_prepare_timestamp_columns_for_upsert,
     db_insert_rows,
@@ -126,6 +127,44 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
             )
         # Same child assembly as the row-level store (one definition).
         return attach_collection_children(conn, name, items, fetch_children=_tenant_children(conn))
+
+
+def load_auth_device_by_device_id(device_id: str) -> dict[str, Any] | None:
+    # PostgreSQL text cannot contain NUL. The former Python lookup found no
+    # match for this input, rather than raising a database parameter error.
+    if "\x00" in str(device_id):
+        return None
+    # Session reads must bypass collection/process caches so logout and account
+    # changes are visible across instances. Keep the first ID, as the previous
+    # ID-ordered collection lookup did even if duplicate device IDs exist.
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        has_org = table_has_organization_id(conn, "auth_devices")
+        with conn.cursor() as cur:
+            if has_org:
+                cur.execute("SELECT * FROM auth_devices WHERE organization_id = %s AND device_id = %s ORDER BY id LIMIT 1",
+                            (get_current_tenant_id(), device_id))
+            else:
+                cur.execute("SELECT * FROM auth_devices WHERE device_id = %s ORDER BY id LIMIT 1", (device_id,))
+            row = cur.fetchone()
+            return db_row_to_json(dict(zip((d[0] for d in cur.description), row)), "auth_devices") if row is not None else None
+
+
+def load_member_by_id(member_id: Any) -> dict[str, Any] | None:
+    # Preserve the former no-match result for identifiers PostgreSQL cannot
+    # represent, before adapting them as SQL parameters.
+    if "\x00" in str(member_id):
+        return None
+    # Members are the current authorization source of truth. Read only the
+    # linked row without a process cache or a row-store write transaction.
+    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+        has_org = table_has_organization_id(conn, "members")
+        with conn.cursor() as cur:
+            if has_org:
+                cur.execute("SELECT * FROM members WHERE organization_id = %s AND id = %s", (get_current_tenant_id(), member_id))
+            else:
+                cur.execute("SELECT * FROM members WHERE id = %s", (member_id,))
+            row = cur.fetchone()
+            return db_row_to_json(dict(zip((d[0] for d in cur.description), row)), "members") if row is not None else None
 
 
 def _tenant_children(conn: Any) -> Any:

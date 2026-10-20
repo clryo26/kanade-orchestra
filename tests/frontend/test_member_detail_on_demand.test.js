@@ -227,85 +227,73 @@ describe('member detail on-demand', () => {
         expect(sandbox.portalRuntimeContext.getById('memberListItems').appendChild).toHaveBeenCalled();
     });
 
-    test('member intro loads details once and reuses the loaded cache', async () => {
+    test('intro batches all members, revalidates and never fills private detail cache', async () => {
         const request = vi.fn(async (url) => {
-            const match = String(url).match(/^\/api\/members\/(\d+)$/);
-            if (match) {
-                return detailMember(Number(match[1]));
-            }
+            if (url === '/api/member-introductions') return [detailMember(1), detailMember(2)];
+            if (url === '/api/members/1') return detailMember(1);
             throw new Error(`unexpected request: ${url}`);
         });
         const { sandbox, appState, elements } = buildMemberSandbox(request);
-        appState.members = [
-            { id: 1, name: 'Member 1', last_name: 'Last1', first_name: 'First1', part: 'Vn', photo_url: '/api/members/1/photo', password_set: true, permission: '一般', joined_at: '2026-01', system_access_until: '' },
-            { id: 2, name: 'Member 2', last_name: 'Last2', first_name: 'First2', part: 'Va', photo_url: '/api/members/2/photo', password_set: true, permission: '一般', joined_at: '2026-02', system_access_until: '' },
-        ];
-
+        appState.members = Array.from({ length: 59 }, (_, i) => ({ id: i + 1, name: `Member ${i + 1}` }));
         await sandbox.showMemberIntroView();
-        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/members/1', '/api/members/2']);
+        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/member-introductions']);
+        expect(appState.memberDetailRecords).toEqual({});
         expect(appState.members[0]).not.toHaveProperty('comment');
-        expect(appState.members[1]).not.toHaveProperty('introducer');
-        expect(appState.memberDetailRecords[1]).toHaveProperty('comment', 'Comment 1');
-        expect(appState.memberDetailRecords[2]).toHaveProperty('introducer', 'Intro 2');
-        expect(sandbox.memberDetailById(1)).toHaveProperty('comment', 'Comment 1');
         expect(elements.get('memberIntroInfo').innerHTML).toContain('Comment 1');
-
         await sandbox.showMemberIntroView();
-        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/members/1', '/api/members/2']);
+        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/member-introductions', '/api/member-introductions']);
+        await sandbox.loadMemberDetail(1);
+        expect(request.mock.calls.at(-1)[0]).toBe('/api/members/1');
+        expect(appState.memberDetailRecords[1]).toHaveProperty('comment', 'Comment 1');
     });
 
-    test('member intro excludes extra-permission members', async () => {
-        const request = vi.fn(async (url) => {
-            const match = String(url).match(/^\/api\/members\/(\d+)$/);
-            if (match) {
-                const id = Number(match[1]);
-                return detailMember(id, {
-                    permission: id === 2 ? 'エキストラ' : '一般',
-                    comment: id === 2 ? 'Extra comment' : 'General comment',
-                });
-            }
-            throw new Error(`unexpected request: ${url}`);
-        });
+    test('intro uses the server-filtered records instead of the shared member list', async () => {
+        const request = vi.fn(async () => [detailMember(1, { comment: 'General comment' })]);
         const { sandbox, appState, elements } = buildMemberSandbox(request);
-        appState.members = [
-            { id: 1, name: 'General Member', last_name: 'General', first_name: 'Member', part: 'Vn', photo_url: '/api/members/1/photo', password_set: true, permission: '一般', joined_at: '2026-01', system_access_until: '' },
-            { id: 2, name: 'Extra Member', last_name: 'Extra', first_name: 'Member', part: 'Va', photo_url: '/api/members/2/photo', password_set: true, permission: 'エキストラ', joined_at: '2026-02', system_access_until: '2026-12-31' },
-        ];
-
+        appState.members = [{ id: 1, permission: '一般' }, { id: 2, name: 'Extra Member', permission: 'エキストラ' }];
         await sandbox.showMemberIntroView();
-
-        expect(elements.get('memberIntroInfo').innerHTML).toContain('Last1First1');
         expect(elements.get('memberIntroInfo').innerHTML).toContain('General comment');
-        expect(elements.get('memberIntroInfo').innerHTML).not.toContain('Last2First2');
-        expect(elements.get('memberIntroInfo').innerHTML).not.toContain('Extra comment');
+        expect(elements.get('memberIntroInfo').innerHTML).not.toContain('Extra Member');
     });
 
-    test('member intro concurrent openings do not duplicate in-flight member detail requests', async () => {
-        let resolveDetail;
-        const detailPromise = new Promise((resolve) => {
-            resolveDetail = resolve;
-        });
-        const request = vi.fn(async (url) => {
-            const match = String(url).match(/^\/api\/members\/(\d+)$/);
-            if (match) {
-                return detailPromise;
-            }
-            throw new Error(`unexpected request: ${url}`);
-        });
+    test('concurrent intro openings join one request and logout discards its result', async () => {
+        let resolveIntro;
+        const request = vi.fn(() => new Promise((resolve) => { resolveIntro = resolve; }));
         const { sandbox, appState } = buildMemberSandbox(request);
-        appState.members = [
-            { id: 1, name: 'Member 1', last_name: 'Last1', first_name: 'First1', part: 'Vn', photo_url: '/api/members/1/photo', password_set: true, permission: '一般', joined_at: '2026-01', system_access_until: '' },
-        ];
-
         const first = sandbox.showMemberIntroView();
-        await Promise.resolve();
         const second = sandbox.showMemberIntroView();
-        await Promise.resolve();
-
         expect(request).toHaveBeenCalledTimes(1);
-
-        resolveDetail(detailMember(1));
+        sandbox.clearPortalAuthState();
+        resolveIntro([detailMember(1)]);
         await Promise.all([first, second]);
+        expect(appState.memberIntroRecords).toEqual([]);
+        expect(appState.memberDetailRecords).toEqual({});
+    });
+
+    test('intro failure provides retry instead of a partial or stale member list', async () => {
+        const { sandbox, elements } = buildMemberSandbox(vi.fn().mockRejectedValue(new Error('offline')));
+        await sandbox.showMemberIntroView();
+        expect(elements.get('memberIntroInfo').innerHTML).toContain('再試行');
+    });
+
+    test('an older intro failure cannot overwrite a newer successful view', async () => {
+        let rejectOld;
+        const request = vi.fn()
+            .mockImplementationOnce(() => new Promise((_, reject) => { rejectOld = reject; }))
+            .mockResolvedValueOnce([detailMember(1, { comment: 'Latest introduction' })]);
+        const { sandbox, appState, elements } = buildMemberSandbox(request);
+        const oldView = sandbox.showMemberIntroView();
+        sandbox.clearMemberIntroCache();
+        await sandbox.showMemberIntroView();
+        const latestHtml = elements.get('memberIntroInfo').innerHTML;
+        expect(latestHtml).toContain('Latest introduction');
+
+        rejectOld(new Error('old request failed'));
+        await oldView;
+
+        expect(elements.get('memberIntroInfo').innerHTML).toBe(latestHtml);
+        expect(appState.memberIntroRecords[0].comment).toBe('Latest introduction');
+        expect(request).toHaveBeenCalledTimes(2);
     });
 
     test('member edit flows fetch member detail before rendering forms', async () => {

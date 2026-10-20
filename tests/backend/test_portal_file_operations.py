@@ -5,6 +5,10 @@ semantics are covered by test_portal_file_operations_postgres.py.
 """
 from __future__ import annotations
 
+import io
+from PIL import Image
+
+
 import json
 import uuid
 from datetime import timedelta
@@ -14,6 +18,12 @@ import pytest
 from src.backend.repositories import portal_file_repository as file_repo
 from src.backend.services import extra_service
 from src.backend.services import portal_file_asset_service as file_assets
+
+
+def _portrait_bytes():
+    output = io.BytesIO()
+    Image.new("RGB", (32, 24), "blue").save(output, format="PNG")
+    return output.getvalue()
 
 
 def _pdf(label: str = "x") -> bytes:
@@ -380,7 +390,7 @@ def test_common_image_update_replay_after_target_deleted(client, seed_device_fn,
 
     def upload():
         return client.put(f"{path}/{item_id}", headers=request_headers, data=payload,
-                          files={file_field: ("photo.png", b"image-content", "image/png")})
+                          files={file_field: ("photo.png", _portrait_bytes() if collection == "members" else b"image-content", "image/png")})
 
     first = upload()
     assert first.status_code == 200, first.text

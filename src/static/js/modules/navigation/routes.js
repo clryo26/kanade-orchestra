@@ -179,7 +179,7 @@ function ensureAlbumsLoaded() {
     }
     albumsLoadPromise = new Promise(function (resolve, reject) {
         var script = document.createElement('script');
-        script.src = '/static/js/modules/albums.js?v=20261019-jst1';
+        script.src = '/static/js/modules/albums.js?v=20261020-thumbnails2';
         script.async = true;
         script.addEventListener('load', function () {
             if (_albumsReady()) {
