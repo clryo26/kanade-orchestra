@@ -9,11 +9,12 @@ from fastapi import APIRouter, Depends, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
 from ..core.auth_dependencies import get_admin_device_auth
+from ..core.http_cache import PortalCacheRoute
 from ..models.schemas import Performance
 from ..services import performance_service
 from ..services.extra_collection_helpers import read_json_body
 
-router = APIRouter()
+router = APIRouter(route_class=PortalCacheRoute)
 
 
 async def _read_performance_payload(request: Request) -> tuple[dict[str, Any], UploadFile | None]:

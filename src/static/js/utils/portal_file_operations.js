@@ -41,7 +41,7 @@
             ...options, cache: 'no-store', headers: { ...options.headers, 'X-Device-Id': device },
         }, 120000);
         if (owner !== identity()) throw new Error('認証情報が変わりました。元のアカウントで操作結果を確認してください');
-        const data = await response.json();
+        const data = await response.json().catch((error) => { if (response.status < 500) throw error; return null; });
         if (owner !== identity()) throw new Error('認証情報が変わりました。元のアカウントで操作結果を確認してください');
         return { status: response.status, data };
     }
@@ -63,9 +63,9 @@
         }
         // 404 is an authoritative "not accepted" only when the endpoint
         // actually answered. Network/DB errors must never take this branch.
-        if (result.status === 404 && result.data.code === 'file_operation_unknown') return null;
+        if (result.status === 404 && result.data?.code === 'file_operation_unknown') return null;
         if (result.status === 202) return result;
-        throw new Error(result.data.detail?.message || result.data.detail || '操作結果を確認できません。再度確認してください');
+        throw new Error(result.data?.detail?.message || result.data?.detail || '操作結果を確認できません。再度確認してください');
     }
     function unresolved(result) {
         return result.status === 202 || result.status >= 500 || result.data?.detail?.code === 'file_operation_expired';
@@ -129,7 +129,7 @@
             if (result.status >= 400) {
                 // Deterministic rejection: known result, a new user action may
                 // correct it. Retain unknown outcomes on every other path.
-                const error = new Error(result.data.detail?.message || result.data.detail || '保存できませんでした');
+                const error = new Error(result.data?.detail?.message || result.data?.detail || '保存できませんでした');
                 error.terminal = true;
                 throw error;
             }

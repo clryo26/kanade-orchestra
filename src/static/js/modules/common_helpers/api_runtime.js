@@ -321,7 +321,7 @@ function freshCacheTtlMs(url) {
 
 function hasFreshCacheEntry(cacheEntry, url, forceRevalidate) {
     const ttlMs = freshCacheTtlMs(url);
-    const timestamp = Number(cacheEntry?.timestamp);
+    const timestamp = Number(cacheEntry?.validatedAt ?? cacheEntry?.timestamp);
     if (
         forceRevalidate ||
         !ttlMs ||
@@ -339,6 +339,17 @@ function isLivePromotionRequest(url) {
     const path = String(url || '').split('?')[0];
     return path === '/api/bootstrap' || path === '/api/extra/promotions'
         || path.startsWith('/api/extra/promotions/') || path.startsWith('/api/promotions/operations/');
+}
+
+function portalRequestHeaderEntries(headers) {
+    if (headers && typeof headers.entries === 'function' && !Array.isArray(headers)) return Array.from(headers.entries());
+    return Array.isArray(headers) ? headers : Object.entries(headers || {});
+}
+
+function portalNoStoreRequest(url) {
+    const path = String(url || '').split('?')[0];
+    return isLivePromotionRequest(url) || path.startsWith('/api/auth/')
+        || path === '/api/portal-file-actor' || path.startsWith('/api/portal-file-operations/');
 }
 
 async function purgePromotionCache() {
@@ -367,18 +378,23 @@ async function request(url, options = {}) {
         const { _portalFileOperation, ...fileOptions } = options;
         return window.portalFileRequest(url, fileOptions);
     }
-    const method = options.method || 'GET';
+    const method = String(options.method || 'GET').toUpperCase();
     // This object survives the separate 401 resend; authentication has its own budget.
     options = { ...options, _retryContext: { transientRetries: 0, unknown503Retries: 0 } };
     const cacheKey = url;
     const contextKey = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalResponseEpoch || 0}`;
     const startedContext = contextKey();
-    const flightKey = `${startedContext}:${cacheKey}`;
+    const flightKey = `${startedContext}:${cacheKey}:${Boolean(options._forceRevalidate)}`;
     const requireCurrentContext = () => {
         if (startedContext !== contextKey()) throw new Error('表示情報が更新されました。もう一度読み込んでください');
     };
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
-    const baseHeaders = { ...(options.headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) };
+    const headerEntries = portalRequestHeaderEntries(options.headers);
+    const explicitTenant = headerEntries.some(([key]) => ['x-organization-id', 'x-tenant-id'].includes(String(key).toLowerCase()));
+    const useResponseCache = !explicitTenant && !portalNoStoreRequest(url);
+    const baseHeaders = Object.fromEntries(headerEntries.filter(([key]) => !deviceId || String(key).toLowerCase() !== 'x-device-id'));
+    if (deviceId) baseHeaders['X-Device-Id'] = deviceId;
+    if (!useResponseCache) options = { ...options, cache: 'no-store' };
     const skipAuthRecovery = Boolean(options._skipAuthRecovery);
     const allowCacheFallback = options._allowCacheFallback !== false;
     const forceRevalidate = Boolean(options._forceRevalidate);
@@ -395,7 +411,7 @@ async function request(url, options = {}) {
         if (identity !== `${currentDevice}:${appState.currentUserMemberId}:${appState.currentUserPermission}`) {
             throw new Error('認証情報が変わりました。再読み込みしてください');
         }
-        const data = await response.json();
+        const data = await response.json().catch((error) => { if (response.status < 500) throw error; return null; });
         if (options._structuredResult) return { status: response.status, data, retryAfter: response.headers.get('Retry-After') };
         if (!response.ok) {
             throw new Error(data?.detail?.message || data?.detail || '宣伝の読み込みに失敗しました');
@@ -403,9 +419,9 @@ async function request(url, options = {}) {
         return data;
     }
     if (method === 'GET') {
-        if (window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) return window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+        if (!explicitTenant && window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) return window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
         const pending = (async () => {
-            const cacheEntry = await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+            const cacheEntry = useResponseCache ? await window.portalRuntimeContext.dbCache.getEntry(cacheKey) : null;
             requireCurrentContext();
             const cached = cacheEntry?.data ?? null;
             const etag = cacheEntry?.etag ?? null;
@@ -436,14 +452,34 @@ async function request(url, options = {}) {
                 showAlert(message, 'danger');
                 throw new Error(message);
             }
+            let recoveredOnce = false;
             if (response.status === 401 && !skipAuthRecovery) {
+                recoveredOnce = true;
                 const recovered = await tryRecoverPortalSession(deviceId);
                 if (recovered) {
                     response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
                 }
             }
             requireCurrentContext();
-            if (response.status === 304 && cached) return cached;
+            if (response.status === 304 && cached != null) {
+                // Validation success advances freshness, independently of cache reads.
+                if (useResponseCache && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
+                    await window.portalRuntimeContext.dbCache.set(cacheKey, cached, response.headers.get('ETag') || etag);
+                }
+                requireCurrentContext();
+                return cached;
+            }
+            if (response.status === 304 && cached == null && options._retryContext.transientRetries < 2) {
+                // A validator without a body is unusable: one unconditional send,
+                // within this request's existing budget, never an infinite 304 loop.
+                options._retryContext.transientRetries += 1;
+                const unconditional = Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'if-none-match'));
+                response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                if (response.status === 401 && !skipAuthRecovery && !recoveredOnce && await tryRecoverPortalSession(deviceId)) {
+                    response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                }
+                requireCurrentContext();
+            }
             if (!response.ok) {
                 const contentType = response.headers.get('content-type') || '';
                 const data = contentType.includes('application/json') ? await response.json() : await response.text();
@@ -459,11 +495,13 @@ async function request(url, options = {}) {
             const data = contentType.includes('application/json') ? await response.json() : await response.text();
             const newETag = response.headers.get('ETag');
             requireCurrentContext();
-            if (newETag) await window.portalRuntimeContext.dbCache.set(cacheKey, data, newETag);
+            if (newETag && useResponseCache && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
+                await window.portalRuntimeContext.dbCache.set(cacheKey, data, newETag);
+            }
             return data;
         })();
-        window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
-        try { return await pending; } finally { window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
+        if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
+        try { return await pending; } finally { if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
     }
     let response;
     try {

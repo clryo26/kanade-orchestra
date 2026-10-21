@@ -347,6 +347,26 @@ describe('stage 2B comparison measurements (production JS, mock HTTP)', () => {
 });
 
 describe('stage 2B authentication and transport contracts', () => {
+    test('bodyless 304 recovery cannot reset an exhausted transient budget', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [502, 502, 304] },
+            dataResponse: (status) => status === 304 ? new Response(null, { status }) : jsonResponse(status, {}) });
+        const pending = h.sandbox.request('/probe').catch((error) => error);
+        await vi.runAllTimersAsync();
+        expect(await pending).toMatchObject({ name: 'Error', message: expect.any(String) });
+        expect(h.calls.filter((call) => call.kind === 'data')).toHaveLength(3);
+        h.expectConsumed({ alerts: 1 });
+    });
+
+    test('bodyless 304 and a later 401 share transient budget but allow the separate auth resend', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [304, 401, 502, 200] },
+            dataResponse: (status) => status === 304 ? new Response(null, { status }) : jsonResponse(status, []) });
+        const pending = h.sandbox.request('/probe');
+        await vi.runAllTimersAsync();
+        expect(await pending).toEqual([]);
+        expect(h.calls.filter((call) => call.kind === 'data')).toHaveLength(4);
+        expect(h.calls.filter((call) => call.kind === 'auth')).toHaveLength(1);
+        h.expectConsumed();
+    });
     test('authentication transient retries have a budget independent of the data request', async () => {
         const h = createHarness({ dataSequences: { '/probe': [503, 401, 502, 200] }, authStatuses: [502, 504, 200] });
         const pending = h.sandbox.request('/probe');

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from ..core.compat_gateway import get_memory_cache_instance
 from ..core.storage_gateway import load_json_data
+from ..core.http_cache import PortalCacheRoute
 from ..services.auth_service import (
     device_auth_record,
     personal_payment_list,
@@ -21,7 +22,7 @@ from ..repositories.db_json_repository import load_collection_etag
 from ..services.recording_asset_service import recording_payload
 from .notices import router as notices_router
 
-router = APIRouter()
+router = APIRouter(route_class=PortalCacheRoute)
 router.include_router(notices_router)
 
 

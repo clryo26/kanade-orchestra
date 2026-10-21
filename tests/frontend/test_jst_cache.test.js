@@ -52,3 +52,25 @@ test('a GET started before a mutation cannot restore the old cache', async () =>
     await expect(pending).rejects.toThrow('表示情報が更新されました');
     expect(ctx.portalRuntimeContext.dbCache.set).not.toHaveBeenCalled();
 });
+
+test('validation timestamps round-trip through IndexedDB, including older entries', async () => {
+    const ctx = sandbox();
+    const cache = ctx.portalCacheState.dbCache;
+    await cache.init();
+    const oldTime = 1000;
+    const key = `${ctx.portalCacheIdentity()}:/api/events`;
+    await new Promise((resolve, reject) => {
+        const tx = cache.db.transaction('bootstrap_cache', 'readwrite');
+        tx.objectStore('bootstrap_cache').put({ key, data: [], etag: 'old',
+            representation: ctx.PORTAL_DATETIME_REPRESENTATION, timestamp: oldTime });
+        tx.oncomplete = resolve; tx.onerror = reject;
+    });
+    expect((await cache.getEntry('/api/events')).validatedAt).toBe(oldTime);
+    await cache.set('/api/events', [], 'validated');
+    const entry = await cache.getEntry('/api/events');
+    expect(entry.data).toEqual([]);
+    expect(entry.etag).toBe('validated');
+    expect(entry.validatedAt).toBeGreaterThan(oldTime);
+    expect(entry.timestamp).toBe(entry.validatedAt);
+    cache.db.close();
+});

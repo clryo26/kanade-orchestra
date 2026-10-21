@@ -74,6 +74,7 @@ class IndexedDBCache {
                     data: entry.data,
                     etag: entry.etag ?? null,
                     timestamp: entry.timestamp ?? null,
+                    validatedAt: entry.validatedAt ?? entry.timestamp ?? null,
                 });
             };
         });
@@ -90,7 +91,8 @@ class IndexedDBCache {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readwrite');
             const store = transaction.objectStore('bootstrap_cache');
-            const request = store.put({ key, data, etag, representation: window.PORTAL_DATETIME_REPRESENTATION, timestamp: Date.now() });
+            const validatedAt = Date.now();
+            const request = store.put({ key, data, etag, representation: window.PORTAL_DATETIME_REPRESENTATION, timestamp: validatedAt, validatedAt });
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
                 if (etag) this.etags.set(key, etag);
