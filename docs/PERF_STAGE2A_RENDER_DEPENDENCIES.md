@@ -54,6 +54,8 @@
 - `payments.js:547` のrenderPaymentAdminはpreserveForm=falseが既定。preserveForm=trueで料金入力等の再構築を避ける経路が既にある。日付更新は既存のpreserveForm利用を維持する。
 - selectのinnerHTML再構築、file.valueの初期化、画像プレビュー差替え、details/scrollの再生成を検査対象にする。入力を退避・復元する新しい汎用基盤は作らず、まず不要な描画呼出しを減らす。
 
+suppressDerivedRenderのfinally保護がない問題は、既存不具合候補[#146](https://github.com/clryo26/kanade-orchestra/issues/146)として別追跡する。renderEssentialViewsとrenderInitialViewsで例外を注入する再現条件をIssueに記載したが、今回試験は実行していない。性能改善の部分再描画にこの修正を混ぜない。
+
 ## 4. 保存後キャッシュ無効化との対応
 
 api_runtime.js:220–258は全更新でbootstrap-lite/core/fullを候補にし、members・extra・sheets・recordings/drive・その他に分岐する。
@@ -65,6 +67,14 @@ api_runtime.js:220–258は全更新でbootstrap-lite/core/fullを候補にし�
 | sheet/date_adjust/practice_instructionでsheetsを追加 | 実際に影響する一覧と専用sheet syncのrefreshを確認 |
 | recording/convert/driveでrecordings・drive/filesを追加 | GCS転送と一覧表示は別。取得条件付きURLの無効化も確認 |
 | 成功した更新でportalResponseEpochを進める | 古いGETを拒否する仕組みを保持。描画世代・認証遷移とは別 |
+
+### extra一覧の無効化不足が影響する範囲
+
+`/api/extra/*`はfreshCacheTtlMsの10秒再利用対象ではなく、通常は毎回サーバーへ取得/再検証する。このため、無効化が不足しただけで、正常な200応答の最新本文を古い一覧キャッシュに置き換えるわけではない。サーバーが適切に再検証する前提では、残った古いキャッシュが表示されるのは、主に通信例外・timeout時に許可されたキャッシュ代替へ入る場合である。
+
+HTTPエラー応答の503そのものは、現行Gのキャッシュ代替を起動しない。401回復後の再送D08も初回のcatch外であり、同じ代替表示には入らない。no-storeのpromotions等は通常のGと区別する。
+
+修正の優先度と効果は、正常な200/304と通信例外を分けて評価する。更新後の再取得に成功した場合、再検証で304を受けた場合、ネットワーク例外で古い一覧へ代替した場合を対象別に試験し、「10秒間必ず古い一覧が表示される問題」と説明しない。
 
 ## 5. 部分再描画の受入条件
 

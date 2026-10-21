@@ -15,7 +15,7 @@
 | portalRefreshInProgress / portalRevisionRefreshInProgress | 必要時にPromise設定、finallyでnull | 明示更新とrevision確認の実行中集約。データ取得済みの印ではない | GET集約とは別の操作単位。消さず、責務を維持 |
 | bootstrapDataVersion | 初期0。applyBootstrapDataのたび増加 | 同じ本文を適用しても増える。サーバーの変更番号ではない | 本文の変更検出や認証世代に流用しない |
 | lastInitialRenderVersionKey / lastBackgroundRenderVersionKey | 初期空。bootstrapDataVersion＋heavy有無を記録 | 背景描画の重複を避ける。取得状態ではない | 304の時刻更新だけでバージョンを進めない変更は依存試験後に実施 |
-| suppressDerivedRender | 初期false。まとめ描画中true、終わりにfalse | 子描画からの派生描画を抑制。現状は単純な代入で、途中例外のfinally保護はない | 計測対象の既存連鎖を記録。今回の棚卸しで修正しない |
+| suppressDerivedRender | 初期false。まとめ描画中true、終わりにfalse | 子描画からの派生描画を抑制。現状は単純な代入で、途中例外のfinally保護はない | 既存不具合候補[#146](https://github.com/clryo26/kanade-orchestra/issues/146)として別追跡。性能改善の部分再描画に混ぜて修正しない |
 | portalAuthVerified / lastPortalSessionVerifiedAt | 初期false/0。applyで設定、clearで解除。復帰の認証鮮度判定 | データの取得成否とは別 | 認証副作用比較表を優先。データloadedと統合しない |
 | portalAuthGeneration / portalResponseEpoch | 認証世代はapply、応答epochは保存後無効化とclearで変更 | epoch変化は認証切替に限定されない | deviceId・認証世代・認証遷移カウンターによる設計は別資料参照。現在カウンター未実装 |
 
@@ -51,7 +51,11 @@
 
 applyBootstrapDataはこれら19フラグを一括でmarkしない。liteでpaymentsを取得しても、管理会計の全件取得済みにしてはいけない。引数なしのfullが含めるデータと、coreの空extrasも区別する。
 
-clearPortalAuthStateはこのモジュール内19フラグをリセットしていない。認証切替後に前利用者の取得済み判定を残さないことは実装前の試験項目とし、リセット不要と扱わない。現在はin-flightを表すフラグもなく、重複GETは下位のrequestで合流するが、呼出元の適用・描画までは一度になる保証がない。
+clearPortalAuthStateはこのモジュール内19フラグをリセットしていない。またauth_feature.js:252–275のlogoutPortalはページを再読込みせず、利用者情報を解除するが、19フラグと既存extrasを消していない。別利用者の同一タブログインで前利用者のデータが表示される可能性を、既存不具合候補[#145](https://github.com/clryo26/kanade-orchestra/issues/145)として別に起票した。**表示の再現は未確認**であり、権限を越えた表示が確定したという記録ではない。bootstrapで上書きされる集合、管理者向けデータ、遅い応答の扱いは再現試験で確認する。
+
+この修正は性能改善の取得状態管理と分離する。ログアウト時のデータ/フラグ破棄と再読込みのどちらを選ぶかも、独立した修正レビューで決定する。再現条件はIssueに記載し、今回の資料更新では試験・修正を行わない。
+
+現在はin-flightを表す遅延フラグもなく、重複GETは下位のrequestで合流するが、呼出元の適用・描画までは一度になる保証がない。この性能上の棚卸しと、認証切替時の不具合候補を区別する。
 
 ## 3. 機能固有の既存管理
 
@@ -70,7 +74,7 @@ clearPortalAuthStateはこのモジュール内19フラグをリセットして�
 1. 初期空配列は未取得、正常な空応答は取得済み、失敗は未取得のままを区別する。
 2. previewのみを維持した失敗で最新確認時刻が更新されないこと。loaded=trueを最新確認成功と扱わないこと。
 3. lite本人会計と管理全件会計、core空extrasとfull各集合を混同しないこと。
-4. 同時タブ表示、部分成功、前回成功後の失敗、ログアウト/別利用者、古い応答の適用を試験する。
+4. 同時タブ表示、部分成功、前回成功後の失敗、古い応答の適用を試験する。ログアウト/別利用者の既存不具合の再現・修正は#145で独立して扱い、性能変更との競合は両変更を合わせる際に回帰確認する。
 5. 楽譜のversion同期と団員紹介の都度確認を、一般の取得済み省略へ置き換えないこと。
 
 新しい状態プロパティを採用する場合は、この表の既存状態で不足する理由、設定/解除箇所、認証切替時の処理を示す。動作変更への着手にはS2-10/12/15/17と修正前計測が必要。
