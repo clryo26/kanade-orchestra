@@ -347,6 +347,106 @@ describe('stage 2B comparison measurements (production JS, mock HTTP)', () => {
 });
 
 describe('stage 2B authentication and transport contracts', () => {
+    test.each([401, 403, 404, 'unauthenticated', 'missing-device', 'authenticated'].flatMap((outcome) =>
+        ['recovery-first', 'verification-first'].map((order) => [outcome, order])))(
+        'shared auth %s preserves caller results and final state (%s)', async (outcome, order) => {
+            const rejected = typeof outcome === 'number';
+            const missing = outcome === 'missing-device';
+            const accepted = outcome === 'authenticated';
+            const h = createHarness({ dataSequences: {}, holdAuth: true,
+                authStatus: rejected ? outcome : 200,
+                authPayload: rejected ? undefined : accepted ? { authenticated: true, device: { ...DEVICE, authenticated_at: 'shared-server-generation' } }
+                    : { authenticated: missing } });
+            const calls = {
+                recovery: () => h.sandbox.tryRecoverPortalSession('baseline-device'),
+                verification: () => h.sandbox.isPortalAuthenticated({ forceVerify: true }),
+            };
+            const first = order === 'recovery-first' ? 'recovery' : 'verification';
+            const second = first === 'recovery' ? 'verification' : 'recovery';
+            const pending = { [first]: calls[first](), [second]: calls[second]() };
+            await vi.advanceTimersByTimeAsync(0);
+            h.releaseAuth();
+            expect(await pending.recovery).toBe(accepted);
+            expect((await pending.verification).status).toBe(accepted || missing ? 'authenticated' : 'unauthenticated');
+            expect(h.calls.filter((call) => call.kind === 'auth')).toHaveLength(1);
+            expect(h.sandbox.applyPortalAuthDevice).toHaveBeenCalledTimes(accepted ? 2 : missing ? 1 : 0);
+            expect(h.sandbox.clearPortalAuthState).toHaveBeenCalledTimes(accepted ? 0 : missing ? 1 : 2);
+            const finalAuthenticated = accepted || (missing && order === 'recovery-first');
+            expect(h.state.portalAuthVerified).toBe(finalAuthenticated);
+            expect(h.sandbox.localStorage.getItem('kanadePortalAuthenticated')).toBe(finalAuthenticated ? 'true' : null);
+            expect(h.state.currentUserMemberId).toBe(accepted ? DEVICE.member_id : null);
+            expect(h.state.portalAuthGeneration).toBe(accepted ? 'shared-server-generation' : '');
+            expect(h.sandbox.portalFileOperationsResume).toHaveBeenCalledTimes(accepted ? 2 : missing ? 1 : 0);
+            expect(h.state.portalAuthTransition).toBe(accepted ? 0 : missing ? 1 : 2);
+            h.expectConsumed();
+        }
+    );
+
+    test.each(['data-first', 'resume-first'])(
+        'overlapping data 401 and resume show the existing session-expiry warning (%s)', async (order) => {
+            const h = createHarness({ dataSequences: { '/probe': [401] }, holdAuth: true, authStatus: 401 });
+            h.sandbox.showPortalLogin = vi.fn();
+            const startData = () => h.sandbox.request('/probe').catch(() => 'discarded');
+            const startResume = () => h.sandbox.__baselineEntries.resume();
+            const first = order === 'data-first' ? startData() : startResume();
+            await vi.advanceTimersByTimeAsync(0);
+            const second = order === 'data-first' ? startResume() : startData();
+            await vi.advanceTimersByTimeAsync(0);
+            h.releaseAuth();
+            await Promise.all([first, second]);
+            expect(h.sandbox.showPortalLogin).toHaveBeenCalledTimes(1);
+            expect(h.sandbox.showAlert).toHaveBeenCalledWith('ログイン期限が切れました。もう一度ログインしてください。', 'warning');
+            expect(h.sandbox.showAlert).not.toHaveBeenCalledWith(expect.stringContaining('通信が不安定'), expect.anything());
+            expect(h.calls.filter((call) => call.kind === 'auth')).toHaveLength(1);
+            expect(h.sandbox.clearPortalAuthState).toHaveBeenCalledTimes(2);
+            h.expectConsumed({ alerts: 1 });
+        }
+    );
+
+    test('a new login after a logout storage event still rejects the old verification without clearing it', async () => {
+        const h = createHarness({ dataSequences: {}, holdAuth: true, authStatus: 401 });
+        const pending = h.sandbox.isPortalAuthenticated({ forceVerify: true });
+        await vi.advanceTimersByTimeAsync(0);
+        h.sandbox.localStorage.removeItem('kanadePortalAuthenticated');
+        const listener = h.sandbox.addEventListener.mock.calls.find(([name]) => name === 'storage')[1];
+        listener({ key: 'kanadePortalAuthenticated', newValue: null });
+        h.sandbox.advancePortalAuthTransition();
+        h.sandbox.applyPortalAuthDevice({ ...DEVICE, authenticated_at: 'new-login' });
+        h.releaseAuth();
+        expect((await pending).status).toBe('unavailable');
+        expect(h.state.portalAuthGeneration).toBe('new-login');
+        expect(h.state.portalAuthVerified).toBe(true);
+        expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();
+        h.expectConsumed();
+    });
+
+    test('a logout storage event is unauthenticated, while its old successful response is discarded', async () => {
+        const h = createHarness({ dataSequences: {}, holdAuth: true });
+        const pending = h.sandbox.isPortalAuthenticated({ forceVerify: true });
+        await vi.advanceTimersByTimeAsync(0);
+        h.sandbox.localStorage.removeItem('kanadePortalAuthenticated');
+        const listener = h.sandbox.addEventListener.mock.calls.find(([name]) => name === 'storage')[1];
+        listener({ key: 'kanadePortalAuthenticated', newValue: null });
+        h.releaseAuth();
+        expect((await pending).status).toBe('unauthenticated');
+        expect(h.sandbox.applyPortalAuthDevice).not.toHaveBeenCalled();
+        expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();
+        h.expectConsumed();
+    });
+
+    test.each(['2', '120', '2147484', '9'.repeat(400)])(
+        'unknown 503 Retry-After %s above 1500ms returns immediately without consuming retry budget', async (retryAfter) => {
+            const h = createHarness({ dataSequences: { '/probe': [503] }, dataResponse: () =>
+                new Response('gateway', { status: 503, headers: { 'Retry-After': retryAfter } }) });
+            const budget = { transientRetries: 0, unknown503Retries: 0 };
+            const response = await h.sandbox.fetchWithTimeout('/probe', { _retryContext: budget }, 15000);
+            expect(response.status).toBe(503);
+            expect(await response.text()).toBe('gateway');
+            expect(h.measure('probe', {}).retrySleepsMs).toEqual([]);
+            expect(budget).toEqual({ transientRetries: 0, unknown503Retries: 0 });
+            h.expectConsumed();
+        }
+    );
     test('bodyless 304 recovery cannot reset an exhausted transient budget', async () => {
         const h = createHarness({ dataSequences: { '/probe': [502, 502, 304] },
             dataResponse: (status) => status === 304 ? new Response(null, { status }) : jsonResponse(status, {}) });
@@ -403,7 +503,7 @@ describe('stage 2B authentication and transport contracts', () => {
         h.expectConsumed();
     });
 
-    test.each([['2', 2000], ['invalid', 1000], ['Thu, 22 Oct 2026 00:00:00 GMT', 1000]])(
+    test.each([['1', 1000], ['invalid', 1000], ['Thu, 22 Oct 2026 00:00:00 GMT', 1000]])(
         'unknown 503 handles Retry-After %s safely', async (retryAfter, wait) => {
             const h = createHarness({ dataSequences: { '/probe': [503, 200] }, dataResponse: (status) =>
                 new Response('gateway', { status, headers: { 'Retry-After': retryAfter } }) });

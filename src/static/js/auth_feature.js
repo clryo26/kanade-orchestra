@@ -57,10 +57,19 @@ async function isPortalAuthenticated(options = {}) {
     }
     try {
         const response = await fetchPortalSessionCheck(deviceId);
-        if (!portalAuthCheckIsCurrent(response)) throw new Error('Authentication context changed');
+        if (!portalAuthCheckIsCurrent(response)) {
+            // A logout in another tab is known locally, not a network failure.
+            // Discard the old response without clearing/applying a newer login.
+            if (localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') {
+                if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
+                return { status: 'unauthenticated', device: null, error: null };
+            }
+            throw new Error('Authentication context changed');
+        }
         // 401/403/404は明確な未認証: 認証状態をクリアする
         if (response.status === 401 || response.status === 403 || response.status === 404) {
             clearPortalAuthState();
+            notePortalAuthCheckCleared(response);
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
             return { status: 'unauthenticated', device: null, error: null };
         }
@@ -72,6 +81,7 @@ async function isPortalAuthenticated(options = {}) {
         const result = response.payload;
         if (!result || !result.authenticated) {
             clearPortalAuthState();
+            notePortalAuthCheckCleared(response);
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
             return { status: 'unauthenticated', device: null, error: null };
         }

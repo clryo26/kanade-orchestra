@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-10-22",
+  "baselineCommit": "9b1f8bf",
+  "scope": "Review fixes only. Node VM/fake timers plus synthetic API and actual WebKit DOM; no real DB/GCS/device/BFCache.",
+  "initialAddedTestsAgainstBeforeSource": {
+    "passed": 54,
+    "failed": 19,
+    "note": "Includes expected regression failures; tests were further strengthened afterwards."
+  },
+  "finalFrontend": {
+    "numTotalTests": 1272,
+    "numPassedTests": 1272,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "success": true
+  },
+  "backendTarget": {
+    "file": "tests/backend/test_perf_stage2_http_cache.py",
+    "passed": 23,
+    "fullBackendRerun": false
+  },
+  "browser": {
+    "before": {
+      "scope": "synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "data-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "通信が不安定です。しばらくしてから再試行してください。",
+          "loginVisible": false,
+          "clearCalls": 1,
+          "passed": false
+        },
+        {
+          "order": "resume-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 1,
+          "passed": true
+        },
+        {
+          "order": "other-tab-logout",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "通信が不安定です。しばらくしてから再試行してください。",
+          "loginVisible": false,
+          "clearCalls": 0,
+          "passed": false
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "93188da34e93eb034190bea774031dd8e9ed9001895a0ef17d1475d45754023b",
+        "src/static/js/auth_feature.js": "da4721eb69347e17070096b8a49a13a988109e7cfb09cf80a03f9cd3982737d6",
+        "src/static/js/modules/common_helpers/transport_retry.js": "7fd60d224a89dfcc32d645816533f42e2531e8ac4a131e9a918895676a06aaac"
+      }
+    },
+    "after": {
+      "scope": "synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "data-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "resume-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "other-tab-logout",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 0,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "f859b715eba8ae0f11eae57acdcce22428cf7dca7af7fa5251e6868208b2f70a",
+        "src/static/js/auth_feature.js": "1f9e9372e139459ef8d99e8279b8ceea42f742fe38a84bc494324ca31e626f50",
+        "src/static/js/modules/common_helpers/transport_retry.js": "9e5be60d64f2dbf8cf653174b868910c15af1f909a30c25cb36be88e5b165759"
+      }
+    }
+  },
+  "finalSha256": {
+    "src/static/js/modules/common_helpers/api_runtime.js": "f859b715eba8ae0f11eae57acdcce22428cf7dca7af7fa5251e6868208b2f70a",
+    "src/static/js/auth_feature.js": "1f9e9372e139459ef8d99e8279b8ceea42f742fe38a84bc494324ca31e626f50",
+    "src/static/js/modules/common_helpers/transport_retry.js": "9e5be60d64f2dbf8cf653174b868910c15af1f909a30c25cb36be88e5b165759",
+    "scripts/perf_stage2_auth_races.cjs": "128b53b2835db933b2a5e5f6fb20612b1480413b90d729fc92fa29afdc7f50b6",
+    "tests/frontend/test_perf_stage2_communication_baseline.test.js": "65d76b5540229048063ac6321e22012226a85505ed4d5851f29afc90802b9334",
+    "tests/frontend/test_perf_stage2_http_contract.test.js": "4b615c3b600ec50c6352e30c621aa72bdf0255fcd5fe6b401d11213e91c124ae"
+  },
+  "unmeasured": [
+    "BaseHTTPMiddleware request latency overhead",
+    "Combined HTTP cache and IndexedDB device disk use",
+    "Real DB/GCS workloads",
+    "Actual BFCache and physical iPhone"
+  ],
+  "legacyMissingDeviceFinalState": {
+    "recoveryThenVerification": "authenticated (clear then apply empty object)",
+    "verificationThenRecovery": "unauthenticated (apply empty object then clear)"
+  }
+}

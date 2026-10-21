@@ -217,6 +217,14 @@ function notePortalAuthCheckApplied(check) {
     check.context.generation = appState.portalAuthGeneration || '';
 }
 
+function notePortalAuthCheckCleared(check) {
+    // A clear caused by this shared response is legitimate for its other
+    // callers, just like an apply. External logout/login/storage transitions
+    // still invalidate it. Keep each caller's existing clear side effects.
+    check.context.transition = appState.portalAuthTransition || 0;
+    check.context.generation = appState.portalAuthGeneration || '';
+}
+
 function fetchPortalSessionCheck(deviceId) {
     const context = { deviceId, generation: appState.portalAuthGeneration || '', transition: appState.portalAuthTransition || 0 };
     const key = JSON.stringify(context);
@@ -247,12 +255,14 @@ async function tryRecoverPortalSession(deviceId) {
             // 明確な未認証(401/403/404)のみ認証状態をクリア
             if (response.status === 401 || response.status === 403 || response.status === 404) {
                 clearPortalAuthState();
+                notePortalAuthCheckCleared(response);
             }
             return false;
         }
         const payload = response.payload;
         if (!payload || !payload.authenticated || !payload.device) {
             clearPortalAuthState();
+            notePortalAuthCheckCleared(response);
             return false;
         }
         applyPortalAuthDevice(payload.device);
@@ -463,7 +473,8 @@ async function request(url, options = {}) {
             requireCurrentContext();
             if (response.status === 304 && cached != null) {
                 // Validation success advances freshness, independently of cache reads.
-                if (useResponseCache && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
+                if (useResponseCache && freshCacheTtlMs(url) > 0
+                    && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
                     await window.portalRuntimeContext.dbCache.set(cacheKey, cached, response.headers.get('ETag') || etag);
                 }
                 requireCurrentContext();

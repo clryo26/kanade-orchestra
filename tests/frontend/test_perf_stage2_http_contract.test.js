@@ -126,3 +126,27 @@ test.skipIf(BEFORE)('an account switch during the 304 timestamp write cannot ret
     h.db.set.mockImplementation(async () => { h.state.currentUserMemberId = 9; });
     await expect(h.ctx.request('/api/events')).rejects.toThrow('表示情報が更新されました');
 });
+
+test.skipIf(BEFORE).each(['/api/bootstrap-lite', '/api/bootstrap-core', '/api/members', '/api/member-introductions', '/api/extra/albums'])(
+    '304 on %s returns the cached body without rewriting it when short reuse is disabled', async (url) => {
+        const h = createHttpHarness(() => new Response(null, { status: 304 }));
+        const entry = { data: ['cached'], timestamp: Date.now() - 60000, etag: 'old' };
+        h.cache.set(url, entry);
+        expect(await h.ctx.request(url)).toEqual(['cached']);
+        expect(await h.ctx.request(url)).toEqual(['cached']);
+        expect(h.calls).toHaveLength(2);
+        expect(h.db.set).not.toHaveBeenCalled();
+        expect(h.cache.get(url)).toBe(entry);
+    }
+);
+
+test.skipIf(BEFORE).each(['/api/performances', '/api/schedules', '/api/announcements'])(
+    '304 on short-reuse list %s updates validation time once', async (url) => {
+        const h = createHttpHarness(() => new Response(null, { status: 304 }));
+        h.cache.set(url, { data: [], timestamp: Date.now() - 60000, etag: 'old' });
+        await h.ctx.request(url);
+        await h.ctx.request(url);
+        expect(h.calls).toHaveLength(1);
+        expect(h.db.set).toHaveBeenCalledTimes(1);
+    }
+);

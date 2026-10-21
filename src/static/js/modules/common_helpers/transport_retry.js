@@ -36,14 +36,15 @@
                         && response.headers?.get('Cache-Control') === 'no-store')
                         || (detail === 'メンテナンス中です。しばらくしてから再度お試しください' && retryAfter === '300')) return response;
                     if (budget.unknown503Retries >= 1) return response;
-                    budget.unknown503Retries += 1;
                     delayMs = 500 + Math.floor(Math.random() * 1001);
                     if (retryAfter && /^\d+$/.test(retryAfter.trim())) {
                         const wait = Number(retryAfter) * 1000;
-                        // Avoid the browser's overflowing timeout becoming an immediate retry.
-                        if (!Number.isFinite(wait) || wait > 2147483647) return response;
+                        // Do not hold the UI for a long gateway Retry-After.
+                        // Returning the response respects it without sending early.
+                        if (!Number.isFinite(wait) || wait > 1500) return response;
                         delayMs = Math.max(delayMs, wait);
                     }
+                    budget.unknown503Retries += 1;
                 }
             } catch (error) {
                 const externallyAborted = Boolean(requestOptions.signal && requestOptions.signal.aborted);
