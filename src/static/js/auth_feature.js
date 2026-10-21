@@ -56,11 +56,8 @@ async function isPortalAuthenticated(options = {}) {
         return { status: 'unauthenticated', device: null, error: null };
     }
     try {
-        const response = await fetchWithTimeout(
-            `/api/auth/devices/${encodeURIComponent(deviceId)}`,
-            { method: 'GET', headers: { 'X-Device-Id': deviceId } },
-            PORTAL_TIMEOUT_AUTH
-        );
+        const response = await fetchPortalSessionCheck(deviceId);
+        if (!portalAuthCheckIsCurrent(response)) throw new Error('Authentication context changed');
         // 401/403/404は明確な未認証: 認証状態をクリアする
         if (response.status === 401 || response.status === 403 || response.status === 404) {
             clearPortalAuthState();
@@ -72,13 +69,14 @@ async function isPortalAuthenticated(options = {}) {
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unavailable' });
             return { status: 'unavailable', device: null, error: new Error(`HTTP ${response.status}`) };
         }
-        const result = await response.json().catch(() => ({}));
+        const result = response.payload;
         if (!result || !result.authenticated) {
             clearPortalAuthState();
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
             return { status: 'unauthenticated', device: null, error: null };
         }
         applyPortalAuthDevice(result.device || {});
+        notePortalAuthCheckApplied(response);
         if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'authenticated' });
         return { status: 'authenticated', device: result.device || null, error: null };
     } catch (e) {
@@ -175,6 +173,7 @@ async function handlePortalLogin() {
         showAlert('名前、パート、パスワードを入力してください', 'warning');
         return;
     }
+    advancePortalAuthTransition();
     const response = await fetchWithTimeout('/api/auth/portal-login', jsonOptions('POST', {
         name,
         part,
@@ -250,6 +249,7 @@ async function handleMemberPasswordSetup() {
 }
 
 async function logoutPortal() {
+    advancePortalAuthTransition();
     // Release the microphone before awaiting the notification shutdown below.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('logout');
     if (localStorage.getItem('portalPushMemberId')) {

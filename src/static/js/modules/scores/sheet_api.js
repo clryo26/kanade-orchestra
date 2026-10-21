@@ -59,6 +59,8 @@
         var id = deviceId();
         if (id) headers['X-Device-Id'] = id;
         var init = { method: o.method || 'GET', headers: headers, cache: 'no-store', signal: o.signal };
+        // Preserve the transient budget across this helper's own 401 resend.
+        init._retryContext = { transientRetries: 0, unknown503Retries: 0 };
         if (o.json !== undefined) {
             headers['Content-Type'] = 'application/json';
             init.body = JSON.stringify(o.json);

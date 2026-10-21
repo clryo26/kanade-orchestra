@@ -62,6 +62,8 @@ async function fetchWithTimeout(url, options, timeoutMs) {
         _skipAuthRecovery: _omit1,
         _allowCacheFallback: _omit2,
         _forceRevalidate: _omit3,
+        _structuredResult: _omitStructured,
+        _retryContext: _omitRetryContext,
         signal: _omit4,
         ...fetchOptions
     } = Object(options || {});
@@ -121,6 +123,7 @@ function apiTargetLabel(url) {
 }
 
 function clearPortalAuthState() {
+    advancePortalAuthTransition();
     window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     // Authentication ended: the tuner must not keep the microphone open.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('auth-cleared');
@@ -186,17 +189,60 @@ function showTransientNetworkNotice() {
     showAlert('通信が一時的に不安定なため、保存済みデータを表示しています。', 'warning');
 }
 
+var portalAuthCheckInFlight = null;
+
+// Authentication transitions are independent of response-cache invalidation:
+// saving data must not invalidate a concurrent session confirmation.
+function advancePortalAuthTransition() {
+    appState.portalAuthTransition = (appState.portalAuthTransition || 0) + 1;
+    portalAuthCheckInFlight = null;
+}
+
+if (typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', (event) => {
+        if (event.key === null || event.key === window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY
+            || event.key === window.portalRuntimeContext.PORTAL_AUTH_KEY) advancePortalAuthTransition();
+    });
+}
+
+function portalAuthCheckIsCurrent(check) {
+    return check.context.deviceId === localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY)
+        && check.context.transition === (appState.portalAuthTransition || 0)
+        && check.context.generation === (appState.portalAuthGeneration || '');
+}
+
+function notePortalAuthCheckApplied(check) {
+    // A second caller sharing this response may apply the same valid generation.
+    // Side effects remain with each caller, rather than moving into this helper.
+    check.context.generation = appState.portalAuthGeneration || '';
+}
+
+function fetchPortalSessionCheck(deviceId) {
+    const context = { deviceId, generation: appState.portalAuthGeneration || '', transition: appState.portalAuthTransition || 0 };
+    const key = JSON.stringify(context);
+    if (portalAuthCheckInFlight && portalAuthCheckInFlight.key === key) return portalAuthCheckInFlight.promise;
+    const pending = { key, promise: null };
+    pending.promise = (async () => {
+        const response = await fetchWithTimeout(`/api/auth/devices/${encodeURIComponent(deviceId)}`,
+            { method: 'GET', headers: { 'X-Device-Id': deviceId }, cache: 'no-store',
+                _retryContext: { transientRetries: 0, unknown503Retries: 0 } }, PORTAL_TIMEOUT_AUTH);
+        const payload = response.ok ? await response.json().catch(() => ({})) : null;
+        return { status: response.status, ok: response.ok, payload, context };
+    })().finally(() => {
+        if (portalAuthCheckInFlight === pending) portalAuthCheckInFlight = null;
+    });
+    portalAuthCheckInFlight = pending;
+    return pending.promise;
+}
+
 async function tryRecoverPortalSession(deviceId) {
     if (!deviceId) {
         clearPortalAuthState();
         return false;
     }
     try {
-        const response = await fetchWithTimeout(
-            `/api/auth/devices/${encodeURIComponent(deviceId)}`,
-            { method: 'GET', headers: { 'X-Device-Id': deviceId } },
-            PORTAL_TIMEOUT_AUTH
-        );
+        const response = await fetchPortalSessionCheck(deviceId);
+        if (!portalAuthCheckIsCurrent(response)) return false;
         if (!response.ok) {
             // 明確な未認証(401/403/404)のみ認証状態をクリア
             if (response.status === 401 || response.status === 403 || response.status === 404) {
@@ -204,12 +250,13 @@ async function tryRecoverPortalSession(deviceId) {
             }
             return false;
         }
-        const payload = await response.json().catch(() => ({}));
+        const payload = response.payload;
         if (!payload || !payload.authenticated || !payload.device) {
             clearPortalAuthState();
             return false;
         }
         applyPortalAuthDevice(payload.device);
+        notePortalAuthCheckApplied(response);
         return true;
     } catch {
         // タイムアウトやネットワークエラー: 認証状態を保持して失敗扱い
@@ -321,6 +368,8 @@ async function request(url, options = {}) {
         return window.portalFileRequest(url, fileOptions);
     }
     const method = options.method || 'GET';
+    // This object survives the separate 401 resend; authentication has its own budget.
+    options = { ...options, _retryContext: { transientRetries: 0, unknown503Retries: 0 } };
     const cacheKey = url;
     const contextKey = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalResponseEpoch || 0}`;
     const startedContext = contextKey();

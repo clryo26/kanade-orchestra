@@ -3,9 +3,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 
-// Characterization measurements of the unmodified production entry points.
-// Counts below describe the old behavior, not the desired retry/single-flight
-// contract. Keep the archived baseline when changing these assertions in 2B.
+// Replay the archived before scenarios against the stage 2B implementation.
+// The archived before JSON remains immutable; assertions now describe the
+// reviewed retry/single-flight contract.
 const ROOT = path.resolve(__dirname, '../..');
 const FIXED_NOW = Date.parse('2026-10-21T03:00:00Z');
 const SOURCE_FILES = [
@@ -30,7 +30,7 @@ function jsonResponse(status, data) {
     return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function createHarness({ dataSequences, holdAuth = false }) {
+function createHarness({ dataSequences, holdAuth = false, authStatus = 200, authStatuses = [], authPayload, dataResponse }) {
     const calls = [];
     const timerSchedules = [];
     const timersByHandle = new Map();
@@ -39,6 +39,7 @@ function createHarness({ dataSequences, holdAuth = false }) {
     let activeAuth = 0;
     let peakAuth = 0;
     const queues = new Map(Object.entries(dataSequences).map(([url, statuses]) => [url, [...statuses]]));
+    const authQueue = [...authStatuses];
     const storage = new Map([
         ['kanadePortalDeviceId', 'baseline-device'],
         ['kanadePortalAuthenticated', 'true'],
@@ -46,6 +47,7 @@ function createHarness({ dataSequences, holdAuth = false }) {
     const sandbox = {
         console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
         AbortController, DOMException, Date,
+        Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
         setTimeout(callback, ms, ...args) {
             // Capture every schedule, including cancelled request deadlines.
             // Classify by the immediate production source, never by its delay:
@@ -86,6 +88,7 @@ function createHarness({ dataSequences, holdAuth = false }) {
         enterPortal: vi.fn().mockResolvedValue(undefined),
         loadEssentialData: vi.fn().mockResolvedValue(undefined),
         loadPartSettingsForLogin: vi.fn(),
+        closePortalDrawer: vi.fn(),
         portalFileOperationsResume: vi.fn().mockResolvedValue(undefined),
         portalStartup: {
             mark: vi.fn(), setMessage: vi.fn(), ready: vi.fn(), showRetry: vi.fn(),
@@ -133,7 +136,7 @@ function createHarness({ dataSequences, holdAuth = false }) {
         const isAuth = url === AUTH_URL;
         const queue = queues.get(url);
         if (!isAuth && (!queue || !queue.length)) throw new Error(`Unexpected/excess mock fetch: ${url}`);
-        const status = isAuth ? 200 : queue.shift();
+        const status = isAuth ? (authQueue.length ? authQueue.shift() : authStatus) : queue.shift();
         calls.push({ url, method: options.method || 'GET', status, atMs: Date.now() - FIXED_NOW, kind: isAuth ? 'auth' : 'data' });
         if (isAuth) {
             activeAuth += 1;
@@ -144,12 +147,13 @@ function createHarness({ dataSequences, holdAuth = false }) {
                     outstandingAuth.push(pending);
                     await pending.promise;
                 }
-                return jsonResponse(200, { authenticated: true, device: { ...DEVICE } });
+                return jsonResponse(status, authPayload === undefined ? { authenticated: true, device: { ...DEVICE } } : authPayload);
             } finally {
                 activeAuth -= 1;
             }
         }
-        return jsonResponse(status, status === 200 ? [{ id: 1, title: '架空データ' }] : { detail: `HTTP ${status}` });
+        return dataResponse ? dataResponse(status)
+            : jsonResponse(status, status === 200 ? [{ id: 1, title: '架空データ' }] : { detail: `HTTP ${status}` });
     });
     SOURCE_FILES.slice(1).forEach(load);
     for (const [key, name] of Object.entries({ start: '_runAuthAndStart', resume: 'syncPortalSessionOnResume' })) {
@@ -170,13 +174,14 @@ function createHarness({ dataSequences, holdAuth = false }) {
             authReleased = true;
             outstandingAuth.forEach((pending) => pending.resolve());
         },
-        expectConsumed() {
-            for (const [url, queue] of queues) expect(queue, `unconsumed statuses for ${url}`).toEqual([]);
+        expectConsumed({ remaining = {}, alerts = 0 } = {}) {
+            for (const [url, queue] of queues) expect(queue, `unconsumed statuses for ${url}`).toEqual(remaining[url] || []);
+            expect(authQueue).toEqual([]);
             expect(activeAuth).toBe(0);
             expect(sandbox.portalRuntimeContext.inFlightGetRequests.size).toBe(0);
             expect(vi.getTimerCount()).toBe(0);
             expect(sandbox.console.error).not.toHaveBeenCalled();
-            expect(sandbox.showAlert).not.toHaveBeenCalled();
+            expect(sandbox.showAlert).toHaveBeenCalledTimes(alerts);
         },
         measure(id, input) {
             const result = {
@@ -218,7 +223,7 @@ afterAll(() => {
         throw new Error('Baseline report must be written below repository .tmp/');
     }
     const report = {
-        schemaVersion: 2, phase: 'before', mode: 'node-vm/mock-fetch/fake-timers',
+        schemaVersion: 2, phase: 'after', mode: 'node-vm/mock-fetch/fake-timers',
         fixedNow: new Date(FIXED_NOW).toISOString(), nodeVersion: process.version, platform: process.platform,
         harnessSha256: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
         fixture: {
@@ -234,7 +239,7 @@ afterAll(() => {
             'Startup/resume entry functions are invoked directly; DOMContentLoaded/event delivery is not simulated.',
             'enterPortal/loadEssentialData and file-operation resume are stubs; their downstream traffic is excluded.',
             'No real network, DB, last_seen update, GCS, bytes, CPU or wall-clock latency measurements.',
-            'Historical characterization assertions must be reviewed when implementing stage 2B; archive this before report.',
+            'Historical before JSON is retained; these measurements replay its inputs against the stage 2B implementation.',
         ],
         scenarios: [...measurements].sort((a, b) => a.id.localeCompare(b.id)),
     };
@@ -262,7 +267,7 @@ test('measurement recorder captures non-legacy retry waits, other timers and can
     // Do not append this synthetic check to the five historical measurements.
 });
 
-describe('stage 2B before measurements (production JS, mock HTTP)', () => {
+describe('stage 2B comparison measurements (production JS, mock HTTP)', () => {
     test('B01: 503 -> 401 recovery -> 502 -> 200 uses four data sends', async () => {
         const statuses = [503, 401, 502, 200];
         const h = createHarness({ dataSequences: { '/api/performances': statuses } });
@@ -271,27 +276,27 @@ describe('stage 2B before measurements (production JS, mock HTTP)', () => {
         expect(await pending).toEqual([{ id: 1, title: '架空データ' }]);
         expect(h.calls.filter((call) => call.kind === 'data').map((call) => call.status)).toEqual(statuses);
         const result = h.measure('B01-short-retry-chain', { statuses });
-        expect(result).toMatchObject({ dataSends: 4, authSends: 1, applyCalls: 1, clearCalls: 0, authEndMarks: 0, fakeElapsedMs: 500 });
-        expect(result.retrySleepsMs).toEqual([250, 250]);
+        expect(result).toMatchObject({ dataSends: 4, authSends: 1, applyCalls: 1, clearCalls: 0, authEndMarks: 0, fakeElapsedMs: 1750 });
+        expect(result.retrySleepsMs).toEqual([1000, 750]);
         h.expectConsumed();
         measurements.push(result);
     });
 
-    test('B02: both transport budgets are spent, allowing six data sends', async () => {
+    test('B02: the transient budget survives recovery and stops at four data sends', async () => {
         const statuses = [503, 502, 401, 502, 504, 200];
         const h = createHarness({ dataSequences: { '/api/performances': statuses } });
-        const pending = h.sandbox.request('/api/performances');
+        const pending = h.sandbox.request('/api/performances').then(() => null, (error) => error);
         await vi.runAllTimersAsync();
-        expect(await pending).toEqual([{ id: 1, title: '架空データ' }]);
-        expect(h.calls.filter((call) => call.kind === 'data').map((call) => call.status)).toEqual(statuses);
+        expect((await pending).message).toContain('HTTP 502');
+        expect(h.calls.filter((call) => call.kind === 'data').map((call) => call.status)).toEqual(statuses.slice(0, 4));
         const result = h.measure('B02-six-data-send-witness', { statuses });
-        expect(result).toMatchObject({ dataSends: 6, authSends: 1, totalSends: 7, applyCalls: 1, fakeElapsedMs: 2000 });
-        expect(result.retrySleepsMs).toEqual([250, 750, 250, 750]);
-        h.expectConsumed();
+        expect(result).toMatchObject({ dataSends: 4, authSends: 1, totalSends: 5, applyCalls: 1, fakeElapsedMs: 1750 });
+        expect(result.retrySleepsMs).toEqual([1000, 750]);
+        h.expectConsumed({ remaining: { '/api/performances': [504, 200] }, alerts: 1 });
         measurements.push(result);
     });
 
-    test('B03: startup, resume and two distinct 401 requests send four concurrent auth checks', async () => {
+    test('B03: startup, resume and two distinct 401 requests share one auth send', async () => {
         const dataSequences = { '/api/performances': [401, 200], '/api/schedules': [401, 200] };
         const h = createHarness({ dataSequences, holdAuth: true });
         const pending = Promise.all([
@@ -309,7 +314,7 @@ describe('stage 2B before measurements (production JS, mock HTTP)', () => {
         h.releaseAuth();
         await pending;
         const result = h.measure('B03-overlapping-auth-entry-points', { dataSequences, resumeEntries: 2 });
-        expect(result).toMatchObject({ dataSends: 4, authSends: 4, totalSends: 8, peakConcurrentAuth: 4,
+        expect(result).toMatchObject({ dataSends: 4, authSends: 1, totalSends: 5, peakConcurrentAuth: 1,
             applyCalls: 4, clearCalls: 0, authEndMarks: 2, fileOperationResumeCalls: 4,
             enterPortalCalls: 1, essentialLoadStubCalls: 1, fakeElapsedMs: 0 });
         expect(result.retrySleepsMs).toEqual([]);
@@ -338,5 +343,186 @@ describe('stage 2B before measurements (production JS, mock HTTP)', () => {
         expect(result).toMatchObject({ dataSends: 0, authSends: 2, peakConcurrentAuth: 1, applyCalls: 2 });
         h.expectConsumed();
         measurements.push(result);
+    });
+});
+
+describe('stage 2B authentication and transport contracts', () => {
+    test('authentication transient retries have a budget independent of the data request', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [503, 401, 502, 200] }, authStatuses: [502, 504, 200] });
+        const pending = h.sandbox.request('/probe');
+        await vi.runAllTimersAsync();
+        await pending;
+        expect(h.calls.filter((call) => call.kind === 'data')).toHaveLength(4);
+        expect(h.calls.filter((call) => call.kind === 'auth')).toHaveLength(3);
+        h.expectConsumed();
+    });
+
+    test('the sheet API carries its own budget across its 401 resend', async () => {
+        const h = createHarness({ dataSequences: { '/api/sheets': [503, 502, 401, 502, 504, 200] } });
+        // Sheet accountKey includes the verified bit; normal sheet operations
+        // start authenticated, unlike the overlapping startup fixture.
+        h.state.portalAuthVerified = true;
+        const file = 'src/static/js/modules/scores/sheet_api.js';
+        vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), h.sandbox, { filename: file });
+        const pending = h.sandbox.portalSheetApi.call('/api/sheets').catch((error) => error);
+        await vi.runAllTimersAsync();
+        expect((await pending).status).toBe(502);
+        expect(h.calls.filter((call) => call.kind === 'data')).toHaveLength(4);
+        h.expectConsumed({ remaining: { '/api/sheets': [504, 200] } });
+    });
+
+    test('D08 network failures still propagate without the initial GET cache fallback', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [401, 'network', 'network', 'network'] }, dataResponse: (status) => {
+            if (status === 'network') throw new TypeError('network down');
+            return jsonResponse(status, { detail: 'unauthorized' });
+        } });
+        h.dbCache.getEntry.mockResolvedValue({ data: ['old'], timestamp: 0 });
+        const pending = h.sandbox.request('/probe').catch((error) => error);
+        await vi.runAllTimersAsync();
+        expect((await pending).message).toBe('network down');
+        h.expectConsumed();
+    });
+
+    test.each([['2', 2000], ['invalid', 1000], ['Thu, 22 Oct 2026 00:00:00 GMT', 1000]])(
+        'unknown 503 handles Retry-After %s safely', async (retryAfter, wait) => {
+            const h = createHarness({ dataSequences: { '/probe': [503, 200] }, dataResponse: (status) =>
+                new Response('gateway', { status, headers: { 'Retry-After': retryAfter } }) });
+            const pending = h.sandbox.fetchWithTimeout('/probe', {}, 15000);
+            await vi.runAllTimersAsync();
+            expect((await pending).status).toBe(200);
+            expect(h.measure('probe', {}).retrySleepsMs).toEqual([wait]);
+            h.expectConsumed();
+        }
+    );
+
+    test('aborting during retry wait clears the timer and sends no second request', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [503] } });
+        const controller = new AbortController();
+        const pending = h.sandbox.fetchWithTimeout('/probe', { signal: controller.signal }, 15000).catch((error) => error);
+        await vi.advanceTimersByTimeAsync(0);
+        controller.abort();
+        expect((await pending).name).toBe('AbortError');
+        expect(h.calls).toHaveLength(1);
+        h.expectConsumed();
+    });
+    test.each(['logout', 'same-device-login', 'other-device', 'storage-event'])(
+        'pending authentication cannot restore an old context after %s', async (transition) => {
+            const h = createHarness({ dataSequences: {}, holdAuth: true });
+            const pending = h.sandbox.tryRecoverPortalSession('baseline-device');
+            await vi.advanceTimersByTimeAsync(0);
+            if (transition === 'logout') {
+                h.sandbox.showPortalLogin = vi.fn();
+                await h.sandbox.logoutPortal();
+            } else if (transition === 'same-device-login') {
+                h.sandbox.advancePortalAuthTransition();
+                h.state.portalAuthGeneration = 'new-session';
+            } else if (transition === 'other-device') {
+                h.sandbox.localStorage.setItem('kanadePortalDeviceId', 'other-device');
+            } else {
+                const listener = h.sandbox.addEventListener.mock.calls.find(([name]) => name === 'storage')[1];
+                listener({ key: 'kanadePortalAuthenticated' });
+            }
+            h.releaseAuth();
+            expect(await pending).toBe(false);
+            expect(h.sandbox.applyPortalAuthDevice).not.toHaveBeenCalled();
+            expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();
+            h.expectConsumed();
+        }
+    );
+
+    test('a stale 401 does not clear a new login', async () => {
+        const h = createHarness({ dataSequences: {}, holdAuth: true, authStatus: 401 });
+        const pending = h.sandbox.tryRecoverPortalSession('baseline-device');
+        await vi.advanceTimersByTimeAsync(0);
+        h.sandbox.advancePortalAuthTransition();
+        h.state.portalAuthGeneration = 'new-session';
+        h.state.portalAuthVerified = true;
+        h.releaseAuth();
+        expect(await pending).toBe(false);
+        expect(h.state.portalAuthVerified).toBe(true);
+        expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();
+        h.expectConsumed();
+    });
+
+    test('saving data changes the response epoch without invalidating authentication', async () => {
+        const h = createHarness({ dataSequences: {}, holdAuth: true });
+        const pending = h.sandbox.tryRecoverPortalSession('baseline-device');
+        await vi.advanceTimersByTimeAsync(0);
+        await h.sandbox.invalidateCacheForMutation('/api/schedules/1');
+        h.releaseAuth();
+        expect(await pending).toBe(true);
+        expect(h.sandbox.applyPortalAuthDevice).toHaveBeenCalledTimes(1);
+        h.expectConsumed();
+    });
+
+    test('shared callers may apply a legitimately updated response generation', async () => {
+        const h = createHarness({ dataSequences: {}, holdAuth: true,
+            authPayload: { authenticated: true, device: { ...DEVICE, authenticated_at: 'server-new-generation' } } });
+        const pending = Promise.all([h.sandbox.isPortalAuthenticated(), h.sandbox.tryRecoverPortalSession('baseline-device')]);
+        await vi.advanceTimersByTimeAsync(0);
+        h.releaseAuth();
+        const values = await pending;
+        expect(values[0].status).toBe('authenticated');
+        expect(values[1]).toBe(true);
+        expect(h.calls).toHaveLength(1);
+        expect(h.sandbox.applyPortalAuthDevice).toHaveBeenCalledTimes(2);
+        expect(h.state.portalAuthGeneration).toBe('server-new-generation');
+        h.expectConsumed();
+    });
+
+    test('missing device still has different startup and recovery outcomes', async () => {
+        const h = createHarness({ dataSequences: {}, authPayload: { authenticated: true } });
+        expect((await h.sandbox.isPortalAuthenticated()).status).toBe('authenticated');
+        expect(await h.sandbox.tryRecoverPortalSession('baseline-device')).toBe(false);
+        expect(h.sandbox.applyPortalAuthDevice).toHaveBeenCalledTimes(1);
+        expect(h.sandbox.clearPortalAuthState).toHaveBeenCalledTimes(1);
+        h.expectConsumed();
+    });
+
+    test.each(['read_capacity_exceeded', 'save_busy', 'maintenance', 'version_clock_anomaly'])(
+        'classified 503 %s is not retried and its original JSON remains readable', async (code) => {
+            const h = createHarness({ dataSequences: { '/probe': [503] },
+                dataResponse: () => jsonResponse(503, { detail: { code, message: 'existing message' } }) });
+            const response = await h.sandbox.fetchWithTimeout('/probe', { method: 'GET' }, 15000);
+            expect((await response.json()).detail.code).toBe(code);
+            expect(h.calls).toHaveLength(1);
+            h.expectConsumed();
+        }
+    );
+
+    test.each([
+        ['Service temporarily unavailable', '60'],
+        ['メンテナンス中です。しばらくしてから再度お試しください', '300'],
+    ])('legacy maintenance %s is not retried', async (detail, retryAfter) => {
+        const h = createHarness({ dataSequences: { '/probe': [503] }, dataResponse: () => new Response(JSON.stringify({ detail }),
+            { status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': retryAfter } }) });
+        const response = await h.sandbox.fetchWithTimeout('/probe', {}, 15000);
+        expect((await response.json()).detail).toBe(detail);
+        h.expectConsumed();
+    });
+
+    test('unknown HTML 503 is retried only once and the original body remains readable', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [503, 503] },
+            dataResponse: () => new Response('<html>gateway</html>', { status: 503 }) });
+        const pending = h.sandbox.fetchWithTimeout('/probe', {}, 15000);
+        await vi.runAllTimersAsync();
+        const response = await pending;
+        expect(response.status).toBe(503);
+        expect(await response.text()).toBe('<html>gateway</html>');
+        expect(h.calls).toHaveLength(2);
+        expect(h.measure('probe', {}).retrySleepsMs).toEqual([1000]);
+        h.expectConsumed();
+    });
+
+    test('internal options are stripped without modifying caller options', async () => {
+        const h = createHarness({ dataSequences: { '/probe': [200] } });
+        const options = { _structuredResult: true, _forceRevalidate: true, _allowCacheFallback: false,
+            _skipAuthRecovery: true, _retryContext: { transientRetries: 0, unknown503Retries: 0 } };
+        const before = JSON.stringify(options);
+        await h.sandbox.fetchWithTimeout('/probe', options, 15000);
+        const sent = h.sandbox.fetch.mock.calls[0][1];
+        expect(Object.keys(sent).filter((key) => key.startsWith('_'))).toEqual([]);
+        expect(JSON.stringify(options)).toBe(before);
+        h.expectConsumed();
     });
 });

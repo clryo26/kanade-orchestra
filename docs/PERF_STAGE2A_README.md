@@ -23,6 +23,7 @@
 | [監査再利用](PERF_STAGE2A_AUDIT_REUSE.md) | 経路別の候補/再取得維持。再利用有効と判定した経路はまだない |
 | [監査CSV](PERF_STAGE2A_AUDIT_ROUTES.csv) | 75更新ルート宣言、Depends別名、直接認証呼出し。実行時確認ではない |
 | [通信・認証の修正前計測](PERF_STAGE2B_BASELINE.md) | 先行2シナリオと対照を5試験で固定。モック送信・副作用の計数であり、実ブラウザ/DB計測ではない |
+| [第2段階Bの先行実装](PERF_STAGE2B_IMPLEMENTATION.md) | 2026-10-22の再試行予算・認証確認の集約と比較結果。残りのBとC〜Eは未完了 |
 
 ## 初回レビューの対応
 

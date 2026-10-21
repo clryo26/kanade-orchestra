@@ -15,11 +15,35 @@
             return originalFetchWithTimeout(url, requestOptions, timeoutMs);
         }
 
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        const budget = requestOptions._retryContext || { transientRetries: 0, unknown503Retries: 0 };
+        for (;;) {
+            let delayMs = retryDelayMs[budget.transientRetries];
             try {
                 const response = await originalFetchWithTimeout(url, requestOptions, timeoutMs);
-                if (!retryableStatuses.has(response.status) || attempt === 2) {
+                if (!retryableStatuses.has(response.status) || budget.transientRetries >= 2) {
                     return response;
+                }
+                if (response.status === 503) {
+                    // Classification must not consume the response the caller reads.
+                    let body = null;
+                    try { body = await response.clone().json(); } catch (_) { /* HTML/empty/legacy mocks */ }
+                    const code = body?.detail?.code;
+                    if (['read_capacity_exceeded', 'save_busy', 'maintenance', 'version_clock_anomaly'].includes(code)) return response;
+                    // Preserve both existing maintenance apps' generic string bodies.
+                    const detail = typeof body?.detail === 'string' ? body.detail : '';
+                    const retryAfter = response.headers?.get('Retry-After');
+                    if ((detail === 'Service temporarily unavailable' && retryAfter === '60'
+                        && response.headers?.get('Cache-Control') === 'no-store')
+                        || (detail === 'メンテナンス中です。しばらくしてから再度お試しください' && retryAfter === '300')) return response;
+                    if (budget.unknown503Retries >= 1) return response;
+                    budget.unknown503Retries += 1;
+                    delayMs = 500 + Math.floor(Math.random() * 1001);
+                    if (retryAfter && /^\d+$/.test(retryAfter.trim())) {
+                        const wait = Number(retryAfter) * 1000;
+                        // Avoid the browser's overflowing timeout becoming an immediate retry.
+                        if (!Number.isFinite(wait) || wait > 2147483647) return response;
+                        delayMs = Math.max(delayMs, wait);
+                    }
                 }
             } catch (error) {
                 const externallyAborted = Boolean(requestOptions.signal && requestOptions.signal.aborted);
@@ -27,14 +51,25 @@
                 const isAbort = Boolean(error && error.name === 'AbortError');
                 // Retry transient connection failures, but keep explicit timeouts
                 // and caller aborts deterministic so a slow server is not doubled.
-                if (isTimeout || isAbort || externallyAborted || attempt === 2) {
+                if (isTimeout || isAbort || externallyAborted || budget.transientRetries >= 2) {
                     throw error;
                 }
             }
 
-            await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs[attempt]));
+            budget.transientRetries += 1;
+            await new Promise((resolve, reject) => {
+                const signal = requestOptions.signal;
+                let timer;
+                const cleanup = () => { if (signal) signal.removeEventListener('abort', abort); };
+                const abort = () => {
+                    window.clearTimeout(timer);
+                    cleanup();
+                    reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+                };
+                if (signal?.aborted) { abort(); return; }
+                timer = window.setTimeout(() => { cleanup(); resolve(); }, delayMs);
+                if (signal) signal.addEventListener('abort', abort, { once: true });
+            });
         }
-
-        throw new Error('GET retry loop exited unexpectedly');
     };
 })();
