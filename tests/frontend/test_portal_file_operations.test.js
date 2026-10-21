@@ -118,3 +118,38 @@ test('expired result does not discard the operation and silently allocate a new 
     await expect(ctx.portalFileRequest('/api/members', { ...options, body: '{"name":"different"}' })).rejects.toThrow('前の保存内容');
     expect(ctx.fileTransport).toHaveBeenCalledTimes(3); // original upload + status queries only
 });
+
+test('resume with no pending operations never requests an actor', async () => {
+    const { ctx } = create();
+    ctx.portalRuntimeContext.appState = { portalAuthVerified: true };
+    const transport = vi.spyOn(ctx, 'fetchWithTimeout');
+    await ctx.portalFileOperationsResume();
+    expect(transport).not.toHaveBeenCalled();
+});
+
+test('concurrent resume calls share actor verification but later saves verify again', async () => {
+    const storage = new Map([['portalFileOperations:v1', JSON.stringify({ slot: { id: 'pending', ownerHash: 'a'.repeat(64) } })]]);
+    const { ctx } = create(storage);
+    ctx.portalRuntimeContext.appState = { portalAuthVerified: true };
+    const original = ctx.fetchWithTimeout;
+    const transport = vi.spyOn(ctx, 'fetchWithTimeout').mockImplementation(async (...args) => {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        return original(...args);
+    });
+    await Promise.all([ctx.portalFileOperationsResume(), ctx.portalFileOperationsResume()]);
+    expect(transport.mock.calls.filter(([url]) => url === '/api/portal-file-actor')).toHaveLength(1);
+    ctx.fileTransport.mockResolvedValue(answer(200, { id: 1 }));
+    await ctx.portalFileRequest('/api/members', { method: 'POST' });
+    expect(transport.mock.calls.filter(([url]) => url === '/api/portal-file-actor')).toHaveLength(2);
+});
+
+test('resume after an account change does not display the old owner operation', async () => {
+    const storage = new Map([['portalFileOperations:v1', JSON.stringify({ slot: { id: 'pending', ownerHash: 'a'.repeat(64) } })]]);
+    const { ctx, setOwner } = create(storage);
+    ctx.portalRuntimeContext.appState = { portalAuthVerified: true };
+    const append = vi.spyOn(ctx.document.body, 'appendChild');
+    ctx.fetchWithTimeout = async () => { setOwner('other'); return answer(200, { scope: 'a'.repeat(64) }); };
+    await ctx.portalFileOperationsResume();
+    expect(append).not.toHaveBeenCalled();
+    expect(JSON.parse(storage.get('portalFileOperations:v1')).slot.id).toBe('pending');
+});

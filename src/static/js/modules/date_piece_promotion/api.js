@@ -101,6 +101,8 @@ async function previewPromotionImage(event) {
     const file = event?.target?.files?.[0];
     if (!file || !$('promotionImagePreview')) return;
     const dataUrl = URL.createObjectURL(file);
+    releasePromotionPreviewObjectUrl();
+    appState.promotionPreviewObjectUrl = dataUrl;
     $('promotionImagePreview').innerHTML = `<img src="${escapeHtml(dataUrl)}" class="img-fluid rounded border" alt="宣伝画像プレビュー">`;
 }
 

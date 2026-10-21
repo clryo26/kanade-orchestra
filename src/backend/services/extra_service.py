@@ -409,8 +409,24 @@ def build_update_mutate(
     require_input_dates(normalized_body, EXTRA_INPUT_DATE_FIELDS.get(name, ()))
     if name == "absences":
         normalized_body = _validate_absence_payload(normalized_body)
-    if name == "desired_pieces":
-        normalized_body["reference_audio_url"] = validate_youtube_url(str(normalized_body.get("reference_audio_url") or ""))
+    audio_reused_from: str | None = None
+    audio_checked = False
+    if name == "desired_pieces" and "reference_audio_url" in normalized_body:
+        # PERF-R21: compare against storage, never a client "unchanged" flag.
+        # Network validation stays outside the write transaction. Recheck a
+        # skipped lookup against the locked row below to prevent stale reuse.
+        current_audio_row = _store().get(name, item_id)
+        if current_audio_row is None:
+            raise HTTPException(status_code=404, detail="Data not found")
+        if is_admin_device(device) or _is_desired_piece_owner(current_audio_row, device):
+            stored_audio = str(current_audio_row.get("reference_audio_url") or "")
+            requested_audio = str(normalized_body.get("reference_audio_url") or "")
+            if requested_audio.strip() == stored_audio.strip():
+                audio_reused_from = stored_audio
+                normalized_body = {**normalized_body, "reference_audio_url": stored_audio}
+            else:
+                normalized_body = {**normalized_body, "reference_audio_url": validate_youtube_url(requested_audio)}
+            audio_checked = True
 
     def mutate(current: dict[str, Any]) -> dict[str, Any]:
         body = dict(normalized_body)
@@ -423,6 +439,15 @@ def build_update_mutate(
             return {**current, "votes": merged}
         assert_extra_collection_permission(name, device, payload=body, current=current)
         _owner_fields(name, body, device, current)
+        if name == "desired_pieces":
+            # Ownership may have changed since preflight. An owner edit must
+            # never accept a URL that only passed through the vote-only path.
+            if "reference_audio_url" in body and not audio_checked:
+                raise HTTPException(status_code=409, detail="Data has been updated by another user")
+            if audio_reused_from is not None and str(current.get("reference_audio_url") or "") != audio_reused_from:
+                raise HTTPException(status_code=409, detail="Data has been updated by another user")
+            if "reference_audio_url" not in body:
+                body["reference_audio_url"] = str(current.get("reference_audio_url") or "")
         payload = normalize_extra_payload(body, item_id=item_id, current=current)
         if name == "desired_pieces":
             _desired_piece_validate_title_lock(current, payload, device)

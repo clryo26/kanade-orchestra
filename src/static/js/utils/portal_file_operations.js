@@ -6,6 +6,7 @@
     const STORAGE = 'portalFileOperations:v1';
     const running = new Map();
     const actorScopes = new Map();
+    const actorRequests = new Map();
     const identity = () => typeof root.portalCacheIdentity === 'function' ? root.portalCacheIdentity() : '';
     const read = () => {
         const value = JSON.parse(localStorage.getItem(STORAGE) || '{}');
@@ -46,6 +47,14 @@
         return { status: response.status, data };
     }
     async function accountScope(owner, options = {}) {
+        // PERF-R08: coalesce only while verification is in flight. A later
+        // save must still verify the server's current account-generation scope.
+        if (actorRequests.has(owner)) return actorRequests.get(owner);
+        const pending = verifyAccountScope(owner, options).finally(() => actorRequests.delete(owner));
+        actorRequests.set(owner, pending);
+        return pending;
+    }
+    async function verifyAccountScope(owner, options) {
         const result = await send('/api/portal-file-actor', { ...options, method: 'GET' }, owner);
         if (result.status !== 200 || !/^[a-f0-9]{64}$/.test(result.data.scope || '')) {
             throw new Error('操作主体を確認できません。再ログインして再試行してください');
@@ -162,6 +171,9 @@
         const owner = identity();
         try {
             if (!root.portalRuntimeContext.appState?.portalAuthVerified) return;
+            // No durable operation needs recovery. Storage errors still take
+            // the existing warning path instead of requesting an actor.
+            if (Object.keys(read()).length === 0) return;
             const ownerHash = await accountScope(owner, { _requestOrigin: 'automatic' });
             if (owner !== identity()) return;
             for (const record of Object.values(read())) {

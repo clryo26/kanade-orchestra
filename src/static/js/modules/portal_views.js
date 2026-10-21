@@ -518,6 +518,11 @@ function renderManualView() {
 // scheduleOptions moved to feature module.
 
 function renderPerformanceFlyerPreview(src) {
+    // PERF-R23: the form owns this URL until replacement/clear; keep File intact.
+    if (appState.performanceFlyerObjectUrl && appState.performanceFlyerObjectUrl !== src) {
+        URL.revokeObjectURL(appState.performanceFlyerObjectUrl);
+        appState.performanceFlyerObjectUrl = '';
+    }
     const preview = $('perfFlyerPreview');
     if (!preview) return;
     preview.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="チラシ画像" class="performance-flyer-preview" loading="lazy">` : '';
@@ -529,4 +534,5 @@ async function previewPerformanceFlyer(event) {
     const objectUrl = URL.createObjectURL(file);
     if ($('perfFlyerImage')) $('perfFlyerImage').value = $('perfFlyerImage').value || '';
     renderPerformanceFlyerPreview(objectUrl);
+    appState.performanceFlyerObjectUrl = objectUrl;
 }
