@@ -32,7 +32,8 @@ function jsonResponse(status, data) {
 
 function createHarness({ dataSequences, holdAuth = false }) {
     const calls = [];
-    const retrySleeps = [];
+    const timerSchedules = [];
+    const timersByHandle = new Map();
     const outstandingAuth = [];
     let authReleased = false;
     let activeAuth = 0;
@@ -46,10 +47,33 @@ function createHarness({ dataSequences, holdAuth = false }) {
         console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
         AbortController, DOMException, Date,
         setTimeout(callback, ms, ...args) {
-            if (ms === 250 || ms === 750) retrySleeps.push(ms);
-            return setTimeout(callback, ms, ...args);
+            // Capture every schedule, including cancelled request deadlines.
+            // Classify by the immediate production source, never by its delay:
+            // a 503 jitter delay need not be one of the old 250/750ms values.
+            const source = String(new Error().stack || '').split('\n')
+                .map((line) => SOURCE_FILES.find((file) => line.replaceAll('\\', '/').includes(file)))
+                .find(Boolean) || null;
+            const kind = source === SOURCE_FILES[3] ? 'transport-retry'
+                : source === SOURCE_FILES[2] ? 'api-runtime' : 'other';
+            const record = {
+                source, kind, delayMs: Number(ms ?? 0), scheduledAtMs: Date.now() - FIXED_NOW,
+                firedAtMs: null, cancelledAtMs: null,
+            };
+            timerSchedules.push(record);
+            const handle = setTimeout(() => {
+                record.firedAtMs = Date.now() - FIXED_NOW;
+                callback(...args);
+            }, ms);
+            timersByHandle.set(handle, record);
+            return handle;
         },
-        clearTimeout,
+        clearTimeout(handle) {
+            const record = timersByHandle.get(handle);
+            if (record && record.firedAtMs === null && record.cancelledAtMs === null) {
+                record.cancelledAtMs = Date.now() - FIXED_NOW;
+            }
+            clearTimeout(handle);
+        },
         navigator: { onLine: true },
         document: { visibilityState: 'visible', addEventListener: vi.fn() },
         addEventListener: vi.fn(),
@@ -128,6 +152,12 @@ function createHarness({ dataSequences, holdAuth = false }) {
         return jsonResponse(status, status === 200 ? [{ id: 1, title: '架空データ' }] : { detail: `HTTP ${status}` });
     });
     SOURCE_FILES.slice(1).forEach(load);
+    for (const [key, name] of Object.entries({ start: '_runAuthAndStart', resume: 'syncPortalSessionOnResume' })) {
+        const entry = sandbox.__baselineEntries?.[key];
+        const message = `bootstrap_init.js test export ${key}: insertion must expose ${name}`;
+        expect(typeof entry, message).toBe('function');
+        expect(entry.name, message).toBe(name);
+    }
     // Count real side effects without replacing their implementation.
     const originalApply = sandbox.applyPortalAuthDevice;
     const originalClear = sandbox.clearPortalAuthState;
@@ -135,7 +165,7 @@ function createHarness({ dataSequences, holdAuth = false }) {
     sandbox.clearPortalAuthState = vi.fn(() => originalClear());
 
     return {
-        sandbox, state, dbCache, calls, retrySleeps,
+        sandbox, state, dbCache, calls,
         releaseAuth() {
             authReleased = true;
             outstandingAuth.forEach((pending) => pending.resolve());
@@ -162,7 +192,9 @@ function createHarness({ dataSequences, holdAuth = false }) {
                 essentialLoadStubCalls: sandbox.loadEssentialData.mock.calls.length,
                 cacheReads: dbCache.getEntry.mock.calls.length,
                 cacheWrites: dbCache.set.mock.calls.length,
-                retrySleepsMs: [...retrySleeps], fakeElapsedMs: Date.now() - FIXED_NOW,
+                retrySleepsMs: timerSchedules.filter((timer) => timer.kind === 'transport-retry').map((timer) => timer.delayMs),
+                timerSchedules: timerSchedules.map((timer) => ({ ...timer })),
+                fakeElapsedMs: Date.now() - FIXED_NOW,
                 dbQueries: null, lastSeenWrites: null, calls: [...calls],
             };
             return result;
@@ -186,7 +218,7 @@ afterAll(() => {
         throw new Error('Baseline report must be written below repository .tmp/');
     }
     const report = {
-        schemaVersion: 1, phase: 'before', mode: 'node-vm/mock-fetch/fake-timers',
+        schemaVersion: 2, phase: 'before', mode: 'node-vm/mock-fetch/fake-timers',
         fixedNow: new Date(FIXED_NOW).toISOString(), nodeVersion: process.version, platform: process.platform,
         harnessSha256: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),
         fixture: {
@@ -208,6 +240,26 @@ afterAll(() => {
     };
     fs.mkdirSync(path.dirname(output), { recursive: true });
     fs.writeFileSync(output, JSON.stringify(report, null, 2) + '\n', 'utf8');
+});
+
+test('measurement recorder captures non-legacy retry waits, other timers and cancelled deadlines', async () => {
+    const h = createHarness({ dataSequences: {} });
+    expect(await h.sandbox.tryRecoverPortalSession('baseline-device')).toBe(true);
+    // Synthetic recorder check only, not a claim that production already uses
+    // jitter. Give this VM snippet the retry module's filename for attribution.
+    vm.runInContext('setTimeout(function syntheticRetryWait() {}, 1000);', h.sandbox, { filename: SOURCE_FILES[3] });
+    h.sandbox.setTimeout(() => {}, 17);
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = h.measure('recorder-self-check-not-a-baseline-scenario', {});
+    expect(result.retrySleepsMs).toEqual([1000]);
+    expect(result.timerSchedules).toHaveLength(3);
+    expect(result.timerSchedules).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'api-runtime', delayMs: 10000, firedAtMs: null, cancelledAtMs: 0 }),
+        expect.objectContaining({ kind: 'transport-retry', delayMs: 1000, firedAtMs: 1000, cancelledAtMs: null }),
+        expect.objectContaining({ kind: 'other', delayMs: 17, firedAtMs: 17, cancelledAtMs: null }),
+    ]));
+    h.expectConsumed();
+    // Do not append this synthetic check to the five historical measurements.
 });
 
 describe('stage 2B before measurements (production JS, mock HTTP)', () => {
