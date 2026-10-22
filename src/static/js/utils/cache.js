@@ -247,8 +247,14 @@ class IndexedDBCache {
                     try {
                         const split = String(item.key).indexOf(']:');
                         const identity = JSON.parse(String(item.key).slice(0, split + 1));
-                        obsolete ||= !Array.isArray(identity) || identity.length !== 5
-                            || JSON.stringify(identity) !== portalCacheIdentity();
+                        obsolete ||= !Array.isArray(identity) || identity.length !== 5;
+                        // Before authentication (offline start, slow auth) the
+                        // current identity has no member yet. A mismatch then
+                        // does not mean the record became unusable, so only a
+                        // confirmed session may retire other identities' keys.
+                        if (window.portalRuntimeContext?.appState?.portalAuthVerified === true) {
+                            obsolete ||= JSON.stringify(identity) !== portalCacheIdentity();
+                        }
                     } catch { obsolete = true; }
                     records.push({ key: item.key, time: this.accessTime(entry, now), bytes,
                         obsolete, signature: this.recordSignature(entry) });

@@ -76,6 +76,30 @@ test('legacy malformed keys are disposable but unknown-time valid keys are not a
     expect(await h.read('/api/unknown')).toBeDefined();
 });
 
+test('identity mismatch retires records only after the session is confirmed', async () => {
+    const h = await harness(); const now = Date.now();
+    const state = h.ctx.portalRuntimeContext.appState;
+    // A valid record of this device and member, saved during a verified session.
+    await h.seed([{ key: '/api/events', timestamp: now, data: ['kept'] }]);
+    const savedKey = h.fullKey('/api/events');
+    // Offline start or slow authentication: no member identity yet.
+    Object.assign(state, { currentUserMemberId: null, currentUserPermission: '', portalAuthGeneration: '', portalAuthVerified: false });
+    expect((await h.cache.cleanup()).deleted).toBe(0);
+    expect((await h.records()).map(e => e.key)).toEqual([savedKey]);
+    // A confirmed session of another login generation makes the old key unusable.
+    Object.assign(state, { currentUserMemberId: 1, currentUserPermission: 'general', portalAuthGeneration: 'two', portalAuthVerified: true });
+    expect((await h.cache.cleanup()).deleted).toBe(1);
+    expect(await h.records()).toEqual([]);
+});
+
+test('a confirmed session keeps its own records', async () => {
+    const h = await harness();
+    h.ctx.portalRuntimeContext.appState.portalAuthVerified = true;
+    await h.seed([{ key: '/api/events', timestamp: Date.now() }]);
+    expect((await h.cache.cleanup()).deleted).toBe(0);
+    expect(await h.read('/api/events')).toBeDefined();
+});
+
 test('cleanup never opens another database or touches localStorage', async () => {
     const h = await harness();
     const open = vi.spyOn(h.ctx.indexedDB, 'open');
