@@ -41,6 +41,23 @@ test('502, 502, 200 discarded by a save, then 502: the retry continues the used 
     expect(h.ctx.showAlert).toHaveBeenCalledWith(expect.stringContaining('一部データの読込に失敗しました'), 'warning');
 });
 
+// The loader keeps manual and automatic loads apart, but request() joins them
+// into one GET (its key is unchanged). Whichever caller joined must still
+// inherit the budget that shared GET really spent.
+test.each([
+    ['manual first', [{}, { _requestOrigin: 'automatic' }]],
+    ['automatic first', [{ _requestOrigin: 'automatic' }, {}]],
+])('concurrent manual and automatic loads, %s: a save-discarded shared GET is retried within the used budget', async (_, optionsInOrder) => {
+    const h = loaderHarness([502, 502, 200, 502, 502, 200], { saveOnSend: 3 });
+    const pending = Promise.all(optionsInOrder.map((options) => h.ctx.loadExtraData(['albums'], options)));
+    await vi.runAllTimersAsync();
+    await pending;
+    // One shared GET: 1 initial + 2 transient re-sends, then one joined retry
+    // send. Before the fix the joiner's untouched budget allowed 6 sends.
+    expect(h.calls).toHaveLength(4);
+    expect(h.ctx.isDeferredPortalDataLoaded('albums')).toBe(false);
+});
+
 test('an unused budget stays available to the retry after a save', async () => {
     const h = loaderHarness([200, 502, 502, 200], { saveOnSend: 1 });
     const pending = h.ctx.loadExtraData(['albums']);

@@ -457,7 +457,16 @@ async function request(url, options = {}) {
         return data;
     }
     if (method === 'GET') {
-        if (!explicitTenant && window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) return window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+        if (!explicitTenant && window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) {
+            const shared = window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+            // The joined GET spends the first caller's budget. Link it so a caller
+            // continuing this logical load (the loader's retry after a save)
+            // inherits what was really used, not its own untouched budget.
+            if (shared.portalRetryContext && shared.portalRetryContext !== options._retryContext) {
+                options._retryContext.sharedBudget = shared.portalRetryContext;
+            }
+            return shared;
+        }
         const pending = (async () => {
             const cacheEntry = useResponseCache ? await window.portalRuntimeContext.dbCache.getEntry(cacheKey) : null;
             requireCurrentContext();
@@ -541,6 +550,7 @@ async function request(url, options = {}) {
             requireCurrentContext(); // A mutation may finish while the cache transaction commits.
             return data;
         })();
+        pending.portalRetryContext = options._retryContext;
         if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
         try { return await pending; } finally { if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
     }

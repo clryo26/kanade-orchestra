@@ -693,6 +693,17 @@ function portalExtraAuthContext() {
 function portalExtraContext() {
     return JSON.stringify([...portalExtraAuthParts(), window.portalResponseEpoch || 0]);
 }
+// request() links a budget that joined another caller's in-flight GET to the
+// budget that GET really spent (sharedBudget). Follow it; the seen set guards
+// against a link cycle between repeated joins.
+function portalExtraUsedBudget(budget) {
+    const seen = new Set();
+    while (budget.sharedBudget && !seen.has(budget)) {
+        seen.add(budget);
+        budget = budget.sharedBudget;
+    }
+    return budget;
+}
 // retryContext: the used transient budget of the original load, passed on the
 // one retry after a save so request() continues it instead of starting anew.
 function beginPortalExtraLoad(name, url, options, retryContext = null) {
@@ -835,7 +846,7 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry, i
             const unloaded = Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, key)
                 && !isDeferredPortalDataLoaded(key);
             if (discardedBySave && !unloaded) return; // displayed data stays as it is
-            if (discardedBySave && allowContextRetry) { contextRetryNames.push([key, entry.retryContext]); return; }
+            if (discardedBySave && allowContextRetry) { contextRetryNames.push([key, portalExtraUsedBudget(entry.retryContext)]); return; }
             if (!entry.reported) { failed.push(key); entry.reported = true; }
             if (key === 'promotions') appState.promotionLoadState = 'error';
             return;
