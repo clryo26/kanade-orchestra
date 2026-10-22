@@ -67,6 +67,22 @@ describe('system environment management', () => {
         return button.handler();
     }
 
+    test('a held status request keeps displayed values while unrelated history requests still run', async () => {
+        const { sandbox, elements } = buildSandbox({ currentUserPermission: 'システム管理者' }, vi.fn());
+        await sandbox.renderSystemEnvironmentManagement();
+        const status = elements.systemEnvironmentStatus.textContent;
+        const result = elements.environmentOperationResult.textContent;
+        sandbox.portalRetryWaitInfo = (url) => url.endsWith('/status') ? { blocked: true } : null;
+        sandbox.request = vi.fn(async (url) => {
+            if (url.endsWith('/status')) throw Object.assign(new Error('waiting'), { portalRetryWait: {} });
+            return { items: [] };
+        });
+        await sandbox.renderSystemEnvironmentManagement();
+        expect(sandbox.request).toHaveBeenCalledTimes(3);
+        expect(elements.systemEnvironmentStatus.textContent).toBe(status);
+        expect(elements.environmentOperationResult.textContent).toBe(result);
+    });
+
     test('system panel includes test-only environment management tab and hidden menu button', () => {
         expect(indexHtml).toContain('data-tab="system-environment"');
         expect(indexHtml).toContain('id="systemEnvironmentMenuBtn" hidden');

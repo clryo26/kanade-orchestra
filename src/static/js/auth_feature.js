@@ -56,7 +56,7 @@ async function isPortalAuthenticated(options = {}) {
         return { status: 'unauthenticated', device: null, error: null };
     }
     try {
-        const response = await fetchPortalSessionCheck(deviceId);
+        const response = await fetchPortalSessionCheck(deviceId, options);
         if (!portalAuthCheckIsCurrent(response)) {
             // A logout in another tab is known locally, not a network failure.
             // Discard the old response without clearing/applying a newer login.
@@ -76,7 +76,9 @@ async function isPortalAuthenticated(options = {}) {
         if (!response.ok) {
             // サーバ�Eエラー: 通信はできたが�E否不�E
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unavailable' });
-            return { status: 'unavailable', device: null, error: new Error(`HTTP ${response.status}`) };
+            const error = new Error(response.portalRetryWait?.message || `HTTP ${response.status}`);
+            if (response.portalRetryWait) error.portalRetryWait = response.portalRetryWait;
+            return { status: 'unavailable', device: null, error };
         }
         const result = response.payload;
         if (!result || !result.authenticated) {

@@ -117,9 +117,15 @@ async function renderSystemEnvironmentManagement() {
 
     _bindEnvironmentButtons();
 
-    statusEl.className = 'text-muted small mb-3';
-    statusEl.textContent = '読み込み中...';
-    resultEl.textContent = '';
+    const identity = typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : JSON.stringify([appState.currentUserMemberId, appState.currentUserPermission]);
+    const keepView = appState.systemEnvironmentViewIdentity === identity
+        && ['/api/system/environment/status', '/api/system/release/history', '/api/system/sync/history']
+            .some((url) => window.portalRetryWaitInfo?.(url)?.blocked);
+    if (!keepView) {
+        statusEl.className = 'text-muted small mb-3';
+        statusEl.textContent = '読み込み中...';
+        resultEl.textContent = '';
+    }
 
     try {
         const [status, release, sync] = await Promise.all([
@@ -129,6 +135,7 @@ async function renderSystemEnvironmentManagement() {
         ]);
 
         appState.systemEnvironmentStatus = status;
+        appState.systemEnvironmentViewIdentity = identity;
         _setEnvironmentField('environmentCurrentEnvironment', status.current_environment || '未設定');
         _setEnvironmentField('environmentAppEnv', status.app_env || '未設定');
         _setEnvironmentField('environmentGitSha', status.deploy_info?.git_sha || '未設定');
@@ -157,6 +164,7 @@ async function renderSystemEnvironmentManagement() {
             resultEl.textContent = '本番リリース実行基盤の設定が不足しています / 本番データ同期実行基盤の設定が不足しています';
         }
     } catch (error) {
+        if (keepView && error?.portalRetryWait) return;
         actionArea.hidden = true;
         statusEl.className = 'text-danger small mb-3';
         statusEl.textContent = '環境管理情報を取得できませんでした';

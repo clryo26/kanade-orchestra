@@ -298,7 +298,7 @@ describe('runtime bootstrap order', () => {
         await documentListeners.visibilitychange[0]();
 
         expect(isPortalAuthenticated).toHaveBeenCalledTimes(1);
-        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true });
+        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true, _requestOrigin: 'automatic' });
         expect(loadEssentialData).not.toHaveBeenCalled();
     });
     test('resume with fresh auth and stale essential reloads essential only', async () => {
@@ -455,7 +455,7 @@ describe('runtime bootstrap order', () => {
         await Promise.resolve();
 
         expect(isPortalAuthenticated).toHaveBeenCalledTimes(1);
-        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true });
+        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true, _requestOrigin: 'automatic' });
         expect(loadEssentialData).toHaveBeenCalledTimes(1);
     });
     test('online sync runs only after an offline transition', async () => {
@@ -543,7 +543,7 @@ describe('runtime bootstrap order', () => {
         await Promise.resolve();
 
         expect(isPortalAuthenticated).toHaveBeenCalledTimes(1);
-        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true });
+        expect(isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true, _requestOrigin: 'automatic' });
         await vi.waitFor(() => {
             expect(loadEssentialData).toHaveBeenCalledTimes(1);
         });

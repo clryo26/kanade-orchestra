@@ -64,6 +64,7 @@ async function fetchWithTimeout(url, options, timeoutMs) {
         _forceRevalidate: _omit3,
         _structuredResult: _omitStructured,
         _retryContext: _omitRetryContext,
+        _requestOrigin: _omitRequestOrigin,
         signal: _omit4,
         ...fetchOptions
     } = Object(options || {});
@@ -152,6 +153,7 @@ function clearPortalAuthState() {
 
 function applyPortalAuthDevice(device) {
     if (!device || typeof device !== 'object') return;
+    const previousIdentity = typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : '';
     appState.portalAuthGeneration = device.authenticated_at || device.created_at || '';
     appState.portalAuthVerified = true;
     appState.lastPortalSessionVerifiedAt = Date.now();
@@ -163,6 +165,8 @@ function applyPortalAuthDevice(device) {
     appState.currentUserIsRecordingManager = Boolean(device.is_recording_manager);
     appState.currentUserIsSheetManager = Boolean(device.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
+    if (typeof window.resetPortalRequestWaits === 'function' && typeof portalCacheIdentity === 'function'
+        && previousIdentity !== portalCacheIdentity()) window.resetPortalRequestWaits();
     if (typeof window.portalFileOperationsResume === 'function') void window.portalFileOperationsResume();
 }
 
@@ -196,6 +200,7 @@ var portalAuthCheckInFlight = null;
 function advancePortalAuthTransition() {
     appState.portalAuthTransition = (appState.portalAuthTransition || 0) + 1;
     portalAuthCheckInFlight = null;
+    if (typeof window.resetPortalRequestWaits === 'function') window.resetPortalRequestWaits();
 }
 
 if (typeof window.addEventListener === 'function') {
@@ -225,7 +230,7 @@ function notePortalAuthCheckCleared(check) {
     check.context.generation = appState.portalAuthGeneration || '';
 }
 
-function fetchPortalSessionCheck(deviceId) {
+function fetchPortalSessionCheck(deviceId, options = {}) {
     const context = { deviceId, generation: appState.portalAuthGeneration || '', transition: appState.portalAuthTransition || 0 };
     const key = JSON.stringify(context);
     if (portalAuthCheckInFlight && portalAuthCheckInFlight.key === key) return portalAuthCheckInFlight.promise;
@@ -233,6 +238,7 @@ function fetchPortalSessionCheck(deviceId) {
     pending.promise = (async () => {
         const response = await fetchWithTimeout(`/api/auth/devices/${encodeURIComponent(deviceId)}`,
             { method: 'GET', headers: { 'X-Device-Id': deviceId }, cache: 'no-store',
+                _requestOrigin: options._requestOrigin,
                 _retryContext: { transientRetries: 0, unknown503Retries: 0 } }, PORTAL_TIMEOUT_AUTH);
         const payload = response.ok ? await response.json().catch(() => ({})) : null;
         return { status: response.status, ok: response.ok, payload, context };
@@ -243,13 +249,13 @@ function fetchPortalSessionCheck(deviceId) {
     return pending.promise;
 }
 
-async function tryRecoverPortalSession(deviceId) {
+async function tryRecoverPortalSession(deviceId, options = {}) {
     if (!deviceId) {
         clearPortalAuthState();
         return false;
     }
     try {
-        const response = await fetchPortalSessionCheck(deviceId);
+        const response = await fetchPortalSessionCheck(deviceId, options);
         if (!portalAuthCheckIsCurrent(response)) return false;
         if (!response.ok) {
             // 明確な未認証(401/403/404)のみ認証状態をクリア
@@ -362,6 +368,13 @@ function portalNoStoreRequest(url) {
         || path === '/api/portal-file-actor' || path.startsWith('/api/portal-file-operations/');
 }
 
+function portalRetryWaitError(response) {
+    const error = new Error(response.portalRetryWait.message);
+    error.status = 503;
+    error.portalRetryWait = response.portalRetryWait;
+    return error;
+}
+
 async function purgePromotionCache() {
     const cache = window.portalRuntimeContext.dbCache;
     if (!cache?.db || cache.promotionPurge) return cache?.promotionPurge;
@@ -414,13 +427,14 @@ async function request(url, options = {}) {
         // IndexedDB fallback would hide failed refreshes and stale operation results.
         const identity = `${deviceId}:${appState.currentUserMemberId}:${appState.currentUserPermission}`;
         let response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
-        if (response.status === 401 && !skipAuthRecovery && await tryRecoverPortalSession(deviceId)) {
+        if (response.status === 401 && !skipAuthRecovery && await tryRecoverPortalSession(deviceId, options)) {
             response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
         }
         const currentDevice = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
         if (identity !== `${currentDevice}:${appState.currentUserMemberId}:${appState.currentUserPermission}`) {
             throw new Error('認証情報が変わりました。再読み込みしてください');
         }
+        if (response.portalRetryWait?.suppressed && !options._structuredResult) throw portalRetryWaitError(response);
         const data = await response.json().catch((error) => { if (response.status < 500) throw error; return null; });
         if (options._structuredResult) return { status: response.status, data, retryAfter: response.headers.get('Retry-After') };
         if (!response.ok) {
@@ -465,12 +479,13 @@ async function request(url, options = {}) {
             let recoveredOnce = false;
             if (response.status === 401 && !skipAuthRecovery) {
                 recoveredOnce = true;
-                const recovered = await tryRecoverPortalSession(deviceId);
+                const recovered = await tryRecoverPortalSession(deviceId, options);
                 if (recovered) {
                     response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
                 }
             }
             requireCurrentContext();
+            if (response.portalRetryWait?.suppressed) throw portalRetryWaitError(response);
             if (response.status === 304 && cached != null) {
                 // Validation success advances freshness, independently of cache reads.
                 if (useResponseCache && freshCacheTtlMs(url) > 0
@@ -486,7 +501,7 @@ async function request(url, options = {}) {
                 options._retryContext.transientRetries += 1;
                 const unconditional = Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'if-none-match'));
                 response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
-                if (response.status === 401 && !skipAuthRecovery && !recoveredOnce && await tryRecoverPortalSession(deviceId)) {
+                if (response.status === 401 && !skipAuthRecovery && !recoveredOnce && await tryRecoverPortalSession(deviceId, options)) {
                     response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
                 }
                 requireCurrentContext();
@@ -528,7 +543,7 @@ async function request(url, options = {}) {
         throw new Error(message);
     }
     if (response.status === 401 && !skipAuthRecovery) {
-        const recovered = await tryRecoverPortalSession(deviceId);
+        const recovered = await tryRecoverPortalSession(deviceId, options);
         if (recovered) {
             response = await fetchWithTimeout(url, { ...options, headers: baseHeaders }, timeoutMs);
         }

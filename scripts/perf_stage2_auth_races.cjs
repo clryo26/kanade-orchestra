@@ -7,6 +7,74 @@ const crypto = require('node:crypto');
 const { webkit, expect } = require('@playwright/test');
 const { installPortalApiMocks } = require('../tests/e2e/fixtures/mockApi');
 
+async function runManualWait(page, result, output) {
+    const before = process.env.PORTAL_PERF_WAIT_PHASE === 'before';
+    let busy = false;
+    let sends = 0;
+    let albums = 0;
+    await page.route('**/api/extra/promotions', (route) => {
+        sends++;
+        return route.fulfill(busy ? { status: 503, headers: { 'Retry-After': '300' },
+            json: { detail: { code: 'maintenance', message: 'synthetic maintenance' } } }
+            : { json: [{ id: 90001, title: '表示済みの宣伝', summary: 'synthetic', created_at: '2026-10-21T03:00:00Z' }] });
+    });
+    await page.route('**/api/extra/albums', (route) => { albums++; return route.fulfill({ json: [] }); });
+    const open = async (name) => {
+        await page.click('#portalDrawerToggle');
+        await page.locator('#portalDrawerMenu').getByRole('button', { name, exact: true }).click();
+    };
+    await open('宣伝');
+    await expect.poll(() => page.evaluate(() => window.portalRuntimeContext.appState.promotionLoadState)).toBe('loaded');
+    await page.fill('#promotionTitle', '入力を保持する');
+    await page.locator('#promotionImageFile').setInputFiles({ name: 'keep.png', mimeType: 'image/png',
+        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
+    await expect.poll(() => page.locator('#promotionImagePreview img').evaluate((el) => el.naturalWidth)).toBe(1);
+    await page.evaluate(() => { document.querySelector('.promotion-form').dataset.waitFixture = 'same-form'; document.activeElement.blur(); });
+    await page.mouse.move(0, 0);
+    const initialImage = await page.locator('.promotion-form').screenshot({ animations: 'disabled' });
+    busy = true;
+    const warm = sends;
+    await page.click('#promotionReloadBtn');
+    await expect.poll(() => page.evaluate(() => window.portalRuntimeContext.appState.promotionLoadState)).toBe('error');
+    await page.evaluate(() => { document.getElementById('promotionReloadBtn').click(); document.getElementById('promotionReloadBtn').click(); });
+    await expect.poll(() => sends - warm).toBe(before ? 3 : 1);
+    await expect.poll(() => page.evaluate(() => window.portalRuntimeContext.appState.promotionLoadState)).toBe('error');
+    result.manualFailureSends = sends - warm;
+    expect(result.manualFailureSends).toBe(before ? 3 : 1);
+    if (!before) await expect(page.locator('#toastArea')).toContainText('あと10秒');
+    result.waitWarning = await page.locator('#toastArea').innerText();
+    expect(await page.locator('#promotionTitle').inputValue()).toBe('入力を保持する');
+    expect(await page.locator('#promotionImageFile').evaluate((el) => el.files[0]?.name)).toBe('keep.png');
+    expect(await page.locator('.promotion-form').getAttribute('data-wait-fixture')).toBe('same-form');
+    await expect(page.locator('#memberPromotionInfo')).toContainText('表示済みの宣伝');
+    // The countdown toast was asserted separately; exclude its overlay when
+    // checking that the existing form's text/positions/image did not change.
+    await page.evaluate(() => { document.activeElement.blur(); document.getElementById('toastArea')?.replaceChildren(); });
+    await page.mouse.move(0, 0);
+    const waitingImage = await page.locator('.promotion-form').screenshot({ animations: 'disabled' });
+    fs.writeFileSync(path.join(output, 'form-before-wait.png'), initialImage);
+    fs.writeFileSync(path.join(output, 'form-during-wait.png'), waitingImage);
+    result.formPixelsEqual = initialImage.equals(waitingImage);
+    expect(result.formPixelsEqual).toBe(true);
+    await open('アルバム');
+    await expect.poll(() => albums).toBe(1);
+    result.unrelatedAlbumSends = albums;
+    await open('宣伝');
+    await page.clock.setFixedTime(new Date('2026-10-21T12:00:10+09:00'));
+    busy = false;
+    await page.click('#promotionReloadBtn');
+    await expect.poll(() => page.evaluate(() => window.portalRuntimeContext.appState.promotionLoadState)).toBe('loaded');
+    result.failureAndProbeSends = sends - warm;
+    expect(result.failureAndProbeSends).toBe(before ? 4 : 2);
+    await page.evaluate(() => request('/api/extra/promotions', { _requestOrigin: 'automatic' }));
+    result.afterSuccessfulProbeSends = sends - warm;
+    expect(result.afterSuccessfulProbeSends).toBe(before ? 5 : 3);
+    result.fileAndInputRetained = (await page.locator('#promotionTitle').inputValue()) === '入力を保持する'
+        && await page.locator('#promotionImageFile').evaluate((el) => el.files[0]?.name === 'keep.png');
+    expect(result.fileAndInputRetained).toBe(true);
+    expect(result.pageErrors).toEqual([]);
+}
+
 async function main() {
     const root = path.resolve(process.env.PERF_SOURCE_ROOT || '.');
     const output = path.resolve(process.env.PERF_OUTPUT || '.tmp/perf-stage2-http/auth-races');
@@ -23,12 +91,14 @@ async function main() {
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     let browser;
-    const report = { scope: 'synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone',
+    const report = { scope: process.env.PERF_RETRY_WAIT === '1'
+        ? 'synthetic API; actual WebKit JS/DOM and manual clicks; not BFCache or physical iPhone'
+        : 'synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone',
         platform: process.platform, image: process.env.PERF_IMAGE || null, fixedTime: '2026-10-21T12:00:00+09:00', cases: [] };
     try {
         browser = await webkit.launch();
         report.browser = browser.version();
-        for (const order of ['data-first', 'resume-first', 'other-tab-logout']) {
+        for (const order of process.env.PERF_RETRY_WAIT === '1' ? ['manual-wait'] : ['data-first', 'resume-first', 'other-tab-logout']) {
             const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
                 locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
             let releaseAuth;
@@ -52,6 +122,10 @@ async function main() {
                 await page.click('#portalLoginBtn');
                 await expect(page.locator('#memberPanel')).toBeVisible();
                 await page.waitForLoadState('networkidle');
+                if (order === 'manual-wait') {
+                    await runManualWait(page, result, output);
+                    result.passed = true;
+                } else {
                 await page.evaluate(() => {
                     const original = window.fetchPortalSessionCheck;
                     window.__raceAuthChecks = 0;
@@ -93,6 +167,7 @@ async function main() {
                 expect(result.authSends).toBe(1);
                 expect(result.pageErrors).toEqual([]);
                 result.passed = true;
+                }
             } catch (error) {
                 result.passed = false;
                 result.error = error.message;

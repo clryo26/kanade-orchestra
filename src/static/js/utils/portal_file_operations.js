@@ -45,8 +45,8 @@
         if (owner !== identity()) throw new Error('認証情報が変わりました。元のアカウントで操作結果を確認してください');
         return { status: response.status, data };
     }
-    async function accountScope(owner) {
-        const result = await send('/api/portal-file-actor', { method: 'GET' }, owner);
+    async function accountScope(owner, options = {}) {
+        const result = await send('/api/portal-file-actor', { ...options, method: 'GET' }, owner);
         if (result.status !== 200 || !/^[a-f0-9]{64}$/.test(result.data.scope || '')) {
             throw new Error('操作主体を確認できません。再ログインして再試行してください');
         }
@@ -162,7 +162,7 @@
         const owner = identity();
         try {
             if (!root.portalRuntimeContext.appState?.portalAuthVerified) return;
-            const ownerHash = await accountScope(owner);
+            const ownerHash = await accountScope(owner, { _requestOrigin: 'automatic' });
             if (owner !== identity()) return;
             for (const record of Object.values(read())) {
                 if (record.ownerHash === ownerHash) notice('前回の保存操作の結果を確認できます。', record, owner);

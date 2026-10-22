@@ -171,12 +171,18 @@ async function promotionDigest(value) {
         .map((part) => part.toString(16).padStart(2, '0')).join('');
 }
 
-async function checkPromotionOperation() {
+async function checkPromotionOperation(options = {}) {
     const key = promotionPendingKey();
     const pending = JSON.parse(sessionStorage.getItem(key) || 'null');
     if (!pending) { showAlert('確認待ちの操作はありません', 'info'); return; }
     try {
-        const response = await request(`/api/promotions/operations/${encodeURIComponent(pending.operationId)}`, { _structuredResult: true });
+        const url = `/api/promotions/operations/${encodeURIComponent(pending.operationId)}`;
+        const wait = window.portalRetryWaitInfo?.(url, options);
+        if (wait?.blocked) {
+            if (options._requestOrigin !== 'automatic') showAlert(wait.message, 'warning');
+            return false;
+        }
+        const response = await request(url, { _structuredResult: true, _requestOrigin: options._requestOrigin });
         if (response.status === 200 && response.data.state !== 'processing') {
             sessionStorage.removeItem(key);
             if (response.data.result_status >= 400) {
@@ -226,7 +232,7 @@ async function runPromotionOperation(method, id, payload, file, body) {
             // key after a timeout/reload; a later retry never becomes a new POST.
             for (let attempt = 0; attempt < 6 && !document.hidden; attempt += 1) {
                 await new Promise((resolve) => setTimeout(resolve, Math.min(10000, 2000 * (attempt + 1))));
-                if (await checkPromotionOperation()) return false;
+                if (await checkPromotionOperation({ _requestOrigin: 'automatic' })) return false;
             }
             return false;
         }
