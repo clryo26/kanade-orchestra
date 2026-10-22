@@ -64,3 +64,8 @@
 - workflow変更時はCI仕様を更新する
 - 同期ルールや同期Workflowの静的検査ルール変更時は、バックエンド仕様とCI仕様を同時更新する
 - 仕様改訂時は親仕様と担当仕様の版・更新日を同時更新する
+
+
+## 性能改善第3段階（2026-10-23）
+
+S3-01〜16は[第3段階詳細設計](docs/PERF_STAGE3_DETAILED_DESIGN.md)の条件を正本とし、[実装記録](docs/PERF_STAGE3_IMPLEMENTATION.md)で隔離試験と未確認の実環境条件を区別する。PostgreSQL 16/18の専用loopback DB、8 APIの標準/2倍量・各5回の本文とSQL比較、既存の専用API回帰、同一Linux WebKitでの画像/DOM比較を実施する。実DB/GCS・旧新リビジョンの並行稼働・iPhone/BFCacheを模擬試験の成功で代替しない。担当詳細はINTEGRATION_TEST_SPEC_BACKEND.mdを参照する。

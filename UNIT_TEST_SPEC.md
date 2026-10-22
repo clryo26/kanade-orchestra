@@ -299,3 +299,10 @@ CIカバレッジ出力:
 - 認可ルール変更時はBE-AUTH/BE-EXTRA群を必ず更新する
 - 日程調整関連変更時はFE-DATE群を必ず更新する
 - 仕様改訂時は版番号と最終更新日を更新する
+
+
+## 性能改善第3段階の試験（2026-10-23）
+
+`test_perf_stage3_context.py`で合計2秒/全体5秒、入場後の残予算、枠解放後の入場、容量拒否の貸出0、キャンセルの資源返却、接続迂回禁止、通常書込の待ち方維持を固定する。`test_collection_clock_operations.py`で復元後の版欠落/finalizer失敗時に完了扱いしないことと、同期の最終確定がGCS後・解除前であることを確認する。
+
+実PostgreSQLが必要なトリガー・RR・SQL timeout・設定漏れ・実HTTP本文の条件はモックだけで合格とせず、バックエンド結合試験仕様と[第3段階実装記録](docs/PERF_STAGE3_IMPLEMENTATION.md)で追跡する。

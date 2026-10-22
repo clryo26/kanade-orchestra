@@ -86,6 +86,9 @@ jobs:
       - name: Python dependency vulnerability scan
         run: uvx pip-audit
 
+      - name: Verify generated collection-clock migration
+        run: uv run python scripts/generate_collection_clock_migration.py --check
+
       - name: Python syntax check
         run: uv run python -m compileall -q src/backend tests
 

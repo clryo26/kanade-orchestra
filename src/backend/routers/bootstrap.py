@@ -41,6 +41,9 @@ def _sheet_payload() -> dict[str, object]:
 
 
 def _collection_etag(name: str) -> str:
+    from ..core.read_context import current_read_context
+    if current_read_context() is not None:
+        return load_collection_etag(name)
     cached = get_memory_cache_instance().etag(name) or ""
     try:
         db_digest = load_collection_etag(name)
@@ -77,20 +80,25 @@ async def get_bootstrap_lite_data(
             else:
                 raise
 
-    etag = bootstrap_service.combined_collection_etag(
-        (
-            "performances",
-            "schedules",
-            "announcements",
-            "members",
-            "payments",
-            "part_settings",
-            "org_settings",
-            "sns_settings",
-        ),
-        lambda name: get_memory_cache_instance().etag(name) or "",
-        _collection_etag,
-    )
+    from ..core.read_context import current_read_context
+    frame = current_read_context()
+    if frame is not None:
+        etag = frame.response_etag
+    else:
+        etag = bootstrap_service.combined_collection_etag(
+            (
+                "performances",
+                "schedules",
+                "announcements",
+                "members",
+                "payments",
+                "part_settings",
+                "org_settings",
+                "sns_settings",
+            ),
+            lambda name: get_memory_cache_instance().etag(name) or "",
+            _collection_etag,
+        )
     menu_visibility = menu_settings_service.visibility_settings()
     etag = menu_settings_service.bootstrap_etag(etag, menu_visibility)
     if bootstrap_service.request_not_modified(request, etag):

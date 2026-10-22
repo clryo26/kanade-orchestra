@@ -46,6 +46,11 @@ def load_json_data(
     data_dir: Path,
     logger,
 ) -> list[dict[str, Any]]:
+    from ..core.read_context import current_read_context, ClockAnomaly
+    if current_read_context() is not None:
+        if name not in json_collection_tables or name not in current_read_context().collections:
+            raise ClockAnomaly("Unclassified collection in snapshot read")
+        return db_load_json_data(name)
     if name == "albums" and not local_json_fallback_enabled():
         # Child photos change on other Cloud Run instances as well. An
         # indefinite process cache would hide uploads/repairs and retain deletes.

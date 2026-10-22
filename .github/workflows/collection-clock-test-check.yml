@@ -1,0 +1,56 @@
+name: TEST collection clock digest
+
+on:
+  schedule:
+    - cron: '12 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: test-collection-clock-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    # Enabled only after TEST migration, DB role and network preflight pass.
+    if: ${{ vars.PERF_STAGE3_CLOCK_CHECK_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --locked --extra dev
+      - name: Restore previous successful digest evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/clock-state
+          artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=perf-stage3-test-digest" --jq '[.artifacts[] | select(.expired == false)][0].id // empty')"
+          if [ -n "${artifact_id}" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > .tmp/clock-state.zip
+            python -m zipfile -e .tmp/clock-state.zip .tmp/clock-state
+          fi
+      - name: Check TEST content against collection versions
+        env:
+          CLOCK_DB_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
+          EXPECTED_DATABASE: ${{ vars.TEST_DB_NAME }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/portal_collection_clocks.py check \
+            --expected-database "${EXPECTED_DATABASE}" --environment test \
+            --state .tmp/clock-state/state.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perf-stage3-test-digest
+          path: .tmp/clock-state/state.json
+          if-no-files-found: error
+          retention-days: 90

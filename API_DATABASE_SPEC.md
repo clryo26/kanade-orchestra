@@ -392,3 +392,12 @@ detail フィールドでメッセージを返す。
 操作記録・業務行・確定アセット参照は同じDB接続/TXで確定し、回収は確定後に行う。通常の非ファイルAPIへ操作キーを一律必須化しない。詳細と未確認事項は[修正仕様](docs/JST_DATETIME_REMEDIATION_SPEC.md)と[計画書第13章](docs/JST_DATETIME_IMPLEMENTATION_PLAN.md#13-ローカル実装と検証の記録2026-10-19)を参照。
 
 認証付き `GET /api/portal-file-actor` は、テナントとアカウント世代を表す不透明なscopeをno-storeで返す。保留操作のブラウザー保存キーはこのscopeへ結び付ける。同じアカウントの再ログイン後も結果を回復でき、IDを再利用した別世代には引き継がない。元の会員登録日時や内部actorキーは返さない。通信中の応答適用は別途、現在の認証世代でも照合する。
+
+
+## 性能改善第3段階: 整合読取と版ETag（2026-10-23）
+
+有効化はAPI別の既存環境変数方式で行い、`PORTAL_READ_CONTEXT_PATHS`・`PORTAL_VERSION_ETAG_PATHS`の未指定は無効。対象8 GET、HTTPヘッダー、依存表、2つの追加版表は[第3段階実装記録](docs/PERF_STAGE3_IMPLEMENTATION.md)を参照する。公開5一覧/coreの認証条件や200本文を変えない。liteの任意認証と団員紹介の必須認証を維持し、認証と版と本文を同じREAD ONLY/RR接続で読む。団員紹介は既存本文ハッシュを維持する。
+
+版ETagは認証後に判定し、200/304はprivate, no-cacheと既存の利用者・団体区分のVary、Accept-Encodingを持つ。full bootstrap・認証API・専用楽譜/ファイル/プロモーションAPIは新経路の対象外。読取容量503はdetail.code=read_capacity_exceeded、Retry-After: 2。読取のversion_clock_anomalyだけ「データを確認できませんでした。管理者に連絡してください」とし、保存の既存文言を変えない。
+
+023は対象12表の団体列・主キー・親子参照/団体一致を前提とし、不足時は停止する。互換スキーマだけではこの前提が揃わないため実DB事前検査が必要。業務表の制約やDBロールを自動整備しない。実DB適用・有効化は未実施。

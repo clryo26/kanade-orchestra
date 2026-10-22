@@ -57,7 +57,15 @@ class PortalCacheRoute(APIRoute):
         original = super().get_route_handler()
 
         async def handler(request: Request) -> Response:
-            response = await original(request)
+            from .collection_clock_schema import configured_paths
+            from .db_runtime import local_json_fallback_enabled
+            reads, _ = configured_paths()
+            if request.method == "GET" and request.url.path in reads and not local_json_fallback_enabled():
+                from ..services.snapshot_response_service import snapshot_response
+                return await snapshot_response(request, original, apply_policy)
+            return apply_policy(request, await original(request))
+
+        def apply_policy(request: Request, response: Response) -> Response:
             path = request.url.path
             if request.method != "GET" or path not in PRIVATE_CACHE_PATHS or response.status_code not in {200, 304}:
                 return response

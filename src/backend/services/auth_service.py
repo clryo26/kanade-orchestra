@@ -127,6 +127,26 @@ def public_member_list(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def device_auth_record(device_id: str) -> dict[str, Any]:
+    # PERF-R05: only the same request may reuse a checked authentication result.
+    from ..core.read_context import current_read_context
+    frame = current_read_context()
+    if frame is None:
+        return _device_auth_record(device_id)
+    if device_id in frame.auth_results:
+        result = frame.auth_results[device_id]
+        if isinstance(result, HTTPException):
+            raise result
+        return cast(dict[str, Any], result)
+    try:
+        result = _device_auth_record(device_id)
+    except HTTPException as exc:
+        frame.auth_results[device_id] = exc
+        raise
+    frame.auth_results[device_id] = result
+    return cast(dict[str, Any], result)
+
+
+def _device_auth_record(device_id: str) -> dict[str, Any]:
     if not device_id:
         raise HTTPException(status_code=401, detail="X-Device-Id is required")
     try:
@@ -141,6 +161,10 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
     except Exception:
         fallback = fallback_auth_device(device_id)
         if fallback:
+            from ..core.read_context import current_read_context
+            frame = current_read_context()
+            if frame is not None:
+                frame.auth_trusted = False
             return fallback
         raise
     if not db_mode:
@@ -148,6 +172,10 @@ def device_auth_record(device_id: str) -> dict[str, Any]:
     if not device:
         fallback = fallback_auth_device(device_id)
         if fallback:
+            from ..core.read_context import current_read_context
+            frame = current_read_context()
+            if frame is not None:
+                frame.auth_trusted = False
             return fallback
         raise HTTPException(status_code=401, detail="Device is not authenticated")
     member_id = device.get("member_id")

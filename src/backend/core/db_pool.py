@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 from threading import Lock
 from typing import Any, Iterator
 
@@ -30,7 +31,11 @@ def open_db_pool() -> None:
     """Open the process-local synchronous database pool for application runtime."""
     global _pool, _pool_dsn
 
+    from .collection_clock_schema import configured_paths
+    reads, clocks = configured_paths()
     if local_json_fallback_enabled():
+        if reads:
+            raise ValueError("Snapshot reads require DB mode")
         return
     if _real_psycopg is None:
         raise RuntimeError("psycopg is not installed")
@@ -52,6 +57,10 @@ def open_db_pool() -> None:
         )
         try:
             pool.open(wait=True)
+            if clocks:
+                from ..services.collection_clock_maintenance import verify_schema
+                with pool.connection() as conn:
+                    verify_schema(conn, require_application_role=True)
         except Exception:
             pool.close()
             raise
@@ -81,11 +90,17 @@ def db_connection(
     connect_timeout: int | float | None = None,
     **kwargs: Any,
 ) -> Iterator[Any]:
-    """Return a pooled application connection, or preserve direct-connect fallback semantics."""
+    """Application DB access must not silently escape the process pool."""
+    from .read_context import current_read_context
+
+    if current_read_context() is not None:
+        raise RuntimeError("Nested DB checkout in read context")
     pool = _pool
     pool_dsn = _pool_dsn
 
     if pool is None or conninfo != pool_dsn or kwargs:
+        if os.getenv("APP_ENV", "").lower() in {"production", "test"} or not local_json_fallback_enabled():
+            raise RuntimeError("Application database pool is unavailable or connection options do not match")
         if _real_psycopg is None:
             raise RuntimeError("psycopg is not installed")
 
@@ -98,7 +113,11 @@ def db_connection(
             yield conn
         return
 
+    # Snapshot admission passes its remaining <=2s explicitly. Preserve the
+    # existing pool/default wait for unrelated writes and dedicated APIs.
     timeout = float(connect_timeout) if connect_timeout is not None else None
+    if timeout is not None and timeout <= 0:
+        raise TimeoutError("Database pool wait budget expired")
     conn = pool.getconn(timeout=timeout)
     original_autocommit = conn.autocommit
 
