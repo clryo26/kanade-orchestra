@@ -41,9 +41,11 @@
         if (!entry) return null;
         const automatic = options._requestOrigin === 'automatic';
         const remainingMs = Math.max(0, (automatic ? entry.automaticUntil : entry.manualUntil) - Date.now());
-        const prefix = entry.message || (entry.maintenance ? 'メンテナンス中です。' : '現在、取得を待機しています。');
+        const prefix = entry.maintenance ? 'メンテナンス中です。' : '現在、取得を待機しています。';
         return { blocked: remainingMs > 0, remainingMs,
-            message: `${prefix}あと${Math.ceil(remainingMs / 1000)}秒後に再試行できます。` };
+            // Permanent version anomalies retain the administrator instruction;
+            // suppressing clicks must not imply that waiting will resolve them.
+            message: entry.message || `${prefix}あと${Math.ceil(remainingMs / 1000)}秒後に再試行できます。` };
     }
     // UI entry points can inspect the same policy before replacing content
     // with a loading placeholder. This does not send or cache application data.

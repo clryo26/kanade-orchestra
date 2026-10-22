@@ -158,6 +158,26 @@ test.skipIf(BEFORE)('version clock anomalies keep the administrator message with
     expect(h.ctx.showAlert).toHaveBeenCalledWith(expect.stringContaining('fixture busy'), 'warning');
 });
 
+test.skipIf(BEFORE)('version clock anomaly shows the exact server instruction without a retry invitation', async () => {
+    const message = '保存できませんでした。管理者に連絡してください';
+    const h = harness(() => new Response(JSON.stringify({ detail: { code: 'version_clock_anomaly', message } }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }));
+    await get(h);
+    const wait = h.ctx.portalRetryWaitInfo('/api/extra/albums');
+    expect(wait).toMatchObject({ blocked: true, remainingMs: 10000, message });
+    h.ctx.showAlert.mockClear();
+    await get(h);
+    expect(h.ctx.showAlert).toHaveBeenCalledExactlyOnceWith(message, 'warning');
+    expect(h.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(9999);
+    await get(h);
+    expect(h.ctx.showAlert).toHaveBeenLastCalledWith(message, 'warning');
+    expect(h.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await get(h);
+    expect(h.calls).toHaveLength(2);
+});
+
 test.skipIf(BEFORE)('headerless HTML 503 has one jitter retry and a ten-second manual interval', async () => {
     const h = harness(() => new Response('<html>gateway busy</html>', { status: 503 }));
     const pending = get(h);
