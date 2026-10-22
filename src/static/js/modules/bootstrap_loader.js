@@ -681,17 +681,24 @@ async function loadAuthManagement() {
 const portalExtraLoads = new Map();
 const portalExtraLatest = new Map();
 let portalExtraSequence = 0;
-function portalExtraContext() {
-    return JSON.stringify([typeof portalCacheIdentity === 'function' ? portalCacheIdentity()
+function portalExtraAuthParts() {
+    return [typeof portalCacheIdentity === 'function' ? portalCacheIdentity()
         : [appState.currentUserMemberId, appState.portalAuthGeneration],
-        appState.portalAuthTransition || 0, window.portalResponseEpoch || 0]);
+        appState.portalAuthTransition || 0];
+}
+// The account part alone: a change here means another user/session, never a retry.
+function portalExtraAuthContext() {
+    return JSON.stringify(portalExtraAuthParts());
+}
+function portalExtraContext() {
+    return JSON.stringify([...portalExtraAuthParts(), window.portalResponseEpoch || 0]);
 }
 function beginPortalExtraLoad(name, url, options) {
     const context = portalExtraContext();
     const shareable = Object.keys(options).every(key => ['_requestOrigin', '_forceRevalidate'].includes(key));
     const key = JSON.stringify([context, name, options._requestOrigin || 'manual', !!options._forceRevalidate]);
     if (shareable && portalExtraLoads.has(key)) return portalExtraLoads.get(key);
-    const entry = { context, sequence: ++portalExtraSequence, applied: false, reported: false };
+    const entry = { context, authContext: portalExtraAuthContext(), sequence: ++portalExtraSequence, applied: false, reported: false };
     portalExtraLatest.set(name, entry);
     entry.promise = Promise.resolve().then(() => Object.keys(options).length ? request(url, options) : request(url))
         .finally(() => {
@@ -729,6 +736,14 @@ function renderAppliedExtraCollections(collections) {
 }
 
 async function loadExtraData(collectionNames = null, options = {}) {
+    return loadExtraDataBatch(collectionNames, options, true);
+}
+
+// allowContextRetry: a collection whose first load was discarded only because a
+// save advanced the response epoch is fetched again once in the new context, so
+// a visible tab does not stay on its empty placeholder. The retry itself passes
+// false: a second discard or failure uses the existing warning, never a loop.
+async function loadExtraDataBatch(collectionNames, options, allowContextRetry) {
     const allRequestSpecs = [
         ['absences', '/api/extra/absences'],
         ['eventResponses', '/api/extra/event_responses'],
@@ -803,10 +818,25 @@ async function loadExtraData(collectionNames = null, options = {}) {
 
     const resultMap = new Map();
     const failed = [];
+    const contextRetryNames = [];
+    const currentContext = portalExtraContext();
+    const currentAuthContext = portalExtraAuthContext();
 
     settled.forEach((item, index) => {
         const [key, entry] = requestSpecs[index];
-        if (entry.context !== portalExtraContext() || portalExtraLatest.get(key) !== entry || entry.applied) return;
+        if (portalExtraLatest.get(key) !== entry || entry.applied) return;
+        if (entry.context !== currentContext) {
+            // Another account/session, or a 503 wait: discard without retrying.
+            if (entry.authContext !== currentAuthContext || item.reason?.portalRetryWait) return;
+            const discardedBySave = item.status === 'fulfilled' || item.reason?.portalContextChanged;
+            const unloaded = Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, key)
+                && !isDeferredPortalDataLoaded(key);
+            if (discardedBySave && !unloaded) return; // displayed data stays as it is
+            if (discardedBySave && allowContextRetry) { contextRetryNames.push(key); return; }
+            if (!entry.reported) { failed.push(key); entry.reported = true; }
+            if (key === 'promotions') appState.promotionLoadState = 'error';
+            return;
+        }
 
         if (item.status === 'fulfilled') {
             resultMap.set(key, item.value);
@@ -874,6 +904,11 @@ async function loadExtraData(collectionNames = null, options = {}) {
     });
 
     if (resultMap.size) renderAppliedExtraCollections([...resultMap.keys()]);
+
+    // Skip names a newer load has applied meanwhile; an in-flight newer load
+    // with the same options is joined by beginPortalExtraLoad, not duplicated.
+    const retryNames = contextRetryNames.filter((name) => !isDeferredPortalDataLoaded(name));
+    if (retryNames.length) await loadExtraDataBatch(retryNames, options, false);
 }
 
 

@@ -416,7 +416,8 @@ async function request(url, options = {}) {
     const startedContext = contextKey();
     const flightKey = `${startedContext}:${cacheKey}:${Boolean(options._forceRevalidate)}`;
     const requireCurrentContext = () => {
-        if (startedContext !== contextKey()) throw new Error('表示情報が更新されました。もう一度読み込んでください');
+        // Marked so callers can tell a save/auth context change from a real failure.
+        if (startedContext !== contextKey()) throw Object.assign(new Error('表示情報が更新されました。もう一度読み込んでください'), { portalContextChanged: true });
     };
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const headerEntries = portalRequestHeaderEntries(options.headers);
