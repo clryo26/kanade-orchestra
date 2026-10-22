@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import os
 from threading import Lock
 from typing import Any, Iterator
 
@@ -25,6 +24,20 @@ DB_POOL_MAX_SIZE = 5
 _pool: Any | None = None
 _pool_dsn: str | None = None
 _pool_lock = Lock()
+_web_runtime_count = 0
+
+
+@contextmanager
+def web_database_runtime():
+    """The lifespan, not importing main, makes pool-only access mandatory."""
+    global _web_runtime_count
+    with _pool_lock:
+        _web_runtime_count += 1
+    try:
+        yield
+    finally:
+        with _pool_lock:
+            _web_runtime_count -= 1
 
 
 def open_db_pool() -> None:
@@ -88,9 +101,10 @@ def db_connection(
     *,
     autocommit: bool = False,
     connect_timeout: int | float | None = None,
+    _require_pool: bool = False,
     **kwargs: Any,
 ) -> Iterator[Any]:
-    """Application DB access must not silently escape the process pool."""
+    """Web/read scopes require the pool; standalone maintenance may connect."""
     from .read_context import current_read_context
 
     if current_read_context() is not None:
@@ -99,7 +113,7 @@ def db_connection(
     pool_dsn = _pool_dsn
 
     if pool is None or conninfo != pool_dsn or kwargs:
-        if os.getenv("APP_ENV", "").lower() in {"production", "test"} or not local_json_fallback_enabled():
+        if _web_runtime_count or _require_pool:
             raise RuntimeError("Application database pool is unavailable or connection options do not match")
         if _real_psycopg is None:
             raise RuntimeError("psycopg is not installed")

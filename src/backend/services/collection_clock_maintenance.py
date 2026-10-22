@@ -115,15 +115,14 @@ def canonical_digests(conn):
     generation = str(conn.execute("SELECT generation FROM public.portal_data_generation WHERE singleton=1").fetchone()[0])
     versions = {(org, name): int(v) for org, name, v in conn.execute(
         "SELECT organization_id,collection_name,version FROM public.portal_collection_versions")}
-    for org in {org for org, _ in versions} | {"default"}:
-        if any((org, name) not in versions for name in CLOCK_COLLECTIONS):
-            raise RuntimeError("Missing initial collection versions")
     entries = {}
     tables = table_dependencies()
+    organizations = {org for org, _ in versions} | {"default"}
+    for table in tables:
+        organizations.update(r[0] for r in conn.execute(sql.SQL("SELECT DISTINCT organization_id FROM public.{}").format(sql.Identifier(table))))
     primary_keys = {table: primary_columns(conn, table) for table in tables}
-    for (org, name), version in sorted(versions.items()):
-        if name not in CLOCK_COLLECTIONS:
-            continue
+    for org, name in sorted((org, name) for org in organizations for name in CLOCK_COLLECTIONS):
+        version = versions.get((org, name), 0)
         parts = []
         for table, collection in tables.items():
             if collection != name:
@@ -136,12 +135,10 @@ def canonical_digests(conn):
             serialized = [json.dumps(row, sort_keys=True, ensure_ascii=False, default=str,
                                      separators=(",", ":")) for row in rows]
             parts.append([table, serialized])
+        if version == 0 and any(rows for _, rows in parts):
+            raise RuntimeError("Collection data exists without its version")
         digest = hashlib.sha256(json.dumps(parts, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
         entries[json.dumps([org, name], ensure_ascii=False)] = {"version": version, "hash": digest}
-    for table in tables:
-        for (org,) in conn.execute(sql.SQL("SELECT DISTINCT organization_id FROM public.{}").format(sql.Identifier(table))):
-            if any((org, name) not in versions for name in CLOCK_COLLECTIONS):
-                raise RuntimeError("Missing initial collection versions")
     return {"generation": generation, "entries": entries}
 
 

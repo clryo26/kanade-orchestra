@@ -9,9 +9,10 @@ import asyncio
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from threading import BoundedSemaphore, Lock, get_ident
+from threading import Lock, get_ident
 from time import monotonic
 from typing import Any
+from weakref import WeakKeyDictionary, ref
 
 import anyio
 from fastapi import HTTPException
@@ -23,7 +24,8 @@ READ_SLOTS = 4
 ADMISSION_SECONDS = 2.0
 READ_SECONDS = 5.0
 SQL_SECONDS = 3.0
-_slots = BoundedSemaphore(READ_SLOTS)
+_slots_by_loop: WeakKeyDictionary = WeakKeyDictionary()
+_slots_lock = Lock()
 _current: ContextVar[ReadContext | None] = ContextVar("portal_read_context", default=None)
 
 
@@ -45,6 +47,20 @@ def capacity_error() -> HTTPException:
 
 def current_read_context():
     return _current.get()
+
+
+def _get_slots():
+    # Production has one event loop per worker. TestClient may create several
+    # sequential loops: never reuse an asyncio primitive bound to a closed loop.
+    # Weak values also avoid retaining a loop via Semaphore._loop.
+    loop = asyncio.get_running_loop()
+    with _slots_lock:
+        reference = _slots_by_loop.get(loop)
+        slots = reference() if reference is not None else None
+        if slots is None:
+            slots = asyncio.BoundedSemaphore(READ_SLOTS)
+            _slots_by_loop[loop] = ref(slots)
+        return slots
 
 
 async def _worker(function, *args, cancel_cleanup=None):
@@ -219,8 +235,11 @@ async def read_scope():
 
     started = monotonic()
     admission_deadline = started + ADMISSION_SECONDS
-    admitted = await _worker(_slots.acquire, True, ADMISSION_SECONDS,
-                             cancel_cleanup=lambda acquired: _slots.release() if acquired else None)
+    slots = _get_slots()
+    try:
+        admitted = await asyncio.wait_for(slots.acquire(), timeout=max(0, admission_deadline-monotonic()))
+    except asyncio.TimeoutError as exc:
+        raise capacity_error() from exc
     if not admitted:
         raise capacity_error()
     manager, entered, token, frame, failure = None, False, None, None, None
@@ -228,7 +247,8 @@ async def read_scope():
         left = admission_deadline - monotonic()
         if left <= 0:
             raise capacity_error()
-        manager = db_pool.db_connection(db_pool.db_connection_string(), autocommit=False, connect_timeout=left)
+        manager = db_pool.db_connection(db_pool.db_connection_string(), autocommit=False,
+                                        connect_timeout=left, _require_pool=True)
         try:
             raw = await _worker(manager.__enter__, cancel_cleanup=lambda raw: manager.__exit__(
                 asyncio.CancelledError, asyncio.CancelledError(), None))
@@ -267,4 +287,4 @@ async def read_scope():
                                              failure.__traceback__ if failure else None)
                     await _worker(finish)
             finally:
-                _slots.release()
+                slots.release()

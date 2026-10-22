@@ -100,3 +100,6 @@
 `test_perf_stage3_postgres.py`は明示したloopbackの`portal_perf_stage3a`だけを再作成し、実023で遷移トリガー、I/U/D/UPSERT/rollback/カスケード、主キー・FK等の前提欠落、SET LOCALのアプリ経由返却、権限前の容量枠、1 checkout、RR本文、早期304、逆行/破損と容量の分類、並行保存と実監査を検証する。制約の事前整備は使い捨てfixture内だけで行い、実スキーマが同じであるとは扱わない。
 
 `test_perf_stage3_measurements.py`は同じ架空データで旧/新設定の本文一致とwarm/本文メモリなし304を各5回比較し、同値UPDATEによる追加200も保存する。`docs/perf_stage3/`にSQL・貸出・時間と制限を記録する。一覧のSQL増加をbootstrap-liteの改善と混同せず、APIごとに有効化可否を判断する。全マイグレーションrunnerの既存試験は、新しい移行の前提を明示して2回実行し、checksum/既存データ保持も確認する。
+
+
+第3段階レビュー補正（2026-10-23）: Web lifespanと読取スコープだけでプールを必須とし、単独保守のDB Only直接接続を維持する。版のない空団体は同じRRで空と確認して版0とし、初回書込で正の版へ移る。非空の版欠落は異常のまま。入場待ちはスレッドを使わず、41/80同時投入を検証する。詳細は[第3段階実装記録](docs/PERF_STAGE3_IMPLEMENTATION.md)の8924a59レビュー修正節を参照。

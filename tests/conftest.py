@@ -153,31 +153,3 @@ def seed_device_fn(backend_env):
 @pytest.fixture
 def admin_headers_fixture() -> dict[str, str]:
     return admin_headers()
-
-
-@pytest.fixture(autouse=True)
-def legacy_postgres_sql_adapter(request, monkeypatch):
-    """Legacy opt-in SQL tests explicitly inject their disposable connection.
-
-    They intentionally vary DSNs/session options and never boot an app pool.
-    Production no longer has a direct fallback; stage-3 tests exercise the real
-    adapter/pool and must not use this injection.
-    """
-    import os
-    environments = {
-        "test_auth_session_postgres": "PORTAL_TEST_DB_URL",
-        "test_access_logs_list_lock_postgres": "PORTAL_TEST_DB_URL",
-        "test_db_item_repository_postgres": "PORTAL_TEST_DB_URL",
-        "test_portal_file_operations_postgres": "PORTAL_TEST_DB_URL",
-        "test_promotion_postgres": "PROMOTION_TEST_DB_URL",
-        "test_sheet_library_postgres": "SHEET_TEST_DB_URL",
-        "test_tuner_practice_postgres": "TUNER_TEST_DSN",
-        "test_metronome_practice_postgres": "METRONOME_TEST_DSN",
-        "test_menu_settings_postgres": "MENU_SETTINGS_TEST_DSN",
-    }
-    variable = environments.get(request.module.__name__.split(".")[-1])
-    if not variable or not os.getenv(variable):
-        return
-    import psycopg
-    from src.backend.core import db_pool
-    monkeypatch.setattr(db_pool.pooled_psycopg, "connect", psycopg.connect)

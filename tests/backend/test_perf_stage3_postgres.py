@@ -239,6 +239,45 @@ def test_version_regression_on_successive_snapshots_is_rejected(database, monkey
         assert result.status_code == 503 and result.json()["detail"]["code"] == "version_clock_anomaly"
 
 
+def test_unknown_empty_tenant_zero_versions_then_first_write(database, monkeypatch):
+    tenant = "new-unregistered-tenant"
+    paths = sorted(CLOCK_PATHS)
+    with enabled(database, monkeypatch, paths) as client:
+        tags = {}
+        for path in paths:
+            first = client.get(path, headers={"X-Tenant-Id": tenant})
+            assert first.status_code == 200, first.text
+            if path not in {"/api/bootstrap-lite", "/api/bootstrap-core"}:
+                assert first.json() == []
+            tags[path] = first.headers["ETag"]
+            assert client.get(path, headers={"X-Tenant-Id": tenant,
+                                            "If-None-Match": tags[path]}).status_code == 304
+        with psycopg.connect(role_dsn(database, "perf_clock_app")) as conn:
+            assert conn.execute("SELECT count(*) FROM portal_collection_versions WHERE organization_id=%s", (tenant,)).fetchone()[0] == 0
+            conn.execute("INSERT INTO schedules(id,organization_id,date,venue,start_time,end_time,available_start_time,available_end_time) "
+                         "VALUES(9999,%s,'2026-10-23','First write','18:00','20:00','17:00','21:00')", (tenant,))
+            assert version(conn, org=tenant) == 1
+        for path in ("/api/schedules", "/api/bootstrap-lite"):
+            fresh = client.get(path, headers={"X-Tenant-Id": tenant, "If-None-Match": tags[path]})
+            assert fresh.status_code == 200
+            assert "First write" in fresh.text
+        assert client.get("/api/events", headers={"X-Tenant-Id": tenant,
+                                                 "If-None-Match": tags["/api/events"]}).status_code == 304
+    with psycopg.connect(DSN) as conn:
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        digest = maintenance.canonical_digests(conn)
+        import json
+        assert digest["entries"][json.dumps([tenant, "schedules"])]["version"] == 1
+        assert digest["entries"][json.dumps([tenant, "events"])]["version"] == 0
+
+
+def test_missing_environment_generation_remains_an_anomaly(database, monkeypatch):
+    with enabled(database, monkeypatch, ["/api/schedules"]) as client:
+        with psycopg.connect(DSN) as conn:
+            conn.execute("DELETE FROM portal_data_generation")
+        assert client.get("/api/schedules").json()["detail"]["code"] == "version_clock_anomaly"
+
+
 def test_nested_checkout_write_and_child_task_are_rejected(database, monkeypatch):
     with enabled(database, monkeypatch, ["/api/schedules"], clocks=False):
         async def run():
