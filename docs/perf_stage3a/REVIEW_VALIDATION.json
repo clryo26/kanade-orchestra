@@ -1,0 +1,20 @@
+{
+  "16": {
+    "tests_passed": 14,
+    "baseline_samples": 240,
+    "concurrency_samples": 200,
+    "original_baseline_unchanged": true,
+    "report_sha256": "c90697662a7e3b962b526bddb81273607433fcfdd60f15de8bec56cfe64c93ca"
+  },
+  "18": {
+    "tests_passed": 14,
+    "baseline_samples": 240,
+    "concurrency_samples": 200,
+    "original_baseline_unchanged": true,
+    "report_sha256": "2cb35d23893fa774cb63450e4bbb5378c587c632236e1102175522933a37770a"
+  },
+  "harness_sha256": "9c398f5b2e16409cefad877f8a73a0d0018eeff07f083503453528aed074fc6a",
+  "application_migration_workflow_changed": false,
+  "optout_new_tests_skipped": 14,
+  "existing_http_tests_passed": 23
+}
