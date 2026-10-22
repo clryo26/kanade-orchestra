@@ -227,12 +227,14 @@ test.skipIf(BEFORE)('failed saves do not release related waits', async () => {
     expect(h.ctx.portalRetryWaitInfo('/api/extra/albums').blocked).toBe(true);
 });
 
-test.skipIf(BEFORE).each(['POST', 'PUT', 'DELETE'])('successful promotion %s releases its list wait before returning', async (method) => {
+test.skipIf(BEFORE).each(['POST', 'PUT', 'DELETE'].flatMap((method) => [false, true].map((cacheFailure) => [method, cacheFailure])))(
+    'successful promotion %s releases its list wait before returning (cache failure: %s)', async (method, cacheFailure) => {
     let saved = false;
     const h = harness((url, options) => {
         if (options.method === method) { saved = true; return ok(); }
         return saved && url === '/api/extra/promotions' ? ok() : busy();
     });
+    if (cacheFailure) h.db.delete.mockRejectedValue(new Error('IndexedDB connection closed'));
     await get(h, '/api/extra/promotions');
     await get(h, '/api/members');
     const url = method === 'POST' ? '/api/extra/promotions' : '/api/extra/promotions/42';
@@ -253,7 +255,7 @@ test.skipIf(BEFORE).each([202, 409, 503])('unconfirmed/rejected promotion save (
     expect(h.ctx.portalRetryWaitInfo('/api/extra/promotions').blocked).toBe(true);
 });
 
-test.skipIf(BEFORE)('confirmed promotion operation releases list wait before its reload', async () => {
+test.skipIf(BEFORE).each([false, true])('confirmed promotion operation releases list wait before its reload (cache failure: %s)', async (cacheFailure) => {
     let confirmed = false;
     const h = harness((url) => {
         if (url.startsWith('/api/promotions/operations/')) {
@@ -263,6 +265,7 @@ test.skipIf(BEFORE)('confirmed promotion operation releases list wait before its
         }
         return confirmed && url === '/api/extra/promotions' ? ok() : busy();
     });
+    if (cacheFailure) h.db.delete.mockRejectedValue(new Error('IndexedDB connection closed'));
     const storage = new Map();
     Object.assign(h.ctx, { location: { origin: 'https://fixture.invalid' },
         sessionStorage: { getItem: (key) => storage.get(key), removeItem: (key) => storage.delete(key) },
@@ -273,10 +276,26 @@ test.skipIf(BEFORE)('confirmed promotion operation releases list wait before its
     await get(h, '/api/members');
     expect(await h.ctx.checkPromotionOperation()).toBe(true);
     expect(storage.size).toBe(0);
+    expect(h.ctx.clearPromotionForm).toHaveBeenCalledExactlyOnceWith();
+    expect(h.ctx.showAlert).toHaveBeenCalledWith('操作の完了を確認しました', 'success');
     expect(h.ctx.loadExtraData).toHaveBeenCalledWith(['promotions']);
     expect(h.ctx.portalRetryWaitInfo('/api/extra/promotions')).toBeNull();
     expect(h.ctx.portalRetryWaitInfo('/api/members').blocked).toBe(true);
     expect(h.calls.filter((call) => call.url === '/api/extra/promotions')).toHaveLength(2);
+});
+
+test.skipIf(BEFORE)('a confirmed direct promotion save stays successful when cache deletion rejects', async () => {
+    const h = harness(() => ok());
+    const storage = new Map();
+    Object.assign(h.ctx, { Blob, TextEncoder, crypto: require('node:crypto').webcrypto,
+        location: { origin: 'https://fixture.invalid' },
+        sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) } });
+    h.db.delete.mockRejectedValue(new Error('IndexedDB connection closed'));
+    vm.runInContext(fs.readFileSync('src/static/js/modules/date_piece_promotion/api.js', 'utf8'), h.ctx);
+    expect(await h.ctx.runPromotionOperation('POST', '', { title: 'fixture' }, null, '{}')).toBe(true);
+    expect(storage.size).toBe(0);
+    expect(h.calls).toHaveLength(1);
+    expect(h.ctx.showAlert).not.toHaveBeenCalled();
 });
 
 test.skipIf(BEFORE).each(['start', 'resume'])('authentication wait metadata reaches the %s warning', async (entry) => {

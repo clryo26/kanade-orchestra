@@ -321,7 +321,10 @@ async function invalidateCacheForMutation(url) {
     window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     const keys = mutationRelatedCacheKeys(url);
     if (typeof window.clearPortalRequestWaitsForKeys === 'function') window.clearPortalRequestWaitsForKeys(keys);
-    await Promise.all(keys.map((key) => window.portalRuntimeContext.dbCache.delete(key)));
+    // Disk cache cleanup is auxiliary to an already confirmed business write.
+    // delete() blocks reuse in memory before IO, even if the transaction fails.
+    // Attempt every target; cache errors must not replace the HTTP save result.
+    await Promise.allSettled(keys.map(async (key) => window.portalRuntimeContext.dbCache.delete(key)));
 }
 
 // Only stable member-facing list endpoints can briefly use cache-first.
@@ -532,6 +535,7 @@ async function request(url, options = {}) {
             if (newETag && useResponseCache && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
                 await window.portalRuntimeContext.dbCache.set(cacheKey, data, newETag);
             }
+            requireCurrentContext(); // A mutation may finish while the cache transaction commits.
             return data;
         })();
         if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);

@@ -181,6 +181,49 @@ async function runReviewFixes(page, result) {
     expect(result.pageErrors).toEqual([]);
 }
 
+async function runCacheFailure(page, result) {
+    let saved = false;
+    let writes = 0;
+    await page.route('**/api/extra/promotions', (route) => {
+        if (route.request().method() === 'POST') { writes++; saved = true; return route.fulfill({ json: { id: 90001 } }); }
+        return route.fulfill({ json: saved ? [{ id: 90001, title: '保存済みの宣伝', created_at: '2026-10-21T03:00:00Z' }] : [] });
+    });
+    await page.route('**/api/promotions/operations/cache-failure', (route) => {
+        saved = true;
+        return route.fulfill({ json: { state: 'completed', result_status: 200 } });
+    });
+    await page.click('#portalDrawerToggle');
+    await page.locator('#portalDrawerMenu').getByRole('button', { name: '宣伝', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.portalRuntimeContext.appState.promotionLoadState)).toBe('loaded');
+    await page.fill('#promotionTitle', '保存済みの宣伝');
+    await page.evaluate((order) => {
+        const cache = window.portalRuntimeContext.dbCache;
+        window.__failedCacheKey = promotionPendingKey();
+        if (order === 'operation-cache-failure') sessionStorage.setItem(window.__failedCacheKey,
+            JSON.stringify({ operationId: 'cache-failure', method: 'POST' }));
+        // Close the real IndexedDB connection: do not replace delete().
+        cache.db.close();
+        document.getElementById('toastArea')?.replaceChildren();
+    }, result.order);
+    await page.click(result.order === 'operation-cache-failure' ? '#promotionCheckBtn' : '#promotionSaveBtn');
+    await expect(page.locator('#memberPromotionInfo')).toContainText('保存済みの宣伝');
+    await expect(page.locator('#promotionTitle')).toHaveValue('');
+    await expect(page.locator('#toastArea')).toContainText(result.order === 'operation-cache-failure' ? '操作の完了を確認しました' : '宣伝を保存しました');
+    expect(await page.evaluate(() => sessionStorage.getItem(window.__failedCacheKey))).toBeNull();
+    expect(await page.locator('#toastArea').innerText()).not.toContain('結果を確認できません');
+    const blocked = await page.evaluate(async () => {
+        const cache = window.portalRuntimeContext.dbCache;
+        await cache.init();
+        return await cache.getEntry('/api/bootstrap-lite') === null;
+    });
+    expect(blocked).toBe(true);
+    expect(writes).toBe(result.order === 'operation-cache-failure' ? 0 : 1);
+    result.writes = writes;
+    result.oldCacheBlocked = blocked;
+    result.pendingRemovedAndFormCleared = true;
+    expect(result.pageErrors).toEqual([]);
+}
+
 async function main() {
     const root = path.resolve(process.env.PERF_SOURCE_ROOT || '.');
     const output = path.resolve(process.env.PERF_OUTPUT || '.tmp/perf-stage2-http/auth-races');
@@ -197,7 +240,9 @@ async function main() {
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     let browser;
-    const report = { scope: process.env.PERF_REVIEW_FIXES === '1'
+    const report = { scope: process.env.PERF_CACHE_FAILURE === '1'
+        ? 'synthetic API; WebKit UI with real IndexedDB closed-connection injection; not physical iPhone'
+        : process.env.PERF_REVIEW_FIXES === '1'
         ? 'synthetic API; actual WebKit UI; promotion save and auth wait metadata; not physical iPhone or BFCache'
         : process.env.PERF_WAIT_REVIEW === '1'
         ? 'synthetic API; actual WebKit JS/DOM; headerless 503 and save-refresh; not BFCache or physical iPhone'
@@ -208,7 +253,8 @@ async function main() {
     try {
         browser = await webkit.launch();
         report.browser = browser.version();
-        for (const order of process.env.PERF_REVIEW_FIXES === '1' ? ['promotion-save', 'auth-wait']
+        for (const order of process.env.PERF_CACHE_FAILURE === '1' ? ['direct-cache-failure', 'operation-cache-failure']
+            : process.env.PERF_REVIEW_FIXES === '1' ? ['promotion-save', 'auth-wait']
             : process.env.PERF_WAIT_REVIEW === '1' ? ['headerless-wait', 'save-refresh']
             : process.env.PERF_RETRY_WAIT === '1' ? ['manual-wait'] : ['data-first', 'resume-first', 'other-tab-logout']) {
             const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
@@ -234,7 +280,10 @@ async function main() {
                 await page.click('#portalLoginBtn');
                 await expect(page.locator('#memberPanel')).toBeVisible();
                 await page.waitForLoadState('networkidle');
-                if (['promotion-save', 'auth-wait'].includes(order)) {
+                if (['direct-cache-failure', 'operation-cache-failure'].includes(order)) {
+                    await runCacheFailure(page, result);
+                    result.passed = true;
+                } else if (['promotion-save', 'auth-wait'].includes(order)) {
                     await runReviewFixes(page, result);
                     result.passed = true;
                 } else if (['headerless-wait', 'save-refresh'].includes(order)) {
