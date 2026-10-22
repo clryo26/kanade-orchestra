@@ -127,6 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.portalStartup) window.portalStartup.mark('IDB_START');
     try {
         await window.portalRuntimeContext.dbCache.init();
+        window.portalRuntimeContext.dbCache.scheduleCleanup?.();
     } catch (error) {
         console.warn('IndexedDB initialization failed:', error);
     } finally {
