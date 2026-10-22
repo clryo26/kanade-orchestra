@@ -174,7 +174,8 @@ test('full dispatcher contract and renderer exceptions are preserved (no suppres
 test('force revalidation options survive the loader and are not mutated', async () => {
     const h = createCdeHarness(); const options = Object.freeze({ _forceRevalidate: true, _requestOrigin: 'automatic' });
     await h.ctx.loadExtraData(['albums'], options);
-    expect(h.sends[0].options).toEqual(options);
+    // Caller options pass through unchanged; only the internal budget is added.
+    expect(h.sends[0].options).toEqual({ ...options, _retryContext: { transientRetries: 0, unknown503Retries: 0 } });
 });
 
 test.each([

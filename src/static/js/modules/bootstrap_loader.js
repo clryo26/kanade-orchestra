@@ -693,14 +693,17 @@ function portalExtraAuthContext() {
 function portalExtraContext() {
     return JSON.stringify([...portalExtraAuthParts(), window.portalResponseEpoch || 0]);
 }
-function beginPortalExtraLoad(name, url, options) {
+// retryContext: the used transient budget of the original load, passed on the
+// one retry after a save so request() continues it instead of starting anew.
+function beginPortalExtraLoad(name, url, options, retryContext = null) {
     const context = portalExtraContext();
     const shareable = Object.keys(options).every(key => ['_requestOrigin', '_forceRevalidate'].includes(key));
     const key = JSON.stringify([context, name, options._requestOrigin || 'manual', !!options._forceRevalidate]);
     if (shareable && portalExtraLoads.has(key)) return portalExtraLoads.get(key);
-    const entry = { context, authContext: portalExtraAuthContext(), sequence: ++portalExtraSequence, applied: false, reported: false };
+    const entry = { context, authContext: portalExtraAuthContext(), sequence: ++portalExtraSequence, applied: false, reported: false,
+        retryContext: retryContext || { transientRetries: 0, unknown503Retries: 0 } };
     portalExtraLatest.set(name, entry);
-    entry.promise = Promise.resolve().then(() => Object.keys(options).length ? request(url, options) : request(url))
+    entry.promise = Promise.resolve().then(() => request(url, { ...options, _retryContext: entry.retryContext }))
         .finally(() => {
             if (portalExtraLoads.get(key) === entry) portalExtraLoads.delete(key);
             entry.promise = null; // latest ownership must not retain a completed body
@@ -743,7 +746,7 @@ async function loadExtraData(collectionNames = null, options = {}) {
 // save advanced the response epoch is fetched again once in the new context, so
 // a visible tab does not stay on its empty placeholder. The retry itself passes
 // false: a second discard or failure uses the existing warning, never a loop.
-async function loadExtraDataBatch(collectionNames, options, allowContextRetry) {
+async function loadExtraDataBatch(collectionNames, options, allowContextRetry, inheritedRetryContexts = null) {
     const allRequestSpecs = [
         ['absences', '/api/extra/absences'],
         ['eventResponses', '/api/extra/event_responses'],
@@ -806,7 +809,7 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry) {
     const previousPromotionLoadState = appState.promotionLoadState;
     const promotionWaiting = window.portalRetryWaitInfo?.('/api/extra/promotions', options)?.blocked;
     const requestSpecs = selectedSpecs.map(
-        ([name, url]) => [name, beginPortalExtraLoad(name, url, options)]
+        ([name, url]) => [name, beginPortalExtraLoad(name, url, options, inheritedRetryContexts?.get(name))]
     );
     if (!promotionWaiting && selectedSpecs.some(([name]) => name === 'promotions')) {
         appState.promotionLoadState = 'loading';
@@ -832,7 +835,7 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry) {
             const unloaded = Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, key)
                 && !isDeferredPortalDataLoaded(key);
             if (discardedBySave && !unloaded) return; // displayed data stays as it is
-            if (discardedBySave && allowContextRetry) { contextRetryNames.push(key); return; }
+            if (discardedBySave && allowContextRetry) { contextRetryNames.push([key, entry.retryContext]); return; }
             if (!entry.reported) { failed.push(key); entry.reported = true; }
             if (key === 'promotions') appState.promotionLoadState = 'error';
             return;
@@ -907,8 +910,12 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry) {
 
     // Skip names a newer load has applied meanwhile; an in-flight newer load
     // with the same options is joined by beginPortalExtraLoad, not duplicated.
-    const retryNames = contextRetryNames.filter((name) => !isDeferredPortalDataLoaded(name));
-    if (retryNames.length) await loadExtraDataBatch(retryNames, options, false);
+    // The retry continues each collection's used budget (agreed: two transient
+    // re-sends in total per logical load, not two more per attempt).
+    const retries = contextRetryNames.filter(([name]) => !isDeferredPortalDataLoaded(name));
+    if (retries.length) {
+        await loadExtraDataBatch(retries.map(([name]) => name), options, false, new Map(retries));
+    }
 }
 
 

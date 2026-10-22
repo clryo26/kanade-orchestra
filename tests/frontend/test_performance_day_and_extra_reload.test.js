@@ -208,7 +208,8 @@ describe('targeted extra-data reload', () => {
         await Promise.all([sandbox.loadExtraData(['promotions']), sandbox.loadExtraData(['promotions'], { _requestOrigin: 'automatic' })]);
         expect(appState.promotionLoadState).toBe('error');
         expect(appState.promotions).toEqual([{ id: 7 }]);
-        expect(request).toHaveBeenCalledWith('/api/extra/promotions', { _requestOrigin: 'automatic' });
+        // The loader adds only its internal per-collection retry budget.
+        expect(request).toHaveBeenCalledWith('/api/extra/promotions', { _requestOrigin: 'automatic', _retryContext: expect.any(Object) });
         expect(sandbox.renderMemberExtraViews).not.toHaveBeenCalled();
     });
     test('requested collection reload sends only its own GET request', async () => {
@@ -219,7 +220,7 @@ describe('targeted extra-data reload', () => {
 
         expect(request).toHaveBeenCalledTimes(1);
         expect(request).toHaveBeenCalledWith(
-            '/api/extra/desired_pieces'
+            '/api/extra/desired_pieces', { _retryContext: expect.any(Object) }
         );
         expect(appState.desiredPieces).toEqual([
             { sourceUrl: '/api/extra/desired_pieces' },
@@ -232,12 +233,13 @@ describe('targeted extra-data reload', () => {
         await sandbox.loadExtraData();
 
         expect(request).toHaveBeenCalledTimes(21);
+        const internalOnly = { _retryContext: expect.any(Object) };
         expect(request).toHaveBeenCalledWith(
-            '/api/extra/absences'
+            '/api/extra/absences', internalOnly
         );
-        expect(request).toHaveBeenCalledWith('/api/sheets');
+        expect(request).toHaveBeenCalledWith('/api/sheets', internalOnly);
         expect(request).toHaveBeenCalledWith(
-            '/api/extra/connection_settings'
+            '/api/extra/connection_settings', internalOnly
         );
     });
 

@@ -410,7 +410,9 @@ async function request(url, options = {}) {
     }
     const method = String(options.method || 'GET').toUpperCase();
     // This object survives the separate 401 resend; authentication has its own budget.
-    options = { ...options, _retryContext: { transientRetries: 0, unknown503Retries: 0 } };
+    // A caller continuing the same logical load (the extra loader's one retry
+    // after a save) passes its used budget; it must not be reset here.
+    options = { ...options, _retryContext: options._retryContext || { transientRetries: 0, unknown503Retries: 0 } };
     const cacheKey = url;
     const contextKey = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalResponseEpoch || 0}`;
     const startedContext = contextKey();
