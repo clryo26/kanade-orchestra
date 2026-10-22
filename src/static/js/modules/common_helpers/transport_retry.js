@@ -7,10 +7,22 @@
     const retryableStatuses = new Set([408, 429, 502, 503, 504]);
     const retryDelayMs = [250, 750];
     const waits = new Map();
+    const activeAttempts = new Set();
     const manualIntervalMs = 10000;
     const identity = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalRuntimeContext?.appState?.portalAuthTransition || 0}`;
     let waitIdentity = identity();
     window.resetPortalRequestWaits = function () { waits.clear(); waitIdentity = identity(); };
+    // Use the mutation cache targets, including every force/header variant.
+    window.clearPortalRequestWaitsForKeys = function (keys) {
+        const targets = new Set(keys);
+        for (const [key, entry] of waits) {
+            if (targets.has(entry.url.split('?')[0])) waits.delete(key);
+        }
+        // A read started before the save must not restore the cleared wait.
+        for (const attempt of activeAttempts) {
+            if (targets.has(attempt.url.split('?')[0])) attempt.invalidated = true;
+        }
+    };
     function waitKey(url, options) {
         const current = identity();
         if (waitIdentity !== current) window.resetPortalRequestWaits();
@@ -29,7 +41,7 @@
         if (!entry) return null;
         const automatic = options._requestOrigin === 'automatic';
         const remainingMs = Math.max(0, (automatic ? entry.automaticUntil : entry.manualUntil) - Date.now());
-        const prefix = entry.maintenance ? 'メンテナンス中です。' : '現在、取得を待機しています。';
+        const prefix = entry.message || (entry.maintenance ? 'メンテナンス中です。' : '現在、取得を待機しています。');
         return { blocked: remainingMs > 0, remainingMs,
             message: `${prefix}あと${Math.ceil(remainingMs / 1000)}秒後に再試行できます。` };
     }
@@ -69,6 +81,8 @@
         }
         for (;;) {
             let delayMs = retryDelayMs[budget.transientRetries];
+            const attempt = { url: String(url), invalidated: false };
+            activeAttempts.add(attempt);
             try {
                 const response = await originalFetchWithTimeout(url, requestOptions, timeoutMs);
                 if (response.ok || response.status === 304) {
@@ -89,10 +103,13 @@
                         && response.headers?.get('Cache-Control') === 'no-store')
                         || (detail === 'メンテナンス中です。しばらくしてから再度お試しください' && retryAfter === '300');
                     const duration = retryAfter && /^\d+$/.test(retryAfter.trim()) ? Number(retryAfter) * 1000 : 0;
-                    if (code !== 'version_clock_anomaly' && duration > 0 && Number.isSafeInteger(Date.now() + duration)
-                        && identity() === context && typeof response.clone === 'function') {
-                        ownedEntry = { response: response.clone(), budget, maintenance,
-                            automaticUntil: Date.now() + duration, manualUntil: Date.now() + manualIntervalMs };
+                    // Manual probes are spaced for every 503. Only a valid
+                    // Retry-After establishes a server-directed automatic wait.
+                    const automaticDuration = duration > 0 && Number.isSafeInteger(Date.now() + duration) ? duration : 0;
+                    if (!attempt.invalidated && identity() === context && typeof response.clone === 'function') {
+                        ownedEntry = { response: response.clone(), budget, maintenance, url: String(url),
+                            message: code === 'version_clock_anomaly' ? body?.detail?.message : null,
+                            automaticUntil: Date.now() + automaticDuration, manualUntil: Date.now() + manualIntervalMs };
                         waits.set(key, ownedEntry);
                         response.portalRetryWait = { ...waitInfo(ownedEntry, requestOptions), suppressed: false };
                     }
@@ -118,6 +135,8 @@
                 if (isTimeout || isAbort || externallyAborted || budget.transientRetries >= 2) {
                     throw error;
                 }
+            } finally {
+                activeAttempts.delete(attempt);
             }
 
             budget.transientRetries += 1;

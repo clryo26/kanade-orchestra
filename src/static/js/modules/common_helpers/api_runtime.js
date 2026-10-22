@@ -295,6 +295,8 @@ function mutationRelatedCacheKeys(url) {
     }
     if (url.startsWith('/api/extra/')) {
         keys.add(url.split('?')[0]);
+        const collection = url.split('?')[0].match(/^\/api\/extra\/[^/]+/);
+        if (collection) keys.add(collection[0]);
         if (url.includes('/sheet_library') || url.includes('/date_adjust') || url.includes('/practice_instruction')) keys.add('/api/sheets');
         return [...keys];
     }
@@ -317,6 +319,7 @@ async function invalidateCacheForMutation(url) {
     // An older GET must not repopulate the cache after a successful mutation.
     window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     const keys = mutationRelatedCacheKeys(url);
+    if (typeof window.clearPortalRequestWaitsForKeys === 'function') window.clearPortalRequestWaitsForKeys(keys);
     await Promise.all(keys.map((key) => window.portalRuntimeContext.dbCache.delete(key)));
 }
 

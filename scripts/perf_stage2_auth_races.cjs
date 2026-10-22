@@ -75,6 +75,50 @@ async function runManualWait(page, result, output) {
     expect(result.pageErrors).toEqual([]);
 }
 
+async function runWaitReview(page, result) {
+    let saved = false;
+    let gets = 0;
+    let writes = 0;
+    await page.route('**/api/extra/albums', (route) => {
+        gets++;
+        if (saved) return route.fulfill({ json: [{ id: 90001, title: '保存後の一覧' }] });
+        return route.fulfill(result.order === 'headerless-wait'
+            ? { status: 503, contentType: 'text/html', body: '<html>gateway busy</html>' }
+            : { status: 503, headers: { 'Retry-After': '300' }, json: { detail: { code: 'maintenance', message: 'fixture' } } });
+    });
+    await page.route('**/api/extra/albums/90001', (route) => {
+        expect(route.request().method()).toBe('PUT');
+        writes++;
+        saved = true;
+        return route.fulfill({ json: { id: 90001 } });
+    });
+    await page.evaluate(() => request('/api/extra/albums').catch(() => null));
+    result.initialSends = gets;
+    expect(gets).toBe(result.order === 'headerless-wait' ? 2 : 1);
+    if (result.order === 'headerless-wait') {
+        await page.evaluate(() => Promise.all([request('/api/extra/albums').catch(() => null), request('/api/extra/albums').catch(() => null)]));
+        expect(gets).toBe(2);
+        await expect(page.locator('#toastArea')).toContainText('再試行できます');
+        result.blockedSends = gets;
+        await page.clock.setFixedTime(new Date('2026-10-21T12:00:10+09:00'));
+        saved = true;
+        await page.evaluate(() => request('/api/extra/albums'));
+        expect(gets).toBe(3);
+    } else {
+        await page.evaluate(() => request('/api/extra/albums/90001', { method: 'PUT', body: JSON.stringify({ title: '保存後の一覧' }) }));
+        await page.evaluate(() => document.getElementById('toastArea')?.replaceChildren());
+        await page.evaluate(() => loadExtraData(['albums']));
+        expect(gets).toBe(2);
+        expect(writes).toBe(1);
+        expect(await page.evaluate(() => window.portalRuntimeContext.appState.albums[0].title)).toBe('保存後の一覧');
+        expect(await page.locator('#toastArea').innerText()).not.toContain('取得を待機');
+        result.writes = writes;
+        result.refreshedWithoutWaitWarning = true;
+    }
+    result.finalSends = gets;
+    expect(result.pageErrors).toEqual([]);
+}
+
 async function main() {
     const root = path.resolve(process.env.PERF_SOURCE_ROOT || '.');
     const output = path.resolve(process.env.PERF_OUTPUT || '.tmp/perf-stage2-http/auth-races');
@@ -91,14 +135,17 @@ async function main() {
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     let browser;
-    const report = { scope: process.env.PERF_RETRY_WAIT === '1'
+    const report = { scope: process.env.PERF_WAIT_REVIEW === '1'
+        ? 'synthetic API; actual WebKit JS/DOM; headerless 503 and save-refresh; not BFCache or physical iPhone'
+        : process.env.PERF_RETRY_WAIT === '1'
         ? 'synthetic API; actual WebKit JS/DOM and manual clicks; not BFCache or physical iPhone'
         : 'synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone',
         platform: process.platform, image: process.env.PERF_IMAGE || null, fixedTime: '2026-10-21T12:00:00+09:00', cases: [] };
     try {
         browser = await webkit.launch();
         report.browser = browser.version();
-        for (const order of process.env.PERF_RETRY_WAIT === '1' ? ['manual-wait'] : ['data-first', 'resume-first', 'other-tab-logout']) {
+        for (const order of process.env.PERF_WAIT_REVIEW === '1' ? ['headerless-wait', 'save-refresh']
+            : process.env.PERF_RETRY_WAIT === '1' ? ['manual-wait'] : ['data-first', 'resume-first', 'other-tab-logout']) {
             const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
                 locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
             let releaseAuth;
@@ -122,7 +169,10 @@ async function main() {
                 await page.click('#portalLoginBtn');
                 await expect(page.locator('#memberPanel')).toBeVisible();
                 await page.waitForLoadState('networkidle');
-                if (order === 'manual-wait') {
+                if (['headerless-wait', 'save-refresh'].includes(order)) {
+                    await runWaitReview(page, result);
+                    result.passed = true;
+                } else if (order === 'manual-wait') {
                     await runManualWait(page, result, output);
                     result.passed = true;
                 } else {

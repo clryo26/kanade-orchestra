@@ -140,19 +140,81 @@ test.skipIf(BEFORE)('temporary wait responses preserve HTTP status, JSON and res
     expect(h.calls).toHaveLength(1);
 });
 
-test.skipIf(BEFORE).each(['invalid', 'Thu, 22 Oct 2026 00:00:00 GMT'])(
+test.skipIf(BEFORE).each(['invalid', 'Thu, 22 Oct 2026 00:00:00 GMT', '0'])(
     'an uninterpretable Retry-After %s does not invent a persistent server deadline', async (seconds) => {
         const h = harness(() => busy(seconds));
         await get(h);
         await get(h);
+        expect(h.calls).toHaveLength(1);
+        await get(h, '/api/extra/albums', { _requestOrigin: 'automatic' });
         expect(h.calls).toHaveLength(2);
     }
 );
 
-test.skipIf(BEFORE)('version clock anomalies keep the existing administrator message and create no cooldown', async () => {
+test.skipIf(BEFORE)('version clock anomalies keep the administrator message without automatic retry', async () => {
     const h = harness(() => busy('300', 'version_clock_anomaly'));
     await get(h); await get(h);
+    expect(h.calls).toHaveLength(1);
+    expect(h.ctx.showAlert).toHaveBeenCalledWith(expect.stringContaining('fixture busy'), 'warning');
+});
+
+test.skipIf(BEFORE)('headerless HTML 503 has one jitter retry and a ten-second manual interval', async () => {
+    const h = harness(() => new Response('<html>gateway busy</html>', { status: 503 }));
+    const pending = get(h);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
     expect(h.calls).toHaveLength(2);
+    await Promise.all([get(h), get(h), get(h)]);
+    expect(h.calls).toHaveLength(2);
+    expect(h.ctx.portalRetryWaitInfo('/api/extra/albums').blocked).toBe(true);
+    expect(h.ctx.portalRetryWaitInfo('/api/extra/albums', { _requestOrigin: 'automatic' }).blocked).toBe(false);
+    await vi.advanceTimersByTimeAsync(10000);
+    const probe = get(h);
+    await vi.advanceTimersByTimeAsync(1500);
+    await probe;
+    expect(h.calls).toHaveLength(4);
+});
+
+test.skipIf(BEFORE).each(['POST', 'PUT', 'DELETE'])(
+    'successful %s clears related list and bootstrap waits, retaining unrelated waits', async (method) => {
+        let saved = false;
+        const h = harness((_url, options) => {
+            if (options.method === method) { saved = true; return ok(); }
+            return saved ? ok() : busy();
+        });
+        await get(h);
+        await get(h, '/api/extra/albums?view=all', { _forceRevalidate: true });
+        await get(h, '/api/bootstrap-lite');
+        await get(h, '/api/members');
+        await h.ctx.request('/api/extra/albums/5', { method });
+        expect(h.ctx.portalRetryWaitInfo('/api/extra/albums')).toBeNull();
+        expect(h.ctx.portalRetryWaitInfo('/api/extra/albums?view=all', { _forceRevalidate: true })).toBeNull();
+        expect(h.ctx.portalRetryWaitInfo('/api/bootstrap-lite')).toBeNull();
+        expect(h.ctx.portalRetryWaitInfo('/api/members').blocked).toBe(true);
+        h.ctx.showAlert.mockClear();
+        // Match existing post-save callers that omit _requestOrigin.
+        expect(await get(h, '/api/extra/albums')).toEqual([]);
+        expect(h.db.delete).toHaveBeenCalledWith('/api/extra/albums');
+        expect(h.ctx.showAlert).not.toHaveBeenCalled();
+        expect(h.calls).toHaveLength(6);
+    }
+);
+
+test.skipIf(BEFORE)('failed saves do not release related waits', async () => {
+    const h = harness(() => busy());
+    await get(h);
+    await h.ctx.request('/api/extra/albums/5', { method: 'PUT' }).catch(() => {});
+    expect(h.ctx.portalRetryWaitInfo('/api/extra/albums').blocked).toBe(true);
+});
+
+test.skipIf(BEFORE).each([true, false])('late 503 registration respects related mutation targets (%s)', async (related) => {
+    let finish;
+    const h = harness(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = h.ctx.fetchWithTimeout('/api/extra/albums', {}, 15000);
+    await h.ctx.invalidateCacheForMutation(related ? '/api/extra/albums/5' : '/api/events/1');
+    finish(busy());
+    await pending;
+    expect(Boolean(h.ctx.portalRetryWaitInfo('/api/extra/albums')?.blocked)).toBe(!related);
 });
 
 test.skipIf(BEFORE)('a late success cannot clear a more recently received 503 wait', async () => {
