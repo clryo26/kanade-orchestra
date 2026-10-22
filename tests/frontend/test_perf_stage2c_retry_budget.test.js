@@ -11,12 +11,17 @@ const status = (code) => new Response(JSON.stringify(code === 200 ? [{ id: 'fres
 
 function loaderHarness(sequence, { saveOnSend }) {
     let sent = 0;
-    const h = createHttpHarness(() => {
+    const h = loaderHarnessWith(() => {
         sent += 1;
         // A save finishing while this response is in flight advances the epoch.
         if (sent === saveOnSend) h.ctx.portalResponseEpoch = (h.ctx.portalResponseEpoch || 0) + 1;
         return status(sequence[sent - 1]);
     });
+    return h;
+}
+
+function loaderHarnessWith(respond) {
+    const h = createHttpHarness((...args) => respond(...args));
     vm.runInContext(fs.readFileSync('src/static/js/modules/common_helpers/transport_retry.js', 'utf8'), h.ctx);
     const loader = fs.readFileSync(LOADER, 'utf8');
     for (const name of new Set(loader.match(/\b(?:render[A-Z]\w*|refreshPartSelectOptions|refreshVenueOptions|applyOrgSettings)\b/g))) {
@@ -55,6 +60,31 @@ test.each([
     // One shared GET: 1 initial + 2 transient re-sends, then one joined retry
     // send. Before the fix the joiner's untouched budget allowed 6 sends.
     expect(h.calls).toHaveLength(4);
+    expect(h.ctx.isDeferredPortalDataLoaded('albums')).toBe(false);
+});
+
+// The separate "one 401 recovery" budget is part of the same logical load too.
+// The auth check (its own budget) succeeds each time and keeps the identity.
+test('401, recovery, 200 discarded by a save, then 401: the retry does not recover a second time', async () => {
+    const authUrl = '/api/auth/devices/fixture-device';
+    const device = { member_id: 7, permission: '一般', authenticated_at: 'fixture-generation' };
+    const dataSequence = [401, 200, 401, 200];
+    let dataSent = 0;
+    const h = loaderHarnessWith((url) => {
+        if (url === authUrl) {
+            return new Response(JSON.stringify({ authenticated: true, device }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        dataSent += 1;
+        if (dataSent === 2) h.ctx.portalResponseEpoch = (h.ctx.portalResponseEpoch || 0) + 1; // a save
+        return status(dataSequence[dataSent - 1]);
+    });
+    const pending = h.ctx.loadExtraData(['albums']);
+    await vi.runAllTimersAsync();
+    await pending;
+    const authSends = h.calls.filter((call) => call.url === authUrl).length;
+    // Before the fix the retry recovered again: 2 auth checks, 4 data sends.
+    expect(authSends).toBe(1);
+    expect(dataSent).toBe(3);
     expect(h.ctx.isDeferredPortalDataLoaded('albums')).toBe(false);
 });
 

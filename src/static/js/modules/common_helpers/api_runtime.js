@@ -437,8 +437,13 @@ async function request(url, options = {}) {
         // IndexedDB fallback would hide failed refreshes and stale operation results.
         const identity = `${deviceId}:${appState.currentUserMemberId}:${appState.currentUserPermission}`;
         let response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
-        if (response.status === 401 && !skipAuthRecovery && await tryRecoverPortalSession(deviceId, options)) {
-            response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+        // One 401 recovery per logical load, shared with the loader's retry after
+        // a save (the auth check itself keeps its own separate budget).
+        if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+            options._retryContext.authRecoveryUsed = true;
+            if (await tryRecoverPortalSession(deviceId, options)) {
+                response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+            }
         }
         const currentDevice = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
         if (identity !== `${currentDevice}:${appState.currentUserMemberId}:${appState.currentUserPermission}`) {
@@ -499,9 +504,10 @@ async function request(url, options = {}) {
                 showAlert(message, 'danger');
                 throw new Error(message);
             }
-            let recoveredOnce = false;
-            if (response.status === 401 && !skipAuthRecovery) {
-                recoveredOnce = true;
+            // One 401 recovery per logical load, shared with the loader's retry
+            // after a save; the auth check keeps its own separate budget.
+            if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+                options._retryContext.authRecoveryUsed = true;
                 const recovered = await tryRecoverPortalSession(deviceId, options);
                 if (recovered) {
                     response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
@@ -524,8 +530,11 @@ async function request(url, options = {}) {
                 options._retryContext.transientRetries += 1;
                 const unconditional = Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'if-none-match'));
                 response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
-                if (response.status === 401 && !skipAuthRecovery && !recoveredOnce && await tryRecoverPortalSession(deviceId, options)) {
-                    response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+                    options._retryContext.authRecoveryUsed = true;
+                    if (await tryRecoverPortalSession(deviceId, options)) {
+                        response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                    }
                 }
                 requireCurrentContext();
             }
