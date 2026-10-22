@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-22",
+  "baseCommit": "eef4434",
+  "branch": "perf/portal-stage2cde-20261022",
+  "checks": {
+    "frontend": {
+      "passed": 1372,
+      "exitCode": 0
+    },
+    "backend": {
+      "passed": 960,
+      "skipped": 78,
+      "warnings": 3,
+      "exitCode": 0
+    },
+    "e2e": {
+      "passed": 95,
+      "exitCode": 0
+    },
+    "syntax": {
+      "files": 170,
+      "exitCode": 0
+    },
+    "loadOrder": {
+      "index": 43,
+      "legacy": 70,
+      "exitCode": 0
+    },
+    "stateAccess": {
+      "files": 170,
+      "violations": 0,
+      "exitCode": 0
+    },
+    "ruff": {
+      "exitCode": 0
+    },
+    "compileall": {
+      "exitCode": 0
+    },
+    "releaseSafety": {
+      "command": "uv run python scripts/check_release_safety.py",
+      "exitCode": 0
+    }
+  },
+  "browser": {
+    "platform": "Linux",
+    "version": "26.5",
+    "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+    "matchingImages": 9,
+    "matchingVisibleDOMs": 9,
+    "inputFilePreservationRoles": 3,
+    "physicalDevice": false,
+    "bfcache": false
+  },
+  "baselineReplay": "Initial C01 before source changes; remaining collection and E2 baselines replay eef4434 source in isolated VM",
+  "limitations": [
+    "No live DB/GCS measurements",
+    "No physical iPhone/home-screen/BFCache acceptance",
+    "No browser physical quota measurement",
+    "D1/E1 held; events/authDevices ownership and broad bootstrap rendering unchanged"
+  ],
+  "environmentNotes": [
+    "Sandbox denied uv cache/Python DLL access; rerun outside sandbox",
+    "npm python launcher unavailable; release-safety passed using uv"
+  ],
+  "sha256": {
+    "scripts/perf_stage2_cde_capture.cjs": "c29fbf9438e481ade35bcd3902e8ddb4b3077c43ac8512c78c58ffd84f2cef2b",
+    "scripts/perf_stage2c_browser.cjs": "ad61fbedcbe78930cdf570606cdeecc462a49bd76376ed1a2bca0b37e0eab010",
+    "scripts/perf_stage2c_search_capture.cjs": "f55aae870057bb458eec57192f4a85b916d01fa31f915f973c338540321eea08",
+    "scripts/perf_stage2e_capture.cjs": "14bfdffa4814e8326511f2d1b8e35f64fda7d8fbabbeb2079a6c46d658c87b46",
+    "src/static/js/modules/bootstrap_loader.js": "8dd44f4549b9cbaff51fe155eae3ec6864ded26f770144f3ef04f201dc42fe6d",
+    "src/static/js/modules/common_helpers/bootstrap_init.js": "3878554c462838e807dfeacdf6d57bb147a6a5b26700290724ead9cbd5efe8d0",
+    "src/static/js/modules/members/render.js": "2eb8bacccfabd2fb2a137b5d5c184f823905ff099bcb49056edc5929fca50f52",
+    "src/static/js/modules/portal_views.js": "190519bed97e1942069d8f82b5703a9517c66c000e2d8469245757f5082b4283",
+    "src/static/js/utils/cache.js": "33a4a85f1707247faa5ee57988f16164f5853b033c120d1ef4ccb5f18f792587",
+    "tests/backend/test_perf_stage2de_decisions.py": "51533537f174707d74a8f64de908acff72974af77a854fc22b5bb4fa2ea4f59f",
+    "tests/frontend/fixtures/perf_stage2c_concert_baseline.json": "86193ba2f7259331c0430cbb9fbf40bac13f492f233f4c8e39b438ca5064b25d",
+    "tests/frontend/helpers/concert_record_harness.cjs": "2798751e6a4615688653657af929dcb05901a90e86cba09f29754bce3e371868",
+    "tests/frontend/helpers/portal_cache_harness.cjs": "9e8873bbeeff9fff57811c2fd51ea92c94d4407ff034bae2d181c72469933c84",
+    "tests/frontend/helpers/portal_cde_harness.cjs": "ad5b17324336c75e46bada41c0d2fe07a29a1fe4965a2059a8fd6992c1467fe9",
+    "tests/frontend/test_perf_stage2c_loader.test.js": "1d1774e8d617bae1602dac15cb329a2efa608131e4988340e0d3e8554d66d49d",
+    "tests/frontend/test_perf_stage2c_resume.test.js": "75d83ba2252fe1916eb4b29d9e94893480a44fdb06fcc8d3730b513f722dc309",
+    "tests/frontend/test_perf_stage2c_search.test.js": "1c40d29cec08129704d0812953d1b4889895449e08196ee5b8ccaf8771a006ed",
+    "tests/frontend/test_perf_stage2e_cache.test.js": "b3c50be9b4785a541b7cab882d68ce1a274561f9cc255f77d453dcedd2ed546f"
+  },
+  "applicationCommits": [
+    "5cfd8bf",
+    "5427102"
+  ]
+}
