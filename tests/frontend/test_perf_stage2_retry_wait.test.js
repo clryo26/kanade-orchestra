@@ -314,3 +314,39 @@ test.skipIf(BEFORE)('automatic promotion polling is explicitly tagged and cannot
     for (const [options] of h.ctx.checkPromotionOperation.mock.calls) expect(options._requestOrigin).toBe('automatic');
     expect(store.size).toBe(1);
 });
+
+test.skipIf(BEFORE)('the sheet library API keeps its own contract: reopening within 10 seconds fetches again', async () => {
+    // Design 6.1: the sheet API is not folded into the generic wait. Its
+    // failure text promises that reopening the library fetches again.
+    let failing = true;
+    const sheetBusy = () => new Response(JSON.stringify({ detail: { code: 'sheet_unavailable', message: '一時的に取得できません' } }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } });
+    const h = harness(() => (failing ? sheetBusy() : ok()));
+    vm.runInContext(fs.readFileSync('src/static/js/modules/scores/sheet_api.js', 'utf8'), h.ctx);
+    const first = h.ctx.portalSheetApi.call('/api/sheets');
+    await vi.advanceTimersByTimeAsync(1500);
+    expect((await first).status).toBe(503);
+    // The unknown-503 budget still allows exactly one jittered retry.
+    expect(h.calls).toHaveLength(2);
+    failing = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    const reopened = await h.ctx.portalSheetApi.call('/api/sheets');
+    expect(reopened.status).toBe(200);
+    expect(h.calls).toHaveLength(3);
+    expect(h.ctx.showAlert).not.toHaveBeenCalled();
+    expect(h.ctx.portalRetryWaitInfo('/api/sheets')).toBeNull();
+    for (const call of h.calls) expect(call.options._skipRetryWait).toBeUndefined();
+});
+
+test.skipIf(BEFORE)('the generic request path still waits 10 seconds after the same 503', async () => {
+    const h = harness(() => new Response(JSON.stringify({ detail: { code: 'sheet_unavailable', message: '一時的に取得できません' } }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }));
+    const first = get(h, '/api/sheets');
+    await vi.advanceTimersByTimeAsync(1500);
+    await first;
+    expect(h.calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    await get(h, '/api/sheets');
+    expect(h.calls).toHaveLength(2);
+    expect(h.ctx.portalRetryWaitInfo('/api/sheets').blocked).toBe(true);
+});

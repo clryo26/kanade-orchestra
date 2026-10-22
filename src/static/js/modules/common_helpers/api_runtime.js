@@ -65,6 +65,7 @@ async function fetchWithTimeout(url, options, timeoutMs) {
         _structuredResult: _omitStructured,
         _retryContext: _omitRetryContext,
         _requestOrigin: _omitRequestOrigin,
+        _skipRetryWait: _omitSkipRetryWait,
         signal: _omit4,
         ...fetchOptions
     } = Object(options || {});

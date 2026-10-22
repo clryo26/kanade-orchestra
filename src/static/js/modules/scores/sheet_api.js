@@ -62,6 +62,9 @@
         // Preserve the transient budget across this helper's own 401 resend.
         init._retryContext = { transientRetries: 0, unknown503Retries: 0 };
         init._requestOrigin = o._requestOrigin;
+        // Design 6.1: the sheet API keeps its own contract. Reopening the
+        // library must fetch again, as its failure message promises.
+        init._skipRetryWait = true;
         if (o.json !== undefined) {
             headers['Content-Type'] = 'application/json';
             init.body = JSON.stringify(o.json);

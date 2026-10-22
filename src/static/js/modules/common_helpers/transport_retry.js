@@ -63,9 +63,13 @@
         if (requestOptions.signal?.aborted) throw requestOptions.signal.reason || new DOMException('Aborted', 'AbortError');
 
         const budget = requestOptions._retryContext || { transientRetries: 0, unknown503Retries: 0 };
+        // The sheet library keeps its own contract (reopening fetches again,
+        // with its own sync/sequence checks), so it never enters the wait map.
+        // Its transient budget and unknown-503 retry still apply.
+        const useWaits = !requestOptions._skipRetryWait;
         const context = identity();
-        const key = waitKey(url, requestOptions);
-        let ownedEntry = waits.get(key);
+        const key = useWaits ? waitKey(url, requestOptions) : null;
+        let ownedEntry = useWaits ? waits.get(key) : undefined;
         const waiting = waitInfo(ownedEntry, requestOptions);
         if (ownedEntry?.budget !== budget && waiting?.blocked) {
             const response = ownedEntry.response.clone();
@@ -108,7 +112,7 @@
                     // Manual probes are spaced for every 503. Only a valid
                     // Retry-After establishes a server-directed automatic wait.
                     const automaticDuration = duration > 0 && Number.isSafeInteger(Date.now() + duration) ? duration : 0;
-                    if (!attempt.invalidated && identity() === context && typeof response.clone === 'function') {
+                    if (useWaits && !attempt.invalidated && identity() === context && typeof response.clone === 'function') {
                         ownedEntry = { response: response.clone(), budget, maintenance, url: String(url),
                             message: code === 'version_clock_anomaly' ? body?.detail?.message : null,
                             automaticUntil: Date.now() + automaticDuration, manualUntil: Date.now() + manualIntervalMs };
