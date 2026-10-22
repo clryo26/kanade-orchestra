@@ -188,6 +188,10 @@ async function checkPromotionOperation(options = {}) {
             if (response.data.result_status >= 400) {
                 showAlert(response.data.result_body?.detail?.message || '操作は完了しませんでした。入力を確認してください', 'warning');
             } else {
+                // A confirmed asynchronous save changes the same list as a
+                // direct save; release its wait before the existing reload.
+                await invalidateCacheForMutation(pending.id
+                    ? `/api/extra/promotions/${encodeURIComponent(pending.id)}` : '/api/extra/promotions');
                 clearPromotionForm();
                 showAlert('操作の完了を確認しました', 'success');
             }

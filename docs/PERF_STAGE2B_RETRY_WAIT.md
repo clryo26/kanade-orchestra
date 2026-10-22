@@ -100,6 +100,22 @@ CIの`browser-regression-tests`で`tests/e2e/sheet_library_reliability.spec.js:1
 
 回帰試験として、楽譜APIは503の直後に開き直しても再取得し警告を出さないこと、同じ503でも通常の`request()`経路は10秒待機を維持することを`test_perf_stage2_retry_wait.test.js`に追加した。補正前のソースでは前者が失敗することを確認した。フロント全体1,308件、構文検査170ファイル、`npm run test:e2e`の95件が成功。
 
+## 追加レビュー後の補正：宣伝保存と認証待機情報（2026-10-22）
+
+宣伝の専用request経路は、共通のmutation処理より先にreturnしていたため、一覧の503待機が保存成功後も残っていた。専用経路の200保存応答を返す前に、既存のinvalidateCacheForMutationを呼ぶ。POST/PUT/DELETEで関連一覧・bootstrapだけを解除し、別の一覧は保持する。202・409・503では解除しない。結果確認APIで操作成功が確定した場合も、checkPromotionOperationで同じ無効化を行ってから一覧を再取得する。操作IDや結果不明の扱いは変更しない。
+
+fetchPortalSessionCheckの共有結果にはportalRetryWaitがなく、isPortalAuthenticated・起動/復帰処理の案内に届いていなかった。既存の解析結果へその内部情報を受け渡し、メンテナンス待機と残秒数、抑止済み・案内済みの情報を保持する。apply/clearと戻り値の変換は従来どおり各呼出元に残す。
+
+回帰試験9件を追加し、ソース補正前は6件失敗・34件成功、補正後は待機制御40件がすべて成功した。POST/PUT/DELETEの直接保存、202/409/503での非解除、非同期操作の成功確認、起動/復帰の案内と手動確認の抑止を含む。
+
+最新確認はフロント全体1,317件成功・失敗/保留0、`npm run test:e2e`の全95件成功（Chromium）。e2eは既存pytestと同じ方法で一時JSON/アップロード領域を指定した実アプリと、既存試験の架空APIを使った。楽譜ライブラリの再取得もこの95件に含む。HTTPキャッシュのバックエンド23件、構文170ファイル、読込順index43/legacy70、共有状態参照170ファイル/違反0、ruff、撮影スクリプト構文確認、diff --checkも成功。
+
+e2eのPowerShell実行は、NO_COLOR/FORCE_COLORのstderr警告をNativeCommandErrorとして扱い終了値1となった。試験の出力は`95 passed`で、Playwrightの`.last-run.json`も`status: passed`・`failedTests: []`であることを別に確認した。シェルの終了値0と誤記せず、検証JSONに両方を記録する。
+
+固定Linux/WebKit 26.5で追加2ケースと既存6ケースが成功。宣伝の実際の登録ボタンから、初期GET・失敗GET・保存POST・成功GETを確認した。復帰時は認証確認1送信のまま「メンテナンス中です。あと300秒…」を表示し、手動確認は10秒の案内と案内済みフラグを保持する。既存のフォーム画像一致も再確認した。新規ケースは`PERF_REVIEW_FIXES=1`で実行する。
+
+実行結果とソースSHA256は[追加補正の検証記録](PERF_STAGE2B_PROMOTION_AUTH_FIXES_20261022.json)に保存した。バックエンド全件931件や14場面の画像比較は今回再実行していない。実機・実際のBFCache・実DB/GCS・npm auditの依存更新は未確認/別作業のままとし、既存の記録を今回の結果で上書きしない。push・PR更新・デプロイは今回行っていない。
+
 ## 戻し方と残件
 
 レビュー補正コミットだけをrevertするとeed6a6eの手動待機実装へ戻り、ヘッダーなし503の連打と保存後の待機が再び起こり得る。手動待機全体を戻す場合は、補正とeed6a6eを新しい順にrevertし、cc61c61の承認済み通信・認証・HTTPキャッシュへ戻す。待機Mapを永続化していないためデータ移行・ストア削除は不要。

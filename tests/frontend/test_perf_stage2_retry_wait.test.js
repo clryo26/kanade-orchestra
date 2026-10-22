@@ -227,6 +227,84 @@ test.skipIf(BEFORE)('failed saves do not release related waits', async () => {
     expect(h.ctx.portalRetryWaitInfo('/api/extra/albums').blocked).toBe(true);
 });
 
+test.skipIf(BEFORE).each(['POST', 'PUT', 'DELETE'])('successful promotion %s releases its list wait before returning', async (method) => {
+    let saved = false;
+    const h = harness((url, options) => {
+        if (options.method === method) { saved = true; return ok(); }
+        return saved && url === '/api/extra/promotions' ? ok() : busy();
+    });
+    await get(h, '/api/extra/promotions');
+    await get(h, '/api/members');
+    const url = method === 'POST' ? '/api/extra/promotions' : '/api/extra/promotions/42';
+    expect((await h.ctx.request(url, { method, _structuredResult: true })).status).toBe(200);
+    expect(h.ctx.portalRetryWaitInfo('/api/extra/promotions')).toBeNull();
+    expect(h.ctx.portalRetryWaitInfo('/api/members').blocked).toBe(true);
+    h.ctx.showAlert.mockClear();
+    expect(await get(h, '/api/extra/promotions')).toEqual([]);
+    expect(h.ctx.showAlert).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(4);
+});
+
+test.skipIf(BEFORE).each([202, 409, 503])('unconfirmed/rejected promotion save (%s) retains list wait', async (status) => {
+    const h = harness((_url, options) => options.method === 'POST'
+        ? new Response('{}', { status, headers: { 'Content-Type': 'application/json' } }) : busy());
+    await get(h, '/api/extra/promotions');
+    expect((await h.ctx.request('/api/extra/promotions', { method: 'POST', _structuredResult: true })).status).toBe(status);
+    expect(h.ctx.portalRetryWaitInfo('/api/extra/promotions').blocked).toBe(true);
+});
+
+test.skipIf(BEFORE)('confirmed promotion operation releases list wait before its reload', async () => {
+    let confirmed = false;
+    const h = harness((url) => {
+        if (url.startsWith('/api/promotions/operations/')) {
+            confirmed = true;
+            return new Response(JSON.stringify({ state: 'completed', result_status: 200 }),
+                { headers: { 'Content-Type': 'application/json' } });
+        }
+        return confirmed && url === '/api/extra/promotions' ? ok() : busy();
+    });
+    const storage = new Map();
+    Object.assign(h.ctx, { location: { origin: 'https://fixture.invalid' },
+        sessionStorage: { getItem: (key) => storage.get(key), removeItem: (key) => storage.delete(key) },
+        clearPromotionForm: vi.fn(), loadExtraData: vi.fn(async () => h.ctx.request('/api/extra/promotions')) });
+    vm.runInContext(fs.readFileSync('src/static/js/modules/date_piece_promotion/api.js', 'utf8'), h.ctx);
+    storage.set(h.ctx.promotionPendingKey(), JSON.stringify({ operationId: 'fixture', method: 'PUT', id: 42 }));
+    await get(h, '/api/extra/promotions');
+    await get(h, '/api/members');
+    expect(await h.ctx.checkPromotionOperation()).toBe(true);
+    expect(storage.size).toBe(0);
+    expect(h.ctx.loadExtraData).toHaveBeenCalledWith(['promotions']);
+    expect(h.ctx.portalRetryWaitInfo('/api/extra/promotions')).toBeNull();
+    expect(h.ctx.portalRetryWaitInfo('/api/members').blocked).toBe(true);
+    expect(h.calls.filter((call) => call.url === '/api/extra/promotions')).toHaveLength(2);
+});
+
+test.skipIf(BEFORE).each(['start', 'resume'])('authentication wait metadata reaches the %s warning', async (entry) => {
+    const h = harness();
+    h.state.portalAuthVerified = false;
+    h.ctx.document = { visibilityState: 'visible', addEventListener: vi.fn() };
+    h.ctx.portalRuntimeContext.today = () => '2026-10-21';
+    h.ctx.portalStartup = { mark: vi.fn(), showRetry: vi.fn() };
+    vm.runInContext(fs.readFileSync('src/static/js/auth_feature.js', 'utf8'), h.ctx);
+    let source = fs.readFileSync('src/static/js/modules/common_helpers/bootstrap_init.js', 'utf8');
+    const end = source.lastIndexOf('}');
+    source = source.slice(0, end) + '\nglobalThis.reviewEntries = { start: _runAuthAndStart, resume: syncPortalSessionOnResume };\n' + source.slice(end);
+    vm.runInContext(source, h.ctx);
+    const check = await h.ctx.fetchPortalSessionCheck('fixture-device', { _requestOrigin: 'automatic' });
+    expect(check.portalRetryWait).toMatchObject({ suppressed: false, remainingMs: 300000 });
+    h.ctx.showAlert.mockClear();
+    await h.ctx.reviewEntries[entry]({ _requestOrigin: 'automatic' });
+    expect(h.calls).toHaveLength(1);
+    if (entry === 'start') {
+        expect(h.ctx.portalStartup.showRetry).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('メンテナンス中です。あと300秒') }));
+    } else {
+        expect(h.ctx.showAlert).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('メンテナンス中です。あと300秒'), 'warning');
+    }
+    const manual = await h.ctx.isPortalAuthenticated({ forceVerify: true });
+    expect(manual.error.portalRetryWait).toMatchObject({ suppressed: true, noticeShown: true, remainingMs: 10000 });
+    expect(h.calls).toHaveLength(1);
+});
+
 test.skipIf(BEFORE).each([true, false])('late 503 registration respects related mutation targets (%s)', async (related) => {
     let finish;
     const h = harness(() => new Promise((resolve) => { finish = resolve; }));

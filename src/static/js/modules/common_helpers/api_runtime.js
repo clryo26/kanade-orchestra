@@ -242,7 +242,7 @@ function fetchPortalSessionCheck(deviceId, options = {}) {
                 _requestOrigin: options._requestOrigin,
                 _retryContext: { transientRetries: 0, unknown503Retries: 0 } }, PORTAL_TIMEOUT_AUTH);
         const payload = response.ok ? await response.json().catch(() => ({})) : null;
-        return { status: response.status, ok: response.ok, payload, context };
+        return { status: response.status, ok: response.ok, payload, context, portalRetryWait: response.portalRetryWait };
     })().finally(() => {
         if (portalAuthCheckInFlight === pending) portalAuthCheckInFlight = null;
     });
@@ -440,6 +440,10 @@ async function request(url, options = {}) {
         }
         if (response.portalRetryWait?.suppressed && !options._structuredResult) throw portalRetryWaitError(response);
         const data = await response.json().catch((error) => { if (response.status < 500) throw error; return null; });
+        // Promotion writes return through this dedicated path, before the
+        // generic mutation handler. Only a confirmed save releases list waits;
+        // 202/5xx must remain result-unknown with their operation key intact.
+        if (method !== 'GET' && response.status === 200) await invalidateCacheForMutation(url);
         if (options._structuredResult) return { status: response.status, data, retryAfter: response.headers.get('Retry-After') };
         if (!response.ok) {
             throw new Error(data?.detail?.message || data?.detail || '宣伝の読み込みに失敗しました');
