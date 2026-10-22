@@ -1,0 +1,21 @@
+{
+  "source": "eef4434:src/static/js/modules/portal_views.js",
+  "fixtures": {
+    "0": {
+      "htmlSha256": "0024fb0c1bbbfa20ccd3350a77f5d2f2e56e59652a0e43c706fe386747517127",
+      "comparisons": 0
+    },
+    "1": {
+      "htmlSha256": "f11a82a69932c42b0346aee40a79976fc3c121a38c66e0deb4433bb1cbc30363",
+      "comparisons": 8
+    },
+    "30": {
+      "htmlSha256": "363105dfcffb73c360497ee8bf4019e185073d8553473a2d98d260ade46c9db5",
+      "comparisons": 186
+    },
+    "60": {
+      "htmlSha256": "69674f73b3160f07d1e98f8440fafb31c4c562a8f74f1c5362d80748058b1d72",
+      "comparisons": 366
+    }
+  }
+}

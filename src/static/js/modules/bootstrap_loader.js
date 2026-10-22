@@ -676,6 +676,58 @@ async function loadAuthManagement() {
     renderAuthDevices();
 }
 
+// HTTP coalescing alone cannot prevent callers of different batches from
+// applying the same response twice, or a slow batch from restoring older data.
+const portalExtraLoads = new Map();
+const portalExtraLatest = new Map();
+let portalExtraSequence = 0;
+function portalExtraContext() {
+    return JSON.stringify([typeof portalCacheIdentity === 'function' ? portalCacheIdentity()
+        : [appState.currentUserMemberId, appState.portalAuthGeneration],
+        appState.portalAuthTransition || 0, window.portalResponseEpoch || 0]);
+}
+function beginPortalExtraLoad(name, url, options) {
+    const context = portalExtraContext();
+    const shareable = Object.keys(options).every(key => ['_requestOrigin', '_forceRevalidate'].includes(key));
+    const key = JSON.stringify([context, name, options._requestOrigin || 'manual', !!options._forceRevalidate]);
+    if (shareable && portalExtraLoads.has(key)) return portalExtraLoads.get(key);
+    const entry = { context, sequence: ++portalExtraSequence, applied: false, reported: false };
+    portalExtraLatest.set(name, entry);
+    entry.promise = Promise.resolve().then(() => Object.keys(options).length ? request(url, options) : request(url))
+        .finally(() => {
+            if (portalExtraLoads.get(key) === entry) portalExtraLoads.delete(key);
+            entry.promise = null; // latest ownership must not retain a completed body
+        });
+    if (shareable) portalExtraLoads.set(key, entry);
+    return entry;
+}
+function renderAppliedExtraCollections(collections) {
+    const changed = new Set(collections);
+    const has = (...names) => names.some(name => changed.has(name));
+    const parts = has('partSettings');
+    if (parts) {
+        refreshPartSelectOptions();
+        // Avoid a second full member-extra cascade; its affected leaves run below.
+        if (typeof renderMembers === 'function') renderMembers({ includeDerived: false });
+    }
+    if (has('venueSettings')) refreshVenueOptions();
+    if (has('orgSettings')) applyOrgSettings();
+    renderMemberExtraViews({ collections });
+    if ((has('absences') || parts) && typeof renderMemberSchedules === 'function') renderMemberSchedules();
+    if (has('sheets') || parts) { if (typeof renderSheetAdmin === 'function') renderSheetAdmin(); }
+    if (has('payments', 'castings', 'orgSettings') || parts) renderPaymentAdmin({ preserveForm: true });
+    if (parts) renderPartManagement();
+    if (has('venueSettings')) renderVenueManagement();
+    if (has('flyerDistributions', 'flyerDistributionAssignments') || parts) renderFlyerDistributionManagement();
+    if (has('castings') || parts) { if (typeof renderCastingAdmin === 'function') renderCastingAdmin(); }
+    if (has('practiceInstructions', 'pieceInfos') && typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
+    if ((has('performanceDayInfos') || parts) && typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
+    if (has('concertRecordVideos') && typeof renderConcertRecordAdminList === 'function') renderConcertRecordAdminList();
+    if (has('orgSettings')) renderOrgManagement();
+    if (has('snsSettings')) renderSnsManagement();
+    if (has('connectionSettings') && typeof renderConnectionSettingsManagement === 'function') renderConnectionSettingsManagement();
+}
+
 async function loadExtraData(collectionNames = null, options = {}) {
     const allRequestSpecs = [
         ['absences', '/api/extra/absences'],
@@ -739,21 +791,22 @@ async function loadExtraData(collectionNames = null, options = {}) {
     const previousPromotionLoadState = appState.promotionLoadState;
     const promotionWaiting = window.portalRetryWaitInfo?.('/api/extra/promotions', options)?.blocked;
     const requestSpecs = selectedSpecs.map(
-        ([name, url]) => [name, options._requestOrigin ? request(url, options) : request(url)]
+        ([name, url]) => [name, beginPortalExtraLoad(name, url, options)]
     );
     if (!promotionWaiting && selectedSpecs.some(([name]) => name === 'promotions')) {
         appState.promotionLoadState = 'loading';
     }
 
     const settled = await Promise.allSettled(
-        requestSpecs.map(([, promise]) => promise)
+        requestSpecs.map(([, entry]) => entry.promise)
     );
 
     const resultMap = new Map();
     const failed = [];
 
     settled.forEach((item, index) => {
-        const key = requestSpecs[index][0];
+        const [key, entry] = requestSpecs[index];
+        if (entry.context !== portalExtraContext() || portalExtraLatest.get(key) !== entry || entry.applied) return;
 
         if (item.status === 'fulfilled') {
             resultMap.set(key, item.value);
@@ -761,7 +814,7 @@ async function loadExtraData(collectionNames = null, options = {}) {
         } else {
             // A suppressed retry is neither empty data nor a new failed load.
             // Keep already displayed data and do not mark the collection loaded.
-            if (!item.reason?.portalRetryWait) failed.push(key);
+            if (!item.reason?.portalRetryWait && !entry.reported) { failed.push(key); entry.reported = true; }
             if (key === 'promotions') {
                 if (!item.reason?.portalRetryWait) appState.promotionLoadState = 'error';
                 else if (appState.promotionLoadState === 'loading' && previousPromotionLoadState !== 'loading') {
@@ -808,6 +861,7 @@ async function loadExtraData(collectionNames = null, options = {}) {
     resultMap.forEach((value, key) => {
         if (key === 'sheets') {
             appState.sheetLibrary = value?.files || [];
+            portalExtraLatest.get(key).applied = true;
             return;
         }
 
@@ -815,24 +869,11 @@ async function loadExtraData(collectionNames = null, options = {}) {
         if (stateKey) {
             appState[stateKey] = value || [];
             markDeferredPortalDataLoaded(stateKey);
+            portalExtraLatest.get(key).applied = true;
         }
     });
 
-    refreshPartSelectOptions();
-    refreshVenueOptions();
-    applyOrgSettings();
-    renderMemberExtraViews();
-    if (typeof renderSheetAdmin === 'function') renderSheetAdmin();
-    renderPaymentAdmin();
-    renderPartManagement();
-    renderVenueManagement();
-    renderFlyerDistributionManagement();
-    if (typeof renderCastingAdmin === 'function') renderCastingAdmin();
-    if (typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
-    if (typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
-    renderOrgManagement();
-    renderSnsManagement();
-    if (typeof renderConnectionSettingsManagement === 'function') renderConnectionSettingsManagement();
+    if (resultMap.size) renderAppliedExtraCollections([...resultMap.keys()]);
 }
 
 
