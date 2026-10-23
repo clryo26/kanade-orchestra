@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-23",
+  "phase": "4-0 varied photo fixture and before baseline",
+  "base_commit": "55d624c9b9421b257ccc09721a961c8aab3e4ffb",
+  "production_source_base": "4ed586d",
+  "branch": "perf/portal-stage4-baseline-20261023",
+  "checks": {
+    "targeted_passed": 32,
+    "targeted_skipped": 0,
+    "new_photo_tests": 10,
+    "prior_baseline_tests": 10,
+    "existing_photo_permission_tests": 12,
+    "junit_sha256": "8a3422c5f99d160935ba2bc5fb7b11d02dc360d83ba6847ad2d6c8ad2593476e",
+    "log_sha256": "e52f0b5370008dbe0129ec95ddd0daa511a8bb3b5d028c961a8c806bfe268b86",
+    "ruff_all_exit_code": 0,
+    "compileall_exit_code": 0,
+    "generator_check_exit_code": 0,
+    "source_fixture_file_hashes": "passed",
+    "exif_corner_orientation": "passed",
+    "cold_warm_probe_bodies_identical_for_same_assignment": "passed"
+  },
+  "measurement": {
+    "batches": 90,
+    "http_requests": 2280,
+    "source_images": 4,
+    "thumbnail_bytes_min": 42116,
+    "thumbnail_bytes_max": 49674,
+    "all_images_synthetic": true,
+    "raw_images_committed_for_fixed_input": true,
+    "real_gcs_http_count": null,
+    "sdk_retry_count": null,
+    "sql_count": null,
+    "wire_bytes": null,
+    "peak_memory_bytes": null
+  },
+  "artifacts_sha256": {
+    "scripts/generate_perf_stage4_photo_fixtures.py": "a350c191c35d7ed9693eae267fb35e657d63fbe129fcca343dadec8a356fa00b",
+    "tests/backend/test_perf_stage4_photo_baseline.py": "ecdd27e64f5f43779626311267cc1168218edc0787f9ca5a1d6a5692a982c52f",
+    "tests/fixtures/perf_stage4_photos/manifest.json": "f694d1f074d87fc951e6b1484342db26f7ddd61a8628da58391b6c44fb27ca16",
+    "docs/PERF_STAGE4_0_BASELINE.md": "63989f1e59cdba0d051496dea0f89a465dcd0acb8dfe592ed7ff27b7bce9e27f",
+    "docs/perf_stage4/PHOTO_BASELINE_BEFORE.json": "37b78f000dfd547b00791fd9e54a8a26311bc024d4317c6659e8c8a5211e860f",
+    "tests/fixtures/perf_stage4_photos/landscape.jpg": "0c7186772900217bcd8fa37e5fbc2d51c23b234c48084b240bbbff642c9be297",
+    "tests/fixtures/perf_stage4_photos/portrait.jpg": "0dad3c0ab98cdb99f073d2e1f63fbfbffaf1e6842c79bb4bb900e8f156e870fb",
+    "tests/fixtures/perf_stage4_photos/high_resolution.jpg": "baabde302592f36cc5af143d2107b7f6905bc63a16cc52af61ff659454933b7a",
+    "tests/fixtures/perf_stage4_photos/exif_rotated.jpg": "5f9a5ecad744ed808c45738e98efe2d2e8b882d3e8927804f5bef4d7f82016da"
+  },
+  "production_sources_sha256": {
+    "src/backend/services/album_service.py": "30bcd40ee81f42eff8d7f08dda65b094aa4cfed750467475cadbecb1878bb5bd",
+    "src/backend/routers/albums.py": "8379bb58badc48016b5192a11b46e05d17641b005f6fba60933331334ec22eba",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_json_repository.py": "871a9ef1e63170664cff9b08de734c07fdd9d801e135cc3ff998efd91f7fd1d4",
+    "src/backend/core/db_schema.py": "4f11941dd1caf0b5a73006dd3fa49439fa7433caf1fa676dd10b5a737543cf55"
+  },
+  "historical_files_unchanged": [
+    "docs/perf_stage4/BASELINE_BEFORE.json",
+    "docs/perf_stage4/VALIDATION.json",
+    "tests/backend/test_perf_stage4_baseline.py",
+    "docs/PERF_STAGE4_0_INVENTORY.md"
+  ],
+  "preflight_issues": [
+    "Direct service import hit pre-existing circular import; repeated using normal main initialization, no production edits",
+    "ruff F811 on imported pytest fixture resolved with a local fixture annotation"
+  ],
+  "warnings": [
+    "Google api_core Python 3.10 support warning",
+    "pkg_resources deprecation",
+    "ffmpeg/avconv not found"
+  ],
+  "not_rerun": [
+    "full backend",
+    "frontend",
+    "e2e",
+    "WebKit screenshots"
+  ],
+  "remaining": [
+    "live read-only DB/GCS inventory",
+    "isolated PostgreSQL SQL/pool/concurrency baseline",
+    "shared and unresolved asset cases",
+    "real browser/SDK/memory measurements",
+    "iPhone/BFCache",
+    "actual roles and bucket settings"
+  ],
+  "production_source_db_workflow_changed": false,
+  "live_db_connected": false,
+  "live_gcs_connected": false,
+  "phase_4_0_complete": false,
+  "phase_4a_implemented": false,
+  "pushed": false,
+  "merged": false,
+  "deployed": false
+}

@@ -1,0 +1,2862 @@
+{
+  "date": "2026-10-23",
+  "phase": "4-0 PHOTO BEFORE",
+  "measured_head": "55d624c9b9421b257ccc09721a961c8aab3e4ffb",
+  "source_sha256": {
+    "src/backend/services/album_service.py": "30bcd40ee81f42eff8d7f08dda65b094aa4cfed750467475cadbecb1878bb5bd",
+    "src/backend/routers/albums.py": "8379bb58badc48016b5192a11b46e05d17641b005f6fba60933331334ec22eba",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_json_repository.py": "871a9ef1e63170664cff9b08de734c07fdd9d801e135cc3ff998efd91f7fd1d4",
+    "src/backend/core/db_schema.py": "4f11941dd1caf0b5a73006dd3fa49439fa7433caf1fa676dd10b5a737543cf55"
+  },
+  "measurement_sha256": "ecdd27e64f5f43779626311267cc1168218edc0787f9ca5a1d6a5692a982c52f",
+  "harness_sha256": "4a9d1ac13aba36e1eb6508eea126e4996be252bd026e77d30c055c70747377f3",
+  "fixture_manifest_sha256": "f694d1f074d87fc951e6b1484342db26f7ddd61a8628da58391b6c44fb27ca16",
+  "environment": {
+    "system": "Windows",
+    "python": "3.10.20",
+    "pillow": "12.3.0",
+    "jpeg": "8.0",
+    "webp": "1.6.0",
+    "http": "in-process FastAPI TestClient, Accept-Encoding identity",
+    "store_and_gcs": "synthetic; SDK/network not exercised"
+  },
+  "fixture_manifest": {
+    "recipe": "stage4-texture-xorshift32-bands-corners-v1",
+    "synthetic_only": true,
+    "jpeg_quality": 90,
+    "jpeg_subsampling": 2,
+    "generator_sha256": "a350c191c35d7ed9693eae267fb35e657d63fbe129fcca343dadec8a356fa00b",
+    "generated_with": {
+      "pillow": "12.3.0",
+      "jpeg": "8.0"
+    },
+    "images": [
+      {
+        "id": "landscape",
+        "file": "landscape.jpg",
+        "encoded_size": [
+          1600,
+          1200
+        ],
+        "exif_orientation": 1,
+        "display_size": [
+          1600,
+          1200
+        ],
+        "seed": 1587745,
+        "bytes": 1070163,
+        "sha256": "0c7186772900217bcd8fa37e5fbc2d51c23b234c48084b240bbbff642c9be297"
+      },
+      {
+        "id": "portrait",
+        "file": "portrait.jpg",
+        "encoded_size": [
+          1200,
+          1800
+        ],
+        "exif_orientation": 1,
+        "display_size": [
+          1200,
+          1800
+        ],
+        "seed": 3781746,
+        "bytes": 1149145,
+        "sha256": "0dad3c0ab98cdb99f073d2e1f63fbfbffaf1e6842c79bb4bb900e8f156e870fb"
+      },
+      {
+        "id": "high_resolution",
+        "file": "high_resolution.jpg",
+        "encoded_size": [
+          4096,
+          3072
+        ],
+        "exif_orientation": 1,
+        "display_size": [
+          4096,
+          3072
+        ],
+        "seed": 7458613,
+        "bytes": 4016826,
+        "sha256": "baabde302592f36cc5af143d2107b7f6905bc63a16cc52af61ff659454933b7a"
+      },
+      {
+        "id": "exif_rotated",
+        "file": "exif_rotated.jpg",
+        "encoded_size": [
+          1800,
+          1200
+        ],
+        "exif_orientation": 6,
+        "display_size": [
+          1200,
+          1800
+        ],
+        "seed": 2742435,
+        "bytes": 1156781,
+        "sha256": "5f9a5ecad744ed808c45738e98efe2d2e8b882d3e8927804f5bef4d7f82016da"
+      }
+    ]
+  },
+  "thumbnails": {
+    "landscape": {
+      "bytes": 49016,
+      "sha256": "08a8dada1ae6caf4356d7e3e420ca80515808fe9e0479b8b7023f533d7a82706",
+      "size": [
+        384,
+        288
+      ]
+    },
+    "portrait": {
+      "bytes": 42116,
+      "sha256": "1eace6709f3268843027f08d340d5a32ec24c4b945e5407e4921a18302080141",
+      "size": [
+        256,
+        384
+      ]
+    },
+    "high_resolution": {
+      "bytes": 49674,
+      "sha256": "815235118e891ac2fa85e8cf631ebacf1013c8a139ecbb3f9e0dd89229967f0d",
+      "size": [
+        384,
+        288
+      ]
+    },
+    "exif_rotated": {
+      "bytes": 42640,
+      "sha256": "cdf68f665edc6a075dad3058257743788d766dac92f80b92d7cf3914ae92bb43",
+      "size": [
+        256,
+        384
+      ]
+    }
+  },
+  "assignment": "id order cycles four images, shifted by repeat index modulo 4",
+  "album_scales": [
+    20,
+    40
+  ],
+  "photo_scales": [
+    500,
+    1000
+  ],
+  "display_counts": [
+    1,
+    25,
+    50
+  ],
+  "repeats": 5,
+  "unmeasured": {
+    "real_sql_count": null,
+    "pool_wait_ms": null,
+    "real_gcs_http_count": null,
+    "sdk_retry_count": null,
+    "wire_bytes": null,
+    "peak_memory_bytes": null,
+    "real_browser_cache": null,
+    "iphone_bfcache": null
+  },
+  "samples": [
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 60.742,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1070163
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.401,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.118,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "cold",
+      "fixture_mix": {
+        "portrait": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42116,
+      "body_sha256": "90ee03af52bc4399ccb17e4605cc1cb9482f4724ffc42d21d472708442491054",
+      "elapsed_ms_local": 52.074,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1149145
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm",
+      "fixture_mix": {
+        "portrait": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42116,
+      "body_sha256": "90ee03af52bc4399ccb17e4605cc1cb9482f4724ffc42d21d472708442491054",
+      "elapsed_ms_local": 6.228,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42116
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "portrait": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42116,
+      "body_sha256": "90ee03af52bc4399ccb17e4605cc1cb9482f4724ffc42d21d472708442491054",
+      "elapsed_ms_local": 6.472,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42116
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "cold",
+      "fixture_mix": {
+        "high_resolution": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49674,
+      "body_sha256": "3ae5bac088bd1d33699c846c4333ec5b9bf67c8f690843ef4b53922cb47053a7",
+      "elapsed_ms_local": 119.195,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 4016826
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm",
+      "fixture_mix": {
+        "high_resolution": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49674,
+      "body_sha256": "3ae5bac088bd1d33699c846c4333ec5b9bf67c8f690843ef4b53922cb47053a7",
+      "elapsed_ms_local": 6.447,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49674
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "high_resolution": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49674,
+      "body_sha256": "3ae5bac088bd1d33699c846c4333ec5b9bf67c8f690843ef4b53922cb47053a7",
+      "elapsed_ms_local": 6.128,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49674
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "cold",
+      "fixture_mix": {
+        "exif_rotated": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42640,
+      "body_sha256": "3f01acec7eb17c7542f99d817973bbdf3da391e20b0546d4ea8644e1ffde2d2d",
+      "elapsed_ms_local": 51.407,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1156781
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm",
+      "fixture_mix": {
+        "exif_rotated": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42640,
+      "body_sha256": "3f01acec7eb17c7542f99d817973bbdf3da391e20b0546d4ea8644e1ffde2d2d",
+      "elapsed_ms_local": 6.38,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42640
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "exif_rotated": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42640,
+      "body_sha256": "3f01acec7eb17c7542f99d817973bbdf3da391e20b0546d4ea8644e1ffde2d2d",
+      "elapsed_ms_local": 6.025,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42640
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 51.513,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1070163
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.473,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.101,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 51.514,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1070163
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.405,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.35,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "cold",
+      "fixture_mix": {
+        "portrait": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42116,
+      "body_sha256": "90ee03af52bc4399ccb17e4605cc1cb9482f4724ffc42d21d472708442491054",
+      "elapsed_ms_local": 51.703,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1149145
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm",
+      "fixture_mix": {
+        "portrait": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42116,
+      "body_sha256": "90ee03af52bc4399ccb17e4605cc1cb9482f4724ffc42d21d472708442491054",
+      "elapsed_ms_local": 6.823,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42116
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "portrait": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42116,
+      "body_sha256": "90ee03af52bc4399ccb17e4605cc1cb9482f4724ffc42d21d472708442491054",
+      "elapsed_ms_local": 6.13,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42116
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "cold",
+      "fixture_mix": {
+        "high_resolution": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49674,
+      "body_sha256": "3ae5bac088bd1d33699c846c4333ec5b9bf67c8f690843ef4b53922cb47053a7",
+      "elapsed_ms_local": 72.554,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 4016826
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm",
+      "fixture_mix": {
+        "high_resolution": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49674,
+      "body_sha256": "3ae5bac088bd1d33699c846c4333ec5b9bf67c8f690843ef4b53922cb47053a7",
+      "elapsed_ms_local": 6.324,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49674
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "high_resolution": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49674,
+      "body_sha256": "3ae5bac088bd1d33699c846c4333ec5b9bf67c8f690843ef4b53922cb47053a7",
+      "elapsed_ms_local": 6.615,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49674
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "cold",
+      "fixture_mix": {
+        "exif_rotated": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42640,
+      "body_sha256": "3f01acec7eb17c7542f99d817973bbdf3da391e20b0546d4ea8644e1ffde2d2d",
+      "elapsed_ms_local": 52.868,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1156781
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm",
+      "fixture_mix": {
+        "exif_rotated": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42640,
+      "body_sha256": "3f01acec7eb17c7542f99d817973bbdf3da391e20b0546d4ea8644e1ffde2d2d",
+      "elapsed_ms_local": 6.86,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42640
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "exif_rotated": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 42640,
+      "body_sha256": "3f01acec7eb17c7542f99d817973bbdf3da391e20b0546d4ea8644e1ffde2d2d",
+      "elapsed_ms_local": 7.144,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 42640
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 54.632,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 1070163
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.249,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 1
+      },
+      "statuses": {
+        "200": 1
+      },
+      "application_body_bytes": 49016,
+      "body_sha256": "afe8e8cfca617686ed142eb6f5d4b7701ca99fd01bd046fdfb7108ee7f51643a",
+      "elapsed_ms_local": 6.027,
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 49016
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 1419.569,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45427653
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 164.132,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 155.908,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "cold",
+      "fixture_mix": {
+        "portrait": 7,
+        "high_resolution": 6,
+        "exif_rotated": 6,
+        "landscape": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1142792,
+      "body_sha256": "de5d37723bebdff7fbbae7977e699917386275d41db15d64f9c6dcabd25560ab",
+      "elapsed_ms_local": 1435.363,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45506635
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm",
+      "fixture_mix": {
+        "portrait": 7,
+        "high_resolution": 6,
+        "exif_rotated": 6,
+        "landscape": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1142792,
+      "body_sha256": "de5d37723bebdff7fbbae7977e699917386275d41db15d64f9c6dcabd25560ab",
+      "elapsed_ms_local": 153.525,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1142792
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "portrait": 7,
+        "high_resolution": 6,
+        "exif_rotated": 6,
+        "landscape": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1142792,
+      "body_sha256": "de5d37723bebdff7fbbae7977e699917386275d41db15d64f9c6dcabd25560ab",
+      "elapsed_ms_local": 162.257,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1142792
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "cold",
+      "fixture_mix": {
+        "high_resolution": 7,
+        "exif_rotated": 6,
+        "landscape": 6,
+        "portrait": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1150350,
+      "body_sha256": "438986a7c60ef3dd1315b134c310f58c2bb627d2271f900ae5045221b647f07c",
+      "elapsed_ms_local": 1440.419,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 48374316
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm",
+      "fixture_mix": {
+        "high_resolution": 7,
+        "exif_rotated": 6,
+        "landscape": 6,
+        "portrait": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1150350,
+      "body_sha256": "438986a7c60ef3dd1315b134c310f58c2bb627d2271f900ae5045221b647f07c",
+      "elapsed_ms_local": 180.502,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1150350
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "high_resolution": 7,
+        "exif_rotated": 6,
+        "landscape": 6,
+        "portrait": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1150350,
+      "body_sha256": "438986a7c60ef3dd1315b134c310f58c2bb627d2271f900ae5045221b647f07c",
+      "elapsed_ms_local": 163.564,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1150350
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "cold",
+      "fixture_mix": {
+        "exif_rotated": 7,
+        "landscape": 6,
+        "portrait": 6,
+        "high_resolution": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1143316,
+      "body_sha256": "9fc781049e0c7027925ce493c8a5ec22e5be9ef7246c9cfca110f000e9dfbafa",
+      "elapsed_ms_local": 1434.679,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45514271
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm",
+      "fixture_mix": {
+        "exif_rotated": 7,
+        "landscape": 6,
+        "portrait": 6,
+        "high_resolution": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1143316,
+      "body_sha256": "9fc781049e0c7027925ce493c8a5ec22e5be9ef7246c9cfca110f000e9dfbafa",
+      "elapsed_ms_local": 157.657,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1143316
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "exif_rotated": 7,
+        "landscape": 6,
+        "portrait": 6,
+        "high_resolution": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1143316,
+      "body_sha256": "9fc781049e0c7027925ce493c8a5ec22e5be9ef7246c9cfca110f000e9dfbafa",
+      "elapsed_ms_local": 160.479,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1143316
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 1446.266,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45427653
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 212.544,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 167.405,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 1434.836,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45427653
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 161.798,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 161.543,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "cold",
+      "fixture_mix": {
+        "portrait": 7,
+        "high_resolution": 6,
+        "exif_rotated": 6,
+        "landscape": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1142792,
+      "body_sha256": "de5d37723bebdff7fbbae7977e699917386275d41db15d64f9c6dcabd25560ab",
+      "elapsed_ms_local": 1437.469,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45506635
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm",
+      "fixture_mix": {
+        "portrait": 7,
+        "high_resolution": 6,
+        "exif_rotated": 6,
+        "landscape": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1142792,
+      "body_sha256": "de5d37723bebdff7fbbae7977e699917386275d41db15d64f9c6dcabd25560ab",
+      "elapsed_ms_local": 160.773,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1142792
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "portrait": 7,
+        "high_resolution": 6,
+        "exif_rotated": 6,
+        "landscape": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1142792,
+      "body_sha256": "de5d37723bebdff7fbbae7977e699917386275d41db15d64f9c6dcabd25560ab",
+      "elapsed_ms_local": 162.859,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1142792
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "cold",
+      "fixture_mix": {
+        "high_resolution": 7,
+        "exif_rotated": 6,
+        "landscape": 6,
+        "portrait": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1150350,
+      "body_sha256": "438986a7c60ef3dd1315b134c310f58c2bb627d2271f900ae5045221b647f07c",
+      "elapsed_ms_local": 1451.623,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 48374316
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm",
+      "fixture_mix": {
+        "high_resolution": 7,
+        "exif_rotated": 6,
+        "landscape": 6,
+        "portrait": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1150350,
+      "body_sha256": "438986a7c60ef3dd1315b134c310f58c2bb627d2271f900ae5045221b647f07c",
+      "elapsed_ms_local": 159.246,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1150350
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "high_resolution": 7,
+        "exif_rotated": 6,
+        "landscape": 6,
+        "portrait": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1150350,
+      "body_sha256": "438986a7c60ef3dd1315b134c310f58c2bb627d2271f900ae5045221b647f07c",
+      "elapsed_ms_local": 163.631,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1150350
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "cold",
+      "fixture_mix": {
+        "exif_rotated": 7,
+        "landscape": 6,
+        "portrait": 6,
+        "high_resolution": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1143316,
+      "body_sha256": "9fc781049e0c7027925ce493c8a5ec22e5be9ef7246c9cfca110f000e9dfbafa",
+      "elapsed_ms_local": 1438.836,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45514271
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm",
+      "fixture_mix": {
+        "exif_rotated": 7,
+        "landscape": 6,
+        "portrait": 6,
+        "high_resolution": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1143316,
+      "body_sha256": "9fc781049e0c7027925ce493c8a5ec22e5be9ef7246c9cfca110f000e9dfbafa",
+      "elapsed_ms_local": 176.126,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1143316
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "exif_rotated": 7,
+        "landscape": 6,
+        "portrait": 6,
+        "high_resolution": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1143316,
+      "body_sha256": "9fc781049e0c7027925ce493c8a5ec22e5be9ef7246c9cfca110f000e9dfbafa",
+      "elapsed_ms_local": 171.431,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1143316
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 1494.066,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 45427653
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 171.703,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 7,
+        "portrait": 6,
+        "high_resolution": 6,
+        "exif_rotated": 6
+      },
+      "statuses": {
+        "200": 25
+      },
+      "application_body_bytes": 1149692,
+      "body_sha256": "9b203da9c7584b20fb724f82a3a371be0822ce01727437defa6ddfc3fd0ca581",
+      "elapsed_ms_local": 233.135,
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 1149692
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 2902.483,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 90934288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 335.16,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 347.959,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "cold",
+      "fixture_mix": {
+        "portrait": 13,
+        "high_resolution": 13,
+        "exif_rotated": 12,
+        "landscape": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293142,
+      "body_sha256": "390808f798a7cc325943246f573533e55df0833a328ba51e3bac98a5fd733fcb",
+      "elapsed_ms_local": 2905.669,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 93880951
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm",
+      "fixture_mix": {
+        "portrait": 13,
+        "high_resolution": 13,
+        "exif_rotated": 12,
+        "landscape": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293142,
+      "body_sha256": "390808f798a7cc325943246f573533e55df0833a328ba51e3bac98a5fd733fcb",
+      "elapsed_ms_local": 332.293,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293142
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "portrait": 13,
+        "high_resolution": 13,
+        "exif_rotated": 12,
+        "landscape": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293142,
+      "body_sha256": "390808f798a7cc325943246f573533e55df0833a328ba51e3bac98a5fd733fcb",
+      "elapsed_ms_local": 361.99,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293142
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "cold",
+      "fixture_mix": {
+        "high_resolution": 13,
+        "exif_rotated": 13,
+        "landscape": 12,
+        "portrait": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293666,
+      "body_sha256": "3584ea616d283ae6d396ce0a971738ac67d7d588983bce996dadc00fcb9389fc",
+      "elapsed_ms_local": 2901.424,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 93888587
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm",
+      "fixture_mix": {
+        "high_resolution": 13,
+        "exif_rotated": 13,
+        "landscape": 12,
+        "portrait": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293666,
+      "body_sha256": "3584ea616d283ae6d396ce0a971738ac67d7d588983bce996dadc00fcb9389fc",
+      "elapsed_ms_local": 338.662,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293666
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "high_resolution": 13,
+        "exif_rotated": 13,
+        "landscape": 12,
+        "portrait": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293666,
+      "body_sha256": "3584ea616d283ae6d396ce0a971738ac67d7d588983bce996dadc00fcb9389fc",
+      "elapsed_ms_local": 410.374,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293666
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "cold",
+      "fixture_mix": {
+        "exif_rotated": 13,
+        "landscape": 13,
+        "portrait": 12,
+        "high_resolution": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293008,
+      "body_sha256": "a4e2d7dd03cd8d2cdd73232028930e53123855ee6f2f34b468a5beda1fa7be9e",
+      "elapsed_ms_local": 2942.299,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 90941924
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm",
+      "fixture_mix": {
+        "exif_rotated": 13,
+        "landscape": 13,
+        "portrait": 12,
+        "high_resolution": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293008,
+      "body_sha256": "a4e2d7dd03cd8d2cdd73232028930e53123855ee6f2f34b468a5beda1fa7be9e",
+      "elapsed_ms_local": 463.815,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293008
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "exif_rotated": 13,
+        "landscape": 13,
+        "portrait": 12,
+        "high_resolution": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293008,
+      "body_sha256": "a4e2d7dd03cd8d2cdd73232028930e53123855ee6f2f34b468a5beda1fa7be9e",
+      "elapsed_ms_local": 368.557,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293008
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 2970.526,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 90934288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 350.59,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 359.615,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 2939.971,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 90934288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 362.235,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 469.136,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "cold",
+      "fixture_mix": {
+        "portrait": 13,
+        "high_resolution": 13,
+        "exif_rotated": 12,
+        "landscape": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293142,
+      "body_sha256": "390808f798a7cc325943246f573533e55df0833a328ba51e3bac98a5fd733fcb",
+      "elapsed_ms_local": 3004.661,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 93880951
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm",
+      "fixture_mix": {
+        "portrait": 13,
+        "high_resolution": 13,
+        "exif_rotated": 12,
+        "landscape": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293142,
+      "body_sha256": "390808f798a7cc325943246f573533e55df0833a328ba51e3bac98a5fd733fcb",
+      "elapsed_ms_local": 362.012,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293142
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "portrait": 13,
+        "high_resolution": 13,
+        "exif_rotated": 12,
+        "landscape": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293142,
+      "body_sha256": "390808f798a7cc325943246f573533e55df0833a328ba51e3bac98a5fd733fcb",
+      "elapsed_ms_local": 366.674,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293142
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "cold",
+      "fixture_mix": {
+        "high_resolution": 13,
+        "exif_rotated": 13,
+        "landscape": 12,
+        "portrait": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293666,
+      "body_sha256": "3584ea616d283ae6d396ce0a971738ac67d7d588983bce996dadc00fcb9389fc",
+      "elapsed_ms_local": 2963.759,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 93888587
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm",
+      "fixture_mix": {
+        "high_resolution": 13,
+        "exif_rotated": 13,
+        "landscape": 12,
+        "portrait": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293666,
+      "body_sha256": "3584ea616d283ae6d396ce0a971738ac67d7d588983bce996dadc00fcb9389fc",
+      "elapsed_ms_local": 361.629,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293666
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "high_resolution": 13,
+        "exif_rotated": 13,
+        "landscape": 12,
+        "portrait": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293666,
+      "body_sha256": "3584ea616d283ae6d396ce0a971738ac67d7d588983bce996dadc00fcb9389fc",
+      "elapsed_ms_local": 375.493,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293666
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "cold",
+      "fixture_mix": {
+        "exif_rotated": 13,
+        "landscape": 13,
+        "portrait": 12,
+        "high_resolution": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293008,
+      "body_sha256": "a4e2d7dd03cd8d2cdd73232028930e53123855ee6f2f34b468a5beda1fa7be9e",
+      "elapsed_ms_local": 2931.817,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 90941924
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm",
+      "fixture_mix": {
+        "exif_rotated": 13,
+        "landscape": 13,
+        "portrait": 12,
+        "high_resolution": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293008,
+      "body_sha256": "a4e2d7dd03cd8d2cdd73232028930e53123855ee6f2f34b468a5beda1fa7be9e",
+      "elapsed_ms_local": 379.158,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293008
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "exif_rotated": 13,
+        "landscape": 13,
+        "portrait": 12,
+        "high_resolution": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2293008,
+      "body_sha256": "a4e2d7dd03cd8d2cdd73232028930e53123855ee6f2f34b468a5beda1fa7be9e",
+      "elapsed_ms_local": 376.312,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2293008
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "cold",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 3003.232,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 90934288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 404.767,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "fixture_mix": {
+        "landscape": 13,
+        "portrait": 13,
+        "high_resolution": 12,
+        "exif_rotated": 12
+      },
+      "statuses": {
+        "200": 50
+      },
+      "application_body_bytes": 2292484,
+      "body_sha256": "1880e45b20e3ab49a328ab364195de7b35eec13185687e54ff61dc8e9f667549",
+      "elapsed_ms_local": 385.076,
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 2292484
+      }
+    }
+  ]
+}
