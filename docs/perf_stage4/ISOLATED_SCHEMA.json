@@ -1,0 +1,109 @@
+{
+  "scope": "Dedicated synthetic DB only, not live schema",
+  "postgres": {
+    "16": {
+      "albums": {
+        "organization_column": [
+          [
+            "NO",
+            "text"
+          ]
+        ],
+        "constraints": [
+          [
+            "p",
+            true,
+            "PRIMARY KEY (id)"
+          ]
+        ]
+      },
+      "album_photos": {
+        "organization_column": [
+          [
+            "NO",
+            "text"
+          ]
+        ],
+        "constraints": [
+          [
+            "p",
+            true,
+            "PRIMARY KEY (id)"
+          ]
+        ]
+      }
+    },
+    "18": {
+      "albums": {
+        "organization_column": [
+          [
+            "NO",
+            "text"
+          ]
+        ],
+        "constraints": [
+          [
+            "n",
+            true,
+            "NOT NULL created_at"
+          ],
+          [
+            "n",
+            true,
+            "NOT NULL id"
+          ],
+          [
+            "n",
+            true,
+            "NOT NULL organization_id"
+          ],
+          [
+            "n",
+            true,
+            "NOT NULL updated_at"
+          ],
+          [
+            "p",
+            true,
+            "PRIMARY KEY (id)"
+          ]
+        ]
+      },
+      "album_photos": {
+        "organization_column": [
+          [
+            "NO",
+            "text"
+          ]
+        ],
+        "constraints": [
+          [
+            "n",
+            true,
+            "NOT NULL created_at"
+          ],
+          [
+            "n",
+            true,
+            "NOT NULL id"
+          ],
+          [
+            "n",
+            true,
+            "NOT NULL organization_id"
+          ],
+          [
+            "n",
+            true,
+            "NOT NULL updated_at"
+          ],
+          [
+            "p",
+            true,
+            "PRIMARY KEY (id)"
+          ]
+        ]
+      }
+    }
+  }
+}

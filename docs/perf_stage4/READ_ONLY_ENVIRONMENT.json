@@ -1,0 +1,43 @@
+{
+  "observed_at_utc": "2026-10-23T13:38:03.987769+00:00",
+  "mode": "read_only",
+  "source": "Cloud Run describe captured in memory; no secret values persisted",
+  "services": [
+    {
+      "service": "kanade-orchestra",
+      "db_inventory": null,
+      "gcs_inventory": null,
+      "db_connected": false,
+      "service_describe": "ok",
+      "app_environment_matches": true,
+      "literal_db_settings_available": true,
+      "gcs_bucket_env_present": true,
+      "gcs_status": "not_attempted_effective_bucket_and_DB_references_not_verified",
+      "configured_role_fingerprint": "6f1981911003",
+      "db_status": "connection_unavailable",
+      "db_elapsed_ms": 1894.7915999451652,
+      "reason": "timeout",
+      "error_type": "OperationalError"
+    },
+    {
+      "service": "kanade-orchestra-test",
+      "db_inventory": null,
+      "gcs_inventory": null,
+      "db_connected": false,
+      "service_describe": "ok",
+      "app_environment_matches": true,
+      "literal_db_settings_available": true,
+      "gcs_bucket_env_present": true,
+      "gcs_status": "not_attempted_effective_bucket_and_DB_references_not_verified",
+      "configured_role_fingerprint": "6f1981911003",
+      "db_status": "connection_unavailable",
+      "db_elapsed_ms": 1890.2172000380233,
+      "reason": "timeout",
+      "error_type": "OperationalError"
+    }
+  ],
+  "complete_r25_inventory": false,
+  "writes_performed": false,
+  "gcs_calls_performed": false,
+  "probe_sha256": "5d65c3972393526eb08cf5bd386038cc50fd8760e878e85700adb8a801219064"
+}

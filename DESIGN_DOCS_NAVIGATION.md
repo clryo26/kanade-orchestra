@@ -33,6 +33,7 @@
 - docs/PERF_STAGE4_DETAILED_DESIGN.md: 性能改善第4段階の詳細設計（レビュー用・未実装）
 - docs/PERF_STAGE4_0_INVENTORY.md: 第4段階4-0の通信・書込・保守経路棚卸し
 - docs/PERF_STAGE4_0_BASELINE.md: 第4段階4-0の修正前計測・検証・残件
+- docs/PERF_STAGE4_0_POSTGRES_BASELINE.md: 第4段階4-0のSQL・接続・競合の修正前計測
 
 ## 3. 読み順
 
