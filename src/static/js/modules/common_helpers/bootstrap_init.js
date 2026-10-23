@@ -29,23 +29,23 @@ if (window.__KANADE_BOOTSTRAP_INIT_BOUND__) {
     window.__KANADE_BOOTSTRAP_INIT_BOUND__ = true;
 
 // 認証確認から起動処理を実行する。再試行時も同じ関数を呼ぶ。
-async function _runAuthAndStart() {
+async function _runAuthAndStart(options = {}) {
     try {
-        const authResult = await isPortalAuthenticated();
+        const authResult = await isPortalAuthenticated(options);
         if (authResult.status === 'authenticated') {
             if (window.portalStartup) window.portalStartup.setMessage('データを読み込んでいます..');
-            await enterPortal();
+            await enterPortal(options);
             // enterPortal成功時にportalStartup.ready()が呼ばれる
         } else if (authResult.status === 'unauthenticated') {
             showPortalLogin();
-            loadPartSettingsForLogin();
+            loadPartSettingsForLogin(options);
             if (window.portalStartup) window.portalStartup.ready();
         } else {
             // unavailable: 通信不可のためログイン画面へ移行
             console.warn('[bootstrap_init] auth unavailable:', authResult.error);
             if (window.portalStartup) {
                 window.portalStartup.showRetry({
-                    message: '通信に時間がかかっています。もう一度試行してください。',
+                    message: authResult.error?.portalRetryWait ? authResult.error.message : '通信に時間がかかっています。もう一度試行してください。',
                     retry: _runAuthAndStart,
                 });
             }
@@ -90,18 +90,20 @@ async function syncPortalSessionOnResume() {
     try {
         const authResult = authIsFresh
             ? { status: 'authenticated', device: null, error: null }
-            : await isPortalAuthenticated({ forceVerify: true });
+            : await isPortalAuthenticated({ forceVerify: true, _requestOrigin: 'automatic' });
 
         if (authResult.status === 'authenticated') {
             if (appState.portalAuthVerified && !essentialDataIsFresh) {
-                await loadEssentialData();
+                await loadEssentialData({ _requestOrigin: 'automatic' });
                 appState.essentialDataLoaded = true;
             }
         } else if (authResult.status === 'unauthenticated') {
             showAlert('ログイン期限が切れました。もう一度ログインしてください。', 'warning');
             showPortalLogin();
         } else {
-            showAlert('通信が不安定です。しばらくしてから再試行してください。', 'warning');
+            if (!authResult.error?.portalRetryWait?.noticeShown) {
+                showAlert(authResult.error?.portalRetryWait ? authResult.error.message : '通信が不安定です。しばらくしてから再試行してください。', 'warning');
+            }
         }
     } catch {
         showAlert('通信が切断されました。再接続しています... [再試行]', 'warning');
@@ -161,7 +163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Phase 2計測: 認証処理開始
     if (window.portalStartup) window.portalStartup.mark('AUTH_START');
-    await _runAuthAndStart();
+    await _runAuthAndStart({ _requestOrigin: 'automatic' });
     if (typeof window.portalFileOperationsResume === 'function') void window.portalFileOperationsResume();
     // Phase 2計測: 認証処理完了(AUTH_END は isPortalAuthenticated内で記録)
 

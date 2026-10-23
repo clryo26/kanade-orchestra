@@ -87,6 +87,11 @@ function renderMemberIntros() {
 async function showMemberIntroView() {
     const container = $('memberIntroInfo');
     if (!container) return;
+    const wait = window.portalRetryWaitInfo?.('/api/member-introductions', { _forceRevalidate: true });
+    if (wait?.blocked && appState.memberIntroIdentity && appState.memberIntroIdentity === memberIntroContext()) {
+        showAlert(wait.message, 'warning');
+        return;
+    }
     container.innerHTML = '<p class="text-muted mb-0">読み込み中です...</p>';
     const pending = ensureMemberIntroDataLoaded();
     // Loading initializes the generation synchronously, before its first await.

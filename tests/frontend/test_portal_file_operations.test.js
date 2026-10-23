@@ -25,6 +25,28 @@ function create(existingStorage = new Map()) {
 }
 const answer = (status, data) => ({ status, json: async () => data });
 
+test('malformed 4xx cannot silently discard a pending operation', async () => {
+    const { ctx, storage } = create();
+    ctx.fileTransport.mockResolvedValue({ status: 400, json: async () => { throw new SyntaxError('invalid'); } });
+    await expect(ctx.portalFileRequest('/api/members/1', { method: 'DELETE' })).rejects.toThrow('invalid');
+    const id = ctx.fileTransport.mock.calls[0][1].headers['Idempotency-Key'];
+    expect(JSON.stringify([...storage.values()])).toContain(id);
+});
+
+test('HTML 503 on save and result confirmation retains the same pending operation', async () => {
+    const { ctx, storage } = create();
+    const html = () => ({ status: 503, json: async () => { throw new SyntaxError('HTML gateway'); } });
+    ctx.fileTransport.mockImplementation(async () => html());
+    await expect(ctx.portalFileRequest('/api/members/1', { method: 'DELETE' })).rejects.toThrow();
+    const firstId = ctx.fileTransport.mock.calls[0][1].headers['Idempotency-Key'];
+    const pending = JSON.stringify([...storage.values()]);
+    expect(pending).toContain(firstId);
+    await expect(ctx.portalFileRequest('/api/members/1', { method: 'DELETE' })).rejects.toThrow();
+    expect(ctx.fileTransport.mock.calls[1][0]).toBe(`/api/portal-file-operations/${firstId}`);
+    expect(JSON.stringify([...storage.values()])).toBe(pending);
+    expect(ctx.invalidateCacheForMutation).not.toHaveBeenCalled();
+});
+
 test('lost response and reload resolve the same operation without uploading again', async () => {
     const first = create();
     first.ctx.fileTransport.mockRejectedValueOnce(new Error('connection lost'));

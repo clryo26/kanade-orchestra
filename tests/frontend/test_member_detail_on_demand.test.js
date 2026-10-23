@@ -247,6 +247,24 @@ describe('member detail on-demand', () => {
         expect(appState.memberDetailRecords[1]).toHaveProperty('comment', 'Comment 1');
     });
 
+    test('waiting intro retries retain this account DOM, but never preserve it for another account', async () => {
+        const request = vi.fn(async () => [detailMember(1)]);
+        const { sandbox, appState, elements } = buildMemberSandbox(request);
+        await sandbox.showMemberIntroView();
+        const html = elements.get('memberIntroInfo').innerHTML;
+        sandbox.portalRetryWaitInfo = () => ({ blocked: true, message: 'あと1秒後に再試行できます。' });
+        await sandbox.showMemberIntroView();
+        expect(elements.get('memberIntroInfo').innerHTML).toBe(html);
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(sandbox.showAlert).toHaveBeenCalledWith('あと1秒後に再試行できます。', 'warning');
+        appState.currentUserMemberId = 999;
+        appState.portalAuthGeneration = 'new-account';
+        request.mockRejectedValueOnce(new Error('waiting'));
+        await sandbox.showMemberIntroView();
+        expect(elements.get('memberIntroInfo').innerHTML).not.toContain('Comment 1');
+        expect(request).toHaveBeenCalledTimes(2);
+    });
+
     test('intro uses the server-filtered records instead of the shared member list', async () => {
         const request = vi.fn(async () => [detailMember(1, { comment: 'General comment' })]);
         const { sandbox, appState, elements } = buildMemberSandbox(request);

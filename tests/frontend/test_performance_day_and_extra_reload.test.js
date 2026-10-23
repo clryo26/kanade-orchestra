@@ -187,6 +187,30 @@ describe('mutation reload call sites', () => {
 });
 
 describe('targeted extra-data reload', () => {
+    test('suppressed waits keep data and DOM without marking the collection loaded', async () => {
+        const { sandbox, appState, request } = createBootstrapSandbox();
+        const previous = [{ id: 7 }];
+        appState.albums = previous;
+        request.mockRejectedValue(Object.assign(new Error('waiting'), { portalRetryWait: {} }));
+        await sandbox.loadExtraData(['albums']);
+        expect(appState.albums).toBe(previous);
+        expect(sandbox.isDeferredPortalDataLoaded('albums')).toBe(false);
+        expect(sandbox.renderMemberExtraViews).not.toHaveBeenCalled();
+        expect(sandbox.showAlert).not.toHaveBeenCalled();
+    });
+
+    test('concurrent held promotion reloads retain their state and automatic origin', async () => {
+        const { sandbox, appState, request } = createBootstrapSandbox();
+        appState.promotionLoadState = 'error';
+        appState.promotions = [{ id: 7 }];
+        sandbox.portalRetryWaitInfo = () => ({ blocked: true });
+        request.mockRejectedValue(Object.assign(new Error('waiting'), { portalRetryWait: {} }));
+        await Promise.all([sandbox.loadExtraData(['promotions']), sandbox.loadExtraData(['promotions'], { _requestOrigin: 'automatic' })]);
+        expect(appState.promotionLoadState).toBe('error');
+        expect(appState.promotions).toEqual([{ id: 7 }]);
+        expect(request).toHaveBeenCalledWith('/api/extra/promotions', { _requestOrigin: 'automatic' });
+        expect(sandbox.renderMemberExtraViews).not.toHaveBeenCalled();
+    });
     test('requested collection reload sends only its own GET request', async () => {
         const { sandbox, appState, request } =
             createBootstrapSandbox();

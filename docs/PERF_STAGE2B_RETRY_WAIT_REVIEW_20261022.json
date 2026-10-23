@@ -1,0 +1,148 @@
+{
+  "date": "2026-10-22",
+  "reviewedBase": "eed6a6e",
+  "scope": [
+    "manual ten-second interval for every 503",
+    "successful mutation clears only shared cache target waits, including extra parent lists",
+    "late related 503 cannot restore an invalidated wait"
+  ],
+  "sourceSha256": {
+    "src/static/js/modules/common_helpers/api_runtime.js": "8fa7344af281317167dc0148ea333ac1d05729560df2e57f177843ea9dd5bafa",
+    "src/static/js/modules/common_helpers/transport_retry.js": "baea4744c3a2fc72c3c2742b369b6ddc35129826008fff095a28c58463e492be",
+    "tests/frontend/test_perf_stage2_retry_wait.test.js": "3c1e25f381dcbef178f5e2d86b0c8af6a185b4de0e622ac9a853b6b520c3a676",
+    "scripts/perf_stage2_auth_races.cjs": "85be2a0bc9ef1a5fdc19a54aec40745451a4788847bf33c2895bbe0c87ed88af"
+  },
+  "frontend": {
+    "numTotalTests": 1305,
+    "numPassedTests": 1305,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "success": true
+  },
+  "targetedRerun": {
+    "passed": 28,
+    "failed": 0,
+    "note": "After full suite, added assertions for default origin and parent-list cache deletion; reran all 28 wait tests."
+  },
+  "browser": [
+    {
+      "scope": "synthetic API; actual WebKit JS/DOM; headerless 503 and save-refresh; not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "headerless-wait",
+          "authSends": 0,
+          "pageErrors": [],
+          "initialSends": 2,
+          "blockedSends": 2,
+          "finalSends": 3,
+          "passed": true
+        },
+        {
+          "order": "save-refresh",
+          "authSends": 0,
+          "pageErrors": [],
+          "initialSends": 1,
+          "writes": 1,
+          "refreshedWithoutWaitWarning": true,
+          "finalSends": 2,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "8fa7344af281317167dc0148ea333ac1d05729560df2e57f177843ea9dd5bafa",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "baea4744c3a2fc72c3c2742b369b6ddc35129826008fff095a28c58463e492be"
+      }
+    },
+    {
+      "scope": "synthetic API; actual WebKit JS/DOM and manual clicks; not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "manual-wait",
+          "authSends": 0,
+          "pageErrors": [],
+          "manualFailureSends": 1,
+          "waitWarning": "一部データの読込に失敗しました: promotions\nメンテナンス中です。あと10秒後に再試行できます。\nメンテナンス中です。あと10秒後に再試行できます。",
+          "formPixelsEqual": true,
+          "unrelatedAlbumSends": 1,
+          "failureAndProbeSends": 2,
+          "afterSuccessfulProbeSends": 3,
+          "fileAndInputRetained": true,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "8fa7344af281317167dc0148ea333ac1d05729560df2e57f177843ea9dd5bafa",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "baea4744c3a2fc72c3c2742b369b6ddc35129826008fff095a28c58463e492be"
+      }
+    },
+    {
+      "scope": "synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "data-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "resume-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "other-tab-logout",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 0,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "8fa7344af281317167dc0148ea333ac1d05729560df2e57f177843ea9dd5bafa",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "baea4744c3a2fc72c3c2742b369b6ddc35129826008fff095a28c58463e492be"
+      }
+    }
+  ],
+  "checks": {
+    "syntaxFiles": 170,
+    "stateAccessFiles": 170,
+    "stateAccessViolations": 0,
+    "loadOrderIndex": 43,
+    "loadOrderLegacy": 70,
+    "ruffExit": 0,
+    "nodeCheckExit": 0,
+    "diffCheckExit": 0
+  },
+  "limitations": [
+    "Synthetic HTTP only; no live DB or GCS",
+    "Not physical iPhone or real BFCache",
+    "Backend unchanged; backend tests not rerun",
+    "No latency, transfer or combined cache storage measurement",
+    "No push, PR or deployment",
+    "Earlier JSON snapshots are historical and unchanged"
+  ]
+}

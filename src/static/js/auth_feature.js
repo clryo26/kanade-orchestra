@@ -56,29 +56,39 @@ async function isPortalAuthenticated(options = {}) {
         return { status: 'unauthenticated', device: null, error: null };
     }
     try {
-        const response = await fetchWithTimeout(
-            `/api/auth/devices/${encodeURIComponent(deviceId)}`,
-            { method: 'GET', headers: { 'X-Device-Id': deviceId } },
-            PORTAL_TIMEOUT_AUTH
-        );
+        const response = await fetchPortalSessionCheck(deviceId, options);
+        if (!portalAuthCheckIsCurrent(response)) {
+            // A logout in another tab is known locally, not a network failure.
+            // Discard the old response without clearing/applying a newer login.
+            if (localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') {
+                if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
+                return { status: 'unauthenticated', device: null, error: null };
+            }
+            throw new Error('Authentication context changed');
+        }
         // 401/403/404は明確な未認証: 認証状態をクリアする
         if (response.status === 401 || response.status === 403 || response.status === 404) {
             clearPortalAuthState();
+            notePortalAuthCheckCleared(response);
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
             return { status: 'unauthenticated', device: null, error: null };
         }
         if (!response.ok) {
             // サーバ�Eエラー: 通信はできたが�E否不�E
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unavailable' });
-            return { status: 'unavailable', device: null, error: new Error(`HTTP ${response.status}`) };
+            const error = new Error(response.portalRetryWait?.message || `HTTP ${response.status}`);
+            if (response.portalRetryWait) error.portalRetryWait = response.portalRetryWait;
+            return { status: 'unavailable', device: null, error };
         }
-        const result = await response.json().catch(() => ({}));
+        const result = response.payload;
         if (!result || !result.authenticated) {
             clearPortalAuthState();
+            notePortalAuthCheckCleared(response);
             if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'unauthenticated' });
             return { status: 'unauthenticated', device: null, error: null };
         }
         applyPortalAuthDevice(result.device || {});
+        notePortalAuthCheckApplied(response);
         if (window.portalStartup) window.portalStartup.mark('AUTH_END', { status: 'authenticated' });
         return { status: 'authenticated', device: result.device || null, error: null };
     } catch (e) {
@@ -175,6 +185,7 @@ async function handlePortalLogin() {
         showAlert('名前、パート、パスワードを入力してください', 'warning');
         return;
     }
+    advancePortalAuthTransition();
     const response = await fetchWithTimeout('/api/auth/portal-login', jsonOptions('POST', {
         name,
         part,
@@ -250,6 +261,7 @@ async function handleMemberPasswordSetup() {
 }
 
 async function logoutPortal() {
+    advancePortalAuthTransition();
     // Release the microphone before awaiting the notification shutdown below.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('logout');
     if (localStorage.getItem('portalPushMemberId')) {

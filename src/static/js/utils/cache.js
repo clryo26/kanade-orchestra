@@ -18,6 +18,9 @@ class IndexedDBCache {
     constructor() {
         this.db = null;
         this.etags = new Map();
+        // A failed disk deletion must not make an invalidated response usable
+        // again in this page. Tokens distinguish older writes from fresh ones.
+        this.invalidatedKeys = new Map();
     }
 
     async init() {
@@ -45,6 +48,7 @@ class IndexedDBCache {
         if (!this.db) return null;
         const identity = portalCacheIdentity();
         key = `${identity}:${key}`;
+        if (this.invalidatedKeys.has(key)) return null;
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readonly');
             const store = transaction.objectStore('bootstrap_cache');
@@ -52,7 +56,7 @@ class IndexedDBCache {
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
                 const entry = request.result;
-                if (identity !== portalCacheIdentity()) { resolve(null); return; }
+                if (identity !== portalCacheIdentity() || this.invalidatedKeys.has(key)) { resolve(null); return; }
                 if (!entry) {
                     resolve(null);
                     return;
@@ -74,6 +78,7 @@ class IndexedDBCache {
                     data: entry.data,
                     etag: entry.etag ?? null,
                     timestamp: entry.timestamp ?? null,
+                    validatedAt: entry.validatedAt ?? entry.timestamp ?? null,
                 });
             };
         });
@@ -87,13 +92,23 @@ class IndexedDBCache {
     async set(key, data, etag = null) {
         if (!this.db) return;
         key = `${portalCacheIdentity()}:${key}`;
+        const invalidation = this.invalidatedKeys.get(key);
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readwrite');
             const store = transaction.objectStore('bootstrap_cache');
-            const request = store.put({ key, data, etag, representation: window.PORTAL_DATETIME_REPRESENTATION, timestamp: Date.now() });
+            const validatedAt = Date.now();
+            const request = store.put({ key, data, etag, representation: window.PORTAL_DATETIME_REPRESENTATION, timestamp: validatedAt, validatedAt });
             request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                if (etag) this.etags.set(key, etag);
+            transaction.onabort = () => reject(transaction.error || new Error('Cache write aborted'));
+            transaction.onerror = () => reject(transaction.error);
+            transaction.oncomplete = () => {
+                if (this.invalidatedKeys.get(key) === invalidation) {
+                    this.invalidatedKeys.delete(key);
+                }
+                if (!this.invalidatedKeys.has(key)) {
+                    if (etag) this.etags.set(key, etag);
+                    else this.etags.delete(key);
+                }
                 resolve();
             };
         });
@@ -114,22 +129,24 @@ class IndexedDBCache {
     }
 
     async delete(key) {
-        if (!this.db) return;
         key = `${portalCacheIdentity()}:${key}`;
+        this.invalidatedKeys.set(key, {});
+        this.etags.delete(key);
+        if (!this.db) return;
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['bootstrap_cache'], 'readwrite');
             const store = transaction.objectStore('bootstrap_cache');
             const request = store.delete(key);
             request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                this.etags.delete(key);
-                resolve();
-            };
+            transaction.onabort = () => reject(transaction.error || new Error('Cache deletion aborted'));
+            transaction.onerror = () => reject(transaction.error);
+            transaction.oncomplete = () => resolve();
         });
     }
 
     getETag(key) {
-        return this.etags.get(`${portalCacheIdentity()}:${key}`);
+        key = `${portalCacheIdentity()}:${key}`;
+        return this.invalidatedKeys.has(key) ? undefined : this.etags.get(key);
     }
 }
 

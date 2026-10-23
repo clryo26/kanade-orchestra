@@ -7,7 +7,7 @@ const SOURCE = fs.readFileSync(
 );
 
 test('initial portal entry does not start background bootstrap loading', () => {
-    const start = SOURCE.indexOf('async function enterPortal()');
+    const start = SOURCE.indexOf('async function enterPortal(options = {})');
     const end = SOURCE.indexOf('\nfunction bindNavigation()', start);
 
     expect(start).toBeGreaterThanOrEqual(0);

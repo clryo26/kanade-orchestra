@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 1,
+  "phase": "before",
+  "mode": "node-vm/mock-fetch/fake-timers",
+  "fixedNow": "2026-10-21T03:00:00.000Z",
+  "nodeVersion": "v24.18.0",
+  "platform": "win32",
+  "harnessSha256": "f4af0a9e368afbd4068360b03f3cba5492ccc80183b6708390e5bfadd70f7d4c",
+  "fixture": {
+    "deviceId": "baseline-device",
+    "device": {
+      "member_id": 701,
+      "member_name": "計測用団員",
+      "permission": "一般",
+      "authenticated_at": "2026-10-21T02:00:00+00:00"
+    },
+    "localAuthKey": "true",
+    "initialPortalAuthVerified": false,
+    "initialEssentialDataLoaded": false,
+    "initialAuthGeneration": "2026-10-21T02:00:00+00:00",
+    "note": "Known same-account identity isolates send/coalescing behavior from account-switch response rejection; not a cold-browser startup."
+  },
+  "sourceSha256": {
+    "src/static/js/store/app_state.js": "98d76112b24ed5380e97be5a4b850f91635f6b284f9ec9e39f55c772e2729821",
+    "src/static/js/utils/cache.js": "df3e796392bc62581ee40e5c66e27994ea25f2fb9bf27afb4b208a4656310ded",
+    "src/static/js/modules/common_helpers/api_runtime.js": "b64f2a5b0ff5b86ce5507d2fdce20e2ffc9fb8b42a4b5ffef57b623636d9497c",
+    "src/static/js/modules/common_helpers/transport_retry.js": "d2452cd4d404b3a3e16d39399847ede355c5eefdf8a7a99d3f1b8202512717c9",
+    "src/static/js/auth_feature.js": "431521dd4df62b5fe4c03dd4f813e6ddd6741896cfc652625643280a799940e6",
+    "src/static/js/modules/common_helpers/bootstrap_init.js": "b48f839710640ff1f8fcfc8029124c4dbee1e588053289592c95eaab32e495c6"
+  },
+  "limitations": [
+    "No browser, HAR, actual BFCache or real-device verification.",
+    "Startup/resume entry functions are invoked directly; DOMContentLoaded/event delivery is not simulated.",
+    "enterPortal/loadEssentialData and file-operation resume are stubs; their downstream traffic is excluded.",
+    "No real network, DB, last_seen update, GCS, bytes, CPU or wall-clock latency measurements.",
+    "Historical characterization assertions must be reviewed when implementing stage 2B; archive this before report."
+  ],
+  "scenarios": [
+    {
+      "id": "B01-short-retry-chain",
+      "input": {
+        "statuses": [
+          503,
+          401,
+          502,
+          200
+        ]
+      },
+      "dataSends": 4,
+      "authSends": 1,
+      "totalSends": 5,
+      "peakConcurrentAuth": 1,
+      "applyCalls": 1,
+      "clearCalls": 0,
+      "authEndMarks": 0,
+      "fileOperationResumeCalls": 1,
+      "enterPortalCalls": 0,
+      "essentialLoadStubCalls": 0,
+      "cacheReads": 1,
+      "cacheWrites": 0,
+      "retrySleepsMs": [
+        250,
+        250
+      ],
+      "fakeElapsedMs": 500,
+      "dbQueries": null,
+      "lastSeenWrites": null,
+      "calls": [
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 503,
+          "atMs": 0,
+          "kind": "data"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 401,
+          "atMs": 250,
+          "kind": "data"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 250,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 502,
+          "atMs": 250,
+          "kind": "data"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 200,
+          "atMs": 500,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": "B02-six-data-send-witness",
+      "input": {
+        "statuses": [
+          503,
+          502,
+          401,
+          502,
+          504,
+          200
+        ]
+      },
+      "dataSends": 6,
+      "authSends": 1,
+      "totalSends": 7,
+      "peakConcurrentAuth": 1,
+      "applyCalls": 1,
+      "clearCalls": 0,
+      "authEndMarks": 0,
+      "fileOperationResumeCalls": 1,
+      "enterPortalCalls": 0,
+      "essentialLoadStubCalls": 0,
+      "cacheReads": 1,
+      "cacheWrites": 0,
+      "retrySleepsMs": [
+        250,
+        750,
+        250,
+        750
+      ],
+      "fakeElapsedMs": 2000,
+      "dbQueries": null,
+      "lastSeenWrites": null,
+      "calls": [
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 503,
+          "atMs": 0,
+          "kind": "data"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 502,
+          "atMs": 250,
+          "kind": "data"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 401,
+          "atMs": 1000,
+          "kind": "data"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 1000,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 502,
+          "atMs": 1000,
+          "kind": "data"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 504,
+          "atMs": 1250,
+          "kind": "data"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 200,
+          "atMs": 2000,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": "B03-overlapping-auth-entry-points",
+      "input": {
+        "dataSequences": {
+          "/api/performances": [
+            401,
+            200
+          ],
+          "/api/schedules": [
+            401,
+            200
+          ]
+        },
+        "resumeEntries": 2
+      },
+      "dataSends": 4,
+      "authSends": 4,
+      "totalSends": 8,
+      "peakConcurrentAuth": 4,
+      "applyCalls": 4,
+      "clearCalls": 0,
+      "authEndMarks": 2,
+      "fileOperationResumeCalls": 4,
+      "enterPortalCalls": 1,
+      "essentialLoadStubCalls": 1,
+      "cacheReads": 2,
+      "cacheWrites": 0,
+      "retrySleepsMs": [],
+      "fakeElapsedMs": 0,
+      "dbQueries": null,
+      "lastSeenWrites": null,
+      "calls": [
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 401,
+          "atMs": 0,
+          "kind": "data"
+        },
+        {
+          "url": "/api/schedules",
+          "method": "GET",
+          "status": 401,
+          "atMs": 0,
+          "kind": "data"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "data"
+        },
+        {
+          "url": "/api/schedules",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": "C01-existing-identical-get-coalescing",
+      "input": {
+        "callers": 2
+      },
+      "dataSends": 2,
+      "authSends": 1,
+      "totalSends": 3,
+      "peakConcurrentAuth": 1,
+      "applyCalls": 1,
+      "clearCalls": 0,
+      "authEndMarks": 0,
+      "fileOperationResumeCalls": 1,
+      "enterPortalCalls": 0,
+      "essentialLoadStubCalls": 0,
+      "cacheReads": 1,
+      "cacheWrites": 0,
+      "retrySleepsMs": [],
+      "fakeElapsedMs": 0,
+      "dbQueries": null,
+      "lastSeenWrites": null,
+      "calls": [
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 401,
+          "atMs": 0,
+          "kind": "data"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/performances",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": "C02-no-completed-auth-cache",
+      "input": {
+        "sequentialRecoveryCalls": 2
+      },
+      "dataSends": 0,
+      "authSends": 2,
+      "totalSends": 2,
+      "peakConcurrentAuth": 1,
+      "applyCalls": 2,
+      "clearCalls": 0,
+      "authEndMarks": 0,
+      "fileOperationResumeCalls": 2,
+      "enterPortalCalls": 0,
+      "essentialLoadStubCalls": 0,
+      "cacheReads": 0,
+      "cacheWrites": 0,
+      "retrySleepsMs": [],
+      "fakeElapsedMs": 0,
+      "dbQueries": null,
+      "lastSeenWrites": null,
+      "calls": [
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        },
+        {
+          "url": "/api/auth/devices/baseline-device",
+          "method": "GET",
+          "status": 200,
+          "atMs": 0,
+          "kind": "auth"
+        }
+      ]
+    }
+  ]
+}

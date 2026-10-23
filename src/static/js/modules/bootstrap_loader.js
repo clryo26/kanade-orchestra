@@ -19,12 +19,12 @@ if (window.portalStartup && !window.__KANADE_STARTUP_PROGRESS_MARK_WRAPPED__) {
     };
 }
 
-async function loadPartSettingsForLogin() {
+async function loadPartSettingsForLogin(options = {}) {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
-            request('/api/extra/part_settings'),
-            request('/api/extra/org_settings'),
-            request('/api/extra/sns_settings')
+            request('/api/extra/part_settings', options),
+            request('/api/extra/org_settings', options),
+            request('/api/extra/sns_settings', options)
         ]);
         appState.partSettings = partSettings;
         appState.orgSettings = orgSettings;
@@ -167,6 +167,7 @@ async function loadEssentialData(options = {}) {
 
     try {
         const requestOptions = {
+            _requestOrigin: options._requestOrigin,
             ...(cachedPreviewRendered ? { _allowCacheFallback: false } : {}),
             ...(forceRevalidate ? { _forceRevalidate: true } : {}),
         };
@@ -451,7 +452,7 @@ function loadFullDataInBackground() {
         appState.backgroundLoadScheduled = false;
         setLoadingBar('全データを取得中...');
         try {
-            await loadAll({ includeHeavyLists: false });
+            await loadAll({ includeHeavyLists: false, _requestOrigin: 'automatic' });
             appState.dataLoaded = true;
             renderBackgroundViews({ includeHeavyLists: false });
         } catch (error) {
@@ -485,7 +486,8 @@ function loadFullDataInBackground() {
 async function loadAll(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
     const data = await requestBootstrapData(
-        includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core'
+        includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core',
+        { _requestOrigin: options._requestOrigin }
     );
     applyBootstrapData(data);
     renderInitialViews({ includeHeavyLists });
@@ -674,7 +676,7 @@ async function loadAuthManagement() {
     renderAuthDevices();
 }
 
-async function loadExtraData(collectionNames = null) {
+async function loadExtraData(collectionNames = null, options = {}) {
     const allRequestSpecs = [
         ['absences', '/api/extra/absences'],
         ['eventResponses', '/api/extra/event_responses'],
@@ -734,10 +736,12 @@ async function loadExtraData(collectionNames = null) {
             ([name]) => requestedNames.includes(name)
         );
 
+    const previousPromotionLoadState = appState.promotionLoadState;
+    const promotionWaiting = window.portalRetryWaitInfo?.('/api/extra/promotions', options)?.blocked;
     const requestSpecs = selectedSpecs.map(
-        ([name, url]) => [name, request(url)]
+        ([name, url]) => [name, options._requestOrigin ? request(url, options) : request(url)]
     );
-    if (selectedSpecs.some(([name]) => name === 'promotions')) {
+    if (!promotionWaiting && selectedSpecs.some(([name]) => name === 'promotions')) {
         appState.promotionLoadState = 'loading';
     }
 
@@ -755,10 +759,21 @@ async function loadExtraData(collectionNames = null) {
             resultMap.set(key, item.value);
             if (key === 'promotions') appState.promotionLoadState = 'loaded';
         } else {
-            failed.push(key);
-            if (key === 'promotions') appState.promotionLoadState = 'error';
+            // A suppressed retry is neither empty data nor a new failed load.
+            // Keep already displayed data and do not mark the collection loaded.
+            if (!item.reason?.portalRetryWait) failed.push(key);
+            if (key === 'promotions') {
+                if (!item.reason?.portalRetryWait) appState.promotionLoadState = 'error';
+                else if (appState.promotionLoadState === 'loading' && previousPromotionLoadState !== 'loading') {
+                    appState.promotionLoadState = previousPromotionLoadState;
+                }
+            }
         }
     });
+
+    if (settled.length && settled.every((item) => item.status === 'rejected' && item.reason?.portalRetryWait)) {
+        return; // Nothing changed: keep the current DOM, input/File and scroll.
+    }
 
     if (failed.length) {
         showAlert(

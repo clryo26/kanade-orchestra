@@ -247,7 +247,7 @@ describe('bootstrap-lite stale-while-revalidate', () => {
         await sandbox.loadFullDataInBackground();
 
         expect(sandbox.request).toHaveBeenCalledTimes(1);
-        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap-core', {});
+        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap-core', { _requestOrigin: 'automatic' });
         expect(
             sandbox.request.mock.calls.some(
                 ([url]) => String(url || '').startsWith('/api/extra/')
@@ -283,7 +283,7 @@ describe('bootstrap-lite stale-while-revalidate', () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(sandbox.request).toHaveBeenCalledTimes(1);
-        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap-core', {});
+        expect(sandbox.request).toHaveBeenCalledWith('/api/bootstrap-core', { _requestOrigin: 'automatic' });
         expect(sandbox.console.warn).toHaveBeenCalledWith(
             'Background data load failed',
             expect.any(Error)
