@@ -1,0 +1,1088 @@
+{
+  "mode": "real payload functions, synthetic data, service-level gzip estimate",
+  "samples": [
+    {
+      "scale": 1,
+      "permission": "一般",
+      "repeat": 0,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.4452999457716942,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "一般",
+      "repeat": 1,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.1255999561399221,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "一般",
+      "repeat": 2,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.1634000111371279,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "一般",
+      "repeat": 3,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 0.9880999568849802,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "一般",
+      "repeat": 4,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.2035999679937959,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "管理者",
+      "repeat": 0,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.1557000689208508,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "管理者",
+      "repeat": 1,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.0181000689044595,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "管理者",
+      "repeat": 2,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.0386999929323792,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "管理者",
+      "repeat": 3,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.312500098720193,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "管理者",
+      "repeat": 4,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.0134999174624681,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "システム管理者",
+      "repeat": 0,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.0012000566348433,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "システム管理者",
+      "repeat": 1,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 0.9438999695703387,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "システム管理者",
+      "repeat": 2,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.017899950966239,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "システム管理者",
+      "repeat": 3,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.104900031350553,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 1,
+      "permission": "システム管理者",
+      "repeat": 4,
+      "lite": {
+        "jsonBytes": 34251,
+        "gzipBytes": 1550
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 321922,
+        "gzipBytes": 23477
+      },
+      "liteBuildMs": 1.1093000648543239,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 682,
+        "schedules": 9893,
+        "announcements": 2,
+        "members": 23483,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "一般",
+      "repeat": 0,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5083999605849385,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "一般",
+      "repeat": 1,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.4964001020416617,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "一般",
+      "repeat": 2,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5456000110134482,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "一般",
+      "repeat": 3,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.4639000874012709,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "一般",
+      "repeat": 4,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.4370999997481704,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "管理者",
+      "repeat": 0,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.3978000497445464,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "管理者",
+      "repeat": 1,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.4019999653100967,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "管理者",
+      "repeat": 2,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.4272999251261353,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "管理者",
+      "repeat": 3,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5028000343590975,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "管理者",
+      "repeat": 4,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.6570000443607569,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "システム管理者",
+      "repeat": 0,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5412999782711267,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "システム管理者",
+      "repeat": 1,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5459000132977962,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "システム管理者",
+      "repeat": 2,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5429999912157655,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "システム管理者",
+      "repeat": 3,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5146000077947974,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    },
+    {
+      "scale": 2,
+      "permission": "システム管理者",
+      "repeat": 4,
+      "lite": {
+        "jsonBytes": 68651,
+        "gzipBytes": 2824
+      },
+      "core": {
+        "jsonBytes": 44,
+        "gzipBytes": 64
+      },
+      "full": {
+        "jsonBytes": 655804,
+        "gzipBytes": 48536
+      },
+      "liteBuildMs": 1.5508000506088138,
+      "liteLoads": [
+        "payments",
+        "part_settings",
+        "org_settings",
+        "sns_settings",
+        "performances",
+        "schedules",
+        "announcements",
+        "members"
+      ],
+      "liteFields": {
+        "performances": 1382,
+        "schedules": 19893,
+        "announcements": 2,
+        "members": 47183,
+        "extras": 92,
+        "cloudRunRevision": 11
+      }
+    }
+  ],
+  "dbQueries": null,
+  "browserDisplayMs": null,
+  "decision": "D1 held: core already empty; no measured browser benefit for moving required lite fields"
+}

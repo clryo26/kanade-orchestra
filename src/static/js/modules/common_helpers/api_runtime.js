@@ -410,13 +410,16 @@ async function request(url, options = {}) {
     }
     const method = String(options.method || 'GET').toUpperCase();
     // This object survives the separate 401 resend; authentication has its own budget.
-    options = { ...options, _retryContext: { transientRetries: 0, unknown503Retries: 0 } };
+    // A caller continuing the same logical load (the extra loader's one retry
+    // after a save) passes its used budget; it must not be reset here.
+    options = { ...options, _retryContext: options._retryContext || { transientRetries: 0, unknown503Retries: 0 } };
     const cacheKey = url;
     const contextKey = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalResponseEpoch || 0}`;
     const startedContext = contextKey();
     const flightKey = `${startedContext}:${cacheKey}:${Boolean(options._forceRevalidate)}`;
     const requireCurrentContext = () => {
-        if (startedContext !== contextKey()) throw new Error('表示情報が更新されました。もう一度読み込んでください');
+        // Marked so callers can tell a save/auth context change from a real failure.
+        if (startedContext !== contextKey()) throw Object.assign(new Error('表示情報が更新されました。もう一度読み込んでください'), { portalContextChanged: true });
     };
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
     const headerEntries = portalRequestHeaderEntries(options.headers);
@@ -434,8 +437,13 @@ async function request(url, options = {}) {
         // IndexedDB fallback would hide failed refreshes and stale operation results.
         const identity = `${deviceId}:${appState.currentUserMemberId}:${appState.currentUserPermission}`;
         let response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
-        if (response.status === 401 && !skipAuthRecovery && await tryRecoverPortalSession(deviceId, options)) {
-            response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+        // One 401 recovery per logical load, shared with the loader's retry after
+        // a save (the auth check itself keeps its own separate budget).
+        if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+            options._retryContext.authRecoveryUsed = true;
+            if (await tryRecoverPortalSession(deviceId, options)) {
+                response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+            }
         }
         const currentDevice = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
         if (identity !== `${currentDevice}:${appState.currentUserMemberId}:${appState.currentUserPermission}`) {
@@ -454,7 +462,16 @@ async function request(url, options = {}) {
         return data;
     }
     if (method === 'GET') {
-        if (!explicitTenant && window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) return window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+        if (!explicitTenant && window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) {
+            const shared = window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+            // The joined GET spends the first caller's budget. Link it so a caller
+            // continuing this logical load (the loader's retry after a save)
+            // inherits what was really used, not its own untouched budget.
+            if (shared.portalRetryContext && shared.portalRetryContext !== options._retryContext) {
+                options._retryContext.sharedBudget = shared.portalRetryContext;
+            }
+            return shared;
+        }
         const pending = (async () => {
             const cacheEntry = useResponseCache ? await window.portalRuntimeContext.dbCache.getEntry(cacheKey) : null;
             requireCurrentContext();
@@ -487,9 +504,10 @@ async function request(url, options = {}) {
                 showAlert(message, 'danger');
                 throw new Error(message);
             }
-            let recoveredOnce = false;
-            if (response.status === 401 && !skipAuthRecovery) {
-                recoveredOnce = true;
+            // One 401 recovery per logical load, shared with the loader's retry
+            // after a save; the auth check keeps its own separate budget.
+            if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+                options._retryContext.authRecoveryUsed = true;
                 const recovered = await tryRecoverPortalSession(deviceId, options);
                 if (recovered) {
                     response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
@@ -512,8 +530,11 @@ async function request(url, options = {}) {
                 options._retryContext.transientRetries += 1;
                 const unconditional = Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'if-none-match'));
                 response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
-                if (response.status === 401 && !skipAuthRecovery && !recoveredOnce && await tryRecoverPortalSession(deviceId, options)) {
-                    response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+                    options._retryContext.authRecoveryUsed = true;
+                    if (await tryRecoverPortalSession(deviceId, options)) {
+                        response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                    }
                 }
                 requireCurrentContext();
             }
@@ -538,6 +559,7 @@ async function request(url, options = {}) {
             requireCurrentContext(); // A mutation may finish while the cache transaction commits.
             return data;
         })();
+        pending.portalRetryContext = options._retryContext;
         if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
         try { return await pending; } finally { if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
     }

@@ -1,0 +1,12 @@
+{
+  "phase": "before (committed eef4434 source)",
+  "mode": "fake-indexeddb, 205 synthetic response records, 5 expired",
+  "initialCount": 205,
+  "remainingCount": 205,
+  "initialApproximateBytes": 12900,
+  "remainingApproximateBytes": 12900,
+  "cleanup": null,
+  "elapsedMs": 0.0031000000000034333,
+  "browserVerified": false,
+  "physicalStorageBytes": null
+}
