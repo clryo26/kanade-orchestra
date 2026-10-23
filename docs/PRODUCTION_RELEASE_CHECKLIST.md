@@ -27,6 +27,10 @@
 
 - [ ] 本番 DB 接続確認を実施した
 - [ ] マイグレーション適用状態を確認した
+- [ ] 第3段階を含む版では、[実装記録](PERF_STAGE3_IMPLEMENTATION.md)に従って023の団体列・主キー/FK・親子一致・ロール前提を検査し、バックアップと書込排出後に適用した。未検証のまま自動適用しない
+- [ ] 第3段階のAPI設定とTEST日次照合は既定無効を確認し、実ワーカー数/監査を含む接続予算・旧版書込・完全ダイジェスト・API別計測を完了した対象だけ有効化した
+- [ ] 同期/復元後の世代再発行とトリガー検証を、メンテナンス解除前に完了した。失敗時は解除しない
+
 - [ ] チューナーの履歴を公開する版では、`017_tuner_practice.sql` が `schema_migrations` に記録され、`members` のトリガー `trg_tuner_members_owner_guard_delete`／`_insert` があることを確認した（手順と戻し方は `docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md` の8章）
 - [ ] メトロノームの記録を使う版では、`019_metronome_practice.sql` が `schema_migrations` に記録され、`tuner_owners` のトリガー `trg_metronome_owner_revoked` があることを確認した（手順と戻し方は `docs/METRONOME_IMPLEMENTATION_STATUS.md` の8章）
 - [ ] 楽譜ライブラリの信頼性対応の版では、`020_sheet_library_reliability.sql` と `021_sheet_zip_progress.sql` が `schema_migrations` に記録され、既存の楽譜件数と `sheet_files`（`legacy`）の件数が一致し、表示・DL・ZIPのURLが変わっていないことを確認した（`docs/SHEET_LIBRARY_RELIABILITY_DESIGN.md` の10章）

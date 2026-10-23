@@ -1,0 +1,36 @@
+{
+  "observed_at_utc": "2026-10-22T11:37:31.468620+00:00",
+  "mode": "read_only",
+  "services": [
+    {
+      "service": "kanade-orchestra",
+      "container_concurrency": 80,
+      "max_instances": "3",
+      "traffic": [
+        {
+          "revision": "kanade-orchestra-images-20261020",
+          "percent": 100
+        }
+      ],
+      "worker_count_measured": false,
+      "configured_role_fingerprint": "6f1981911003",
+      "db_result": "connection_timeout",
+      "error_type": "OperationalError"
+    },
+    {
+      "service": "kanade-orchestra-test",
+      "container_concurrency": 80,
+      "max_instances": "3",
+      "traffic": [
+        {
+          "revision": "kanade-orchestra-test-images-20261020",
+          "percent": 100
+        }
+      ],
+      "worker_count_measured": false,
+      "configured_role_fingerprint": "6f1981911003",
+      "db_result": "connection_timeout",
+      "error_type": "OperationalError"
+    }
+  ]
+}

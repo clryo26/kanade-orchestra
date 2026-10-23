@@ -1,0 +1,170 @@
+{
+  "recorded_date": "2026-10-23",
+  "branch": "perf/portal-stage3-20261022",
+  "design_base": "0589fad",
+  "parent_commit": "2ed589c74c9ddc26d1281af16f49c80e7944700f",
+  "scope": "Stage 3 implementation, synthetic local PostgreSQL 16/18, mock API browser tests",
+  "checks": {
+    "backend": {
+      "passed": 973,
+      "skipped": 127,
+      "log_sha256": "ca5cbc570ebf44ac29948d6e5c125a824da2111e5f0442f91e596e29fbc55503"
+    },
+    "legacy_sql": {
+      "passed": 55,
+      "skipped": 0,
+      "log_sha256": "5dcb01348335c0cdf5a3b990a5dfa839ed6aab5acbd5a6964b033c5342fab585"
+    },
+    "audio_menu_sql": {
+      "passed": 23,
+      "skipped": 0,
+      "log_sha256": "a89b17ed25b095eb45098ab3ff1da335267e8636b5dd1fdd4c0b341773a3b1db"
+    },
+    "e2e": {
+      "passed": 95,
+      "skipped": 0,
+      "log_sha256": "931611d8a64f4336461809094dbd6db39a3d2b869007a77e6658a28f429f7703"
+    },
+    "frontend": {
+      "passed": 1385,
+      "test_files": 118,
+      "log_sha256": "3445551de3d7ede5c96a546ee293ce4fe89e20e402ccb58f1cb12ca0b6482ba9"
+    },
+    "postgresql": {
+      "16": {
+        "actual_version": "16.14",
+        "batches": {
+          "initial_matrix": {
+            "passed": 39,
+            "skipped": 0,
+            "log_sha256": "df9e6c9612389c7a10a930003d6fae96db9d439a1003877a70ee9f45a9a8842c"
+          },
+          "final_guards": {
+            "passed": 28,
+            "skipped": 0,
+            "log_sha256": "5bc342a91f29351f41e612d901972c9f836d2acf604f4c09c1009e2e5ecab9cd"
+          },
+          "final_measurements": {
+            "passed": 2,
+            "skipped": 0,
+            "log_sha256": "78354ee619d28b940bfb73017147d145ace0d430fb8f46d7fa8d3d59db35e993"
+          }
+        },
+        "distinct_stage3_cases": 48,
+        "batches_overlap_not_additive": true
+      },
+      "18": {
+        "actual_version": "18.4",
+        "batches": {
+          "initial_matrix": {
+            "passed": 39,
+            "skipped": 0,
+            "log_sha256": "092ea433347bb0779664a70a393b85cce2fe77a9beff9bc99b7b9afb269b9699"
+          },
+          "final_guards": {
+            "passed": 28,
+            "skipped": 0,
+            "log_sha256": "b4f365561365d91e1af4fb0c056f041d2d841753ef282a12768f4b95265cb52a"
+          },
+          "final_measurements": {
+            "passed": 2,
+            "skipped": 0,
+            "log_sha256": "ca1c5f8ff4801ae4ffa98ee140bc092a43965238e7e1d26f6b830a6995cc6867"
+          }
+        },
+        "distinct_stage3_cases": 48,
+        "batches_overlap_not_additive": true
+      }
+    }
+  },
+  "syntax_files": 170,
+  "mypy_source_files": 170,
+  "compileall": "passed",
+  "ruff": "passed",
+  "migration_generator_check": "passed",
+  "workflow_static_check": "passed",
+  "operational_document_check": "passed",
+  "release_safety": "passed",
+  "visual": {
+    "images_matched": 14,
+    "dom_matched": 14,
+    "linux_webkit": "26.5",
+    "real_device": false
+  },
+  "measurements": {
+    "http_samples": 960,
+    "engines": [
+      "16.14",
+      "18.4"
+    ],
+    "scales": [
+      1,
+      2
+    ],
+    "repeats": 5,
+    "all_200_json_parity": true,
+    "same_value_update_additional_200_samples": 20,
+    "test_instance_cache_frequency": null,
+    "real_db_gcs_measured": false
+  },
+  "live_migrations_applied": false,
+  "live_configuration_changed": false,
+  "live_features_enabled_by_this_work": false,
+  "push_pr_deploy_performed": false,
+  "test_containers_stopped": true,
+  "remaining": [
+    "Live schema/keys/FKs/organization consistency and role verification",
+    "Application role separation and restricted grants",
+    "Actual worker count and shared connection budget including synchronous audit",
+    "Per-API TEST latency/throughput/lock/old-client acceptance and cache hit/miss frequency",
+    "Live DB/GCS sync/restore rehearsal and daily digest activation",
+    "Real iPhone/Safari/BFCache and earlier on-device memory/storage work"
+  ],
+  "prior_failures": [
+    "Initial conftest placement and stale excluded-table expectation corrected",
+    "Existing startup timing test once observed 1ms rather than 0ms; full rerun passed; unrelated 2ed589c subsequently hardened that test",
+    "Legacy migration runner required explicit Stage 3 PK/FK prerequisites in disposable fixture, without auto-changing live business constraints",
+    "Visual baseline archive first attempted with wrong archive format; corrected then recaptured successfully",
+    "SQL counter initially included pool empty-query health checks; corrected and all comparison measurements rerun"
+  ],
+  "preserved_unrelated": [
+    "Parent history 2ed589c",
+    "Untracked docs/archive/README.md"
+  ],
+  "source_sha256": {
+    ".github/workflows/ci.yml": "504874d1b11ee6edfffeda84a035db173de50b069d4527a4103eb3dc6703f2a2",
+    ".github/workflows/sync-prod-to-test.yml": "e21560ffc3245d024f1d57c06fce57498a39671149cc9862725fabf11f011a10",
+    ".github/workflows/collection-clock-test-check.yml": "fa850c9a5137933442c5d1644aa132b474feeb0d1ee478be6dcf0f9ca6d2f63d",
+    ".github/workflows/collection-clock-tests.yml": "7aecefbfb69bc65c0bf28d3e35e6a40f3ab8f8dc1b4abbca47a65ad2cdf43551",
+    "db/migrations/023_portal_collection_versions.sql": "10d608d9ccf57aa58d21a4e5373246de9e0877c33e7ad06780c45ea9c2fec7ab",
+    "scripts/generate_collection_clock_migration.py": "91a1ca3bf1853bf20d951397f623d571b3bb66639c942f01377558ab11433ab6",
+    "scripts/portal_collection_clocks.py": "8f49ac54d0602a6435193b871c0eacfe65fa6dd411c4cd193b51b034853140bc",
+    "scripts/restore_db.py": "4bed9ebc4cf42a74cd0651d4fd03516febef84e0f6d32776f442c5bbc2aea4d6",
+    "scripts/sync_prod_to_test_db.py": "7afeb52aaebcc93df4cf75fbb3d2ba0a72c8aee79b0aff17a9ac9abd7b8e2c48",
+    "scripts/sync_prod_to_test_preflight.py": "7ec33a9e258ce9835d0953c3124204ef86e4188388bf2d1d518b2a6a751b3a4f",
+    "src/backend/core/collection_clock_schema.py": "aa6bc89a601045efc437a77cb6f31c3996ad15f783e34e28698d05605f2a7b9e",
+    "src/backend/core/db_pool.py": "57c4a8926fe988da90562dd5744796564e281104efb5ca849ffa4709e307eca8",
+    "src/backend/core/db_runtime.py": "3693237326c9f28f7a8b82a7eb743cabf4c59be1084711060aaa68d92b6f57c0",
+    "src/backend/core/http_cache.py": "c91a334b4e58c3201c9cf9748a03cc0045dd337eacc5d2a64a19cae7bd0b6bdb",
+    "src/backend/core/read_context.py": "fc6568ca010dab5de4f8162ad88b095144e317aa816d7f2c5cb97343b25818f9",
+    "src/backend/repositories/collection_clock_repository.py": "d4741bf9df7f60b8397c1250094833223946b2ea417572923c3764974d47d399",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_json_repository.py": "871a9ef1e63170664cff9b08de734c07fdd9d801e135cc3ff998efd91f7fd1d4",
+    "src/backend/repositories/db_row_repository.py": "13cd8a7d8cd06f8ee89984a1a0b84995ae52d9f3842c631648356db4bf1c8ff6",
+    "src/backend/repositories/member_introduction_repository.py": "3b1bf37eda7a4fcaca20ec477bf4df37fcb7b75fb3f2614f704415008dd79101",
+    "src/backend/repositories/menu_settings_repository.py": "ca2efb94652678a1c2960bc0964d48be4f4342360b4e5467d0ce33e63dae6ca5",
+    "src/backend/routers/bootstrap.py": "9e74ebe798782d801f5aa1528e0c50e8715ea650cf83cc0e6d5a92f11ff34c0a",
+    "src/backend/services/auth_service.py": "682625ba0c41d998edfc7c1aec17c15591cfca9dd9e8428d459856f240624eff",
+    "src/backend/services/collection_clock_maintenance.py": "d5f333a7e50cd21a9853c5320e1c1f5c6fc2a87afa48cf847d035af690bf290f",
+    "src/backend/services/json_collection_service.py": "1bade28810f1430c79bb2caeb6db4c8810e664e9ce13138451c4fcb6cad5ba61",
+    "src/backend/services/menu_settings_service.py": "fcf8bb4b95b8adc697fc1f8d1c7d2bcbbc7457d338d8f1d61b3bc1991c4d8e21",
+    "src/backend/services/snapshot_response_service.py": "4cf93f57d92c814b5164df6de8602b4014a5d34b0cd68c24b3b09d0cdabbf1fd",
+    "tests/backend/test_perf_stage3_context.py": "ff6ebcf10231ff0b0c6d786a634a5dd2a76d8d0a9971e974659190531febad8f",
+    "tests/backend/test_perf_stage3_measurements.py": "49fc4a90ea8107437da3c558f4906b3745f59e9ef44feebdd9d47e4d94946810",
+    "tests/backend/test_perf_stage3_postgres.py": "46ad218730a630c992fb7468df2b2939c438cbcadf5fdf856ad88ca0645693ca",
+    "tests/backend/test_sheet_library_postgres.py": "1f89ce9e75f889f4e39ebcfc4a9c5c9d00d7907db81f1247e5b901e8e93ec6b0",
+    "tests/conftest.py": "c009d6d9b3183985924051c97d91046334de1efc859253fad9ef93fb73a13433",
+    "tests/scripts/test_collection_clock_operations.py": "ba4380d24ce604bd97164e2c015f53a4aab7f13360a4c43379c085b43a857041",
+    "tests/scripts/test_sync_prod_to_test_preflight.py": "e4d5ffe10a592870a621d4c9f02bfd6eaa61fec37b6756f304d5cf4fc6b104bb"
+  }
+}

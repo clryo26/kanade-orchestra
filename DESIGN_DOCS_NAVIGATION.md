@@ -28,6 +28,9 @@
 - docs/CI_CD_PLAN_A_RELEASE_FLOW.md: CI/CD 案A のテスト自動デプロイ・本番リリース設計
 - docs/SYNC_PROD_TO_TEST_JOB_DETAIL_DESIGN.md: 本番→テスト同期 Job の詳細設計
 
+- docs/PERF_STAGE3_DETAILED_DESIGN.md: 性能改善第3段階の確定設計
+- docs/PERF_STAGE3_IMPLEMENTATION.md: 実装・検証・未有効化条件
+
 ## 3. 読み順
 
 新規参画者:
