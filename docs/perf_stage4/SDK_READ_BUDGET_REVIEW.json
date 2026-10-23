@@ -1,0 +1,19 @@
+{
+  "packages": {
+    "google-cloud-storage": "2.14.0",
+    "google-resumable-media": "2.10.0",
+    "google-api-core": "2.31.0"
+  },
+  "local_sdk_source_sha256": {
+    "google/cloud/storage/_helpers.py": "2249b7bcbe78452c0637f28e1f750698dd7b25ae55a086d0b03b71f9537eb21f",
+    "google/resumable_media/requests/_request_helpers.py": "e627964d0893552c72444653274ba76cbcddec5babf25404542e9eeda2d3b1d2",
+    "google/api_core/retry/retry_unary.py": "5fcc0807384a3297f73e53a6320a2d220836d47befd7a8546f77fc776d219c37"
+  },
+  "findings": {
+    "media_retry_deadline_conversion": "google.cloud.storage._helpers._api_core_retry_to_resumable_media_retry copies retry._deadline to max_cumulative_retry",
+    "media_retry_accounting": "google.resumable_media.requests._request_helpers.wait_and_retry adds retry sleep time only; failed request duration is not subtracted",
+    "metadata_retry_timeout": "google.api_core.retry.retry_unary.retry_target checks deadline before retries but a running target can pass it",
+    "existing_io_timeout": "A requests timeout is an I/O wait bound, not an end-to-end operation deadline"
+  },
+  "decision": "Hold stage 4A conditional GET/generation-bound download until a reviewed in-scope implementation preserves retry conditions and enforces total deadlines. No SDK upgrades, retry=None, transport replacement, or abandoned worker I/O added."
+}

@@ -1,6 +1,6 @@
-"""Opt-in stage 4-0 SQL/connection/lock baseline on an owned loopback DB.
+"""Opt-in stage 4A target-photo comparison on the owned stage-4 loopback DB.
 
-No runtime changes, live DB credentials, actual GCS, or stage-4 migration.
+No live DB credentials, actual GCS, or stage-4 migration. Saved BEFORE reports stay immutable.
 The seed uses the existing stage-3 synthetic standard/2x data definition.
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DSN = os.getenv("PORTAL_PERF_STAGE4_DB_URL", "").strip()
 CURRENT = ContextVar("stage4_meter", default=None)
 PHASE = ContextVar("stage4_phase", default="body")
-REPORT = {"photo_batches": [], "writes": [], "contention": [], "same_loop_waves": [], "omitted_photos": []}
+REPORT = {"photo_batches": [], "writes": [], "contention": [], "same_loop_waves": [], "omitted_photos": [], "photo_contract": []}
 
 
 def validate_dsn(dsn):
@@ -70,6 +70,8 @@ def sql_tag(text):
     query = text.upper().replace('"', "")
     if query.startswith(("SET ", "BEGIN", "COMMIT", "ROLLBACK")):
         return "control"
+    if "LEFT JOIN ALBUM_PHOTOS AS PHOTO" in query:
+        return "select_album_photo_target"
     for table in ("album_photos", "albums", "auth_devices", "members", "audit_logs"):
         if re.search(r"\b(FROM|INTO|UPDATE)\s+" + table.upper() + r"\b", query):
             return query.split()[0].lower() + "_" + table
@@ -164,16 +166,17 @@ def isolated_db():
     destination = os.getenv("PORTAL_PERF_STAGE4_PG_REPORT", "").strip()
     if destination:
         path = (ROOT / destination).resolve()
-        assert path.parent == (ROOT / "docs/perf_stage4").resolve() and path.suffix == ".json"
+        assert path.parent == (ROOT / "docs/perf_stage4").resolve() and path.name.endswith("_AFTER.json")
         assert len(REPORT["photo_batches"]) == 60
         assert len(REPORT["writes"]) == 10 and len(REPORT["contention"]) == 4
         assert len(REPORT["same_loop_waves"]) == 2 and len(REPORT["omitted_photos"]) == 1
+        assert len(REPORT["photo_contract"]) == 1
         REPORT.update({
-            "phase": "4-0 BEFORE with actual PostgreSQL and synthetic GCS",
+            "phase": "4A target-photo AFTER with actual PostgreSQL and synthetic GCS; conditional GET held",
             "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
             "python": platform.python_version(), "system": platform.system(),
             "measurement_sha256": digest(Path(__file__).read_bytes()),
-            "source_sha256": {name: digest((ROOT / name).read_bytes()) for name in SOURCE_PATHS},
+            "source_sha256": {name: digest((ROOT / name).read_bytes()) for name in (*SOURCE_PATHS, "src/backend/repositories/album_repository.py")},
             "unmeasured": {"real_gcs_http": None, "wire_bytes": None, "real_device": None,
                            "actual_cloud_run_workers": None, "production_latency": None},
         })
@@ -329,7 +332,9 @@ def test_real_photo_read_sql_and_connections(environment):
                                             headers={"If-None-Match": "*"} if state.startswith("warm") else {})
                     assert response.status_code == 200
                     assert result["checkouts"] == 1
-                    assert result["fetched_rows_by_tag"]["select_album_photos"] == 25
+                    assert result["fetched_rows_by_tag"]["select_album_photo_target"] == 1
+                    assert result["sql_by_tag"]["select_album_photo_target"] == 1
+                    assert "select_album_photos" not in result["sql_by_tag"]
                     assert not any(event["tag"].startswith(("insert_", "update_", "delete_")) for event in result["events"])
                     with Image.open(io.BytesIO(response.content)) as image:
                         assert max(image.size) == 384
@@ -478,3 +483,51 @@ def test_capture_generic_put_omitted_photo_collection(environment):
         "scope": "Synthetic API probe, not a reproduced UI data-loss incident; no behaviour fix here",
         **result,
     })
+
+
+@pytest.mark.parametrize("environment", [1], indirect=True)
+def test_target_photo_parent_tenant_and_reuse_contract(environment):
+    env = environment
+    base = "/api/albums"
+    records = []
+    # Public access remains public: no device header required.
+    response, meter = call(env, "GET", f"{base}/1/photos/1", headers={"X-Device-Id": ""})
+    assert response.status_code == 200
+    assert response.content == env["bucket"].objects[env["albums"][0]["photos"][0]["object_name"]]
+    assert meter["checkouts"] == 1
+    for album_id, photo_id, headers, detail in [
+        (999999, 1, {}, "Data not found"),
+        (1, 999999, {}, "Photo not found"),
+        (2, 1, {}, "Photo not found"),
+        (1, 1, {"X-Tenant-Id": "other-synthetic-tenant"}, "Data not found"),
+    ]:
+        before = dict(env["bucket"].counts)
+        for suffix in ("", "/thumbnail"):
+            result, meter = call(env, "GET", f"{base}/{album_id}/photos/{photo_id}{suffix}", headers=headers)
+            assert result.status_code == 404 and result.json()["detail"] == detail
+            assert meter["checkouts"] == 1
+        assert dict(env["bucket"].counts) == before, "Do not access storage before parent/child checks"
+        records.append({"album_id": album_id, "photo_id": photo_id, "detail": detail})
+    # No FK in the compatibility schema: deliberately inconsistent tenant
+    # rows must still never cross the parent+child join's organization scope.
+    with psycopg.connect(env["dsn"], autocommit=True) as writer:
+        writer.execute("INSERT INTO album_photos(id,album_id,organization_id,filename,object_name) "
+                       "VALUES(50001,1,'other-synthetic-tenant','wrong.jpg','forbidden')")
+    wrong, _ = call(env, "GET", f"{base}/1/photos/50001")
+    assert wrong.status_code == 404 and wrong.json()["detail"] == "Photo not found"
+    # Another committed writer changes the reference while the same process
+    # stays alive; the reused id must resolve to the new bytes, not a list cache.
+    env["bucket"].objects["albums/reused-id.jpg"] = b"replacement-original"
+    with psycopg.connect(env["dsn"], autocommit=True) as writer:
+        writer.execute("DELETE FROM album_photos WHERE id=1")
+        writer.execute("INSERT INTO album_photos(id,album_id,organization_id,filename,object_name) "
+                       "VALUES(1,1,%s,'replacement.jpg','albums/reused-id.jpg')", (TENANT,))
+    changed, _ = call(env, "GET", f"{base}/1/photos/1")
+    assert changed.status_code == 200 and changed.content == b"replacement-original"
+    with psycopg.connect(env["dsn"], autocommit=True) as writer:
+        writer.execute("DELETE FROM albums WHERE id=1")
+    missing_parent, _ = call(env, "GET", f"{base}/1/photos/1")
+    assert missing_parent.status_code == 404 and missing_parent.json()["detail"] == "Data not found"
+    REPORT["photo_contract"].append({"cases": records, "inconsistent_child_tenant_blocked": True,
+                                     "reused_id_reads_new_reference": True, "orphan_child_blocked": True,
+                                     "unauthenticated_photo_read_preserved": True})
