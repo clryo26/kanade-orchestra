@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 from fastapi import HTTPException
@@ -7,6 +8,9 @@ from fastapi import HTTPException
 from .base_repository import BaseRepository
 from .db_item_repository import ItemContext, PostgresRowStore
 from .db_row_repository import db_row_to_json, table_has_organization_id
+
+
+logger = logging.getLogger(__name__)
 
 
 class AlbumRepository(BaseRepository):
@@ -30,8 +34,15 @@ class AlbumRepository(BaseRepository):
     def _select_photo(ctx: ItemContext, album_id: int, photo_id: int) -> dict[str, Any]:
         # Fail closed without the tenant columns: a global child id alone is
         # not proof that its parent belongs to the current organization.
-        if not all(table_has_organization_id(ctx.conn, table) for table in ("albums", "album_photos")):
-            raise RuntimeError("Album photo lookup requires organization columns")
+        for table in ("albums", "album_photos"):
+            if not table_has_organization_id(ctx.conn, table):
+                # Log only fixed schema identifiers, never tenant/device IDs or
+                # connection settings. NOT NULL is a separate release preflight.
+                logger.error(
+                    "PERF-R13 album photo lookup blocked: %s.organization_id is missing; "
+                    "deployment schema prerequisite not met", table,
+                )
+                raise RuntimeError("Album photo lookup requires organization columns")
         # A LEFT JOIN preserves the existing two 404 messages in one snapshot:
         # no row means parent absent; null child id means photo absent. Both
         # parent and child tenant predicates are required even without an FK.

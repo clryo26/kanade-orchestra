@@ -1,4 +1,4 @@
-# 第4段階4A 実装記録 v1.0
+# 第4段階4A 実装記録 v1.1
 
 2026-10-23。基準 `143d8d9`、ブランチ `perf/portal-stage4a-20261023`。[詳細設計v1.2](PERF_STAGE4_DETAILED_DESIGN.md) の5.1（PERF-R13）を実装した。**4A全体の完了ではない。** 5.2/5.3のGCS条件付きGET・世代付きサムネイル（PERF-R14）は、SDKの全体時間予算の方式が未確定のため保留する。4C/4Dは未着手で、Issue #150も未修正。
 
@@ -31,7 +31,7 @@ SQLには既存SET LOCAL 3文/要求を含む。団体列判定coldは各バッ�
 
 固定 `143d8d9` の旧 `_find_photo` を別プロセス内だけで再生すると、対象1行取得の比較試験が失敗する（旧経路にはJOIN計数がない）。本番ファイルは戻していない。再生用一時ハーネスは最初にcp932でgit出力を読んで失敗したためUTF-8を指定して取り直した。最初のPG試行はログディレクトリ不足で試験自体が起動せず、作成後に実行した。これらを合格試験数に含めない。
 
-最終確認: バックエンド全体1,005件成功/141件skip、フロント全体1,385件成功、全e2e95件成功、構文170ファイル、ruff・compileall成功。隔離PG16/18各16件は、通常の全体pytestでskipする接続変数を明示して別に実施した。既存の写真表示・固定写真等の対象28件も成功した。詳細/ソースhashは [TARGET_VALIDATION.json](perf_stage4/TARGET_VALIDATION.json)。
+`f115212` 時点の確認（以下のschemaログ補正前）: バックエンド全体1,005件成功/141件skip、フロント全体1,385件成功、全e2e95件成功、構文170ファイル、ruff・compileall成功。隔離PG16/18各16件は、通常の全体pytestでskipする接続変数を明示して別に実施した。既存の写真表示・固定写真等の対象28件も成功した。詳細/ソースhashは [TARGET_VALIDATION.json](perf_stage4/TARGET_VALIDATION.json)。
 
 本番フロント資産は変更しておらず、固定WebKit画像比較は今回再実行していない。e2eはChromiumの架空/ローカルAPIであり、実iPhone・実DB・実GCS・BFCacheの証明ではない。検証用PGコンテナ2件は所有ラベルを確認して停止・自動削除済み。既存コンテナと別作業のdocs/archive/は保持した。
 
@@ -52,3 +52,40 @@ SQLには既存SET LOCAL 3文/要求を含む。団体列判定coldは各バッ�
 実DB/GCSのR25、実団体列/PK/FK/整合性・接続ロール、共有参照/複数団体の実データ、実ブラウザ転送量・実機は未確認。今回新たな実環境接続や棚卸しを行っていない。4C着手前には#150の別仕様・修正レビューが必要で、4D有効化前には同不具合の修正検証とロール分離等の条件も必要。
 
 読取の戻し方は、写真取得委譲を従来の対象アルバム内検索へ戻す。DBスキーマや画像ファイルの復元・削除は不要。削除ガードや回収を導入した状態のrollbackではなく、本変更にそれらは含まれない。push・PR作成・マージ・デプロイ・実環境有効化は行っていない。
+
+## 6. 配備前の必須schema確認
+
+本番・TESTの両方で、`public.albums` と `public.album_photos` に **NOT NULLのorganization_id** があることを実DBで確認してから、この対象写真取得を含む版を配備する。現時点では両環境とも未確認であり、配備条件未達。列がないと原画像・サムネイルともRuntimeError/500になるため、隔離試験の成功では代用しない。[リリースチェックリスト](PRODUCTION_RELEASE_CHECKLIST.md) 2章にも必須条件として記載した。
+
+各環境に対応する接続先を確認し、読取専用トランザクションで以下を実行する（今回実行したものではない）。
+
+```sql
+BEGIN READ ONLY;
+SELECT table_schema, table_name, column_name, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN ('albums', 'album_photos')
+  AND column_name = 'organization_id'
+ORDER BY table_name;
+ROLLBACK;
+```
+
+各環境で2表の2行が揃い、両方とも `is_nullable = 'NO'` であることが必要。0/1行、YES、照会失敗、接続先未確認は保留する。環境名・確認日時・配備対象コミット・表/列/NULL許容の結果を記録し、DSN・資格情報は記録しない。データ整合性・PK/FK等の既存条件も別に残し、列確認だけでR25全体を完了としない。確認中に列を追加・NOT NULL化するDDLを自動実行しない。
+
+列存在の実行時ガードで止まった場合は、`src.backend.repositories.album_repository` のERRORログに `PERF-R13 album photo lookup blocked: <table>.organization_id is missing; deployment schema prerequisite not met` を出す。固定の表名のみで、団体・写真・利用者の識別値や接続情報は含めない。これは列存在の診断であり、NOT NULL検証を要求ごとに追加したものではない。例外・HTTPの挙動は変更しない。
+
+## 7. 再試行の締切＋最後の要求timeout案の判断
+
+提案はmetadataの設計候補として残す。ただし今回の「全体時間予算」の定義は変更せず、GCS条件付きGETの保留も解除しない。
+
+metadataのgoogle-api-core Retryでは、再試行の判定時刻に締切を使うので、最後に開始した要求のtimeoutを足す考え方は有用。ただしrequestsのtimeoutは単一要求の厳密な総経過時間上限ではなく、接続/読取待ち・資格情報更新等の区間を同じものとして扱えない。「締切10秒＋timeout10秒＝約20秒」は条件付きの運用目安であり、保証値にするにはSDK実経路と遅延注入で検証する必要がある。
+
+本文のresumable-mediaは依然として実経過時間ではなく累積sleepを判定するため、同じ式は適用できない。仮に1回10秒で失敗する通信を3回、累積sleepを1秒＋2秒とすると、sleep予算10秒内でも経過は約33秒になる。これはSDKの計数方式からの説明例で、実GCSで測った値ではない。metadataだけの式を本文にも流用し、PERF-R14全体の条件を満たしたとは扱わない。
+
+次の設計補足ではmetadata/mediaを分け、操作期限・最後のI/O・実際の要求timeoutの意味と回復率を定義して比較する。SDK更新、再試行停止、transport新設を今回のschema診断の変更に混ぜない。
+
+## 8. f115212レビューの補正検証
+
+2026-10-23、schema診断ログと配備前確認条件を追加した。新規の列欠落ログ2件＋既存の写真表示8件、計10件が成功。両表それぞれの欠落でSELECT前に停止すること、理由がログに出ること、団体/写真識別値をログへ出さないことを確認した。ruff・compileallも成功。今回の変更はエラー経路のログと文書だけで、正常時のSQLや画像処理は変更していないため、全体pytest・フロント全体・e2e・隔離PG・WebKit比較は再実行していない。3章と既存TARGET_VALIDATION.jsonはf115212の履歴として保持し、今回の結果とソースhashは [SCHEMA_GUARD_REVIEW_VALIDATION.json](perf_stage4/SCHEMA_GUARD_REVIEW_VALIDATION.json) に分けた。
+
+実DBへの照会・DDL・配備は行っておらず、本番/TESTのNOT NULL確認は依然未完了。今回のログ追加はその確認を代用しない。
