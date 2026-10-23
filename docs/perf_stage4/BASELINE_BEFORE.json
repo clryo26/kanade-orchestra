@@ -1,0 +1,2314 @@
+{
+  "date": "2026-10-23",
+  "phase": "4-0 BEFORE",
+  "measured_head": "43c88c3942ad15f01ff746f5d1968086423a9f20",
+  "source_sha256": {
+    "src/backend/services/album_service.py": "30bcd40ee81f42eff8d7f08dda65b094aa4cfed750467475cadbecb1878bb5bd",
+    "src/backend/routers/albums.py": "8379bb58badc48016b5192a11b46e05d17641b005f6fba60933331334ec22eba",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_json_repository.py": "871a9ef1e63170664cff9b08de734c07fdd9d801e135cc3ff998efd91f7fd1d4",
+    "src/backend/core/db_schema.py": "4f11941dd1caf0b5a73006dd3fa49439fa7433caf1fa676dd10b5a737543cf55"
+  },
+  "measurement_sha256": "4a9d1ac13aba36e1eb6508eea126e4996be252bd026e77d30c055c70747377f3",
+  "environment": {
+    "python": "3.10.20",
+    "pillow": "12.3.0",
+    "google_cloud_storage": "2.14.0",
+    "fastapi": "0.104.1",
+    "system": "Windows",
+    "http": "in-process FastAPI TestClient",
+    "storage": "synthetic byte dictionary; SDK/network not used",
+    "store": "synthetic album lookup returning full target album"
+  },
+  "fixture": {
+    "album_scales": [
+      20,
+      40
+    ],
+    "photo_scales": [
+      500,
+      1000
+    ],
+    "photos_per_album": 25,
+    "original_dimensions": [
+      1200,
+      900
+    ],
+    "original_sha256": "d037ba3fbf2d14a6adf75ddf904a009ec8592faf254020422c3b23c53937808e",
+    "display_counts": [
+      1,
+      25,
+      50
+    ],
+    "repeats": 5,
+    "states": [
+      "cold",
+      "warm",
+      "warm_conditional_probe"
+    ]
+  },
+  "unmeasured": {
+    "sql_count": null,
+    "pool_wait_ms": null,
+    "real_gcs_http_requests": null,
+    "sdk_retry_count": null,
+    "wire_bytes": null,
+    "peak_memory_bytes": null,
+    "real_browser_cache": null,
+    "real_db_inventory": null,
+    "real_gcs_inventory": null,
+    "iphone_bfcache": null
+  },
+  "samples": [
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 34.741,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.327,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.996,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 26.867,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.39,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.18,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 26.216,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.863,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.957,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 25.54,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.16,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.837,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 25.963,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.137,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.873,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 26.708,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.067,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.018,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 26.01,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 43.781,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 7.174,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 30.597,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.835,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.996,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 26.26,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.265,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 5.89,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "cold",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 25.995,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 1,
+        "thumbnail_builds": 1,
+        "thumbnail_upload_calls": 1,
+        "media_not_found": 1,
+        "adapter_media_bytes": 17730
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.03,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 1,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 1
+      },
+      "elapsed_ms_local": 6.02,
+      "application_body_bytes": 288,
+      "body_sha256": "f4c445120544f09e95a03efa9b7779c7525a0ec2e3fe9fe2365a8563f213a3d0",
+      "counts": {
+        "store_get_calls": 1,
+        "nested_photo_records_returned": 25,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 1,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 288
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 647.69,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 149.667,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 153.445,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 658.675,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 151.863,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 154.299,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 658.745,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 150.37,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 153.577,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 663.279,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 151.566,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 153.598,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 681.157,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 152.743,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 200.537,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 675.123,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 161.498,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 158.938,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 658.951,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 160.078,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 161.323,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 667.218,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 160.419,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 161.581,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 677.417,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 163.602,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 163.021,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "cold",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 692.767,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 25,
+        "thumbnail_builds": 25,
+        "thumbnail_upload_calls": 25,
+        "media_not_found": 25,
+        "adapter_media_bytes": 443250
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 168.907,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 25,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 25
+      },
+      "elapsed_ms_local": 171.342,
+      "application_body_bytes": 7200,
+      "body_sha256": "cf2fc62af13e80a5d659045a4e13dfc31b9fa1c7a4adb789fc2a4f1e1646d1d9",
+      "counts": {
+        "store_get_calls": 25,
+        "nested_photo_records_returned": 625,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 25,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 7200
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1438.594,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 338.291,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 350.909,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1404.924,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 336.656,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 333.107,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1350.992,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 331.111,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 361.405,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1418.873,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 335.413,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 358.159,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1365.738,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 347.654,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 1,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 345.1,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1407.615,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 348.13,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 0,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 363.786,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1442.284,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 359.098,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 1,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 361.888,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1379.764,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 357.151,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 2,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 353.852,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1397.587,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 362.619,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 3,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 361.394,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "cold",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 1473.882,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 50,
+        "thumbnail_builds": 50,
+        "thumbnail_upload_calls": 50,
+        "media_not_found": 50,
+        "adapter_media_bytes": 886500
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 364.468,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    },
+    {
+      "scale": 2,
+      "display_count": 50,
+      "repeat": 4,
+      "state": "warm_conditional_probe",
+      "statuses": {
+        "200": 50
+      },
+      "elapsed_ms_local": 369.874,
+      "application_body_bytes": 14400,
+      "body_sha256": "435affb3ed8a04730e7d61dcc81e0fdc45bc13fdd7e09b48911cd56ef782d3d6",
+      "counts": {
+        "store_get_calls": 50,
+        "nested_photo_records_returned": 1250,
+        "metadata_get_calls": 0,
+        "metadata_exists_calls": 0,
+        "metadata_reload_calls": 0,
+        "thumbnail_download_calls": 50,
+        "original_download_calls": 0,
+        "thumbnail_builds": 0,
+        "thumbnail_upload_calls": 0,
+        "media_not_found": 0,
+        "adapter_media_bytes": 14400
+      }
+    }
+  ]
+}

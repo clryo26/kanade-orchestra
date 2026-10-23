@@ -31,6 +31,8 @@
 - docs/PERF_STAGE3_DETAILED_DESIGN.md: 性能改善第3段階の確定設計
 - docs/PERF_STAGE3_IMPLEMENTATION.md: 実装・検証・未有効化条件
 - docs/PERF_STAGE4_DETAILED_DESIGN.md: 性能改善第4段階の詳細設計（レビュー用・未実装）
+- docs/PERF_STAGE4_0_INVENTORY.md: 第4段階4-0の通信・書込・保守経路棚卸し
+- docs/PERF_STAGE4_0_BASELINE.md: 第4段階4-0の修正前計測・検証・残件
 
 ## 3. 読み順
 
