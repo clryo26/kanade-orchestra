@@ -30,6 +30,7 @@
 
 - docs/PERF_STAGE3_DETAILED_DESIGN.md: 性能改善第3段階の確定設計
 - docs/PERF_STAGE3_IMPLEMENTATION.md: 実装・検証・未有効化条件
+- docs/PERF_STAGE4_DETAILED_DESIGN.md: 性能改善第4段階の詳細設計（レビュー用・未実装）
 
 ## 3. 読み順
 
