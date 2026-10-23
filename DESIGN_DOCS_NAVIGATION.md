@@ -35,6 +35,8 @@
 - docs/PERF_STAGE4_0_BASELINE.md: 第4段階4-0の修正前計測・検証・残件
 - docs/PERF_STAGE4_0_POSTGRES_BASELINE.md: 第4段階4-0のSQL・接続・競合の修正前計測
 
+- [第4段階: 写真省略PUTの別不具合・起票案（未送信）](docs/PERF_STAGE4_ALBUM_PUT_ISSUE_DRAFT.md) — 4C着手・4D有効化の停止条件。
+
 ## 3. 読み順
 
 新規参画者:
