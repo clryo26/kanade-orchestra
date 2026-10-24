@@ -11,6 +11,11 @@ from dataclasses import asdict, dataclass
 EXCLUDED_DB_TABLES = (
     "portal_data_generation",
     "portal_collection_versions",
+    # PERF-R15: environment-owned GC state is never copied from PROD.
+    "album_asset_gc_control",
+    "album_storage_assets",
+    "album_asset_gc_candidates",
+    "album_asset_read_leases",
     "auth_devices",
     "access_logs",
     "audit_logs",

@@ -1,0 +1,211 @@
+{
+  "recorded_at": "2026-10-25T01:37:37.195958+09:00",
+  "branch": "perf/portal-stage4c-20261024",
+  "base_commit": "1a2d237254f6daef03678ad488affec8466fd817",
+  "scope": "Inert stage-4C ledger schema and sync exclusion only. No photo columns/bindings, guard triggers, protocol wiring, lease operations, candidate triggers or physical GC.",
+  "source_sha256": {
+    "db/migrations/024_album_asset_ledger_foundation.sql": "4526fd43ed2f5fc283f92f51374732feeac1b51ca69297d3b22b314ec76a84a4",
+    "scripts/sync_prod_to_test_preflight.py": "71afe247c70ed0665d5400bf23b77f93cf98b8ddf2647483f5dd057a6a825e2d"
+  },
+  "test_sha256": {
+    "tests/backend/test_perf_stage4c_ledger_postgres.py": "bf24c57df7a38191070f71c84593b86700eb296a9c88b359cfbde64f6f5c61c3",
+    "tests/scripts/test_sync_prod_to_test_preflight.py": "35e2e5098b45e5ef077752560851f5c61595ff09f9fed2bb4982932eea4df14f",
+    "tests/scripts/test_sync_prod_to_test_db.py": "11c9f435155b7944e564aca631ad4aa997f27238c4cd8f5b97d1cb672016b689",
+    "tests/backend/test_perf_stage4c_bulk_postgres.py": "9f4e7e2ac79aa3c24e56d06a84f44444a7e7cbd5fb74133600e23a46f0b7d560",
+    "tests/backend/test_perf_stage4c_photo_diff.py": "6ae6c73f65c214df16c381d6bd85fd0cc3d62ae377e86b4613fb026416ceb43a",
+    "tests/backend/test_album_put_photos_postgres.py": "e2662e19771ff4395bc208ca650aa5c10eb7931b16c5041e8c666b0fb98cd522"
+  },
+  "checks": {
+    "backend": {
+      "job": "backend",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-backend.log",
+      "log_sha256": "11eb4fb217a5da83dd8b1c32b3b165907efb88b50b908e2c2365c121d09c1ef1",
+      "passed": 1065,
+      "skipped": 224,
+      "warnings": 3
+    },
+    "frontend": {
+      "job": "frontend",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:frontend"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-frontend.log",
+      "log_sha256": "6856178b145c8b1bfc11a591761044c2ce853169c832437036b8ee3c50851029",
+      "passed": 1385
+    },
+    "e2e": {
+      "job": "e2e",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:e2e"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-e2e.log",
+      "log_sha256": "07cd4785a53373f67ce155898fad7a103cb65b5f3ae589b9698f886fa33727c0",
+      "passed": 95,
+      "browser": "Chromium"
+    },
+    "pg16": {
+      "job": "pg16",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_ledger_postgres.py",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-pg16.log",
+      "log_sha256": "e6274f1627590b2c37a8574bd65c65b0b23444fa48557aed06b0568397afd39c",
+      "passed": 83,
+      "new_ledger_tests": 39,
+      "bulk_policy_tests": 3,
+      "photo_diff_tests": 18,
+      "issue150_tests": 23
+    },
+    "pg18": {
+      "job": "pg18",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_ledger_postgres.py",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-pg18.log",
+      "log_sha256": "e96c02f7f37230af17664e590f0caa325ac25d661f723b8c2ce349aa98da06a9",
+      "passed": 83,
+      "new_ledger_tests": 39,
+      "bulk_policy_tests": 3,
+      "photo_diff_tests": 18,
+      "issue150_tests": 23
+    },
+    "syntax": {
+      "job": "syntax",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:frontend:syntax"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-syntax.log",
+      "log_sha256": "29401b5e6e36a504753e1bbebf59827306fec8f5b44bd26579c43938cdc64a54",
+      "files": 170
+    },
+    "ruff": {
+      "job": "ruff",
+      "command": [
+        ".venv/Scripts/ruff.exe",
+        "check",
+        "."
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-ruff.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compile": {
+      "job": "compile",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "compileall",
+        "-q",
+        "src/backend",
+        "tests"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "safety": {
+      "job": "safety",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:release-safety"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-ledger/ledger-final-safety.log",
+      "log_sha256": "edc2f4b8a642f09cb8ba0755aa83f1c6dea65039d3e2f3e2048bc0da0e002091"
+    }
+  },
+  "temporary_postgres": [
+    {
+      "name": "kanade-stage4c-ledger-pg16",
+      "image": "postgres:16",
+      "server_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "owner_label": "stage4c-ledger",
+      "stopped": true
+    },
+    {
+      "name": "kanade-stage4c-ledger-pg18",
+      "image": "postgres:18",
+      "server_version": "18.4 (Debian 18.4-1.pgdg13+1)",
+      "owner_label": "stage4c-ledger",
+      "stopped": true
+    }
+  ],
+  "application_source_changes": false,
+  "historical_reports_and_fixtures_unchanged": {
+    "tracked_files": 35,
+    "verified_against": "git index blobs before staging",
+    "all_equal": true
+  },
+  "deployment_safety": {
+    "guard_default": false,
+    "check_constraint_prevents_enable": true,
+    "control_row_seeded_by_migration": false,
+    "app_grants_added": false,
+    "default_nonowner_grants_abort_migration": true,
+    "app_and_owner_separation_in_real_env": "unverified; required preflight; ACL cannot restrict owners/superusers/inherited owner membership"
+  },
+  "not_verified": [
+    "Live DB/GCS R25 and actual role memberships/default ACLs",
+    "SELECT grants for actual sync/backup logins; foundation is owner-only and must not be deployed alone until these are provided and tested",
+    "Photo internal UUIDs and sync rebind after GCS",
+    "v2 guards, reference state locking, leases with 60s renewal and candidate triggers",
+    "AP150-T12 and physical GC readiness",
+    "WebKit screenshot comparison and real-device acceptance"
+  ],
+  "release_actions": {
+    "live_migration_applied": false,
+    "pushed": false,
+    "PR_created": false,
+    "merged": false,
+    "deployed": false
+  },
+  "unrelated_work_preserved": [
+    "docs/archive/",
+    ".codex-worktrees/issue150-standalone-20261024"
+  ]
+}

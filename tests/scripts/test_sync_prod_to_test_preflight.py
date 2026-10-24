@@ -89,6 +89,10 @@ def test_preflight_generates_fixed_backup_path_and_policy_lists():
     assert result.excluded_db_tables == (
         "portal_data_generation",
         "portal_collection_versions",
+        "album_asset_gc_control",
+        "album_storage_assets",
+        "album_asset_gc_candidates",
+        "album_asset_read_leases",
         "auth_devices",
         "access_logs",
         "audit_logs",
