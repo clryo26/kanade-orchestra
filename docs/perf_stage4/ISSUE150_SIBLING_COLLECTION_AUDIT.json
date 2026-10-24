@@ -1,0 +1,242 @@
+{
+  "date_jst": "2026-10-24",
+  "base_commit": "6fc739ee46443c8b637163d19e27f287372cc0f4",
+  "mode": "Real service/guard/mutator plus ListRowStore using synthetic in-memory load/save; actual DB child-row conversion before/after. Authenticated synthetic actor supplied directly, no HTTP/auth middleware/PG/real files.",
+  "cases": [
+    {
+      "case": "performances_generic",
+      "collection": "performances",
+      "route_kind": "extra",
+      "status": 404,
+      "detail": "Collection not found",
+      "memory_save_count": 0,
+      "child_count_before": {
+        "performance_pieces": 1
+      },
+      "child_count_after": {
+        "performance_pieces": 1
+      },
+      "saved_child_keys": [
+        "pieces"
+      ]
+    },
+    {
+      "case": "performances_dedicated",
+      "collection": "performances",
+      "route_kind": "performance",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "performance_pieces": 1
+      },
+      "child_count_after": {
+        "performance_pieces": 0
+      },
+      "saved_child_keys": [
+        "pieces"
+      ]
+    },
+    {
+      "case": "date_adjustments_omitted",
+      "collection": "date_adjustments",
+      "route_kind": "extra",
+      "status": 400,
+      "detail": "candidates is required",
+      "memory_save_count": 0,
+      "child_count_before": {
+        "date_adjustment_candidates": 1
+      },
+      "child_count_after": {
+        "date_adjustment_candidates": 1
+      },
+      "saved_child_keys": [
+        "candidates"
+      ]
+    },
+    {
+      "case": "payments_both_omitted",
+      "collection": "payments",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "payment_performance_fees": 2
+      },
+      "child_count_after": {
+        "payment_performance_fees": 0
+      },
+      "saved_child_keys": [],
+      "fee_rows_after": []
+    },
+    {
+      "case": "payments_amounts_omitted",
+      "collection": "payments",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "payment_performance_fees": 2
+      },
+      "child_count_after": {
+        "payment_performance_fees": 2
+      },
+      "saved_child_keys": [
+        "performance_fees"
+      ],
+      "fee_rows_after": [
+        {
+          "performance_id": "2",
+          "is_paid": true,
+          "fee_amount": 0
+        },
+        {
+          "performance_id": "1",
+          "is_paid": true,
+          "fee_amount": 0
+        }
+      ]
+    },
+    {
+      "case": "payments_service_merge",
+      "collection": "payments",
+      "route_kind": "payment",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "payment_performance_fees": 1
+      },
+      "child_count_after": {
+        "payment_performance_fees": 1
+      },
+      "saved_child_keys": [
+        "performance_fee_amounts",
+        "performance_fees"
+      ],
+      "fee_rows_after": [
+        {
+          "performance_id": "1",
+          "is_paid": true,
+          "fee_amount": 100
+        }
+      ]
+    },
+    {
+      "case": "castings_both_omitted",
+      "collection": "castings",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "casting_members": 1,
+        "casting_extras": 1
+      },
+      "child_count_after": {
+        "casting_members": 0,
+        "casting_extras": 0
+      },
+      "saved_child_keys": []
+    },
+    {
+      "case": "castings_extras_omitted",
+      "collection": "castings",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "casting_members": 1,
+        "casting_extras": 1
+      },
+      "child_count_after": {
+        "casting_members": 1,
+        "casting_extras": 0
+      },
+      "saved_child_keys": [
+        "members"
+      ]
+    },
+    {
+      "case": "desired_owner_single_vote_omitted",
+      "collection": "desired_pieces",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "desired_piece_votes": 1
+      },
+      "child_count_after": {
+        "desired_piece_votes": 0
+      },
+      "saved_child_keys": [
+        "votes"
+      ],
+      "remaining_synthetic_vote_member_ids": []
+    },
+    {
+      "case": "desired_owner_others_vote_omitted",
+      "collection": "desired_pieces",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "desired_piece_votes": 2
+      },
+      "child_count_after": {
+        "desired_piece_votes": 1
+      },
+      "saved_child_keys": [
+        "votes"
+      ],
+      "remaining_synthetic_vote_member_ids": [
+        2
+      ]
+    },
+    {
+      "case": "desired_nonvoter_admin_omitted",
+      "collection": "desired_pieces",
+      "route_kind": "extra",
+      "status": 200,
+      "detail": null,
+      "memory_save_count": 1,
+      "child_count_before": {
+        "desired_piece_votes": 1
+      },
+      "child_count_after": {
+        "desired_piece_votes": 1
+      },
+      "saved_child_keys": [
+        "votes"
+      ],
+      "remaining_synthetic_vote_member_ids": [
+        2
+      ]
+    }
+  ],
+  "source_sha256": {
+    "src/backend/services/extra_service.py": "63cb348dd275ca593621f0c61f40c20032c9c6affc062651dbc40acf152cfc17",
+    "src/backend/services/extra_collection_helpers.py": "1d4826024bfe079b6b5042f9b7d49e2cc8b5b50de858959cff947df69082d98b",
+    "src/backend/services/timetable_payload_helpers.py": "55faae6ee650ab92ae24e933e06c9a9560067e1e17eacb7772475a64bc1f2fb9",
+    "src/backend/services/performance_service.py": "3ad4929a14539b2a5d3e868857b820229e36f3a2e2883df7dceb2cd4348f8bdc",
+    "src/backend/services/payment_service.py": "b4f7804e32e96ff4c66fe0de91110255929074b625e731a45677b61eda905a1e",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_row_repository.py": "13cd8a7d8cd06f8ee89984a1a0b84995ae52d9f3842c631648356db4bf1c8ff6",
+    "src/static/js/modules/payments.js": "7ba67e6c5183bf71e01e4bccfb561ce35431ef7a93f10a741b319c15ac1f6695",
+    "src/static/js/modules/practice_casting/api.js": "f5839421cc18c96f7bbd10a5344a98de6e129ee3c50221ea47a607316c03ea09"
+  },
+  "sql_executed": false,
+  "gcs_calls": false,
+  "unverified": [
+    "PostgreSQL persistence/cascade/constraints",
+    "live data loss and dynamic/external clients",
+    "real authentication/HTTP responses",
+    "flyer file-operation path beyond keep"
+  ],
+  "probe_sha256": "ff6cadb70c80e8bd00fd6973d3f54a967189e928b3c916b271bdf6c2c407cba8"
+}
