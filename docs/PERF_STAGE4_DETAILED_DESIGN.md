@@ -166,6 +166,8 @@ SDKの同期metadata処理は既存threadpoolへ渡し、asyncルーターのイ
 
 アルバムの子更新だけはID単位の差分にする。名称等の親更新では写真行を書き換えない。追加はINSERT、変更は対象UPDATE、削除は対象DELETE。除去集合は団体・親で限定した `id = ANY(...)` の1文にまとめ、0件なら送信しない。複数UPDATEは対象行数とSQL文数を計測し、集合SQL化は必要性を確認してから扱う。写真IDの全団体一意割当、順序、server管理日時、期待版、所有者/管理者判定を維持する。別集合の子更新方式は変更しない。写真のobject_name/pathを書き換えるUPDATEも旧参照の解放として回収候補を作る。
 
+実装の進捗：写真差分SQLは [第1単位](PERF_STAGE4C_DIFF_IMPLEMENTATION.md)、DB全置換の入口制限は [第2単位](PERF_STAGE4C_BULK_IMPLEMENTATION.md) に記録する。後者はアプリ内の拒否であり、直接SQLや旧リビジョンを止めるDBガードの完了ではない。
+
 ### 7.2 プロトコルとDBガード
 
 アルバムを書き込む通常経路は `autocommit=False` の1トランザクションに統一し、同じ接続で `SET LOCAL app.album_delete_protocol='v2'` を設定する。認可と親の行ロック、写真差分、候補登録は同じcommit/rollbackに従う。プールへ返した後の別要求へ設定を残さない。

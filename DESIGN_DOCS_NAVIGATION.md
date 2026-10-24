@@ -82,3 +82,4 @@
 - システム管理のアクセスログ（access_logs）で団員のメニューアクセスを記録・閲覧
 
 - [第4段階4C 第1単位の実装記録](docs/PERF_STAGE4C_DIFF_IMPLEMENTATION.md) — 写真差分SQLのみ。台帳・ガード・lease・回収は未実装。
+- [第4段階4C 第2単位の実装記録](docs/PERF_STAGE4C_BULK_IMPLEMENTATION.md) — 互換・内部経路を含むDB全置換の禁止。直接SQLのDBガードは後続。

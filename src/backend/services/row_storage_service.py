@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from ..repositories.db_item_repository import ListRowStore, PostgresRowStore
+from .collection_write_policy import reject_album_bulk_write
 from ..repositories.db_json_repository import mutate_collection_locked
 
 
@@ -35,6 +36,7 @@ def bind_row_storage(runtime: Callable[[], Any]) -> tuple[Callable[..., Any], ..
     def mutate_json_data(name: str, mutator: Any) -> list[dict[str, Any]]:
         api = runtime()
         if not local(api):
+            reject_album_bulk_write(name)
             return cast(list[dict[str, Any]], api.db_mutate_collection_locked(name, mutator))
         lock = _local_list_locks.setdefault(name, threading.RLock())
         with lock:

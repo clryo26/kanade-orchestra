@@ -31,6 +31,7 @@ from ..core.db_schema import (
     DB_TIMESTAMP_COLUMNS,
     PORTAL_DB_TABLES,
 )
+from ..services.collection_write_policy import reject_album_bulk_write
 from ..core.tenant_context import get_current_tenant_id
 from ..utils.datetime_utils import (
     decode_utc_midnight_date,
@@ -408,6 +409,7 @@ def db_fill_missing_ids(cur: Any, table_name: str, rows: list[dict[str, Any]]) -
 
 
 def db_delete_collection_children(cur: Any, name: str) -> None:
+    reject_album_bulk_write(name)
     conn = cur.connection
     tenant_id = get_current_tenant_id()
     for child_table in DB_CHILD_TABLES.get(name, ()):

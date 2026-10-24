@@ -1,0 +1,197 @@
+{
+  "recorded_at": "2026-10-25T01:02:37.302695+09:00",
+  "branch": "perf/portal-stage4c-20261024",
+  "base_commit": "7b68883d28ce30e1adde4c7da4673c977108073d",
+  "scope": "Stage 4C album collection replacement prohibition in Python entry points only; no DB guard, migration, lease, asset ledger or GC.",
+  "source_sha256": {
+    "src/backend/services/collection_write_policy.py": "14eeb7f0069da80fde81da37c77098ec21c87550bc7ce76e76d9ae9321982842",
+    "src/backend/repositories/db_json_repository.py": "f72dd1f94dc66b52c1b04e7c0b0d8a4630deb8119c27bb6b172ab22285205e52",
+    "src/backend/repositories/db_row_repository.py": "34bdebeb14942fe146dcc99859d5bb30b0700a762a52ef38a884d17200875c2c",
+    "src/backend/services/json_collection_service.py": "b7fdb207246452a2577218879ffe2e25c5d044c505a6d1d17fcf8aecb70204cf",
+    "src/backend/services/row_storage_service.py": "ec6c169707b1586c2bf4e5646a766ab7eaad39bca49c1cea2561621513000521"
+  },
+  "test_sha256": {
+    "tests/backend/test_perf_stage4c_bulk_policy.py": "c75b0b50a3e86b206b5eeef855224495ad1f0c0caae89a0128501be5729eab25",
+    "tests/backend/test_perf_stage4c_bulk_postgres.py": "9f4e7e2ac79aa3c24e56d06a84f44444a7e7cbd5fb74133600e23a46f0b7d560"
+  },
+  "checks": {
+    "backend": {
+      "job": "backend",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-backend.log",
+      "log_sha256": "2f3689f82564d558804af0e2b0cfa58509ac677a8c5d85c6538c71b05044eaaf",
+      "passed": 1065,
+      "skipped": 185,
+      "warnings": 3
+    },
+    "frontend": {
+      "job": "frontend",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:frontend"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-frontend.log",
+      "log_sha256": "4db480fe66a87cf9aa6a311c972fe65b00b36fb69737d951a0c791750881204f",
+      "passed": 1385
+    },
+    "e2e": {
+      "job": "e2e",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:e2e"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-e2e.log",
+      "log_sha256": "492f5a6392a0c77b43a83c9939544e7115d9af7f5f328cd78b1372eac93fc0f3",
+      "passed": 95,
+      "browser": "Chromium"
+    },
+    "pg16": {
+      "job": "pg16",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-pg16.log",
+      "log_sha256": "879bb51cfa5928351a50ee95657cf3c49e549be3d90eff40527e8dfb58c55d0d",
+      "passed": 44,
+      "new_bulk_tests": 3,
+      "photo_diff_tests": 18,
+      "issue150_tests": 23
+    },
+    "pg18": {
+      "job": "pg18",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-pg18.log",
+      "log_sha256": "1f4be845cb351cd8fc51d7921041286d07cd306328c97077f7db6d4ca1155bd9",
+      "passed": 44,
+      "new_bulk_tests": 3,
+      "photo_diff_tests": 18,
+      "issue150_tests": 23
+    },
+    "syntax": {
+      "job": "syntax",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:frontend:syntax"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-syntax.log",
+      "log_sha256": "29401b5e6e36a504753e1bbebf59827306fec8f5b44bd26579c43938cdc64a54",
+      "files": 170
+    },
+    "ruff": {
+      "job": "ruff",
+      "command": [
+        ".venv/Scripts/ruff.exe",
+        "check",
+        "."
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-ruff.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compile": {
+      "job": "compile",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "compileall",
+        "-q",
+        "src/backend",
+        "tests"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "safety": {
+      "job": "safety",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:release-safety"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-batch/bulk-final-safety.log",
+      "log_sha256": "edc2f4b8a642f09cb8ba0755aa83f1c6dea65039d3e2f3e2048bc0da0e002091"
+    }
+  },
+  "negative_control": {
+    "method": "Separate pytest process disables reject_album_bulk_write bindings in db_json_repository, db_row_repository, json_collection_service and row_storage_service; no source file changes.",
+    "selection": "test_perf_stage4c_bulk_policy.py -k \"repository_rejects or compatibility_routes\"",
+    "expected_failed": 19,
+    "passed_existing_refusals": 2,
+    "deselected": 2,
+    "log_sha256": "1678ca2ce6bdee12e2b74e047a9f98b351a797910ac32e855378f058e039cf90"
+  },
+  "isolation": {
+    "host": "loopback",
+    "database": "portal_perf_stage4",
+    "postgres_versions": [
+      16,
+      18
+    ],
+    "owned_containers_stopped": true,
+    "live_DB_GCS_changes": false,
+    "FK_cascade_or_DB_guard_tested": false
+  },
+  "historical_reports_and_fixture_files_unchanged": {
+    "verified_against": "git index blob IDs before staging",
+    "tracked_files": 34,
+    "all_equal": true
+  },
+  "not_verified": [
+    "Production/TEST schema, PK/FK, roles and shared references (R25)",
+    "Live GCS and actual storage request/billing counts",
+    "WebKit screenshot comparison and real iPhone acceptance",
+    "Future DB guard, asset ledger, read leases, candidates and AP150-T12"
+  ],
+  "release_actions": {
+    "pushed": false,
+    "PR_created": false,
+    "merged": false,
+    "deployed": false
+  },
+  "unrelated_work_preserved": [
+    "docs/archive/",
+    ".codex-worktrees/issue150-standalone-20261024"
+  ]
+}

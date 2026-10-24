@@ -26,6 +26,7 @@ from ..core.db_schema import (
     DB_WRITABLE_COLLECTIONS,
     JSON_COLLECTION_TABLES,
 )
+from ..services.collection_write_policy import reject_album_bulk_write
 from .db_row_repository import (
     db_child_rows_for_collection,
     db_collection_rows_for_save,
@@ -68,6 +69,7 @@ def load_generic_json_collection(name: str) -> list[dict[str, Any]]:
 
 
 def save_generic_json_collection(name: str, data: list[dict[str, Any]]) -> None:
+    reject_album_bulk_write(name)
     payload = Jsonb(data) if Jsonb is not None else json.dumps(data, ensure_ascii=False)
     with psycopg.connect(db_connection_string(), autocommit=True) as conn:
         with conn.cursor() as cur:
@@ -385,8 +387,9 @@ def replace_collection(name: str, data: list[dict[str, Any]], *, allow_bulk: boo
     Row-level collections refuse this in normal operation (JST spec R05): a
     whole-list write would overwrite rows written meanwhile by other
     requests. ``allow_bulk`` is only for the locked path below and explicit
-    maintenance-time migrations.
+    maintenance-time migrations of other collections; albums never allow it.
     """
+    reject_album_bulk_write(name)
     if name == "promotions":
         raise HTTPException(status_code=409, detail="Promotions require the row-level API")
     if name in ROW_LEVEL_COLLECTIONS and name not in LIST_LOCKED_COLLECTIONS and not allow_bulk:
@@ -400,6 +403,7 @@ def replace_collection(name: str, data: list[dict[str, Any]], *, allow_bulk: boo
 
 
 def _replace_collection_in(conn: Any, name: str, data: list[dict[str, Any]]) -> None:
+    reject_album_bulk_write(name)
     table_name = JSON_COLLECTION_TABLES[name]
     rows = db_collection_rows_for_save(name, data)
     tenant_id = get_current_tenant_id()
@@ -581,6 +585,7 @@ def mutate_collection_locked(name: str, mutator: Any) -> list[dict[str, Any]]:
     interleave. The list is read from the DB inside the lock (never from the
     per-process cache) and the cache entry is dropped after COMMIT.
     """
+    reject_album_bulk_write(name)
     tenant_id = get_current_tenant_id()
     generic = name not in JSON_COLLECTION_TABLES
     with psycopg.connect(db_connection_string(), autocommit=False, connect_timeout=10) as conn:

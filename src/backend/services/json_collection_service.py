@@ -6,6 +6,7 @@ from typing import Any, Callable, cast
 
 from fastapi import HTTPException
 
+from .collection_write_policy import reject_album_bulk_write
 from ..utils.datetime_utils import instant_sort_key
 
 
@@ -121,6 +122,7 @@ def save_json_data(
             return
         raise HTTPException(status_code=409, detail="Sheets require the row-level API")
     if not local_json_fallback_enabled():
+        reject_album_bulk_write(name)
         ensure_db_expected_is_ready()
         if name in db_writable_collections:
             db_replace_collection(name, data)
