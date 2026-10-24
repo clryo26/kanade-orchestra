@@ -166,6 +166,17 @@ def _complete_album_update(updated: dict[str, Any], snapshot: dict[str, Any] | N
     return omitted
 
 
+def _same_album_photo_data(photo: dict[str, Any], stored: dict[str, Any], parent: dict[str, Any], now_text: str) -> bool:
+    # PERF-R15: server timestamps alone must not turn a parent rename into
+    # photo UPDATEs. Compare the same normalized persisted fields as the writer.
+    columns = tuple(c for c in DB_CHILD_COLUMNS["album_photos"]
+                    if c not in {"id", "album_id", "organization_id", "created_at", "updated_at", "uploaded_at"})
+    def values(value: dict[str, Any]) -> tuple[Any, ...]:
+        row = db_child_rows_for_collection("albums", [{**parent, "photos": [value]}], now=now_text)["album_photos"][0]
+        return db_row_tuple("album_photos", columns, row)
+    return values(photo) == values(stored)
+
+
 def apply_server_child_fields(
     name: str,
     item: dict[str, Any],
@@ -195,10 +206,18 @@ def apply_server_child_fields(
                 continue
             child = dict(child)
             match = stored.get(key_of(child))
+            if name == "albums" and match is not None and _same_album_photo_data(child, match, item, now_text):
+                normalized.append(dict(match))
+                continue
             for column in ("created_at", *extra, "updated_at"):
                 if not add_missing and column not in child:
                     continue
-                child[column] = now_text if column == "updated_at" else (match or {}).get(column) or now_text
+                if name == "albums" and match is not None and column != "updated_at" and column in match:
+                    # A legacy NULL upload time is still stored source identity;
+                    # filling it during a rename would change the v1 thumb key.
+                    child[column] = match[column]
+                else:
+                    child[column] = now_text if column == "updated_at" else (match or {}).get(column) or now_text
             normalized.append(child)
         if children_key in item:
             item[children_key] = normalized
@@ -440,7 +459,12 @@ class PostgresRowStore:
         """Child IDs unique across parents (e.g. album photos, N05). Same rule as rows."""
         return self._allocate_id(ctx, child_table)
 
-    def _write_children(self, ctx: ItemContext, name: str, item: dict[str, Any], now_text: str) -> None:
+    def _write_children(self, ctx: ItemContext, name: str, item: dict[str, Any], now_text: str, *, previous: dict[str, Any] | None = None) -> None:
+        if name == "albums":
+            if previous is None:
+                raise RuntimeError("Album child writes require the locked previous row (empty for insert)")
+            self._write_album_photo_diff(ctx, item, previous, now_text)
+            return
         for child_table, child_rows in db_child_rows_for_collection(name, [item], now=now_text).items():
             parent_key = DB_CHILD_PARENT_KEYS[child_table]
             child_has_org = table_has_organization_id(ctx.conn, child_table)
@@ -460,6 +484,52 @@ class PostgresRowStore:
             db_fill_missing_ids(ctx.cur, child_table, child_rows)
             db_insert_rows(ctx.cur, child_table, columns, child_rows)
 
+    def _write_album_photo_diff(self, ctx: ItemContext, item: dict[str, Any], previous: dict[str, Any], now_text: str) -> None:
+        # Parent is locked by update, or newly inserted in this transaction.
+        # Preserve untouched rows (including future internal columns), and use
+        # INSERT rather than UPSERT so a foreign parent/tenant's ID cannot move.
+        table = "album_photos"
+        has_org = table_has_organization_id(ctx.conn, table)
+        columns = DB_CHILD_COLUMNS[table]
+        if has_org and "organization_id" not in columns:
+            columns = (*columns, "organization_id")
+        rows = db_child_rows_for_collection("albums", [item], now=now_text)[table]
+        old_rows = db_child_rows_for_collection("albums", [previous], now=now_text)[table]
+        for row in rows:
+            row["organization_id"] = ctx.tenant_id
+        # Retain the existing compatibility allocation for generic PUTs.
+        # Upload keeps its separate, globally locked allocator unchanged.
+        db_fill_missing_ids(ctx.cur, table, rows)
+        id_columns = ("id",)
+        old = {db_row_tuple(table, id_columns, row)[0]: row for row in old_rows}
+        seen = set()
+        for row in rows:
+            photo_id = db_row_tuple(table, id_columns, row)[0]
+            if photo_id in seen:
+                # Match the old INSERT duplicate-key rejection; never silently
+                # collapse two requested photos into a dict entry.
+                raise pg_errors.UniqueViolation("Duplicate album photo id")
+            seen.add(photo_id)
+        scope = psql.SQL("album_id = %s")
+        params: tuple[Any, ...] = (item["id"],)
+        if has_org:
+            scope = psql.SQL("organization_id = %s AND ") + scope
+            params = (ctx.tenant_id, *params)
+        for photo_id in sorted(set(old) - seen):
+            ctx.cur.execute(psql.SQL("DELETE FROM {} WHERE ").format(psql.Identifier(table)) + scope
+                            + psql.SQL(" AND id = %s"), (*params, photo_id))
+        changed_columns = tuple(c for c in columns if c not in {"id", "album_id", "organization_id"})
+        data_columns = tuple(c for c in columns if c not in {"created_at", "updated_at", "uploaded_at"})
+        assignments = psql.SQL(", ").join(psql.SQL("{} = %s").format(psql.Identifier(c)) for c in changed_columns)
+        for row in rows:
+            photo_id = db_row_tuple(table, id_columns, row)[0]
+            if photo_id not in old:
+                db_insert_rows(ctx.cur, table, columns, [row])
+            elif db_row_tuple(table, data_columns, row) != db_row_tuple(table, data_columns, old[photo_id]):
+                ctx.cur.execute(psql.SQL("UPDATE {} SET ").format(psql.Identifier(table)) + assignments
+                                + psql.SQL(" WHERE ") + scope + psql.SQL(" AND id = %s"),
+                                (*db_row_tuple(table, changed_columns, row), *params, photo_id))
+
     def _columns(self, ctx: ItemContext, table: str) -> tuple[str, ...]:
         columns = DB_COLLECTION_COLUMNS[table]
         if table_has_organization_id(ctx.conn, table) and "organization_id" not in columns:
@@ -478,7 +548,7 @@ class PostgresRowStore:
             apply_server_child_fields(name, item, None, now_text)
             columns = self._columns(c, table)
             db_insert_rows(c.cur, table, columns, [item])
-            self._write_children(c, name, item, now_text)
+            self._write_children(c, name, item, now_text, previous={} if name == "albums" else None)
             c.touched.add(name)
             saved = self._select(c, name, item_id, lock=False)
             assert saved is not None
@@ -546,7 +616,7 @@ class PostgresRowStore:
                 (*values, *where_params),
             )
             if name in DB_CHILD_TABLES:
-                self._write_children(c, name, updated, now_text)
+                self._write_children(c, name, updated, now_text, previous=current if name == "albums" else None)
             c.touched.add(name)
             saved = self._select(c, name, item_id, lock=False)
             assert saved is not None

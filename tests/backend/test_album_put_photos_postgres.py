@@ -63,8 +63,8 @@ def test_http_omission_preserves_actual_rows_creator_and_audit(environment, wrap
     after, saved_photos = state(env)
     assert after[0] == "After omission" and after[1:4] == before[1:4]
     assert after[4] != before[4] and saved_photos == photos
-    assert meter["sql_by_tag"]["delete_album_photos"] == 1
-    assert meter["sql_by_tag"]["insert_album_photos"] == 25
+    assert meter["sql_by_tag"].get("delete_album_photos", 0) == 0
+    assert meter["sql_by_tag"].get("insert_album_photos", 0) == 0
     assert audit_statuses(env) == [200]
 
 
@@ -151,8 +151,8 @@ def test_failure_after_child_delete_rolls_back_all_changes(environment, monkeypa
     if failure == "write_exception":
         original = db_item_repository.PostgresRowStore._write_children
 
-        def broken(self, *args):
-            original(self, *args)
+        def broken(self, *args, **kwargs):
+            original(self, *args, **kwargs)
             raise RuntimeError("Injected after child write")
 
         monkeypatch.setattr(db_item_repository.PostgresRowStore, "_write_children", broken)

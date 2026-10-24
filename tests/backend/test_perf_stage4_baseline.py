@@ -283,7 +283,7 @@ def test_before_same_source_key_replacement_does_not_invalidate_derived_cache(cl
 
 
 @pytest.mark.parametrize("photo_count", [25, 50])
-def test_before_child_writer_replaces_unchanged_photo_rows(monkeypatch, photo_count):
+def test_child_writer_keeps_unchanged_photo_rows(monkeypatch, photo_count):
     from src.backend.repositories import db_item_repository as repository
 
     class RecordingCursor:
@@ -311,8 +311,8 @@ def test_before_child_writer_replaces_unchanged_photo_rows(monkeypatch, photo_co
     # Real child conversion and db_insert_rows; SQL is captured, never executed.
     store = repository.PostgresRowStore()
     for name in ("Before title", "After title"):
-        store._write_children(ctx, "albums", {**item, "event_name": name}, "2026-10-23T00:00:00Z")
+        store._write_children(ctx, "albums", {**item, "event_name": name}, "2026-10-23T00:00:00Z", previous=item)
     assert item["photos"] == current_photos
-    assert len(cur.deletes) == 2
-    assert len(cur.insert_batches) == 2
+    assert len(cur.deletes) == 0
+    assert len(cur.insert_batches) == 0
     assert all(len(rows) == photo_count for _query, rows in cur.insert_batches)

@@ -172,7 +172,7 @@ def isolated_db():
         assert len(REPORT["same_loop_waves"]) == 2 and len(REPORT["omitted_photos"]) == 1
         assert len(REPORT["photo_contract"]) == 1
         REPORT.update({
-            "phase": "Issue 150 AFTER on stage 4A target-photo path; conditional GET and 4C/4D still held",
+            "phase": "4C first unit AFTER: album photo diff writes only; ledger/guard/GC and conditional GET still held",
             "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
             "python": platform.python_version(), "system": platform.system(),
             "measurement_sha256": digest(Path(__file__).read_bytes()),
@@ -349,7 +349,7 @@ def test_real_photo_read_sql_and_connections(environment):
 
 
 @pytest.mark.parametrize("environment", [1, 2], indirect=True)
-def test_title_update_rewrites_children_and_keeps_real_audit(environment):
+def test_title_update_keeps_children_and_real_audit(environment):
     env = environment
     for repeat in range(5):
         payload = {**env["albums"][0], "event_name": f"Synthetic title {repeat}"}
@@ -358,8 +358,8 @@ def test_title_update_rewrites_children_and_keeps_real_audit(environment):
         assert len(response.json()["photos"]) == 25
         deletes = [e for e in result["events"] if e["tag"] == "delete_album_photos"]
         inserts = [e for e in result["events"] if e["tag"] == "insert_album_photos"]
-        assert sum(e["affected_rows"] for e in deletes) == 25
-        assert sum(e["statements"] for e in inserts) == 25
+        assert sum(e["affected_rows"] for e in deletes) == 0
+        assert sum(e["statements"] for e in inserts) == 0
         assert result["sql_by_tag"]["insert_audit_logs"] == 1
         assert result["checkouts_by_phase"]["audit_actor"] >= 1
         assert result["checkouts_by_phase"]["audit_write"] == 1

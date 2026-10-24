@@ -80,3 +80,5 @@
 - bootstrap + 全コレクション合成 ETag + IndexedDB による高速化
 - ログイン画面の更新ボタン + Rev. 表示
 - システム管理のアクセスログ（access_logs）で団員のメニューアクセスを記録・閲覧
+
+- [第4段階4C 第1単位の実装記録](docs/PERF_STAGE4C_DIFF_IMPLEMENTATION.md) — 写真差分SQLのみ。台帳・ガード・lease・回収は未実装。
