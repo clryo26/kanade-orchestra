@@ -1,0 +1,97 @@
+{
+  "date_jst": "2026-10-24",
+  "phase": "Issue 150 pre-fix pure payload/mutator/child conversion probe",
+  "base_commit": "0060e1cc17f55cd1d0e66a0e26e61d8821b01bac",
+  "source_sha256": {
+    "src/backend/services/extra_collection_helpers.py": "1d4826024bfe079b6b5042f9b7d49e2cc8b5b50de858959cff947df69082d98b",
+    "src/backend/services/extra_service.py": "63cb348dd275ca593621f0c61f40c20032c9c6affc062651dbc40acf152cfc17",
+    "src/backend/repositories/db_row_repository.py": "13cd8a7d8cd06f8ee89984a1a0b84995ae52d9f3842c631648356db4bf1c8ff6",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/static/js/modules/albums.js": "7bff5b169dbaa42b9fcff831c6421b146e2aa14ff5b64063bc7c09488782bced",
+    "src/static/js/modules/bootstrap_loader.js": "16286972ee5d29249e2c23ede537441a7bd324dfe7ab2ba9f43418b5b96f525f"
+  },
+  "mode": "Real production parsing, mutate and child conversion only; synthetic input, no router/store/DB/GCS execution. main imported first without lifespan; psycopg.connect and storage.Client blocked.",
+  "cases": [
+    {
+      "case": "omitted",
+      "parsed_photos_present": false,
+      "mutate_photos_present": false,
+      "mutate_photos_type": "NoneType",
+      "resulting_child_row_count": 0
+    },
+    {
+      "case": "empty",
+      "parsed_photos_present": true,
+      "mutate_photos_present": true,
+      "mutate_photos_type": "list",
+      "resulting_child_row_count": 0
+    },
+    {
+      "case": "null",
+      "parsed_photos_present": true,
+      "mutate_photos_present": true,
+      "mutate_photos_type": "NoneType",
+      "resulting_child_row_count": 0
+    },
+    {
+      "case": "object",
+      "parsed_photos_present": true,
+      "mutate_photos_present": true,
+      "mutate_photos_type": "dict",
+      "resulting_child_row_count": 0
+    },
+    {
+      "case": "string",
+      "parsed_photos_present": true,
+      "mutate_photos_present": true,
+      "mutate_photos_type": "str",
+      "resulting_child_row_count": 0
+    },
+    {
+      "case": "mixed",
+      "parsed_photos_present": true,
+      "mutate_photos_present": true,
+      "mutate_photos_type": "list",
+      "resulting_child_row_count": 1
+    },
+    {
+      "case": "same",
+      "parsed_photos_present": true,
+      "mutate_photos_present": true,
+      "mutate_photos_type": "list",
+      "resulting_child_row_count": 1
+    },
+    {
+      "case": "wrapped_omitted",
+      "parsed_photos_present": false,
+      "mutate_photos_present": false,
+      "mutate_photos_type": "NoneType",
+      "resulting_child_row_count": 0
+    },
+    {
+      "case": "string_wrapped_omitted",
+      "parsed_photos_present": false,
+      "mutate_photos_present": false,
+      "mutate_photos_type": "NoneType",
+      "resulting_child_row_count": 0
+    }
+  ],
+  "sql_executed": false,
+  "gcs_calls": false,
+  "not_verified": [
+    "HTTP/transaction behaviour in this probe",
+    "live callers or data loss",
+    "new contract implementation"
+  ],
+  "initial_probe_failure": "Direct extra_service import encountered existing facade initialization cycle; repeated with normal main-first import. No application import changes.",
+  "omitted_parent_creator_projection": {
+    "probe": "Same production mutate + db_row_tuple, synthetic admin/name-only input",
+    "creator_id_key_in_mutate_result": false,
+    "creator_name_key_in_mutate_result": false,
+    "projected_parent_update_values": [
+      null,
+      null
+    ],
+    "actual_db_write_verified": false
+  }
+}

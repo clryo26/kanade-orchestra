@@ -154,6 +154,8 @@ SDKの同期metadata処理は既存threadpoolへ渡し、asyncルーターのイ
 
 **4Cの着手条件**: [写真省略PUTの別不具合 #150](PERF_STAGE4_ALBUM_PUT_ISSUE_DRAFT.md) で、汎用PUTの `photos` 省略と明示的な空配列の意味を別仕様として確定し、修正と回帰試験のレビューを完了する。それまでアルバム差分更新の実装には着手しない。省略を「変更なし」にするか、置換APIとして扱うかを本性能設計だけで決めない。4-0の読取調査と4Aはこの不具合解消の待ち対象ではない。
 
+2026-10-24: 別仕様の提案は [Issue #150詳細設計v1.0](ALBUM_PUT_PHOTOS_DETAILED_DESIGN.md) に分離した。現状調査と契約案の作成段階で、未実装・未修正のため上記の着手条件を解除しない。将来の回収候補との組合せ試験は4C実装後に行い、それ自体を4C着手前の循環依存にしない。
+
 実装前一覧は最低限、汎用extraのPOST/PUT/DELETE、写真upload/delete、album_serviceの公開関数、AlbumRepository/BaseRepository、row storeのinsert/update/update_columns/delete/update_many/_write_children、save_json_data/互換app_core/replace_collection/_replace_collection_in/mutate系、同期UPSERT/DELETE、復元、`repair_album_photo_metadata.py`、直接SQL保守を含む。呼出元・トランザクション・ロール・子変更・外部削除の有無・移行方法を行ごとに記録する。
 
 通常アプリではalbumsの全置換を、`allow_bulk=True`・内部関数・互換ファサード経由でも禁止する。通常同期は専用SQLと検証済み同期モードで行い、汎用全置換の例外をアプリへ公開しない。ローカルJSON fixtureの投入は試験用経路として分離する。
