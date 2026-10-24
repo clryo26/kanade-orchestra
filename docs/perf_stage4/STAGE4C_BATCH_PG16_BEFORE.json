@@ -1,0 +1,596 @@
+{
+  "writer_reference": "git:3de19e9:_write_album_photo_diff",
+  "cases": [
+    {
+      "postgres_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "operation": "delete",
+      "photo_count": 5,
+      "http_status": 200,
+      "request_sql_statements": 21,
+      "sequential_checkouts": 6,
+      "photo_statements": 5,
+      "photo_rows_affected": 5,
+      "photo_events": [
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.299199997447431,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 3.456000005826354,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 2.3366999812424183,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.6213000053539872,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.6910000704228878,
+          "affected_rows": 1
+        }
+      ]
+    },
+    {
+      "postgres_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "operation": "delete",
+      "photo_count": 25,
+      "http_status": 200,
+      "request_sql_statements": 41,
+      "sequential_checkouts": 6,
+      "photo_statements": 25,
+      "photo_rows_affected": 25,
+      "photo_events": [
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7109000580385327,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8316000457853079,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7142999675124884,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.6434998940676451,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8311999263241887,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.6964999958872795,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0776999406516552,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9970999090000987,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8472999325022101,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8922999259084463,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0523999808356166,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.025000005029142,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.803499948233366,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8297000313177705,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8211999665945768,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7802000036463141,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8021000539883971,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9406000608578324,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8379000937566161,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9521000320091844,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.6771000334993005,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7334999972954392,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.1020000092685223,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.775699969381094,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "delete_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.5967000033706427,
+          "affected_rows": 1
+        }
+      ]
+    },
+    {
+      "postgres_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "operation": "update",
+      "photo_count": 5,
+      "http_status": 200,
+      "request_sql_statements": 21,
+      "sequential_checkouts": 6,
+      "photo_statements": 5,
+      "photo_rows_affected": 5,
+      "photo_events": [
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.174400094896555,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0948999552056193,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9862000588327646,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7482999935746193,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7214000215753913,
+          "affected_rows": 1
+        }
+      ]
+    },
+    {
+      "postgres_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "operation": "update",
+      "photo_count": 25,
+      "http_status": 200,
+      "request_sql_statements": 41,
+      "sequential_checkouts": 6,
+      "photo_statements": 25,
+      "photo_rows_affected": 25,
+      "photo_events": [
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.045699929818511,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.851099961437285,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0672000935301185,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9718000655993819,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9218000341206789,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.5062999445945024,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7812000112608075,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7780999876558781,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7027999963611364,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.6859999848529696,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8116998942568898,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7110000587999821,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.8261000039055943,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0103000095114112,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9716000640764832,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.4674999983981252,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0624000569805503,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.290300046093762,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9012999944388866,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.7396000437438488,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.169299939647317,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.0276000248268247,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 1.2182999635115266,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9534999262541533,
+          "affected_rows": 1
+        },
+        {
+          "api": "execute",
+          "tag": "update_album_photos",
+          "phase": "body",
+          "statements": 1,
+          "fetched_rows": 0,
+          "sql_ms": 0.9132000850513577,
+          "affected_rows": 1
+        }
+      ]
+    }
+  ],
+  "measurement_test_sha256": "6ae6c73f65c214df16c381d6bd85fd0cc3d62ae377e86b4613fb026416ceb43a",
+  "source_sha256": null,
+  "limits": "Owned loopback PostgreSQL, synthetic GCS; no candidate/version trigger installed. Statement counts are measured, trigger invocations are not."
+}

@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
+import json
+import os
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -10,6 +14,39 @@ from src.backend import app_core
 from src.backend.repositories import db_item_repository
 from test_album_put_photos_postgres import environment as pg_environment, state
 from test_perf_stage4_postgres import call, isolated_db as isolated_db
+
+
+BATCH_ROWS = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def save_batch_report():
+    yield
+    destination = os.getenv("PORTAL_STAGE4C_BATCH_REPORT", "")
+    if not destination:
+        return
+    root = Path(__file__).resolve().parents[2]
+    target = (root / destination).resolve()
+    assert target.parent == (root / "docs/perf_stage4").resolve()
+    assert target.name.startswith("STAGE4C_BATCH_") and target.name.endswith(
+        ("_BEFORE.json", "_AFTER.json")
+    )
+    assert len(BATCH_ROWS) == 4
+    reference = os.getenv("PORTAL_STAGE4C_BATCH_WRITER", "working-tree")
+    report = {
+        "writer_reference": reference,
+        "cases": BATCH_ROWS,
+        "measurement_test_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "source_sha256": hashlib.sha256(
+            (root / "src/backend/repositories/db_item_repository.py").read_bytes()
+        ).hexdigest()
+        if reference == "working-tree"
+        else None,
+        "limits": "Owned loopback PostgreSQL, synthetic GCS; no candidate/version trigger installed. Statement counts are measured, trigger invocations are not.",
+    }
+    with target.open("x", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+        f.write("\n")
 
 
 @pytest.fixture
@@ -148,3 +185,64 @@ def test_legacy_sequence_collision_rolls_back_without_collapsing_ids(environment
     with pytest.raises(psycopg.errors.UniqueViolation):
         app_core.row_store().update("albums", 1, lambda current: {**current, "photos": photos})
     assert state(env) == before
+
+
+@pytest.mark.parametrize("environment", [1], indirect=True)
+@pytest.mark.parametrize(
+    "operation,count", [("delete", 5), ("delete", 25), ("update", 5), ("update", 25)]
+)
+def test_bulk_photo_statement_counts(environment, operation, count):
+    env = environment
+    before = state(env)
+    photos = deepcopy(env["albums"][0]["photos"])
+    if operation == "delete":
+        photos = photos[count:]
+    else:
+        for photo in photos[:count]:
+            photo["filename"] = "bulk-" + photo["filename"]
+    with psycopg.connect(env["dsn"]) as c:
+        foreign_before = c.execute(
+            "SELECT * FROM album_photos WHERE album_id=2 ORDER BY id"
+        ).fetchall()
+        version = c.execute("SHOW server_version").fetchone()[0]
+    response, meter = call(
+        env, "PUT", "/api/extra/albums/1", json={"event_name": "Bulk measurement", "photos": photos}
+    )
+    events = [
+        e
+        for e in meter["events"]
+        if e["tag"] in {"delete_album_photos", "update_album_photos", "insert_album_photos"}
+    ]
+    BATCH_ROWS.append(
+        {
+            "postgres_version": version,
+            "operation": operation,
+            "photo_count": count,
+            "http_status": response.status_code,
+            "request_sql_statements": meter["sql_statements"],
+            "sequential_checkouts": meter["checkouts"],
+            "photo_statements": sum(e["statements"] for e in events),
+            "photo_rows_affected": sum(max(e["affected_rows"], 0) for e in events),
+            "photo_events": events,
+        }
+    )
+    assert response.status_code == 200
+    assert all(e["tag"] == operation + "_album_photos" for e in events)
+    assert sum(e["affected_rows"] for e in events) == count
+    after = state(env)
+    before_map = {p[0]: p for p in before[1]}
+    for photo in after[1]:
+        if operation == "delete" or photo[0] > count:
+            assert photo == before_map[photo[0]]
+        else:
+            assert photo[3] == "bulk-" + before_map[photo[0]][3]
+            assert photo[9:11] == before_map[photo[0]][9:11]
+            assert photo[-1] > before_map[photo[0]][-1]
+    assert len(after[1]) == (25 - count if operation == "delete" else 25)
+    with psycopg.connect(env["dsn"]) as c:
+        assert (
+            c.execute("SELECT * FROM album_photos WHERE album_id=2 ORDER BY id").fetchall()
+            == foreign_before
+        )
+        assert c.execute("SELECT status_code FROM audit_logs").fetchall() == [(200,)]
+    assert sum(e["statements"] for e in events) == (1 if operation == "delete" else count)

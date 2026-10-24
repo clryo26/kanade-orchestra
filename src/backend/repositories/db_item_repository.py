@@ -515,9 +515,12 @@ class PostgresRowStore:
         if has_org:
             scope = psql.SQL("organization_id = %s AND ") + scope
             params = (ctx.tenant_id, *params)
-        for photo_id in sorted(set(old) - seen):
+        removed_ids = sorted(set(old) - seen)
+        if removed_ids:
+            # PERF-R15: one statement for the removed set, so future AFTER
+            # STATEMENT candidate/version triggers do not run once per photo.
             ctx.cur.execute(psql.SQL("DELETE FROM {} WHERE ").format(psql.Identifier(table)) + scope
-                            + psql.SQL(" AND id = %s"), (*params, photo_id))
+                            + psql.SQL(" AND id = ANY(%s)"), (*params, removed_ids))
         changed_columns = tuple(c for c in columns if c not in {"id", "album_id", "organization_id"})
         data_columns = tuple(c for c in columns if c not in {"created_at", "updated_at", "uploaded_at"})
         assignments = psql.SQL(", ").join(psql.SQL("{} = %s").format(psql.Identifier(c)) for c in changed_columns)
