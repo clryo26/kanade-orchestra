@@ -172,7 +172,7 @@ def isolated_db():
         assert len(REPORT["same_loop_waves"]) == 2 and len(REPORT["omitted_photos"]) == 1
         assert len(REPORT["photo_contract"]) == 1
         REPORT.update({
-            "phase": "4A target-photo AFTER with actual PostgreSQL and synthetic GCS; conditional GET held",
+            "phase": "Issue 150 AFTER on stage 4A target-photo path; conditional GET and 4C/4D still held",
             "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
             "python": platform.python_version(), "system": platform.system(),
             "measurement_sha256": digest(Path(__file__).read_bytes()),
@@ -471,16 +471,16 @@ def test_real_reads_writes_audit_on_one_event_loop(environment):
 
 
 @pytest.mark.parametrize("environment", [1], indirect=True)
-def test_capture_generic_put_omitted_photo_collection(environment):
+def test_capture_generic_put_omitted_photo_collection_preserves_photos(environment):
     env = environment
     response, result = call(env, "PUT", "/api/extra/albums/1", json={"event_name": "Title-only API probe"})
-    assert response.status_code == 200 and response.json()["photos"] == []
+    assert response.status_code == 200 and len(response.json()["photos"]) == 25
     with psycopg.connect(env["dsn"], autocommit=True) as observer:
-        assert observer.execute("SELECT count(*) FROM album_photos WHERE album_id=1").fetchone()[0] == 0
+        assert observer.execute("SELECT count(*) FROM album_photos WHERE album_id=1").fetchone()[0] == 25
         assert observer.execute("SELECT count(*) FROM audit_logs").fetchone()[0] == 1
     REPORT["omitted_photos"].append({
-        "status": 200, "remaining_album_photos": 0,
-        "scope": "Synthetic API probe, not a reproduced UI data-loss incident; no behaviour fix here",
+        "status": 200, "remaining_album_photos": 25,
+        "scope": "Issue #150 fixed: omitted photos retain the locked current collection; explicit empty is tested separately",
         **result,
     })
 

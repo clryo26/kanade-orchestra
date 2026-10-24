@@ -36,3 +36,5 @@
 2026-10-24、[別仕様・詳細設計v1.0](ALBUM_PUT_PHOTOS_DETAILED_DESIGN.md) を作成した。写真省略の保持・明示空配列の削除・不正型の拒否と、省略作成者2項目の保持を提案している。レビュー用・未実装で、Issueの完了条件のチェックは進めていない。4C着手前の修正レビューと、4C実装後/4D有効化前の候補整合試験を分けて追跡する。
 
 2026-10-24 v1.0レビュー対応: [別仕様v1.1](ALBUM_PUT_PHOTOS_DETAILED_DESIGN.md) 2.1章へ他集合の棚卸しを追加し、日本語422とphotos:nullの契約差分を明記した。[追跡資料](ISSUE150_REVIEW_FOLLOWUP.md) に作成者2項目のコメントと別Issue4件の本文を保存。その後PUBLICの確認と原稿補足を経て、[作成者2項目のコメント](https://github.com/clryo26/kanade-orchestra/issues/150#issuecomment-6377528084) と別Issue #151〜154を送信し、本文照合済み。ソース修正は未実施。
+
+2026-10-24 実装追跡: ユーザーの契約v1.1確定を受け、[実装記録](ALBUM_PUT_PHOTOS_IMPLEMENTATION.md) のソース修正と自動検証を実施。修正レビュー待ちでIssueのチェック/closeは行っていない。4C実装後のT12、実DB/GCS・ロール等は未完了。

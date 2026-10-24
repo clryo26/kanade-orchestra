@@ -1,0 +1,318 @@
+{
+  "issue": 150,
+  "design": "docs/ALBUM_PUT_PHOTOS_DETAILED_DESIGN.md v1.1",
+  "base_commit": "e950b6c",
+  "branch": "fix/album-put-photos-20261024",
+  "recorded_at_utc": "2026-10-24T00:52:21.743594+00:00",
+  "scope": "Album update omission contract only; no other collections, schema, GCS deletion, 4C or 4D activation.",
+  "source_and_test_sha256": {
+    "src/backend/repositories/db_item_repository.py": "963100dacca5a59ef542ff0c881213c1a4e1fc5b6255388efa1500a79e017b41",
+    "tests/backend/test_album_put_photos.py": "2d832b8af4d708c8303505f09986fdff15328c4fb387c33a9b734b9f53aa1db9",
+    "tests/backend/test_album_put_photos_postgres.py": "8ef1ac5cb7611d25cf644f8e8cb26f2ac0fd51439bac3f4cc78e54156a33f7fd",
+    "tests/backend/test_perf_stage4_postgres.py": "658966e1f7359dab4afb48f87d36cd4a682ef8f944704a8434cf1ec73f39cb20"
+  },
+  "checks": {
+    "backend_full": {
+      "tests": 1202,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 164,
+      "passed": 1038,
+      "seconds": 255.085,
+      "junit": {
+        "local_path": ".tmp/issue150-implementation/backend-final.xml",
+        "sha256": "4ebc5ae9e3ebc2bb3fdf537bb325edb3cedb40dd447cf6182fda32474698694f",
+        "committed": false
+      }
+    },
+    "issue150_local_http": {
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 31,
+      "seconds": 6.888,
+      "junit": {
+        "local_path": ".tmp/issue150-implementation/local-final.xml",
+        "sha256": "defab2f470085585e5e69946ec9e90112e8e226887f95a29369dcd86c3f35db5",
+        "committed": false
+      }
+    },
+    "postgres16_issue150": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23,
+      "seconds": 30.563,
+      "junit": {
+        "local_path": ".tmp/issue150-implementation/pg16-verified.xml",
+        "sha256": "2b381ae345bab454bfc5c6424cfae808e15a1b201a46fa0468d830664c2b53be",
+        "committed": false
+      }
+    },
+    "postgres18_issue150": {
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23,
+      "seconds": 31.091,
+      "junit": {
+        "local_path": ".tmp/issue150-implementation/pg18-verified.xml",
+        "sha256": "b7f846a38259b0d1caf061873130da6ffb1ee6cf30b64af498e14af65537f148",
+        "committed": false
+      }
+    },
+    "postgres16_existing_stage4_regression": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 16,
+      "seconds": 77.66,
+      "junit": {
+        "local_path": ".tmp/issue150-implementation/regression16.xml",
+        "sha256": "6c62bf70ab3b840570cff4717ff08ef4f3ba26706410f8a4be4acea3fcad85e4",
+        "committed": false
+      }
+    },
+    "postgres18_existing_stage4_regression": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 16,
+      "seconds": 77.527,
+      "junit": {
+        "local_path": ".tmp/issue150-implementation/regression18.xml",
+        "sha256": "d960b5d4ab3023a4e95a2c5735b053db14ec6000d297ec3fae3a0371c6ee4df2",
+        "committed": false
+      }
+    },
+    "frontend": {
+      "passed": 1385,
+      "files": 118,
+      "exit_code": 0,
+      "log": {
+        "local_path": ".tmp/issue150-implementation/frontend.log",
+        "sha256": "871ebd7508f37091992b430845f9d3b90b5919b94e92b942707588e905071ca5",
+        "committed": false
+      }
+    },
+    "e2e": {
+      "passed": 95,
+      "browser": "Chromium",
+      "exit_code": 0,
+      "log": {
+        "local_path": ".tmp/issue150-implementation/e2e.log",
+        "sha256": "250382efc7b14c5a4c5df637982378c1ebbb5cb6295027e068c7f33005940b8f",
+        "committed": false
+      },
+      "real_device": false
+    },
+    "frontend_syntax": {
+      "files": 170,
+      "exit_code": 0,
+      "log": {
+        "local_path": ".tmp/issue150-implementation/syntax.log",
+        "sha256": "91bff8cf3183119776933556b487b423af345949dd8e6d9a30f748266d47eb69",
+        "committed": false
+      }
+    },
+    "ruff": {
+      "command": ".venv/Scripts/python.exe -m ruff check .",
+      "exit_code": 0
+    },
+    "compileall": {
+      "command": ".venv/Scripts/python.exe -m compileall -q src/backend tests",
+      "exit_code": 0
+    },
+    "release_safety": {
+      "command": ".venv/Scripts/python.exe scripts/check_release_safety.py",
+      "exit_code": 0,
+      "log": {
+        "local_path": ".tmp/issue150-implementation/release-safety-verified.log",
+        "sha256": "09f37ad224053f6659d8fdd905a5098be37abfc0c0ad4264b236a1c97574e5a9",
+        "committed": false
+      },
+      "npm_attempt": {
+        "exit_code": 1,
+        "reason": "npm invokes system python, which could not start; the identical script passed with project virtualenv Python.",
+        "log": {
+          "local_path": ".tmp/issue150-implementation/release-safety-final.log",
+          "sha256": "bf710f17a7131175a7ec579b344a29c914918ff91b483992d37dd19b47fafd74",
+          "committed": false
+        }
+      }
+    }
+  },
+  "negative_proof": {
+    "base": "e950b6c",
+    "method": "AST-load only the original ListRowStore/PostgresRowStore update methods into a separate pytest process; no production file reverted.",
+    "expected_failed": 2,
+    "deselected": 18,
+    "stopped_after": 2,
+    "log": {
+      "local_path": ".tmp/issue150-implementation/before-negative.log",
+      "sha256": "ff522dd5c6cb79393cad8b54848173946f137dc097384584cbb200eabe49a133",
+      "committed": false
+    }
+  },
+  "test_harness_corrections": [
+    {
+      "run": "initial local",
+      "failed": 1,
+      "reason": "Test incorrectly expected unchanged child updated_at for the existing album_service explicit merged photos path. Corrected expectation; runtime behavior unchanged."
+    },
+    {
+      "run": "added reverse-order PG test on both engines",
+      "failed_per_engine": 2,
+      "reason": "Raw writer lacked the application_name used by existing lock observer. Added observation tag only, reran all 23 cases on both engines."
+    }
+  ],
+  "postgres_environment": {
+    "isolated_only": true,
+    "database": "portal_perf_stage4",
+    "loopback_only": true,
+    "containers": [
+      "kanade-issue150-pg16",
+      "kanade-issue150-pg18"
+    ],
+    "owned_container_labels_verified": true,
+    "containers_stopped_and_auto_removed": true,
+    "unrelated_containers_untouched": true,
+    "schema": "Existing isolated compatibility schema; album_photos has no FK to albums. No claim of production FK/cascade coverage.",
+    "storage": "Dictionary adapter and fixed image fixtures; no live GCS Client permitted.",
+    "photo_comparison": "IDs, logical refs, owner IDs and saved timestamps preserved. Existing NULL-to-empty normalization for string paths/names compared with SQL coalesce; not a byte-for-byte guarantee for all DB columns."
+  },
+  "regression_reports": [
+    {
+      "path": "docs/perf_stage4/ISSUE150_PG16_REGRESSION_AFTER.json",
+      "sha256": "df6e24375d4bb09aeb5ed868168ad097c5714d9e169442bd1dd987d4d823ed74"
+    },
+    {
+      "path": "docs/perf_stage4/ISSUE150_PG18_REGRESSION_AFTER.json",
+      "sha256": "21f568dae11a8cc790e1da1d471b661b64b181ba25b8bc1a130f31702d6e2c2e"
+    }
+  ],
+  "historical_baselines_and_fixture_bytes_unchanged": [
+    {
+      "path": "docs/perf_stage4/BASELINE_BEFORE.json",
+      "sha256": "4add74b0506e20817618aaff567911f7b92ed6804d21b2b3b81d95f46093e194"
+    },
+    {
+      "path": "docs/perf_stage4/ISOLATED_SCHEMA.json",
+      "sha256": "a73b3ce81063bc4676f22b7e55c539ff8aa3d3ad622972aae507a9036e2cd17d"
+    },
+    {
+      "path": "docs/perf_stage4/ISSUE150_CONTRACT_BEFORE.json",
+      "sha256": "e90f6356d33caa5a456cb7df05608a947b2ff1a08c7f415e5881beab36628da1"
+    },
+    {
+      "path": "docs/perf_stage4/ISSUE150_PUBLICATION.json",
+      "sha256": "055c71b87cfe6f3fb0bbb4a3aa0ed9720f89fb51d22c17734c916e8de47e8e6a"
+    },
+    {
+      "path": "docs/perf_stage4/ISSUE150_SIBLING_COLLECTION_AUDIT.json",
+      "sha256": "b18d55a6ef1903f7a2ab2c5acf30c75a33c5aa6fc79fa84ba5cd4349363e1f60"
+    },
+    {
+      "path": "docs/perf_stage4/PHOTO_BASELINE_BEFORE.json",
+      "sha256": "37b78f000dfd547b00791fd9e54a8a26311bc024d4317c6659e8c8a5211e860f"
+    },
+    {
+      "path": "docs/perf_stage4/PHOTO_VALIDATION.json",
+      "sha256": "db9e40d6b55e24d9d86a722ec20ece7ea96454dda66679459a73c0dc8489790f"
+    },
+    {
+      "path": "docs/perf_stage4/POSTGRES16_BEFORE.json",
+      "sha256": "beb583e58bab6601f71bf65a3d19b5a5f8f9cc25ebaec4664a45a84728297b44"
+    },
+    {
+      "path": "docs/perf_stage4/POSTGRES16_TARGET_AFTER.json",
+      "sha256": "ed6ca480d4e8c62fd1968cf5a16705fdaa08e38b6e92063363b5c0720f312a94"
+    },
+    {
+      "path": "docs/perf_stage4/POSTGRES18_BEFORE.json",
+      "sha256": "0902fda8409bb5378b121ac52349b0c3f4d000eab90051150822500ad382af17"
+    },
+    {
+      "path": "docs/perf_stage4/POSTGRES18_TARGET_AFTER.json",
+      "sha256": "c62d6d5621ea589b4c2b4dd415ef60f6c629885ce097c3d2da2852321306ba17"
+    },
+    {
+      "path": "docs/perf_stage4/POSTGRES_VALIDATION.json",
+      "sha256": "86253bc5d3500b2b2cef65240b5f773ae861a4a7208d29cd9ba95ec88a611891"
+    },
+    {
+      "path": "docs/perf_stage4/READ_ONLY_ENVIRONMENT.json",
+      "sha256": "2572a134e75c079d814cc577031dd3146db393542a307b57a410e1c16b67c213"
+    },
+    {
+      "path": "docs/perf_stage4/SCHEMA_GUARD_REVIEW_VALIDATION.json",
+      "sha256": "1a93e672e4e0625c776aec105c076e0cd02e56c403c0c76db376511cd6cebdc2"
+    },
+    {
+      "path": "docs/perf_stage4/SDK_READ_BUDGET_REVIEW.json",
+      "sha256": "467e7205aa066ddb38e9fa4cf15a7133c19c75dbf2c4c64a888f206013b0bab3"
+    },
+    {
+      "path": "docs/perf_stage4/TARGET_VALIDATION.json",
+      "sha256": "9a583a2d610188af4e74e4213da5858a3b54a6207d727d3022bf3728a34cd357"
+    },
+    {
+      "path": "docs/perf_stage4/VALIDATION.json",
+      "sha256": "a802f14fadbd3e3b0bd68dd58e38b33eae5f4f674d06cb10f7b85c26603fb37c"
+    },
+    {
+      "path": "tests/fixtures/perf_stage4_photos/README.md",
+      "sha256": "00f00989f3539fd3b64578405cf5ccf909d14717a2032a5a276e1e9cfac51a19"
+    },
+    {
+      "path": "tests/fixtures/perf_stage4_photos/exif_rotated.jpg",
+      "sha256": "5f9a5ecad744ed808c45738e98efe2d2e8b882d3e8927804f5bef4d7f82016da"
+    },
+    {
+      "path": "tests/fixtures/perf_stage4_photos/high_resolution.jpg",
+      "sha256": "baabde302592f36cc5af143d2107b7f6905bc63a16cc52af61ff659454933b7a"
+    },
+    {
+      "path": "tests/fixtures/perf_stage4_photos/landscape.jpg",
+      "sha256": "0c7186772900217bcd8fa37e5fbc2d51c23b234c48084b240bbbff642c9be297"
+    },
+    {
+      "path": "tests/fixtures/perf_stage4_photos/manifest.json",
+      "sha256": "f694d1f074d87fc951e6b1484342db26f7ddd61a8628da58391b6c44fb27ca16"
+    },
+    {
+      "path": "tests/fixtures/perf_stage4_photos/portrait.jpg",
+      "sha256": "0dad3c0ab98cdb99f073d2e1f63fbfbffaf1e6842c79bb4bb900e8f156e870fb"
+    }
+  ],
+  "interpretation": {
+    "omitted_put_photos": 25,
+    "omitted_put_sql_statements": 42,
+    "omitted_put_sequential_checkouts": 6,
+    "omitted_put_audit_records": 1,
+    "note": "Old omission deleted all children with 17 SQL statements. Now preserves and reinserts 25 photos with 42 statements; this is correctness, not a performance reduction. Child diff writes remain for 4C."
+  },
+  "unverified": [
+    "AP150-T12: future 4C guard/reclamation candidate integration, before 4D enablement",
+    "Live production/TEST DB schema, roles and R25 inventory",
+    "Live GCS metadata/content and SDK conditional GET budget",
+    "Real iPhone/BFCache",
+    "WebKit screenshot comparison not rerun; no frontend assets changed",
+    "User source review required before advancing 4C gate"
+  ],
+  "not_performed": [
+    "push",
+    "PR creation",
+    "merge",
+    "deploy",
+    "live data repair",
+    "migration",
+    "Issue comment or closure",
+    "changes for Issues 151-154"
+  ]
+}

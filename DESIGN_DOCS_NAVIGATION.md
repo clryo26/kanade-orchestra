@@ -39,7 +39,9 @@
 
 - [第4段階: 写真省略PUTの別不具合 #150（起票済み）](docs/PERF_STAGE4_ALBUM_PUT_ISSUE_DRAFT.md) — 4C着手・4D有効化の停止条件。
 
-- [Issue #150 別仕様・詳細設計 v1.1](docs/ALBUM_PUT_PHOTOS_DETAILED_DESIGN.md) — 写真省略は保持、明示空配列は削除の提案。未実装・レビュー用。
+- [Issue #150 別仕様・詳細設計 v1.1](docs/ALBUM_PUT_PHOTOS_DETAILED_DESIGN.md) — 写真省略は保持、明示空配列は削除の確定契約。実装済み・修正レビュー待ち。
+
+- [Issue #150 実装・検証記録](docs/ALBUM_PUT_PHOTOS_IMPLEMENTATION.md) — 写真/作成者の省略保持と型検証。修正レビュー待ち、4C/4Dの条件は未解除。
 
 ## 3. 読み順
 
