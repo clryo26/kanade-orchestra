@@ -1,0 +1,107 @@
+{
+  "issue": 150,
+  "branch": "fix/album-put-photos-standalone-20261024",
+  "base_commit": "2a16a1b",
+  "recorded_at_utc": "2026-10-24T01:10:52.229151+00:00",
+  "scope": "Standalone main-based PostgreSQL tests, release checklist and documentation only; no runtime source changes.",
+  "checks": {
+    "postgres16": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 9,
+      "seconds": 0.61,
+      "junit_path": ".tmp/issue150-standalone/pg16-final.xml",
+      "junit_sha256": "548e90e4423260e03e922a7a4d7a38603f01e591ccff33abd5722b14f0029981",
+      "test_names": [
+        "test_reject_nonisolated_dsn_before_connecting[host=db.example dbname=portal_issue150_standalone user=issue150 port=63916]",
+        "test_reject_nonisolated_dsn_before_connecting[host=127.0.0.1 dbname=production user=issue150 port=63916]",
+        "test_reject_nonisolated_dsn_before_connecting[host=127.0.0.1 dbname=portal_issue150_standalone user=postgres port=63916]",
+        "test_reject_nonisolated_dsn_before_connecting[host=127.0.0.1 hostaddr=192.0.2.1 dbname=portal_issue150_standalone user=issue150 port=63916]",
+        "test_omitted_put_keeps_real_rows_and_creator",
+        "test_explicit_empty_put_removes_only_references",
+        "test_null_put_is_422_and_changes_no_rows",
+        "test_exception_after_child_write_rolls_back_parent_and_photos",
+        "test_waiting_put_preserves_photo_removed_before_lock"
+      ]
+    },
+    "postgres18": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 9,
+      "seconds": 0.621,
+      "junit_path": ".tmp/issue150-standalone/pg18-final.xml",
+      "junit_sha256": "4b9fdd77ec71b60acd682c85417609d07d32dab2d4b046aaac688fb7984cbe76",
+      "test_names": [
+        "test_reject_nonisolated_dsn_before_connecting[host=db.example dbname=portal_issue150_standalone user=issue150 port=63916]",
+        "test_reject_nonisolated_dsn_before_connecting[host=127.0.0.1 dbname=production user=issue150 port=63916]",
+        "test_reject_nonisolated_dsn_before_connecting[host=127.0.0.1 dbname=portal_issue150_standalone user=postgres port=63916]",
+        "test_reject_nonisolated_dsn_before_connecting[host=127.0.0.1 hostaddr=192.0.2.1 dbname=portal_issue150_standalone user=issue150 port=63916]",
+        "test_omitted_put_keeps_real_rows_and_creator",
+        "test_explicit_empty_put_removes_only_references",
+        "test_null_put_is_422_and_changes_no_rows",
+        "test_exception_after_child_write_rolls_back_parent_and_photos",
+        "test_waiting_put_preserves_photo_removed_before_lock"
+      ]
+    },
+    "backend_full": {
+      "tests": 1026,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 83,
+      "passed": 943,
+      "seconds": 144.01,
+      "junit_path": ".tmp/issue150-standalone/backend-pg-followup.xml",
+      "junit_sha256": "ddf58918d5cd3b6abaec64e20254e3ee4e2c3f1be2b69917fe12551087246397"
+    }
+  },
+  "postgres_versions": {
+    "16": "16.14 (Debian 16.14-1.pgdg13+1)",
+    "18": "18.4 (Debian 18.4-1.pgdg13+1)"
+  },
+  "test_count_definition": "Per engine: 4 DSN rejection unit cases + 5 opt-in real HTTP/DB cases. Default full run skips the 5 opt-in cases.",
+  "runtime_and_test_sha256": {
+    "src/backend/repositories/db_item_repository.py": "46c1870fd01c88ddafecd75e5f48ef65659c2d34b4fe31b7c64f5d83b8fd47ac",
+    "tests/backend/test_album_put_photos.py": "2d832b8af4d708c8303505f09986fdff15328c4fb387c33a9b734b9f53aa1db9",
+    "tests/backend/test_album_put_photos_standalone_postgres.py": "ecf2825be79462da5ae25d1bb33f116f6d10abaf7d90934b2ef75ade87df125c"
+  },
+  "database_fixture": {
+    "rows": "one member, one auth device, one album, three photos",
+    "schema": "main compatibility builder + existing 002 migration, test-only album FK; no performance fixtures or stage 3/4 migrations",
+    "target": "loopback only / database portal_issue150_standalone / role issue150 / ports 63916 and 63918",
+    "safety": "Explicit opt-in env only; no DB_URL fallback. Unowned nonempty DB rejected. DSN input forbids hostaddr/service/options; validated hostaddr and public search_path explicitly set to override libpq environment. No live GCS Client.",
+    "containers_stopped_after_owner_label_verification": true,
+    "unrelated_containers_unchanged": true
+  },
+  "verified": [
+    "omitted PUT retains actual photo rows, timestamps and creator",
+    "explicit empty list deletes references",
+    "null returns Japanese 422 and preserves all snapshot columns",
+    "exception after child write rolls back parent and photos",
+    "PUT waits on actual parent row lock and preserves the committed latest child collection",
+    "real audit records for 200 and 422"
+  ],
+  "harness_correction": "Initial PG runs had 8 pass/1 fail each because SELECT * column zero was incorrectly treated as id in one assertion. Switched to explicit columns; final runs pass all 9 on both engines. Runtime unchanged.",
+  "lint": {
+    "ruff_exit_code": 0,
+    "compileall_exit_code": 0
+  },
+  "remaining": [
+    "No live production/TEST DB or GCS verification",
+    "No real iPhone/BFCache or WebKit screenshot rerun",
+    "No frontend/e2e rerun for this test/docs-only followup",
+    "AP150-T12 after future 4C implementation",
+    "After either branch merges, later branch must incorporate main and check conflicts/final diff"
+  ],
+  "not_performed": [
+    "push",
+    "PR creation",
+    "merge",
+    "deploy",
+    "live data repair",
+    "Issue closure"
+  ]
+}
