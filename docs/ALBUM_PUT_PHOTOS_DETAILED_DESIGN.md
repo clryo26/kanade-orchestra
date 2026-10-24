@@ -39,11 +39,11 @@
 |---|---|---|---|
 | performances / pieces | 汎用extraはEXTRA_COLLECTIONS対象外で404。専用update_performanceはmergeするが、その前のnormalizeで省略piecesが[]になる | 専用・flyer keep/操作キーなしの経路で曲目1→0。汎用は保存0回で1件のまま | 別の不具合候補。専用PUTを対象とし、汎用PUTで起きたとはしない。ファイル操作/操作キー経路は追加検証が必要 |
 | date_adjustments / candidates | validate_date_adjustment_payloadが省略/空を400で拒否。currentとの子mergeはしない | titleだけの更新は400、保存0回、候補1件を保持 | このHTTPサービス経路では省略で消えない。直接store.updateの到達能力まで安全とみなさない |
-| payments / performance_fees・performance_fee_amounts | 汎用extraはmergeしない。別のpayment_service.update_paymentはmergeするがpaymentsルーターは空で、汎用HTTPを保護しない | 汎用で両map省略は2明細→0。feesのみ明示すると明細2件を維持しても金額100/200→0/0へ変換。mergeサービスでは1→1で保持 | 別の不具合候補。現行savePaymentStatusはfeesだけを送りamountsを省略することをコードで確認。実画面/実DBの損失は未確認 |
+| payments / performance_fees・performance_fee_amounts | 汎用extraはmergeしない。別のpayment_service.update_paymentはmergeするがpaymentsルーターは空で、汎用HTTPを保護しない | 汎用で両map省略は2明細→0。feesのみ明示すると明細2件を維持しても金額100/200→0/0へ変換。mergeサービスでは1→1で保持 | 別の不具合候補。通常の画面保存savePaymentStatusがfeesのみを送る経路に該当。会計別金額のhelperは未使用で、表示は演奏会別金額のため影響は限定的と推定。実DBの値/実損失は未確認 |
 | castings / members・extras | 汎用extraはmergeしない | 両方省略で1/1→0/0。membersだけ明示なら1/1→1/0 | 別の不具合候補。現行UIは両集合を明示するため、この調査だけで画面障害とは断定しない |
 | desired_pieces / votes | 他人の票はdesired_piece_merged_votesで統合するが、payloadに本人票がなければ本人票は戻らない | 作成者本人1票のみなら省略で1→0。本人+他人は2→他人1。未投票管理者は他人1票を維持 | 別の不具合候補として省略と明示取消の契約を確認する。「統合ありだから全員の票を常に保持」と説明しない。現行の投票UIはvotesを明示 |
 
-上記は他集合をalbumsと同じ仕様で直す根拠にはしない。各集合の省略/空/null/部分更新と現在のUIの契約を別に確定する。修正・実PGでの再現・実データの欠損調査は未実施で、4C/4Dの直接の着手条件には加えない。[追跡資料](ISSUE150_REVIEW_FOLLOWUP.md) にIssue #150追記案と別Issue4件の本文を保存した。GitHubコメントは自動承認審査に拒否されたため未送信で、別Issueも未起票。本文の送信承認後に番号・リンクを追記する。
+上記は他集合をalbumsと同じ仕様で直す根拠にはしない。各集合の省略/空/null/部分更新と現在のUIの契約を別に確定する。修正・実PGでの再現・実データの欠損調査は未実施で、4C/4Dの直接の着手条件には加えない。[追跡資料](ISSUE150_REVIEW_FOLLOWUP.md) に実際の投稿本文を保存した。2026-10-24にPUBLICリポジトリと確認したうえでIssue #150へコメントし、演奏会 [#151](https://github.com/clryo26/kanade-orchestra/issues/151)、会計 [#152](https://github.com/clryo26/kanade-orchestra/issues/152)、配役 [#153](https://github.com/clryo26/kanade-orchestra/issues/153)、希望曲 [#154](https://github.com/clryo26/kanade-orchestra/issues/154) を別に起票した。いずれも未修正。
 
 ## 3. 修正前の確認と証拠の範囲
 
@@ -149,8 +149,8 @@
 | AP150-REV-01 | 他の子集合の省略時の棚卸し | 2.1章と11ケースのJSON。mergeだけでなく事前normalize/入力拒否/本人票除去を区別し、別Issue4件の原稿に分離 |
 | AP150-REV-02 | 422の英語文言 | R04とT03で日本語「写真情報の形式が正しくありません」。既存のdetail警告に出る可能性を前提とする |
 | AP150-REV-03 | nullの変更を明記 | 6章のAPI差分にphotos:nullの全削除扱い→422と、photos:[]の明示を記載 |
-| AP150-REV-04 | 作成者2項目のIssue #150への追記 | 追跡資料に具体的なコメント本文を保存。投稿は自動承認審査で拒否され未送信。外部へのコメントや起票を済ませたとは扱わない |
+| AP150-REV-04 | 作成者2項目のIssue #150への追記 | 追跡資料に投稿済みコメント本文とリンクを保存。公開状態と機密値を再確認後、作成者2項目の追記と別Issue #151〜154を送信し本文照合済み |
 
 v1.1の作成でphotos省略の修正や4C着手のレビューを完了扱いにしない。他集合の調査は新契約の合格試験ではなく、修正前の架空メモリ保存と子行変換の観察である。
 
-今回の補足確認: 棚卸し11ケースの保存結果/子行変換、ソースhashと文書リンクを照合した。共有ZIPの安全検査は全項目PASS。src・tests・DB・GCS・設定は未変更で、新しい実PG/HTTP認証試験・全体pytest・e2eは実行していない。GitHubへのコメント1件と別Issue4件だけは送信承認待ちである。
+今回の補足確認: 棚卸し11ケースの保存結果/子行変換、ソースhashと文書リンクを照合した。共有ZIPの安全検査は全項目PASS。src・tests・DB・GCS・設定は未変更で、新しい実PG/HTTP認証試験・全体pytest・e2eは実行していない。GitHubへのコメント1件と別Issue4件は投稿・本文照合済みで、修正実装は未実施である。

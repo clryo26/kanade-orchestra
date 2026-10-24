@@ -1,0 +1,48 @@
+{
+  "date_jst": "2026-10-24",
+  "repository": "clryo26/kanade-orchestra",
+  "visibility_verified": "PUBLIC",
+  "comment": {
+    "issue": 150,
+    "url": "https://github.com/clryo26/kanade-orchestra/issues/150#issuecomment-6377528084",
+    "body_sha256_normalized": "5334db32ada78af2e54d6dcfafda0d17a47f122f69b6986c22ea98ab5d9be44c",
+    "body_matches_draft": true
+  },
+  "issues": [
+    {
+      "number": 151,
+      "topic": "performances",
+      "url": "https://github.com/clryo26/kanade-orchestra/issues/151",
+      "title": "不具合候補: 演奏会の専用PUTでpiecesを省略すると曲目が失われる",
+      "body_sha256_normalized": "fadc0659b07dc78083ed26cd590b2d5d2f75998a9ab2489c84b5038a9f5da361",
+      "body_matches_draft": true
+    },
+    {
+      "number": 152,
+      "topic": "payments",
+      "url": "https://github.com/clryo26/kanade-orchestra/issues/152",
+      "title": "不具合候補: 会計の汎用PUTで料金の子項目を省略すると明細や金額が失われる",
+      "body_sha256_normalized": "31f0c24e1ee0b6542e2fd49bfe583145a87d53f1b0fc64dddd28229c9828ce79",
+      "body_matches_draft": true
+    },
+    {
+      "number": 153,
+      "topic": "castings",
+      "url": "https://github.com/clryo26/kanade-orchestra/issues/153",
+      "title": "不具合候補: 配役の汎用PUTでmembersやextrasを省略すると子集合が失われる",
+      "body_sha256_normalized": "cc6c784d74ceb542d65196f2a6a08e9a5a419503905f050624c4db913cb70371",
+      "body_matches_draft": true
+    },
+    {
+      "number": 154,
+      "topic": "desired_pieces",
+      "url": "https://github.com/clryo26/kanade-orchestra/issues/154",
+      "title": "不具合候補: 希望曲のPUTでvotesを省略すると操作した本人の票が除かれる",
+      "body_sha256_normalized": "4cbf50ebb66e460f76b197a0a78a0163d22a6c47d7ddb57e3fdac282ef6fcc69",
+      "body_matches_draft": true
+    }
+  ],
+  "runtime_changes": false,
+  "push_merge_deploy": false,
+  "note": "Posting completed after new evidence established public repository and user-reviewed nonconfidential drafts; local PS5 -AsArray recording failed, so verified remote bodies directly without reposting."
+}
