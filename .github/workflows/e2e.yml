@@ -40,15 +40,22 @@ jobs:
         run: npm ci
 
       - name: npm audit (high)
+        id: audit
         run: npm audit --audit-level=high
 
       - name: Run release safety check
+        # Diagnostic branch only: audit still fails the job; collect E2E evidence.
+        if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.audit.outcome == 'failure') }}
         run: npm run check:release-safety
 
       - name: Install Playwright browsers
+        # Diagnostic branch only: audit still fails the job; collect E2E evidence.
+        if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.audit.outcome == 'failure') }}
         run: npx playwright install --with-deps
 
       - name: Run E2E smoke
+        # Diagnostic branch only: audit still fails the job; collect E2E evidence.
+        if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.audit.outcome == 'failure') }}
         run: npm run test:e2e
 
       - name: Upload Playwright report
