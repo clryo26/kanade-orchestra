@@ -284,6 +284,24 @@ def _patch_database_operations(monkeypatch: pytest.MonkeyPatch, *, target_count:
     monkeypatch.setattr(sync_module, "_assert_foreign_keys_valid", lambda *_: None)
 
 
+def test_bound_album_target_stops_before_any_table_write(monkeypatch):
+    _patch_database_operations(monkeypatch, target_count=1)
+    monkeypatch.setattr(sync_module, "TARGET_DB_TABLES", ("members", "album_photos"))
+    monkeypatch.setattr(sync_module, "_existing_tables", lambda _: {"members", "album_photos"})
+    monkeypatch.setattr(sync_module, "_table_spec", lambda _cur, table: TableSpec(table, ("id",), ("id",), (), local_only_columns=("original_asset_id", "thumbnail_asset_id") if table == "album_photos" else ()))
+
+    def forbidden(*args):
+        pytest.fail("sync must reject bound photos before writing even earlier tables")
+
+    monkeypatch.setattr(sync_module, "_prepare_and_upsert_rows", forbidden)
+    prod, target = FakeConnection(), FakeConnection()
+    connections = iter((prod, target))
+    with pytest.raises(RuntimeError, match="rebinding"):
+        synchronize_databases(config(), lambda *args, **kwargs: next(connections))
+    assert target.rolled_back and not target.committed
+    assert prod.rolled_back and target.closed and prod.closed
+
+
 def test_sync_commits_only_after_all_validations(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_database_operations(monkeypatch, target_count=1)
     prod_connection = FakeConnection()

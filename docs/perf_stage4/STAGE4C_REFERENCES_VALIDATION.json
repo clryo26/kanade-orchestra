@@ -1,0 +1,274 @@
+{
+  "recorded_at": "2026-10-25T17:46:14.543872+09:00",
+  "branch": "perf/portal-stage4c-20261024",
+  "base_commit": "ee6459356bdb6a8be0fbf75f7dc1e9c9febfafed",
+  "scope": "4C unit 5: private photo asset references and API/sync boundary; guard remains disabled",
+  "checks": {
+    "backend": {
+      "job": "backend",
+      "command": [
+        "C:\\AITool\\オケポータル\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-backend.log",
+      "log_sha256": "00eb4615243a7838a99314546f33b237182f9e6a72d17a17120692249f3e2bd4"
+    },
+    "frontend": {
+      "job": "frontend",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:frontend"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-frontend.log",
+      "log_sha256": "95e9159da276e91bfd5ac960ccf1ea29e0f33ac427143d676a467aa74b94acfe"
+    },
+    "e2e": {
+      "job": "e2e",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:e2e",
+        "--",
+        "--workers=1"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-e2e.log",
+      "log_sha256": "20dc7a2ecb5f3581255d500eaa761b252932454d9dea1fba2bc5cda62aa8548a"
+    },
+    "pg16": {
+      "job": "pg16",
+      "command": [
+        "C:\\AITool\\オケポータル\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_refs_postgres.py",
+        "tests/backend/test_perf_stage4c_trigger_cost.py",
+        "tests/backend/test_perf_stage4c_protocol_postgres.py",
+        "tests/backend/test_perf_stage4c_ledger_postgres.py",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-pg16.log",
+      "log_sha256": "5f216eaf27cd70a080a34b7dcb7974dc5ceb77f5dbf0c2d2a7f8792f7bdf07f6"
+    },
+    "pg18": {
+      "job": "pg18",
+      "command": [
+        "C:\\AITool\\オケポータル\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_refs_postgres.py",
+        "tests/backend/test_perf_stage4c_trigger_cost.py",
+        "tests/backend/test_perf_stage4c_protocol_postgres.py",
+        "tests/backend/test_perf_stage4c_ledger_postgres.py",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-pg18.log",
+      "log_sha256": "eb0ac2a9d3dd8b764a1ce853ddef4448ad5fd7da5d356736d6027c227bb3e07d"
+    },
+    "syntax": {
+      "job": "syntax",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:frontend:syntax"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-syntax.log",
+      "log_sha256": "29401b5e6e36a504753e1bbebf59827306fec8f5b44bd26579c43938cdc64a54"
+    },
+    "ruff": {
+      "job": "ruff",
+      "command": [
+        "C:\\AITool\\オケポータル\\.venv\\Scripts\\ruff.exe",
+        "check",
+        "."
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-ruff.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compile": {
+      "job": "compile",
+      "command": [
+        "C:\\AITool\\オケポータル\\.venv\\Scripts\\python.exe",
+        "-m",
+        "compileall",
+        "-q",
+        "src/backend",
+        "tests"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "safety": {
+      "job": "safety",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:release-safety"
+      ],
+      "exit_code": 0,
+      "log": ".tmp\\stage4c-refs\\refs-final-safety.log",
+      "log_sha256": "edc2f4b8a642f09cb8ba0755aa83f1c6dea65039d3e2f3e2048bc0da0e002091"
+    }
+  },
+  "counts": {
+    "backend_passed": 1085,
+    "backend_skipped": 274,
+    "frontend_passed": 1385,
+    "pg16_passed": 133,
+    "pg18_passed": 133,
+    "e2e_single_worker_passed": 95,
+    "syntax_files": 170
+  },
+  "default_parallel_e2e_attempts": [
+    {
+      "job": "e2e",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:e2e"
+      ],
+      "exit_code": 1,
+      "log": ".tmp\\stage4c-refs\\e2e-first.log",
+      "log_sha256": "da9501a7406d30752e677d73758a3d06b7c31e46e26fe86e09e2453a51b811d0",
+      "passed": 94,
+      "failed": 1,
+      "failure": "mobile home console: net::ERR_NO_BUFFER_SPACE"
+    },
+    {
+      "job": "e2e",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:e2e"
+      ],
+      "exit_code": 1,
+      "log": ".tmp\\stage4c-refs\\e2e-second.log",
+      "log_sha256": "7cc28e9297aa9cf6368d79e3d7ece95ca0421c5712594f6d18d9791da6106689",
+      "passed": 94,
+      "failed": 1,
+      "failure": "mobile attendance: timeHidden false at line 318"
+    }
+  ],
+  "targeted_e2e_rechecks": [
+    {
+      "exit_code": 0,
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npx.cmd",
+        "playwright",
+        "test",
+        "tests/e2e/ui_css_reliability.spec.js",
+        "--grep",
+        "mobile home layout keeps scrollWidth"
+      ],
+      "log": ".tmp\\stage4c-refs\\e2e-targeted.log",
+      "log_sha256": "80b68256c6eb5603fea9dc73eda856ddcd1f1f0a9b0387e99cf045d28cc1e296"
+    },
+    {
+      "exit_code": 0,
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npx.cmd",
+        "playwright",
+        "test",
+        "tests/e2e/ui_css_reliability.spec.js",
+        "--grep",
+        "mobile attendance controls keep readable"
+      ],
+      "log": ".tmp\\stage4c-refs\\e2e-attendance-targeted.log",
+      "log_sha256": "2ae881724037ebe43745c00aaf7dfd6e5933502f101a9885ff19b4aff2031674"
+    }
+  ],
+  "default_parallel_e2e_resolved": false,
+  "default_parallel_e2e_root_cause": "Not established. No frontend or e2e expectations/configuration changed; targeted and serial passes do not resolve default-run failures.",
+  "file_sha256": {
+    "db/migrations/026_album_photo_asset_references.sql": "007f21ef720ef5319c8144e1d7a75827c61277942c1afd2ba8f93a2cab4c86b7",
+    "src/backend/services/album_asset_fields.py": "3ca205bf9de1fbf50d48cd4c74ba5d3bc484ffda8ffc631ca796c712b2353751",
+    "src/backend/repositories/db_row_repository.py": "d4a8d9535f216ccf385026f32e185179a6860f1c19e373aec5494eb8359f0eec",
+    "scripts/sync_prod_to_test_db.py": "3ed852ff8ff0a090487212561eb25234785cbda78e34480ade259a7576776f87",
+    "tests/backend/test_perf_stage4c_asset_fields.py": "e5eeb91fdd6b2d729e67d689c66300409d9154fd58069c4468911ea3de31dc54",
+    "tests/backend/test_perf_stage4c_refs_postgres.py": "f9eb70bff852ca8ddffd8426d992e979678f1bdb0387944729f8ff8dbc160985",
+    "tests/backend/test_perf_stage4c_trigger_cost.py": "18a7afd90a4c155e5270c26041504a9630ffa7988871858f41b2533ea360f153",
+    "tests/scripts/test_sync_prod_to_test_db.py": "da36de5a6a720c947ba0bc732a86b624913b7f46d65a6a8988186f64141d562c"
+  },
+  "measurements": {
+    "docs/perf_stage4/STAGE4C_REF_COST_PG16.json": "c4a130531faed80ed46c680d169df9262eac8eac56eca976590dc811d7339f8f",
+    "docs/perf_stage4/STAGE4C_REF_COST_PG18.json": "71f4ffd90fb457f63ce16bc322bd3fd7b791f001170c9c083accbc7a2368ed93"
+  },
+  "prior_tracked_baselines_unchanged": true,
+  "containers": [
+    {
+      "name": "kanade-stage4c-refs-pg16",
+      "image": "postgres:16",
+      "server_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "owner_label": "stage4c-refs",
+      "stopped": true
+    },
+    {
+      "name": "kanade-stage4c-refs-pg18",
+      "image": "postgres:18",
+      "server_version": "18.4 (Debian 18.4-1.pgdg13+1)",
+      "owner_label": "stage4c-refs",
+      "stopped": true
+    }
+  ],
+  "remaining": [
+    "Default-parallel e2e stability/root cause",
+    "Real DB/GCS R25 and roles",
+    "Full asset key/generation/state guards and registration/backfill",
+    "Candidate generation, read leases and immediate-delete replacement",
+    "Trusted sync mode and full workflow/GCS-only/restore rebinding",
+    "Real-device and WebKit comparisons"
+  ],
+  "limitations": [
+    "Eight raw DB sessions measure trigger overhead, not application pool capacity or endpoint latency",
+    "Small isolated samples do not approve live enablement",
+    "SELECT-star DB wire byte increase and real index capacity are unmeasured"
+  ],
+  "real_environment_ddl_applied": false,
+  "real_assets_bound": false,
+  "guard_enabled": false,
+  "physical_gc_implemented": false,
+  "pushed": false,
+  "pr_created": false,
+  "merged": false,
+  "deployed": false
+}

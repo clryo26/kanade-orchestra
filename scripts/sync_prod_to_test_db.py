@@ -25,6 +25,9 @@ except ModuleNotFoundError:
     from sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TABLES
 
 
+from src.backend.services.album_asset_fields import ALBUM_PHOTO_ASSET_REFS, ALBUM_PHOTO_INTERNAL_COLUMNS  # noqa: E402 - standalone CLI adds the repository root above
+
+
 APPLICATION_NAME_PROD = "kanade-prod-to-test-db-source"
 APPLICATION_NAME_TEST = "kanade-prod-to-test-db-target"
 
@@ -54,6 +57,7 @@ class TableSpec:
     primary_key: tuple[str, ...]
     sequence_columns: tuple[tuple[str, str], ...]
     json_columns: tuple[tuple[str, str], ...] = ()
+    local_only_columns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -179,7 +183,13 @@ def _table_spec(cursor: Any, table_name: str) -> TableSpec:
         """,
         (table_name,),
     )
-    column_rows = tuple(row for row in cursor.fetchall() if row[1] != "ALWAYS")
+    metadata = tuple(cursor.fetchall())
+    private = ALBUM_PHOTO_INTERNAL_COLUMNS if table_name == "album_photos" else frozenset()
+    present = {row[0] for row in metadata} & private
+    incompatible = any(row[2] != ("uuid" if row[0] in ALBUM_PHOTO_ASSET_REFS else "text") for row in metadata if row[0] in private)
+    if present and (present != private or incompatible):
+        raise RuntimeError("Incomplete private album photo schema")
+    column_rows = tuple(row for row in metadata if row[1] != "ALWAYS" and row[0] not in private)
     columns = tuple(row[0] for row in column_rows)
     if not columns:
         raise RuntimeError(f"target table has no insertable columns: {table_name}")
@@ -214,6 +224,7 @@ def _table_spec(cursor: Any, table_name: str) -> TableSpec:
         primary_key,
         tuple(sequence_columns),
         json_columns,
+        ALBUM_PHOTO_ASSET_REFS if present else (),
     )
 
 
@@ -267,6 +278,17 @@ def _excluded_fingerprints(cursor: Any, existing_tables: set[str]) -> dict[str, 
         row = cursor.fetchone()
         fingerprints[table_name] = (int(row[0]), str(row[1]))
     return fingerprints
+
+
+def _assert_album_sync_unbound(cursor: Any, spec: TableSpec) -> None:
+    if spec.name != "album_photos" or not spec.local_only_columns:
+        return
+    # Maintenance-only: fail immediately if writers have not drained. Keep the
+    # table lock through commit so a binding cannot appear after the check.
+    cursor.execute("LOCK TABLE public.album_photos IN SHARE ROW EXCLUSIVE MODE NOWAIT")
+    cursor.execute("SELECT 1 FROM public.album_photos WHERE original_asset_id IS NOT NULL OR thumbnail_asset_id IS NOT NULL LIMIT 1")
+    if cursor.fetchone():
+        raise RuntimeError("Album asset rebinding is not implemented; stop synchronization before writes")
 
 
 def _fetch_source_rows(cursor: Any, spec: TableSpec) -> list[tuple[Any, ...]]:
@@ -467,6 +489,9 @@ def synchronize_databases(
                         raise RuntimeError(f"source/target JSON column mismatch: {table}")
                     if prod_specs[table].primary_key != test_specs[table].primary_key:
                         raise RuntimeError(f"source/target primary-key mismatch: {table}")
+
+                if "album_photos" in test_specs:
+                    _assert_album_sync_unbound(test_cursor, test_specs["album_photos"])
 
                 foreign_keys = _foreign_keys(test_cursor)
                 order = dependency_order(TARGET_DB_TABLES, foreign_keys)

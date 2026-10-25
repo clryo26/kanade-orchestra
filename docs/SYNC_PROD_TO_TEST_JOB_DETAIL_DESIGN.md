@@ -103,6 +103,8 @@
 
 第4段階4Cの内部表 `album_asset_gc_control` / `album_storage_assets` / `album_asset_gc_candidates` / `album_asset_read_leases` も同期から除外する。現段階は未接続の基盤であり、DB同期の前後fingerprintでTEST側の保持を確認する。将来の台帳再照合・写真紐付けは別工程として追加し、この除外だけで完了とはしない。[実装記録](PERF_STAGE4C_LEDGER_IMPLEMENTATION.md)を参照。
 
+026の写真内部UUID/kindは環境固有として輸送列から除外する。新schemaのTESTは、DML前に写真表をNOWAITでロックし、解決済み参照があれば再照合未実装として同期を止める。これはDB同期だけの暫定保護で、gcs_only/復元を保護したとは扱わない。[第5単位](PERF_STAGE4C_REFERENCES_IMPLEMENTATION.md)を参照。
+
 ## 12. 同期除外 (GCS)
 以下プレフィックスは同期除外とする。
 - auth/

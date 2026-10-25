@@ -85,3 +85,4 @@
 - [第4段階4C 第2単位の実装記録](docs/PERF_STAGE4C_BULK_IMPLEMENTATION.md) — 互換・内部経路を含むDB全置換の禁止。直接SQLのDBガードは後続。
 - [第4段階4C 第3単位の実装記録](docs/PERF_STAGE4C_LEDGER_IMPLEMENTATION.md) — 内部4表と同期除外。制御行は未投入、ガード有効化不可、既存写真の書込は未接続。
 - [第4段階4C 第4単位の実装記録](docs/PERF_STAGE4C_PROTOCOL_IMPLEMENTATION.md) — 同一トランザクションのv2設定とプロトコル検査。有効化禁止を維持し、参照先状態・lease・候補は後続。
+- [第4段階4C 第5単位の実装記録](docs/PERF_STAGE4C_REFERENCES_IMPLEMENTATION.md) — nullableな写真内部参照・公開JSON除外・同期境界。一括/同時書込のトリガー負荷を隔離DBで計測。

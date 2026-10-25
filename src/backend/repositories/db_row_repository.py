@@ -31,6 +31,7 @@ from ..core.db_schema import (
     DB_TIMESTAMP_COLUMNS,
     PORTAL_DB_TABLES,
 )
+from ..services.album_asset_fields import ALBUM_PHOTO_INTERNAL_COLUMNS
 from ..services.collection_write_policy import reject_album_bulk_write
 from ..core.tenant_context import get_current_tenant_id
 from ..utils.datetime_utils import (
@@ -104,7 +105,8 @@ def db_json_value(value: Any) -> Any:
 
 
 def db_row_to_json(row: dict[str, Any], table_name: str | None = None) -> dict[str, Any]:
-    data = {key: db_json_value(value) for key, value in row.items()}
+    hidden = ALBUM_PHOTO_INTERNAL_COLUMNS if table_name == "album_photos" else ()
+    data = {key: db_json_value(value) for key, value in row.items() if key not in hidden}
     if table_name:
         for column in DATE_ENCODED_TIMESTAMP_COLUMNS.get(table_name, set()):
             if column in row:

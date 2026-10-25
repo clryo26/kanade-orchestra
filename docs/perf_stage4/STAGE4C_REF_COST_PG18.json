@@ -1,0 +1,341 @@
+{
+  "samples": [
+    {
+      "case": "insert_25",
+      "user_triggers_enabled": false,
+      "control_present": true,
+      "guard_enabled": false,
+      "samples": [
+        {
+          "sql_ms": 2.260599983856082,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 0.9378999238833785,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 0.98359992261976,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.0791000677272677,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 0.8839000947773457,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "delete_25",
+      "user_triggers_enabled": false,
+      "control_present": true,
+      "guard_enabled": false,
+      "samples": [
+        {
+          "sql_ms": 0.9976000292226672,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.0353999678045511,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 0.8478000527247787,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 0.9282000828534365,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 0.6870999932289124,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "eight_parallel_distinct_photos",
+      "user_triggers_enabled": false,
+      "control_present": true,
+      "guard_enabled": false,
+      "samples": [
+        {
+          "sql_ms": 5.513999960385263,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 6.056400015950203,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 3.5835999296978116,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 2.4989000521600246,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 3.80469998344779,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 4.8596999840810895,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 3.4657999640330672,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 3.659699927084148,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 0,
+            "album_detach_changed_photo_asset": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "insert_25",
+      "user_triggers_enabled": true,
+      "control_present": true,
+      "guard_enabled": false,
+      "samples": [
+        {
+          "sql_ms": 2.4108000798150897,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.5951000386849046,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.8164999783039093,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.641899929381907,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 3.8590000476688147,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "delete_25",
+      "user_triggers_enabled": true,
+      "control_present": true,
+      "guard_enabled": false,
+      "samples": [
+        {
+          "sql_ms": 1.1166000040248036,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.0482999496161938,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.0565000120550394,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.1047000298276544,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        },
+        {
+          "sql_ms": 1.3126999838277698,
+          "affected_rows": 25,
+          "function_calls": {
+            "album_require_write_protocol": 25,
+            "album_detach_changed_photo_asset": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "eight_parallel_distinct_photos",
+      "user_triggers_enabled": true,
+      "control_present": true,
+      "guard_enabled": false,
+      "samples": [
+        {
+          "sql_ms": 2.8247999725863338,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 4.773200023919344,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 2.487999969162047,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 4.441899945959449,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 3.9070999482646585,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 4.15729999076575,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 3.208499983884394,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        },
+        {
+          "sql_ms": 2.848199917934835,
+          "affected_rows": 1,
+          "function_calls": {
+            "album_require_write_protocol": 1,
+            "album_detach_changed_photo_asset": 1
+          }
+        }
+      ]
+    }
+  ],
+  "limits": "Synthetic owned loopback DB, raw SQL excludes parent writes/auth/audit/pool limits. Concurrent wave holds eight distinct-photo transactions at a barrier. Timing excludes connect/barrier/commit, is hardware/load sensitive, and is not production latency."
+}
