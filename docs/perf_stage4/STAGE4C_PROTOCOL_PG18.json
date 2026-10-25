@@ -1,0 +1,19 @@
+{
+  "measurements": [
+    {
+      "case": "disabled_guard_one_parent_update",
+      "row_trigger_calls": 1,
+      "control_reads_in_function_per_call": 1
+    },
+    {
+      "case": "name_only_http_put",
+      "first_http_after_fixture_sql": 16,
+      "warm_off_sql": 14,
+      "warm_on_sql": 15,
+      "off_checkouts": 6,
+      "on_checkouts": 6,
+      "limits": "Python-issued SQL; excludes trigger-internal control SELECT"
+    }
+  ],
+  "scope": "synthetic loopback; not live latency or GCS counts"
+}

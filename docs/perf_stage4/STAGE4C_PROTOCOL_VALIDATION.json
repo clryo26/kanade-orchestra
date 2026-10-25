@@ -1,0 +1,258 @@
+{
+  "recorded_at": "2026-10-25T11:22:13.464778+09:00",
+  "branch": "perf/portal-stage4c-20261024",
+  "base_commit": "8de55c4c386a48c66ff9a723cfb4a0a25f2e88b3",
+  "scope": "Protocol-only checks, not a complete asset/GC guard. Foundation activation prohibition retained; app protocol flag defaults off.",
+  "source_sha256": {
+    "db/migrations/025_album_write_protocol.sql": "ec09f4cc96c5a28c18e4938806f45fa2afe05143a5bd59a4c8e6372dfd165663",
+    "src/backend/repositories/db_item_repository.py": "2c61caf678fe4ceeb357c762c891dac16cac779f43e4c71fec87d718f48f9a9c"
+  },
+  "test_sha256": {
+    "tests/backend/test_perf_stage4c_protocol.py": "fa16ff4a55b18e571ac5e639f3d1c7a8b221b481738cb07368c9b3ca8832240c",
+    "tests/backend/test_perf_stage4c_protocol_postgres.py": "75f740b090d2210f40658a759041e87a74ddb5f2e6afab7837559a4ffdbb2bf6",
+    "tests/backend/test_perf_stage4c_ledger_postgres.py": "bf24c57df7a38191070f71c84593b86700eb296a9c88b359cfbde64f6f5c61c3",
+    "tests/backend/test_perf_stage4c_bulk_postgres.py": "9f4e7e2ac79aa3c24e56d06a84f44444a7e7cbd5fb74133600e23a46f0b7d560",
+    "tests/backend/test_perf_stage4c_photo_diff.py": "6ae6c73f65c214df16c381d6bd85fd0cc3d62ae377e86b4613fb026416ceb43a",
+    "tests/backend/test_album_put_photos_postgres.py": "e2662e19771ff4395bc208ca650aa5c10eb7931b16c5041e8c666b0fb98cd522"
+  },
+  "checks": {
+    "backend": {
+      "job": "backend",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-backend.log",
+      "log_sha256": "5f27641998f833d0134500059a4a8a5c149af3f0f024d01dbc7e23aedda48e45",
+      "passed": 1078,
+      "skipped": 261,
+      "warnings": 3
+    },
+    "frontend": {
+      "job": "frontend",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:frontend"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-frontend.log",
+      "log_sha256": "4f8bd1994e4b65c513681b87ae7ca504ee550f945349dad7fcf1d7bacb02a923",
+      "passed": 1385
+    },
+    "e2e": {
+      "job": "e2e",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "test:e2e"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-e2e.log",
+      "log_sha256": "04f2627c5d60d57403b56405d1ad3b8c01c81702b194be7f79356aae526e8e41",
+      "passed": 95,
+      "browser": "Chromium"
+    },
+    "pg16": {
+      "job": "pg16",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_protocol_postgres.py",
+        "tests/backend/test_perf_stage4c_ledger_postgres.py",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-pg16.log",
+      "log_sha256": "6a62e2bf5c6bf1212ad52b2c91646ac32e7011cfdaa912231f3345f55e1c2076",
+      "passed": 120,
+      "new_protocol_tests": 37,
+      "existing_tests": 83
+    },
+    "pg18": {
+      "job": "pg18",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests/backend/test_perf_stage4c_protocol_postgres.py",
+        "tests/backend/test_perf_stage4c_ledger_postgres.py",
+        "tests/backend/test_perf_stage4c_bulk_postgres.py",
+        "tests/backend/test_perf_stage4c_photo_diff.py",
+        "tests/backend/test_album_put_photos_postgres.py",
+        "-q"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-pg18.log",
+      "log_sha256": "99fed8e0ec011f099e2bd4c3874dbe3d69884af35c18bf5a5d605a07a5e2e161",
+      "passed": 120,
+      "new_protocol_tests": 37,
+      "existing_tests": 83
+    },
+    "syntax": {
+      "job": "syntax",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:frontend:syntax"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-syntax.log",
+      "log_sha256": "29401b5e6e36a504753e1bbebf59827306fec8f5b44bd26579c43938cdc64a54",
+      "files": 170
+    },
+    "ruff": {
+      "job": "ruff",
+      "command": [
+        ".venv/Scripts/ruff.exe",
+        "check",
+        "."
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-ruff.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compile": {
+      "job": "compile",
+      "command": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "compileall",
+        "-q",
+        "src/backend",
+        "tests"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "safety": {
+      "job": "safety",
+      "command": [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm.cmd",
+        "run",
+        "check:release-safety"
+      ],
+      "exit_code": 0,
+      "log": ".tmp/stage4c-protocol/protocol-final-safety.log",
+      "log_sha256": "edc2f4b8a642f09cb8ba0755aa83f1c6dea65039d3e2f3e2048bc0da0e002091"
+    }
+  },
+  "measurements": {
+    "docs/perf_stage4/STAGE4C_PROTOCOL_PG16.json": {
+      "sha256": "87c8a0eecd24ae84a9616f844412ab86d5b88c3d90b756b87621cec1bb80fa30",
+      "measurements": [
+        {
+          "case": "disabled_guard_one_parent_update",
+          "row_trigger_calls": 1,
+          "control_reads_in_function_per_call": 1
+        },
+        {
+          "case": "name_only_http_put",
+          "first_http_after_fixture_sql": 16,
+          "warm_off_sql": 14,
+          "warm_on_sql": 15,
+          "off_checkouts": 6,
+          "on_checkouts": 6,
+          "limits": "Python-issued SQL; excludes trigger-internal control SELECT"
+        }
+      ]
+    },
+    "docs/perf_stage4/STAGE4C_PROTOCOL_PG18.json": {
+      "sha256": "87c8a0eecd24ae84a9616f844412ab86d5b88c3d90b756b87621cec1bb80fa30",
+      "measurements": [
+        {
+          "case": "disabled_guard_one_parent_update",
+          "row_trigger_calls": 1,
+          "control_reads_in_function_per_call": 1
+        },
+        {
+          "case": "name_only_http_put",
+          "first_http_after_fixture_sql": 16,
+          "warm_off_sql": 14,
+          "warm_on_sql": 15,
+          "off_checkouts": 6,
+          "on_checkouts": 6,
+          "limits": "Python-issued SQL; excludes trigger-internal control SELECT"
+        }
+      ]
+    }
+  },
+  "negative_control": {
+    "expected_exit_code": 1,
+    "actual_exit_code": 1,
+    "failed": 5,
+    "deselected": 32,
+    "method": "Separate pytest process replaces _prepare_album_write with a no-op. Source files unchanged. Five real row-store methods then fail against test-only armed protocol checks.",
+    "log_sha256": "51107f5417439cbc3d03b82665182b978f2e65baee338789044e0bda137adc00"
+  },
+  "temporary_postgres": [
+    {
+      "name": "kanade-stage4c-protocol-pg16",
+      "image": "postgres:16",
+      "server_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "owner_label": "stage4c-protocol",
+      "stopped": true
+    },
+    {
+      "name": "kanade-stage4c-protocol-pg18",
+      "image": "postgres:18",
+      "server_version": "18.4 (Debian 18.4-1.pgdg13+1)",
+      "owner_label": "stage4c-protocol",
+      "stopped": true
+    }
+  ],
+  "historical_inputs_unchanged": {
+    "count": 37,
+    "includes": "Previously tracked stage-4 reports, photo fixtures and migration 024",
+    "verified_against": "git index blobs before staging"
+  },
+  "remaining": [
+    "Photo internal UUID binding and JSON/sync protection",
+    "Asset state locks and reference resolution",
+    "Candidate statement triggers and AP150-T12",
+    "Lease start/renew/end and 60-second renewal safety",
+    "Replace existing immediate GCS deletion/compensation with ledger/candidates",
+    "Trusted sync/maintenance roles and actual sync/backup SELECT grants",
+    "Real old-server coexistence/rollback (S4-15)",
+    "Live DB/GCS R25, real-device and WebKit screenshot acceptance"
+  ],
+  "activation": {
+    "app_flag": "PORTAL_ALBUM_WRITE_PROTOCOL_V2",
+    "default": "off",
+    "foundation_check_retained": true,
+    "only_tests_drop_check": true,
+    "live_migration_applied": false,
+    "live_guard_enabled": false,
+    "sync_bypass_implemented": false
+  },
+  "release_actions": {
+    "pushed": false,
+    "PR_created": false,
+    "merged": false,
+    "deployed": false
+  },
+  "unrelated_work_preserved": [
+    "docs/archive/",
+    ".codex-worktrees/issue150-standalone-20261024"
+  ]
+}

@@ -27,6 +27,7 @@ production DB mode always uses ``PostgresRowStore``.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -104,6 +105,7 @@ class ItemContext:
     locked_keys: set[str] = field(default_factory=set)
     _db_now: datetime | None = None
     touched: set[str] = field(default_factory=set)
+    album_protocol_set: bool = False
 
     def db_now(self, *, refresh: bool = False) -> datetime:
         if self._db_now is None or refresh:
@@ -111,6 +113,18 @@ class ItemContext:
             self._db_now = self.cur.fetchone()[0]
         assert self._db_now is not None
         return self._db_now
+
+
+def _prepare_album_write(ctx: ItemContext, name: str) -> None:
+    # PERF-R15: opt-in protocol marker only, never a privilege or a switch
+    # that enables the DB guard. Keep legacy/disabled requests SQL-identical.
+    if name != "albums" or os.getenv("PORTAL_ALBUM_WRITE_PROTOCOL_V2", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    if ctx.conn.autocommit:
+        raise RuntimeError("Album v2 writes require an explicit transaction")
+    if not ctx.album_protocol_set:
+        ctx.cur.execute("SET LOCAL app.album_delete_protocol = 'v2'")
+        ctx.album_protocol_set = True
 
 
 def _table(name: str) -> str:
@@ -488,6 +502,7 @@ class PostgresRowStore:
         # Parent is locked by update, or newly inserted in this transaction.
         # Preserve untouched rows (including future internal columns), and use
         # INSERT rather than UPSERT so a foreign parent/tenant's ID cannot move.
+        _prepare_album_write(ctx, "albums")
         table = "album_photos"
         has_org = table_has_organization_id(ctx.conn, table)
         columns = DB_CHILD_COLUMNS[table]
@@ -542,6 +557,7 @@ class PostgresRowStore:
     def insert(self, name: str, build: Build, *, group_keys: Sequence[str] = (), ctx: ItemContext | None = None) -> dict[str, Any]:
         def work(c: ItemContext) -> dict[str, Any]:
             table = _table(name)
+            _prepare_album_write(c, name)
             self.lock(c, name, self._collection_keys(name, group_keys))
             item_id = self._allocate_id(c, table)
             now = c.db_now(refresh=True)
@@ -571,6 +587,7 @@ class PostgresRowStore:
     ) -> dict[str, Any]:
         def work(c: ItemContext) -> dict[str, Any]:
             table = _table(name)
+            _prepare_album_write(c, name)
             self.lock(c, name, self._collection_keys(name, group_keys))
             current = self._select(c, name, item_id, lock=True)
             if current is None:
@@ -641,6 +658,7 @@ class PostgresRowStore:
 
         def work(c: ItemContext) -> dict[str, Any] | None:
             table = _table(name)
+            _prepare_album_write(c, name)
             self.lock(c, name, self._collection_keys(name, ()))
             current = self._select(c, name, item_id, lock=True)
             if current is None:
@@ -684,6 +702,7 @@ class PostgresRowStore:
     ) -> dict[str, Any]:
         def work(c: ItemContext) -> dict[str, Any]:
             table = _table(name)
+            _prepare_album_write(c, name)
             self.lock(c, name, self._collection_keys(name, group_keys))
             current = self._select(c, name, item_id, lock=True)
             if current is None:
@@ -727,6 +746,7 @@ class PostgresRowStore:
 
         def work(c: ItemContext) -> None:
             table = _table(name)
+            _prepare_album_write(c, name)
             self.lock(c, name, self._collection_keys(name, group_keys))
             has_org = table_has_organization_id(c.conn, table)
             ids = sorted(updates, key=lambda value: int(value))
