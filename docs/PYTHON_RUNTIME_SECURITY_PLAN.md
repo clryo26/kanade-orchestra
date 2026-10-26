@@ -73,6 +73,16 @@ Python更新時はDockerfile、`.python-version`、`requires-python`、Lint/型�
 
 JPEG・PNG・WebP・HEIF・EXIF回転・不正画像は既存の画像試験で確認する。実コーデックでのWAV→MP3変換と再生時間取得、librosaの有限なRMS計算を回帰試験に追加する。現在のHTTP録音解析サービスはplaceholderなので、librosaの計算試験を実装済みの解析APIの試験とは扱わない。受付画像形式は変えない。実iPhone・認証済みTEST/本番の受入と、マージ・配備は別途行う。
 
+## 残る8パッケージの更新（2026-10-26）
+
+最新main `90efb32`から独立した更新。aiohttp 3.14.5、certifi 2026.10.23、msgpack 1.2.3、multidict 6.9.1、pyasn1 0.6.4、python-dotenv 1.2.4、setuptools 84.2.1、urllib3 2.8.0へ更新する。multidictは修正済み6系に留める。aiohttpの必要条件によりyarlも1.25.1へ更新する。
+
+setuptools 82以降はpkg_resourcesを含まないため、これを使うimageio-ffmpegを0.6.0、librosaを同じ0.10系の0.10.2.post1へ更新する。初回の実音声試験が旧librosaのpkg_resources参照で失敗したことを確認し、更新後のWAV→MP3・再生時間・有限RMS計算で互換性を確認する。アプリの処理、受付形式、認証、DB schemaは変更しない。
+
+更新後のLinux/Python 3.12本番依存は75パッケージ。実監査で報告0・skip 0、旧25件はすべて解消したため既知一覧を空にする。新規・staleとも0、終了0。期限の延長や除外追加は行わない。requirements SHA256: `be7e0bdff164326b6d8497c40bf287b02e64aa672f96ec5bb9d75fb5a0d9170e`。監査対象はDockerで使うpyproject.toml/uv.lockの依存であり、旧src/backend/requirements.txtやOSパッケージを監査したという意味ではない。
+
+配備は最後に一括で行う。Deploy Testはdisabled_manuallyを維持し、この更新では配備・migration・実DB/GCS操作を行わない。実iPhone・認証済みTEST/本番の受入、既知のASGI切断時ログ差は別の確認事項として残す。
+
 ## 根拠
 
 - [pip-audit公式](https://github.com/pypa/pip-audit#usage)
@@ -80,3 +90,6 @@ JPEG・PNG・WebP・HEIF・EXIF回転・不正画像は既存の画像試験で�
 - [Python 3.13の削除項目](https://docs.python.org/3.13/whatsnew/3.13.html#removed-modules-and-apis)
 - [PillowのPyPIメタデータ](https://pypi.org/pypi/Pillow/json)
 - [FastAPIのPyPIメタデータ](https://pypi.org/pypi/fastapi/json)
+- [setuptoolsのpkg_resources廃止](https://setuptools.pypa.io/en/stable/deprecated/pkg_resources.html)
+- [imageio-ffmpegの互換修正](https://github.com/imageio/imageio-ffmpeg/releases)
+- [librosa 0.10.2の互換修正](https://librosa.org/doc/0.10.2/changelog.html)
