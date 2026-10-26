@@ -1,6 +1,7 @@
 """Audit the locked Linux runtime, independently of the audit tool's Python."""
 
 import hashlib
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -49,9 +50,40 @@ def run_stage(command: list[str], root: Path) -> subprocess.CompletedProcess:
     return result
 
 
+def known_findings(root: Path, today: date) -> set[tuple[str, str, str]]:
+    """Exceptions are scoped to an exact package version and advisory ID."""
+    policy = json.loads((root / "docs/PYTHON_RUNTIME_KNOWN_FINDINGS.json").read_text(encoding="utf-8"))
+    if policy.get("schema_version") != 1 or not isinstance(policy.get("entries"), list):
+        raise ValueError("Invalid known findings policy")
+    result = set()
+    for entry in policy["entries"]:
+        for field in ("package", "version", "reason", "owner", "expires_on"):
+            if not isinstance(entry[field], str) or not entry[field].strip():
+                raise ValueError("Known findings require package, version, reason, owner and expiry")
+        package = entry["package"]
+        if package != re.sub(r"[-_.]+", "-", package).lower():
+            raise ValueError("Known findings require canonical package names")
+        pins(f"{package}=={entry['version']}")
+        expires = date.fromisoformat(entry["expires_on"])
+        if expires.isoformat() != entry["expires_on"] or today > expires:
+            raise ValueError("Invalid or expired known finding; renewals require review")
+        ids = entry["ids"]
+        if not isinstance(ids, list) or not ids:
+            raise ValueError("Known findings require explicit advisory IDs")
+        for advisory in ids:
+            if not isinstance(advisory, str) or not re.fullmatch(r"[A-Za-z0-9-]+", advisory):
+                raise ValueError("Invalid known advisory ID")
+            key = (package, entry["version"], advisory)
+            if key in result:
+                raise ValueError("Duplicate known advisory ID for package version")
+            result.add(key)
+    return result
+
+
 def audit(root: Path = ROOT) -> int:
     try:
         version = runtime_python(root)
+        known = known_findings(root, datetime.now(timezone.utc).date())
         uv = shutil.which("uv")
         if not uv:
             raise ValueError("uv is required")
@@ -89,16 +121,28 @@ def audit(root: Path = ROOT) -> int:
                        for item in dependencies if not item.get("skip_reason")}
             if audited != selected or any(item.get("skip_reason") for item in dependencies):
                 raise ValueError("Audit omitted or skipped runtime packages")
-            # Package advisory IDs are safe to publish; keep raw JSON out of Git
-            # and artifacts. Findings remain failures without an ignore list.
+            # Evaluate full output rather than --ignore-vuln: an ID accepted for
+            # one package must still fail for a different package or version.
             affected = 0
+            observed = set()
             for item in dependencies:
                 ids = sorted({entry["id"] for entry in item["vulns"]})
                 if ids:
                     affected += 1
                     print(f"{item['name']}=={item['version']}: {', '.join(ids)}")
+                    package = re.sub(r"[-_.]+", "-", item["name"]).lower()
+                    observed.update((package, item["version"], advisory) for advisory in ids)
+            unexpected = observed - known
+            stale = known - observed
             print(f"Affected packages: {affected}; skipped: 0")
-            return 1 if affected else result.returncode
+            print(f"Known report entries: {len(observed & known)}; new: {len(unexpected)}; stale: {len(stale)}")
+            for package, package_version, advisory in sorted(unexpected):
+                print(f"NEW: {package}=={package_version}: {advisory}")
+            if stale:
+                print("Remove resolved or changed entries from the known findings policy")
+            if result.returncode == 1 and not affected:
+                raise ValueError("Audit failed without advisory details")
+            return 1 if unexpected or stale else 0
     except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired) as error:
         # Only controlled messages are emitted; JSON/OS errors can contain paths
         # or upstream output. Never weaken the gate on malformed audit output.
