@@ -4,7 +4,7 @@
 
 本番反映前に、以下を実運用チェック表として記録する。
 
-## 第1〜4A 最終一括配備の実行票（TEST配備済み・利用者の簡易受入済み）
+## 第1〜4A 最終一括配備の実行票（本番配備済み・本番受入中）
 
 対象は `ac5b4e337bcbab06de7008098b38baf41a810f90`（#161）。追加migrationは023だけ、024〜033・4C/4Dは含めない。本票の追加で配備候補SHAを変更しない。以下のコマンドは**配備を決定した時点だけ**実行する。
 
@@ -50,9 +50,9 @@ dispatch失敗・watch中断時も無効化を忘れず、開始済みrunは別�
 
 配備失敗、schema/health/SHA/digest/交通配分の不一致、保存不能・画像/録音の主要機能の破損、継続する5xx/タイムアウト増加なら中止し、事前記録した**当該環境の直前revisionへ100%**を戻してhealth・ログを再確認する。自動rollbackはない。023は追加表/トリガーを残し第3段階を無効のままにする（トリガーの書込負荷は残るため観測を続け、schemaの巻戻しを即興で行わない）。標本不足だけで性能悪化とは判定せず、受入不足として記録する。
 
-本番の [Promote Production](../.github/workflows/promote-production.yml) は2026-10-26確認時 **active・workflow_dispatchのみ**。TESTへの配備では起動しない。本番昇格は別の実行判断とし、`tested_sha` と `tested_image_digest` を渡す。TESTのサービスtemplateのdigestとの一致を強制し、同一digestを再ビルドせず本番へ配備する。その前に**本番DBの全未適用migration**を適用するため、本番でも未適用が023だけという照合結果が必要。
+本番の [Promote Production](../.github/workflows/promote-production.yml) は2026-10-26確認時 **active・workflow_dispatchのみ**。TESTへの配備では起動しない。本番昇格は別の実行判断とし、`tested_sha` と `tested_image_digest` を渡す。TESTのサービスtemplateのdigestとの一致を強制し、同一digestを再ビルドせず本番へ配備する。その前に**本番DBの全未適用migration**を適用するため、本番でも未適用が023だけという照合結果が必要。本番実施結果は末尾に記録する。
 
-workflow自身は「TESTで実際に100%配信するrevisionのdigestとtemplateの一致」「そのイメージのビルドSHAと入力tested_shaの一致」までは検査しない。昇格前にこの両方を実像のrevision情報・イメージのrevisionラベルで確認・記録する。migration後の停止点、health受入、自動rollbackもないため、本番も同じ検証・切り戻しを行う。本番昇格は未実行。TESTの実施結果は次のとおり。
+workflow自身は「TESTで実際に100%配信するrevisionのdigestとtemplateの一致」「そのイメージのビルドSHAと入力tested_shaの一致」までは検査しない。昇格前にこの両方を実像のrevision情報・イメージのrevisionラベルで確認・記録する。migration後の停止点、health受入、自動rollbackもないため、本番も同じ検証・切り戻しを行う。TESTの実施結果は次のとおり。
 
 ### 2026-10-26 TEST配備の実施結果
 
@@ -73,11 +73,20 @@ CIのDocker smoke自体は起動・health検査で、音声の実変換は別の
 
 ### 本番昇格の準備状況（2026-10-27）
 
-利用者から本番反映の了承を受領したが、PITRは「未確認」との回答。既存Cloud Runバックアップjobは見つからず、このPCからのDB接続も既に失敗しているため、現時点の復元可能性はまだ確認できていない。Neonの保持範囲の確認、または新しいバックアップの取得成功までは、本番migration・昇格workflowを開始しない。8日前のTESTバックアップを、本番の直前復元点として流用しない。
+利用者から本番反映の了承を受領したが、当初PITRは「未確認」との回答だったため開始を保留した。既存Cloud Runバックアップjobは見つからず、このPCからのDB接続も既に失敗している。後に利用者からNeonのHistory windowのスライダーが **6h** にあるとの確認を受領し、この保持設定を根拠に昇格を開始した。新規バックアップの取得は行っておらず、8日前のTESTバックアップを本番の直前復元点として流用していない。
 
 本番の直近24時間ログを2026-10-26 23:59:47 JSTに採取し、`.tmp/production-before.json` に保存した（391要求、観測5xx/ASGI例外文字列各0、更新系33件、全更新系のp50=2157.500ms・p95=5623.272ms）。更新系の内訳はアクセスログ登録25件、楽譜ticket 2件・ZIP作成2件・ZIP step 4件で、通常の業務登録・編集の標本はない。全体の分位値を各保存APIの基準値として使わず、昇格後は同じAPI・窓長で比較する。save_busy/タイムアウト総数は未計測のまま。開始が遅れる場合は、昇格直前に採り直す。
 
-TESTの承認済みSHA・digest・100%配信と、本番の直前revision/digestが変わっていないことを再確認し、切り戻し情報を `.tmp/test-release-preproduction.json` に保存した。main `f4c1264` のCIは成功、Deploy Testは `disabled_manually`。本番workflowはまだ起動していない。PITR保持範囲の確認後に、実際の昇格開始時刻を別途記録する。
+TESTの承認済みSHA・digest・100%配信と、本番の直前revision/digestが変わっていないことを再確認し、切り戻し情報を `.tmp/test-release-preproduction.json` に保存した。main `f4c1264` のCIは成功、Deploy Testは `disabled_manually`。次の本番実行直前にも情報を再採取した。
+
+### 2026-10-27 本番昇格の実施結果
+
+- 復元基準時刻は **00:06:40 JST（2026-10-26 15:06:40 UTC）**、保持期間は利用者がNeon Consoleで確認した6時間。保持設定の確認と時刻記録であり、実際の復元試験ではない。直前revision/digestとPITRの記録は `.tmp/test-release-promotion-before.json` に保持する。
+- 開始直前の24時間ログを **00:06:22 JST** に再採取して `.tmp/production-before.json` を更新した。397要求、更新系33件、全更新系p50=2157.500ms・p95=5623.272ms、観測5xx/ASGI例外文字列各0。更新系のAPI構成と、通常の登録・編集の標本がないという制約は前項のとおり。
+- [Promote Production run 40346118077](https://github.com/clryo26/kanade-orchestra/actions/runs/40346118077)：**00:06:56 JST開始、00:08:30 JST完了、success**。`tested_sha=ac5b4e337bcbab06de7008098b38baf41a810f90`、`tested_image_digest=sha256:6fa88c379d9086dd5abc3eb00c18b6ba6d218e9addfeb651619d6d4e9ea521ed`。001〜022をskip、023だけapply、`DB migrations completed` を確認した。
+- 00:09 JSTの独立したCloud Run読取確認で、本番のSHA・digestが入力およびTESTと一致し、単一revisionへ100%配信を確認。第3段階の読取・版ETagは未指定/空。TESTのrevision/digest/交通配分は変更なし。`/api/health` は200/healthy、DB/GCS設定あり、maintenance無効、トップ画面とJSも200。詳細は `.tmp/test-release-promotion-after.json`・`production-release-acceptance.json` のみ保存する。
+- 初回の直後ログ集計は要求0件で、反映遅延の可能性があるためエラー率の判断には使わない。00:11:02 JSTまでの再集計では新revisionの27要求（200が26、304が1）、5xx・ASGI例外/`No response returned`文字列各0行、保存要求0件を確認した。本番の配備後履歴照合・48トリガー/2表の確認と画像・録音・保存の実操作は利用者へ依頼済み。CI・TESTの結果で本番実操作を代用しない。
+- **24時間比較は未実施**。2026-10-28 **00:09 JST以降**に `python scripts/capture_test_release_baseline.py --environment production --hours 24 --output .tmp/production-after-24h.json` で再集計し、前後のAPI別標本数・窓長・p50/p95・5xx・ASGIログ行数を比較する。save_busy/タイムアウト総数は未計測を維持する。06:06 JST頃には6時間の復元基準点が保持範囲外になるため、24時間比較までそのPITR時点を保持できるとは扱わない。アプリの切り戻しは直前revisionへ100%を戻し、023と第3段階無効を維持する。
 
 ## 記録欄
 
