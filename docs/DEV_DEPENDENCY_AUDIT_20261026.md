@@ -8,7 +8,7 @@ Vitestとcoverage-v8の宣言を `^4.1.12` に更新し、ロック上のVitest�
 
 ## 範囲
 
-変更はpackage.json、package-lock.json、本書のみ。本番JS・Python・API・DB・migration・画面・CIの監査条件を変えない。性能改善の未マージコミットを含めない。実環境の設定変更、migration適用、マージ、デプロイは行わない。
+変更はpackage.json、package-lock.json、CIの監査ツール起動指定、本書。本番JS・Python・API・DB・migration・画面を変えない。CIの監査を省略・ignore扱いにせず、失敗時に停止する条件を維持する。性能改善の未マージコミットを含めない。実環境の設定変更、migration適用、マージ、デプロイは行わない。
 
 ## ローカル検証
 
@@ -50,3 +50,13 @@ push前に公開範囲を告知済み。公開するのは既存mainに対する
 - baseline-focused: `debe479006e6d8e7310218f4fdf763a6f3429c07e7c912883e2254fc50314a76`
 - updated-focused: `42dff6efe8fb49ea79f52ecb571a1d6a85e792b24b2e3b70bb6853846a2163f0`
 - coverage: `59249ff2ad1aceb315473aa7df11181bd528e80b12ff86abc4a389538c3c6d41`
+
+## CIで見つかった監査ツール環境のfilelock（追加コミット）
+
+最初のPR #155のLinux CIではfrontend-tests・source-share-zip・backend-tests-db・pre-release-gate・quality-gatesが成功した。一方、backend-tests-localは試験実行前の `uvx pip-audit` で、filelock 4.1.0の既知脆弱性6件により停止した。#156も同じ監査で停止した。
+
+filelockはこのプロジェクトのuv.lockにはなく、uvxの隔離した監査ツール環境にあった。CIとnpmの `check:security:python` を `uvx --with "filelock>=4.2.1" pip-audit` に揃え、ツール環境だけに修正下限を指定する。アプリのpyproject.toml・uv.lockや実行時依存には追加しない。[filelock公式advisory](https://github.com/tox-dev/filelock/security/advisories/GHSA-2g95-wg33-c5x2)、[uv公式の隔離ツール環境](https://docs.astral.sh/uv/concepts/tools/)を確認した。
+
+ローカルの新指定で監査した環境は29パッケージ・filelock 4.2.4・脆弱性0件、終了コード0だった。**この既存のuvxコマンドはプロジェクトではなく監査ツール環境を調べている。** FastAPI等のアプリ依存が安全だという証拠にはしない。アプリ依存を監査する対象指定の是正は、結果を確認して別の変更として扱う必要がある。このPRで監査対象を黙って切り替えたり、既知の結果を無視したりしない。
+
+追加コミットのpush前にも、公開差分に監査実行指定と検証文書が増えることを告知した。最終CI結果はGitHub側で確認し、最初のSHAの成功を追加コミットの成功と混同しない。
