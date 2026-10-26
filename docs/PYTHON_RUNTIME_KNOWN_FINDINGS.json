@@ -22,17 +22,6 @@
       "expires_on": "2026-11-09"
     },
     {
-      "package": "anyio",
-      "version": "3.7.1",
-      "ids": [
-        "PYSEC-2026-4024",
-        "PYSEC-2026-4025"
-      ],
-      "reason": "利用経路と修正版の互換性を確認して更新する",
-      "owner": "リポジトリ管理者",
-      "expires_on": "2026-11-09"
-    },
-    {
       "package": "certifi",
       "version": "2026.5.20",
       "ids": [
@@ -41,26 +30,6 @@
       "reason": "利用経路と修正版の互換性を確認して更新する",
       "owner": "リポジトリ管理者",
       "expires_on": "2026-11-09"
-    },
-    {
-      "package": "fastapi",
-      "version": "0.104.1",
-      "ids": [
-        "PYSEC-2024-38"
-      ],
-      "reason": "アップロード・HTTP入口の互換性検証と併せて修正版へ更新する",
-      "owner": "リポジトリ管理者",
-      "expires_on": "2026-11-02"
-    },
-    {
-      "package": "h11",
-      "version": "0.14.0",
-      "ids": [
-        "PYSEC-2026-348"
-      ],
-      "reason": "アップロード・HTTP入口の互換性検証と併せて修正版へ更新する",
-      "owner": "リポジトリ管理者",
-      "expires_on": "2026-11-02"
     },
     {
       "package": "msgpack",
@@ -151,24 +120,6 @@
       "expires_on": "2026-11-09"
     },
     {
-      "package": "python-multipart",
-      "version": "0.0.6",
-      "ids": [
-        "PYSEC-2024-38",
-        "PYSEC-2026-1850",
-        "PYSEC-2026-1851",
-        "PYSEC-2026-1852",
-        "PYSEC-2026-3036",
-        "PYSEC-2026-3037",
-        "PYSEC-2026-3038",
-        "PYSEC-2026-3039",
-        "PYSEC-2026-3040"
-      ],
-      "reason": "アップロード・HTTP入口の互換性検証と併せて修正版へ更新する",
-      "owner": "リポジトリ管理者",
-      "expires_on": "2026-11-02"
-    },
-    {
       "package": "setuptools",
       "version": "69.0.3",
       "ids": [
@@ -180,22 +131,6 @@
       "reason": "利用経路と修正版の互換性を確認して更新する",
       "owner": "リポジトリ管理者",
       "expires_on": "2026-11-09"
-    },
-    {
-      "package": "starlette",
-      "version": "0.27.0",
-      "ids": [
-        "PYSEC-2026-161",
-        "PYSEC-2026-1941",
-        "PYSEC-2026-1943",
-        "PYSEC-2026-2280",
-        "PYSEC-2026-2281",
-        "PYSEC-2026-248",
-        "PYSEC-2026-249"
-      ],
-      "reason": "アップロード・HTTP入口の互換性検証と併せて修正版へ更新する",
-      "owner": "リポジトリ管理者",
-      "expires_on": "2026-11-02"
     },
     {
       "package": "urllib3",
