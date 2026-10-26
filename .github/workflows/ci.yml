@@ -24,7 +24,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
@@ -78,9 +78,6 @@ jobs:
 
   backend-tests-local:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.11']
     env:
       UV_SYSTEM_CERTS: "true"
       DATA_BACKEND: "local"
@@ -92,7 +89,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.12'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
@@ -135,7 +132,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
@@ -183,7 +180,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
@@ -241,7 +238,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - uses: astral-sh/setup-uv@v3
       - uses: actions/setup-node@v4
         with:
@@ -276,6 +273,24 @@ jobs:
         run: |
           docker image inspect oke-portal-ci --format '{{json .Config.Cmd}}' | tee image_cmd.json
           grep -q 'src.backend.main:app' image_cmd.json
+
+      - name: Start image and verify runtime health
+        timeout-minutes: 3
+        # The image must start on its actual Python, without external DB/GCS
+        # credentials. This local fallback does not change deployment settings.
+        run: |
+          trap 'docker rm -f portal-runtime-smoke >/dev/null 2>&1 || true' EXIT
+          docker run -d --name portal-runtime-smoke \
+            -p 127.0.0.1:18080:8080 \
+            -e DATA_BACKEND=local -e LOCAL_JSON_FALLBACK_ENABLED=true oke-portal-ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18080/api/health >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Image health check failed"
+          exit 1
 
   frontend-tests:
     runs-on: ubuntu-latest
