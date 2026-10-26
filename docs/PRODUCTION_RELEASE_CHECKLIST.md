@@ -33,6 +33,7 @@
 - [ ] 第4段階4Aの対象写真取得を含む版は、**本番・TESTの両方**で `public.albums.organization_id` と `public.album_photos.organization_id` が存在し、両方ともNOT NULLであることを、実DBへの読取専用照会で確認してから配備する。環境ごとの確認日時・対象コミット・2表の結果を記録し、未確認・列欠落・NULL許容なら配備を保留する。隔離PGの成功やmigrationファイルの存在で代用しない。手順は [4A実装記録](PERF_STAGE4A_IMPLEMENTATION.md#6-配備前の必須schema確認) を参照する。この確認はDDL適用の許可ではない。
 - [ ] 第3段階を含む版では、[実装記録](PERF_STAGE3_IMPLEMENTATION.md)に従って023の団体列・主キー/FK・親子一致・ロール前提を検査し、バックアップと書込排出後に適用した。未検証のまま自動適用しない
 - [ ] 第3段階のAPI設定とTEST日次照合は既定無効を確認し、実ワーカー数/監査を含む接続予算・旧版書込・完全ダイジェスト・API別計測を完了した対象だけ有効化した
+- [ ] 023のトリガーは機能無効でも書込時に動くため、配備前後の保存API応答時間・エラー/タイムアウト・save_busy件数を比較して記録した。読取専用preflightの成功を実環境の書込負荷検証と扱わず、通常書込の5秒ロック待ちは維持した
 - [ ] 同期/復元後の世代再発行とトリガー検証を、メンテナンス解除前に完了した。失敗時は解除しない
 
 - [ ] チューナーの履歴を公開する版では、`017_tuner_practice.sql` が `schema_migrations` に記録され、`members` のトリガー `trg_tuner_members_owner_guard_delete`／`_insert` があることを確認した（手順と戻し方は `docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md` の8章）
