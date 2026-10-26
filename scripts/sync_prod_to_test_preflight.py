@@ -9,6 +9,8 @@ import sys
 from dataclasses import asdict, dataclass
 
 EXCLUDED_DB_TABLES = (
+    "portal_data_generation",
+    "portal_collection_versions",
     "auth_devices",
     "access_logs",
     "audit_logs",

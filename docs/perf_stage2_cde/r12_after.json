@@ -1,0 +1,75 @@
+{
+  "mode": "real renderer, synthetic DOM sink, counted String key comparisons",
+  "metrics": [
+    {
+      "scale": 1,
+      "repeat": 0,
+      "comparisons": 50,
+      "elapsedMs": 0.45810000000000173,
+      "htmlSha256": "ae1231ae3623acc22c7584163b3ca3a97f8ee36ffd531a28495fb75f33205883"
+    },
+    {
+      "scale": 1,
+      "repeat": 1,
+      "comparisons": 50,
+      "elapsedMs": 0.8267000000000024,
+      "htmlSha256": "ae1231ae3623acc22c7584163b3ca3a97f8ee36ffd531a28495fb75f33205883"
+    },
+    {
+      "scale": 1,
+      "repeat": 2,
+      "comparisons": 50,
+      "elapsedMs": 0.15050000000000097,
+      "htmlSha256": "ae1231ae3623acc22c7584163b3ca3a97f8ee36ffd531a28495fb75f33205883"
+    },
+    {
+      "scale": 1,
+      "repeat": 3,
+      "comparisons": 50,
+      "elapsedMs": 0.6368000000000009,
+      "htmlSha256": "ae1231ae3623acc22c7584163b3ca3a97f8ee36ffd531a28495fb75f33205883"
+    },
+    {
+      "scale": 1,
+      "repeat": 4,
+      "comparisons": 50,
+      "elapsedMs": 0.08840000000000003,
+      "htmlSha256": "ae1231ae3623acc22c7584163b3ca3a97f8ee36ffd531a28495fb75f33205883"
+    },
+    {
+      "scale": 2,
+      "repeat": 0,
+      "comparisons": 100,
+      "elapsedMs": 0.18740000000000379,
+      "htmlSha256": "e216743e7d7a6b4c9e55e8779c59c60429a45002eef07b490bad7d96b46eb877"
+    },
+    {
+      "scale": 2,
+      "repeat": 1,
+      "comparisons": 100,
+      "elapsedMs": 0.3369000000000071,
+      "htmlSha256": "e216743e7d7a6b4c9e55e8779c59c60429a45002eef07b490bad7d96b46eb877"
+    },
+    {
+      "scale": 2,
+      "repeat": 2,
+      "comparisons": 100,
+      "elapsedMs": 0.21970000000000312,
+      "htmlSha256": "e216743e7d7a6b4c9e55e8779c59c60429a45002eef07b490bad7d96b46eb877"
+    },
+    {
+      "scale": 2,
+      "repeat": 3,
+      "comparisons": 100,
+      "elapsedMs": 0.21049999999999613,
+      "htmlSha256": "e216743e7d7a6b4c9e55e8779c59c60429a45002eef07b490bad7d96b46eb877"
+    },
+    {
+      "scale": 2,
+      "repeat": 4,
+      "comparisons": 100,
+      "elapsedMs": 0.47820000000000107,
+      "htmlSha256": "e216743e7d7a6b4c9e55e8779c59c60429a45002eef07b490bad7d96b46eb877"
+    }
+  ]
+}

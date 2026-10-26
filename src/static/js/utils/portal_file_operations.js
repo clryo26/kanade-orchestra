@@ -6,6 +6,7 @@
     const STORAGE = 'portalFileOperations:v1';
     const running = new Map();
     const actorScopes = new Map();
+    const actorRequests = new Map();
     const identity = () => typeof root.portalCacheIdentity === 'function' ? root.portalCacheIdentity() : '';
     const read = () => {
         const value = JSON.parse(localStorage.getItem(STORAGE) || '{}');
@@ -41,12 +42,20 @@
             ...options, cache: 'no-store', headers: { ...options.headers, 'X-Device-Id': device },
         }, 120000);
         if (owner !== identity()) throw new Error('認証情報が変わりました。元のアカウントで操作結果を確認してください');
-        const data = await response.json();
+        const data = await response.json().catch((error) => { if (response.status < 500) throw error; return null; });
         if (owner !== identity()) throw new Error('認証情報が変わりました。元のアカウントで操作結果を確認してください');
         return { status: response.status, data };
     }
-    async function accountScope(owner) {
-        const result = await send('/api/portal-file-actor', { method: 'GET' }, owner);
+    async function accountScope(owner, options = {}) {
+        // PERF-R08: coalesce only while verification is in flight. A later
+        // save must still verify the server's current account-generation scope.
+        if (actorRequests.has(owner)) return actorRequests.get(owner);
+        const pending = verifyAccountScope(owner, options).finally(() => actorRequests.delete(owner));
+        actorRequests.set(owner, pending);
+        return pending;
+    }
+    async function verifyAccountScope(owner, options) {
+        const result = await send('/api/portal-file-actor', { ...options, method: 'GET' }, owner);
         if (result.status !== 200 || !/^[a-f0-9]{64}$/.test(result.data.scope || '')) {
             throw new Error('操作主体を確認できません。再ログインして再試行してください');
         }
@@ -63,9 +72,9 @@
         }
         // 404 is an authoritative "not accepted" only when the endpoint
         // actually answered. Network/DB errors must never take this branch.
-        if (result.status === 404 && result.data.code === 'file_operation_unknown') return null;
+        if (result.status === 404 && result.data?.code === 'file_operation_unknown') return null;
         if (result.status === 202) return result;
-        throw new Error(result.data.detail?.message || result.data.detail || '操作結果を確認できません。再度確認してください');
+        throw new Error(result.data?.detail?.message || result.data?.detail || '操作結果を確認できません。再度確認してください');
     }
     function unresolved(result) {
         return result.status === 202 || result.status >= 500 || result.data?.detail?.code === 'file_operation_expired';
@@ -129,7 +138,7 @@
             if (result.status >= 400) {
                 // Deterministic rejection: known result, a new user action may
                 // correct it. Retain unknown outcomes on every other path.
-                const error = new Error(result.data.detail?.message || result.data.detail || '保存できませんでした');
+                const error = new Error(result.data?.detail?.message || result.data?.detail || '保存できませんでした');
                 error.terminal = true;
                 throw error;
             }
@@ -162,7 +171,10 @@
         const owner = identity();
         try {
             if (!root.portalRuntimeContext.appState?.portalAuthVerified) return;
-            const ownerHash = await accountScope(owner);
+            // No durable operation needs recovery. Storage errors still take
+            // the existing warning path instead of requesting an actor.
+            if (Object.keys(read()).length === 0) return;
+            const ownerHash = await accountScope(owner, { _requestOrigin: 'automatic' });
             if (owner !== identity()) return;
             for (const record of Object.values(read())) {
                 if (record.ownerHash === ownerHash) notice('前回の保存操作の結果を確認できます。', record, owner);

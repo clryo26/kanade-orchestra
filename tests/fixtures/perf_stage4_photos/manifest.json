@@ -1,0 +1,77 @@
+{
+  "recipe": "stage4-texture-xorshift32-bands-corners-v1",
+  "synthetic_only": true,
+  "jpeg_quality": 90,
+  "jpeg_subsampling": 2,
+  "generator_sha256": "a350c191c35d7ed9693eae267fb35e657d63fbe129fcca343dadec8a356fa00b",
+  "generated_with": {
+    "pillow": "12.3.0",
+    "jpeg": "8.0"
+  },
+  "images": [
+    {
+      "id": "landscape",
+      "file": "landscape.jpg",
+      "encoded_size": [
+        1600,
+        1200
+      ],
+      "exif_orientation": 1,
+      "display_size": [
+        1600,
+        1200
+      ],
+      "seed": 1587745,
+      "bytes": 1070163,
+      "sha256": "0c7186772900217bcd8fa37e5fbc2d51c23b234c48084b240bbbff642c9be297"
+    },
+    {
+      "id": "portrait",
+      "file": "portrait.jpg",
+      "encoded_size": [
+        1200,
+        1800
+      ],
+      "exif_orientation": 1,
+      "display_size": [
+        1200,
+        1800
+      ],
+      "seed": 3781746,
+      "bytes": 1149145,
+      "sha256": "0dad3c0ab98cdb99f073d2e1f63fbfbffaf1e6842c79bb4bb900e8f156e870fb"
+    },
+    {
+      "id": "high_resolution",
+      "file": "high_resolution.jpg",
+      "encoded_size": [
+        4096,
+        3072
+      ],
+      "exif_orientation": 1,
+      "display_size": [
+        4096,
+        3072
+      ],
+      "seed": 7458613,
+      "bytes": 4016826,
+      "sha256": "baabde302592f36cc5af143d2107b7f6905bc63a16cc52af61ff659454933b7a"
+    },
+    {
+      "id": "exif_rotated",
+      "file": "exif_rotated.jpg",
+      "encoded_size": [
+        1800,
+        1200
+      ],
+      "exif_orientation": 6,
+      "display_size": [
+        1200,
+        1800
+      ],
+      "seed": 2742435,
+      "bytes": 1156781,
+      "sha256": "5f9a5ecad744ed808c45738e98efe2d2e8b882d3e8927804f5bef4d7f82016da"
+    }
+  ]
+}

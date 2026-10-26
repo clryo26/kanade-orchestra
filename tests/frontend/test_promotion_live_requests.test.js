@@ -46,3 +46,23 @@ test('a response from a previous member is rejected', async () => {
     resolve({ status: 200, ok: true, headers: { get: () => null }, json: async () => [] });
     await expect(pending).rejects.toThrow('認証情報が変わりました');
 });
+
+test('HTML 503 during promotion result confirmation keeps the pending operation', async () => {
+    const fetch = vi.fn(async () => new Response('<html>gateway</html>', { status: 503 }));
+    const { sandbox } = setup(fetch);
+    const storage = new Map();
+    Object.assign(sandbox, {
+        location: { origin: 'https://fixture.invalid' },
+        sessionStorage: { getItem: (key) => storage.get(key) || null, removeItem: (key) => storage.delete(key) },
+        currentUserMemberName: () => 'fixture',
+    });
+    vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../../src/static/js/modules/date_piece_promotion/api.js'), 'utf8'), sandbox);
+    const key = sandbox.promotionPendingKey();
+    const pending = JSON.stringify({ operationId: 'same-operation', method: 'POST' });
+    storage.set(key, pending);
+    expect(await sandbox.checkPromotionOperation()).toBe(false);
+    expect(storage.get(key)).toBe(pending);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe('/api/promotions/operations/same-operation');
+    expect(sandbox.showAlert).not.toHaveBeenCalledWith(expect.stringContaining('操作は完了しませんでした'), expect.anything());
+});

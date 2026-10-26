@@ -5,11 +5,12 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from ..core.auth_dependencies import get_admin_device_auth, get_device_auth
+from ..core.http_cache import PortalCacheRoute
 from ..models.schemas import EventAdjustment
 from ..services import event_service
 from ..utils.serialization import model_dump
 
-router = APIRouter()
+router = APIRouter(route_class=PortalCacheRoute)
 
 
 @router.get("/api/events", response_model=list[EventAdjustment])

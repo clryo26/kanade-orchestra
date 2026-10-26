@@ -72,10 +72,19 @@ function fillPromotionForm(id) {
     if ($('promotionSummary')) $('promotionSummary').value = item.summary || item.description || '';
     if ($('promotionImageFile')) $('promotionImageFile').value = '';
     if ($('promotionRemoveImage')) $('promotionRemoveImage').checked = false;
+    releasePromotionPreviewObjectUrl();
     if ($('promotionImagePreview')) $('promotionImagePreview').innerHTML = item.image_url ? `<img src="${escapeHtml(item.image_url)}" class="img-fluid rounded border" alt="宣伝画像">` : '';
 }
 
+function releasePromotionPreviewObjectUrl() {
+    if (appState.promotionPreviewObjectUrl) {
+        URL.revokeObjectURL(appState.promotionPreviewObjectUrl);
+        appState.promotionPreviewObjectUrl = '';
+    }
+}
+
 function clearPromotionForm() {
+    releasePromotionPreviewObjectUrl();
     if ($('promotionId')) $('promotionId').value = '';
     if ($('promotionRevision')) $('promotionRevision').value = '';
     if ($('promotionTitle')) $('promotionTitle').value = '';

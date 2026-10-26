@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-10-22",
+  "baselineCommit": "4cd340d",
+  "after": "current Stage 2B HTTP worktree",
+  "scope": "Synthetic API; fixed Linux WebKit; not real device/DB/GCS/HTTP cache performance",
+  "environment": {
+    "platform": "linux",
+    "node": "v24.17.0",
+    "browser": "26.5",
+    "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+    "fixedTime": "2026-10-21T12:00:00+09:00",
+    "assetHashes": {
+      "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css": "7f1d37f0d90b6385354c2ac10e2bb91563c46bd7a266ed351222ebcac8496c2a",
+      "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js": "aa53d582f97eb594c2a5cc5824574707f9ba9837bce3046bfa5f3556860f4e04"
+    }
+  },
+  "viewports": [
+    "390x844@2",
+    "375x844@2",
+    "430x844@2"
+  ],
+  "captureScriptOrigin": "a50e0923dffd8ba9da243e841d699531e9ebc8fc:scripts/perf_stage1_capture.cjs",
+  "captureScriptAdaptation": "Fixture require resolves from cwd; capture fixes pointer at (0,0) for both runs.",
+  "captureScriptSha256": "af0ec908721a9766094cb5e778ed57d5876cf649131aee251c6f73049be1a8f7",
+  "fixtureSha256": {
+    "tests/e2e/fixtures/mockApi.js": "6757a225600d9dff8566a94d0c50c25eef2518139c6f08b5c28fb10dd151d7eb",
+    "tests/e2e/fixtures/mockData.js": "4ef853583bfd7871b22f0c729dc990729b0ce7d03e1de676b382421fe443c8f2"
+  },
+  "pageErrors": {
+    "before": [],
+    "after": []
+  },
+  "comparisons": [
+    {
+      "name": "システム管理者-flyer-preview",
+      "pngEqual": true,
+      "beforePngSha256": "d9d2d6fae738401d4aaead57a517486a75a740a77588bee7d64d74b9e56fb1a2",
+      "afterPngSha256": "d9d2d6fae738401d4aaead57a517486a75a740a77588bee7d64d74b9e56fb1a2",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-home-375",
+      "pngEqual": true,
+      "beforePngSha256": "121db72979ee3b6786f207e7e89b494ccbee863b9bdca40abe8f53182b10ca49",
+      "afterPngSha256": "121db72979ee3b6786f207e7e89b494ccbee863b9bdca40abe8f53182b10ca49",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-home-430",
+      "pngEqual": true,
+      "beforePngSha256": "c98399fd1250998d7b2391d6ec11016beb3e7b743b176a406d25c3bf051f7b3a",
+      "afterPngSha256": "c98399fd1250998d7b2391d6ec11016beb3e7b743b176a406d25c3bf051f7b3a",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-home",
+      "pngEqual": true,
+      "beforePngSha256": "ee8cd9ed85fed9903505bfb75105c07b27efd335c3df490d75f72513df24c8d2",
+      "afterPngSha256": "ee8cd9ed85fed9903505bfb75105c07b27efd335c3df490d75f72513df24c8d2",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-organization-preview",
+      "pngEqual": true,
+      "beforePngSha256": "ef9cf5232248df00aa8e00c0703eae682d06011759b013aec8cf38037d37b579",
+      "afterPngSha256": "ef9cf5232248df00aa8e00c0703eae682d06011759b013aec8cf38037d37b579",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-organization",
+      "pngEqual": true,
+      "beforePngSha256": "e9fba984f2c9f2f21aa5d8c9a8b4769a229a88ce381d546ba687f59aeacc80f0",
+      "afterPngSha256": "e9fba984f2c9f2f21aa5d8c9a8b4769a229a88ce381d546ba687f59aeacc80f0",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-performance-form",
+      "pngEqual": true,
+      "beforePngSha256": "a55481b9963124bde0f7bb51868391cefe8bb88aee4724557f89f1e606ac149d",
+      "afterPngSha256": "a55481b9963124bde0f7bb51868391cefe8bb88aee4724557f89f1e606ac149d",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-promotion-preview",
+      "pngEqual": true,
+      "beforePngSha256": "b1dbda5d8fd8969d156ac1bceb6136daf144ed97c0feae2244db507ea58642bb",
+      "afterPngSha256": "b1dbda5d8fd8969d156ac1bceb6136daf144ed97c0feae2244db507ea58642bb",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "システム管理者-promotions",
+      "pngEqual": true,
+      "beforePngSha256": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "afterPngSha256": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "一般-home-375",
+      "pngEqual": true,
+      "beforePngSha256": "af111597ec27e8f728596ab6d4b051561f6fe03517dad47c5ac3b86ada2467e0",
+      "afterPngSha256": "af111597ec27e8f728596ab6d4b051561f6fe03517dad47c5ac3b86ada2467e0",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "一般-home-430",
+      "pngEqual": true,
+      "beforePngSha256": "693d2550d774fff1b084cfc5e9260d52a5a917c146b2583efcd0202c8f47ac9a",
+      "afterPngSha256": "693d2550d774fff1b084cfc5e9260d52a5a917c146b2583efcd0202c8f47ac9a",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "一般-home",
+      "pngEqual": true,
+      "beforePngSha256": "e995cd8da2a9ca664a78e98816b80c6d4c899a8b86c4f3aa4be1258ca14603e1",
+      "afterPngSha256": "e995cd8da2a9ca664a78e98816b80c6d4c899a8b86c4f3aa4be1258ca14603e1",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "一般-promotion-preview",
+      "pngEqual": true,
+      "beforePngSha256": "b1dbda5d8fd8969d156ac1bceb6136daf144ed97c0feae2244db507ea58642bb",
+      "afterPngSha256": "b1dbda5d8fd8969d156ac1bceb6136daf144ed97c0feae2244db507ea58642bb",
+      "visibleControlsDomEqual": true
+    },
+    {
+      "name": "一般-promotions",
+      "pngEqual": true,
+      "beforePngSha256": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "afterPngSha256": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "visibleControlsDomEqual": true
+    }
+  ],
+  "limitations": [
+    "Not BFCache, physical iPhone, JST midnight, 503 wait UI, or exhaustive portal screen coverage.",
+    "Route mocking disables browser HTTP cache; no cache hit/transfer reduction conclusion.",
+    "Timing is one sample including networkidle, not a performance percentile measurement.",
+    "Before static source is reconstructed from Git, after source is the current worktree."
+  ],
+  "initialRun": {
+    "identicalPngs": 13,
+    "identicalDom": 14,
+    "difference": "One home button hovered only in the before image. Both runs repeated with pointer fixed at (0,0). Application source unchanged."
+  },
+  "artifactDirectories": {
+    "before": ".tmp/perf-stage2-http/visual-before-final",
+    "after": ".tmp/perf-stage2-http/visual-after-final"
+  }
+}

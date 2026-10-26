@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-10-22",
+  "baselineCommit": "cc61c61da7a7456fc9923781474b2e2988eef205",
+  "scope": "PERF-R02 request-specific wait; synthetic VM/HTTP and pinned WebKit, no actual DB/GCS/device/BFCache",
+  "node": {
+    "before": {
+      "phase": "before",
+      "mode": "Node VM/mock HTTP/fake timers",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "f859b715eba8ae0f11eae57acdcce22428cf7dca7af7fa5251e6868208b2f70a",
+        "src/static/js/modules/common_helpers/transport_retry.js": "9e5be60d64f2dbf8cf653174b868910c15af1f909a30c25cb36be88e5b165759"
+      },
+      "metrics": [
+        {
+          "id": "W01",
+          "sends": [
+            2,
+            3,
+            4
+          ]
+        },
+        {
+          "id": "W02",
+          "sends": [
+            2,
+            3
+          ]
+        },
+        {
+          "id": "W03",
+          "sends": 4
+        },
+        {
+          "id": "W04",
+          "sends": [
+            2,
+            3
+          ]
+        },
+        {
+          "id": "W05",
+          "sends": 5
+        }
+      ],
+      "dbQueries": null,
+      "browserVerified": false
+    },
+    "after": {
+      "phase": "after",
+      "mode": "Node VM/mock HTTP/fake timers",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "58b8f742718e1cb6d614bd59d2a1071f215733bf55cf92c7e529d669e5a2712c",
+        "src/static/js/modules/common_helpers/transport_retry.js": "6b7c55dfb6cf53c8be98bdead75a8eb41eca53d0c43b7a94ac80d766e0885e6a"
+      },
+      "metrics": [
+        {
+          "id": "W01",
+          "sends": [
+            1,
+            1,
+            2
+          ]
+        },
+        {
+          "id": "W02",
+          "sends": [
+            1,
+            2
+          ]
+        },
+        {
+          "id": "W03",
+          "sends": 3
+        },
+        {
+          "id": "W04",
+          "sends": [
+            1,
+            2
+          ]
+        },
+        {
+          "id": "W05",
+          "sends": 4
+        }
+      ],
+      "dbQueries": null,
+      "browserVerified": false
+    }
+  },
+  "browser": {
+    "before": {
+      "scope": "synthetic API; actual WebKit JS/DOM and manual clicks; not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "manual-wait",
+          "authSends": 0,
+          "pageErrors": [],
+          "manualFailureSends": 3,
+          "waitWarning": "一部データの読込に失敗しました: promotions\n一部データの読込に失敗しました: promotions\n一部データの読込に失敗しました: promotions",
+          "formPixelsEqual": true,
+          "unrelatedAlbumSends": 1,
+          "failureAndProbeSends": 4,
+          "afterSuccessfulProbeSends": 5,
+          "fileAndInputRetained": true,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "f859b715eba8ae0f11eae57acdcce22428cf7dca7af7fa5251e6868208b2f70a",
+        "src/static/js/auth_feature.js": "1f9e9372e139459ef8d99e8279b8ceea42f742fe38a84bc494324ca31e626f50",
+        "src/static/js/modules/common_helpers/transport_retry.js": "9e5be60d64f2dbf8cf653174b868910c15af1f909a30c25cb36be88e5b165759"
+      }
+    },
+    "after": {
+      "scope": "synthetic API; actual WebKit JS/DOM and manual clicks; not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "manual-wait",
+          "authSends": 0,
+          "pageErrors": [],
+          "manualFailureSends": 1,
+          "waitWarning": "一部データの読込に失敗しました: promotions\nメンテナンス中です。あと10秒後に再試行できます。\nメンテナンス中です。あと10秒後に再試行できます。",
+          "formPixelsEqual": true,
+          "unrelatedAlbumSends": 1,
+          "failureAndProbeSends": 2,
+          "afterSuccessfulProbeSends": 3,
+          "fileAndInputRetained": true,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "58b8f742718e1cb6d614bd59d2a1071f215733bf55cf92c7e529d669e5a2712c",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "6b7c55dfb6cf53c8be98bdead75a8eb41eca53d0c43b7a94ac80d766e0885e6a"
+      }
+    },
+    "authRegressionAfter": {
+      "scope": "synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "data-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "resume-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "other-tab-logout",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 0,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "58b8f742718e1cb6d614bd59d2a1071f215733bf55cf92c7e529d669e5a2712c",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "6b7c55dfb6cf53c8be98bdead75a8eb41eca53d0c43b7a94ac80d766e0885e6a"
+      }
+    }
+  },
+  "formImages": {
+    "before": {
+      "form-before-wait.png": "65e23142a5777bcde00c190fd27b355bb5c10677d2ba62b78f4a868851d99a23",
+      "form-during-wait.png": "65e23142a5777bcde00c190fd27b355bb5c10677d2ba62b78f4a868851d99a23"
+    },
+    "after": {
+      "form-before-wait.png": "65e23142a5777bcde00c190fd27b355bb5c10677d2ba62b78f4a868851d99a23",
+      "form-during-wait.png": "65e23142a5777bcde00c190fd27b355bb5c10677d2ba62b78f4a868851d99a23"
+    }
+  },
+  "formUnchangedAcrossVersions": true,
+  "finalFrontend": {
+    "numTotalTests": 1297,
+    "numPassedTests": 1297,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "success": true
+  },
+  "backend": {
+    "target": "tests/backend/test_perf_stage2_http_cache.py",
+    "passed": 23,
+    "fullBackendRerun": false
+  },
+  "finalFileSha256": {
+    "scripts/perf_stage2_auth_races.cjs": "200f9d52a1d38b4aa4aa13dc2f359bbb76ded61f8683f6cec357f88a183a5850",
+    "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+    "src/static/js/modules/admin_system/environment_management.js": "abfe4767e47df5de549d5d178a40fa599257e2306ed55fa370d98a14efd34b6c",
+    "src/static/js/modules/bootstrap_loader.js": "66d8065046bb6ab89ee15442035d784055c45de651e8cf41961f08efbf56242a",
+    "src/static/js/modules/common_helpers/api_runtime.js": "58b8f742718e1cb6d614bd59d2a1071f215733bf55cf92c7e529d669e5a2712c",
+    "src/static/js/modules/common_helpers/bootstrap_init.js": "6dc5fbf2758e33e250aec3a7b333045779d7421c123bca8fcf395048fa721f77",
+    "src/static/js/modules/common_helpers/transport_retry.js": "6b7c55dfb6cf53c8be98bdead75a8eb41eca53d0c43b7a94ac80d766e0885e6a",
+    "src/static/js/modules/date_piece_promotion/api.js": "02d244eb03d2d26b2da4d055606142b8cd5e459dcdcb4d9801f450072ab6cd19",
+    "src/static/js/modules/members/render.js": "e826d0af1314d206333c0d671f90c7b69b1d78b3dc53f6d14e6e8064abbbd4c7",
+    "src/static/js/modules/navigation/events.js": "1a0bff483b1cdea953ba026505791a5ac90ed40a46f713303c2d4e4883209a02",
+    "src/static/js/modules/navigation/routes.js": "410b2bbfe05502e5969cd6b4a88c2ff4ece016349a20d55d04406a558cb62156",
+    "src/static/js/modules/notices.js": "65633562d2e8dcdb16352deed42546d040a6406a64120af7f25782d6d1b303cc",
+    "src/static/js/modules/notifications/settings.js": "3439bc111969a6a14dde4bec9b981e37bd93bf08350bcce43dd4633a5047a31e",
+    "src/static/js/modules/scores/sheet_api.js": "b6a0dcb20b5cebdf11cc0b3746764026452dd8afe1d990553153ca8f6a239036",
+    "src/static/js/utils/portal_file_operations.js": "90d978841d199c427a778d77a0f0f98c7ac5f09dd93adc94161e5dd04202ca2a",
+    "tests/frontend/test_bootstrap_swr.test.js": "80ba7455a1d88146b5a218a9e2e476d236cca34524a9678f6dd5df1b7ba57390",
+    "tests/frontend/test_environment_management.test.js": "8c9dedd1a79be1ba82f7a7f696c4fa8eee7885d0c2fa4d89d66349d3fea3c06a",
+    "tests/frontend/test_member_detail_on_demand.test.js": "d9f0e34dee2b95f9f0306545bc12884fd292505d1f83c6535f509138d468e1e3",
+    "tests/frontend/test_no_startup_bootstrap_core.test.js": "9e08ccbf5ea768a006d16450210ff931b9c5ba1a33773232d10ba394df8b3a72",
+    "tests/frontend/test_notifications.test.js": "f9802515338abe0f604c6f126b9f47901b95c6d558cc925d0c6f4eb1e0c14145",
+    "tests/frontend/test_perf_stage2_retry_wait.test.js": "cb6c20b55c0c0437fa48b4ca4ccd30683261cb33c91d8e351ff6845dc3779b11",
+    "tests/frontend/test_performance_day_and_extra_reload.test.js": "3042f8c27dac932296cb27cc0237578429b790fa808f0455ec30000a1f1f3962",
+    "tests/frontend/test_runtime_bootstrap_order.test.js": "5ea9c602620edaa9891ae1deddb96caad98ee80a650ab205115630bfbf6b12dc"
+  },
+  "limitations": [
+    "No actual BFCache or physical iPhone",
+    "No live DB/GCS latency/query/transfer/storage measurements",
+    "Route mocking disables the browser HTTP cache",
+    "Form pixel comparison excludes countdown toast overlays after verifying their text",
+    "Images cover one synthetic member promotion form, not the whole portal",
+    "Historical before/after artifacts are not rewritten"
+  ],
+  "artifactRoot": ".tmp/perf-stage2-http"
+}

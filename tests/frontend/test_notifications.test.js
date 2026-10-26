@@ -21,6 +21,28 @@ function settingsContext({ target = '', permission = '一般', verified = true, 
 }
 
 describe('notification target routing', () => {
+    it('waiting renders keep the same account controls and do not invalidate an active render', async () => {
+        const ctx = settingsContext();
+        const elements = Object.fromEntries(['notificationSettingsTab', 'notificationCategories', 'notificationSaveBtn',
+            'notificationEnableBtn', 'notificationDisableBtn', 'notificationStatus'].map((id) => [id, { disabled: false,
+                replaceChildren: vi.fn(), append: vi.fn(), textContent: '' }]));
+        ctx.document.getElementById.mockImplementation((id) => elements[id]);
+        ctx.document.createElement = () => ({ dataset: {}, append() {} });
+        ctx.request = vi.fn(async () => ({ categories: { notices: 'お知らせ' }, preferences: { notices: true } }));
+        ctx.showAlert = vi.fn();
+        await ctx.window.PortalNotifications.render();
+        const count = elements.notificationCategories.replaceChildren.mock.calls.length;
+        ctx.window.portalRetryWaitInfo = () => ({ blocked: true, message: 'あと1秒' });
+        await ctx.window.PortalNotifications.render();
+        expect(ctx.request).toHaveBeenCalledTimes(1);
+        expect(elements.notificationCategories.replaceChildren).toHaveBeenCalledTimes(count);
+        expect(elements.notificationSaveBtn.disabled).toBe(false);
+        expect(ctx.showAlert).toHaveBeenCalledWith('あと1秒', 'warning');
+        ctx.window.portalRuntimeContext.appState.currentUserMemberId = 2;
+        await ctx.window.PortalNotifications.render();
+        expect(ctx.request).toHaveBeenCalledTimes(2);
+        expect(elements.notificationCategories.replaceChildren).toHaveBeenCalledTimes(count + 1);
+    });
     it.each(['member-practice-instruction', 'member-promotion'])('opens the new notification target %s', async (target) => {
         const ctx = settingsContext({ target });
         await ctx.window.PortalNotifications.restoreTarget();

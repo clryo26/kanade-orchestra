@@ -192,6 +192,7 @@ function applyDynamicManifest(name, shortName, iconUrl = '') {
 }
 
 function renderOrgManagement() {
+    releaseOrgIconObjectUrl();
     const org = currentOrgSetting();
     if ($('orgSettingId')) $('orgSettingId').value = org.id || '';
     if ($('orgName')) $('orgName').value = org.name || org.organization_name || org.organization_name_full || '';
@@ -203,10 +204,21 @@ function renderOrgManagement() {
 async function previewOrgIcon() {
     const file = $('orgIconFile')?.files?.[0];
     if (!file || !$('orgIconPreview')) return;
-    $('orgIconPreview').src = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    releaseOrgIconObjectUrl();
+    appState.orgIconObjectUrl = objectUrl;
+    $('orgIconPreview').src = objectUrl;
+}
+
+function releaseOrgIconObjectUrl() {
+    if (appState.orgIconObjectUrl) {
+        URL.revokeObjectURL(appState.orgIconObjectUrl);
+        appState.orgIconObjectUrl = '';
+    }
 }
 
 function clearOrgSettingForm() {
+    releaseOrgIconObjectUrl();
     if ($('orgSettingId')) $('orgSettingId').value = currentOrgSetting().id || '';
     if ($('orgName')) $('orgName').value = '';
     if ($('orgShortName')) $('orgShortName').value = '';

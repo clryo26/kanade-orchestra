@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-23",
+  "branch": "perf/portal-stage3-review-20261023",
+  "baseline": "0589fad",
+  "reviewed_commit": "8924a59",
+  "transplanted_implementation": "52cd351",
+  "excluded_commit": "2ed589c",
+  "scope": "Review fixes: maintenance DB connection scope; empty-tenant version 0; nonblocking read admission",
+  "checks": {
+    "unit_targeted": {
+      "passed": 28,
+      "skipped": 0,
+      "log_sha256": "481d63dff1a972a6110f074113bee95dab1ceca35096cef813c4d4440f72d789"
+    },
+    "backend": {
+      "passed": 981,
+      "skipped": 129,
+      "log_sha256": "b27cda9e3d487d48a6782194b69e81f9d8d9e65b9497f7af48ccbbfe5271186c"
+    },
+    "postgres16": {
+      "passed": 58,
+      "skipped": 0,
+      "log_sha256": "55ad1cade6138d823a40b78d0a138e9b3843bb003f5837886b2e18a9f3361fde"
+    },
+    "postgres18": {
+      "passed": 58,
+      "skipped": 0,
+      "log_sha256": "e23d505b28652fb38238f6b94bfc38e12839c8d9f7679d6539a6bc60c085d4e7"
+    },
+    "legacy_sql": {
+      "passed": 55,
+      "skipped": 0,
+      "log_sha256": "27d47b5837ece9b0d33ca14d9f6a2fabd20322b7042d768a7717fdc1d7f25eed"
+    },
+    "audio_menu_sql": {
+      "passed": 23,
+      "skipped": 0,
+      "log_sha256": "3368c4606c68de509dee28c194ee4e9ff88d592c459e64545fe2a231aebcd6f4"
+    },
+    "e2e": {
+      "passed": 95,
+      "skipped": 0,
+      "log_sha256": "c498b3e34ecd3b4391b1090bb61449bbb726e41bdbdf86a75fa2f478b3a399e9"
+    }
+  },
+  "frontend": {
+    "passed": 1385,
+    "files": 118,
+    "log_sha256": "20df7751db9219494872d49f1faef6d0b35e29e0d8408520dd81c9ffb8fe11c1"
+  },
+  "compileall": "passed",
+  "ruff": "passed",
+  "mypy_source_files": 171,
+  "frontend_syntax_files": 170,
+  "release_safety": "passed",
+  "operational_document_check": "passed",
+  "workflow_static_check": "passed",
+  "migration_generator_check": "passed",
+  "regression_controls": {
+    "old_db_connection_maintenance_cases_failed": 4,
+    "old_blocking_admission": {
+      "failed_80_requests": 1,
+      "passed_41_requests": 1
+    },
+    "scope": "Old function bodies loaded from 52cd351 in a disposable Python subprocess; real production files untouched; mock DB only"
+  },
+  "postgres_test_storage": "Final PG16/18 test data used Docker tmpfs at /perfdata; fsync not disabled. Functional RR/lock/constraint tests, not disk durability or production I/O benchmarks.",
+  "prior_failures_fixed": [
+    "Empty fake cursor needed db_now and count alias n for actual cleanup dry-run",
+    "Initial real first-write fixture omitted four required time strings; fixture corrected; failed case and full PG16/18 suites then passed"
+  ],
+  "semantics": {
+    "pool_required": "Web lifespan through close; always in read_scope even without lifespan",
+    "standalone_script_direct_connection": "Preserved in production/test DB mode; no main-import side effect",
+    "zero_version": "Virtual 0 only after same-snapshot empty-data proof; never INSERT from read context",
+    "nonempty_missing_clock": "Still ClockAnomaly",
+    "admission": "asyncio.BoundedSemaphore/wait_for, tested with 41/80 requests and 40 AnyIO thread tokens"
+  },
+  "migration_023_changed": false,
+  "live_db_applied": false,
+  "features_enabled": false,
+  "push_pr_deploy": false,
+  "visual_comparison": "Not rerun: no static frontend changes; prior synthetic 14-image/14-DOM evidence remains historical",
+  "unverified": [
+    "Live DB schema/roles/workers/connection budget",
+    "TEST per-API performance and cache frequency",
+    "Real DB/GCS maintenance and sync",
+    "Real iPhone/Safari/BFCache"
+  ],
+  "unrelated_untracked_preserved": [
+    "docs/archive/README.md"
+  ],
+  "source_sha256": {
+    "src/backend/core/db_pool.py": "d9281fa5ac5fd2ee8cebafa5dcd5eab27f27b9687e3adc01536b079ec2d11da2",
+    "src/backend/core/lifespan.py": "f7196bbbd4aafe0142fb0c7f166f05fc5d12e055cc064cee62b5f8e07f6b7f54",
+    "src/backend/core/read_context.py": "7c6c25244a2e9b6fbe8e5c9fb71058ea9dd3d48effc7369523cc4ead095c9ee1",
+    "src/backend/repositories/collection_clock_repository.py": "c95119d5841e000605f30d7188175f447bea89ccc12759ff94314b0c3b26c86e",
+    "src/backend/services/collection_clock_maintenance.py": "76dc89848d2ecf79959043ba6b7d39b886295bbcc0215998349c856e84b68276",
+    "tests/backend/test_perf_stage3_context.py": "d4029cca77bb3090dbdd27f4caf3ef10f975a7172ddb10d73f4a787fdf467ba2",
+    "tests/backend/test_perf_stage3_postgres.py": "039e54eb01a62f704268e0936ae11426d721d230b63da6812707da74fda57c0b",
+    "tests/conftest.py": "124e38db8f5b15c77b579f4d1bbbeaeba2e88f20fa539e263107a984897e4e04"
+  }
+}

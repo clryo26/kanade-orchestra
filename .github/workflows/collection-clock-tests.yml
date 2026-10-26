@@ -1,0 +1,67 @@
+name: Isolated collection clock tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '18']
+    services:
+      database:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: perf_stage3a
+          POSTGRES_DB: portal_perf_stage3a
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U perf_stage3a -d portal_perf_stage3a"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      UV_SYSTEM_CERTS: 'true'
+      PORTAL_PERF_STAGE3_DB_URL: postgresql://perf_stage3a@127.0.0.1:5432/portal_perf_stage3a
+      PORTAL_PERF_STAGE3_REPORT: .tmp/perf_stage3/ci_comparison.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --locked --extra dev
+      - run: uv run python scripts/generate_collection_clock_migration.py --check
+      - run: >-
+          uv run pytest -q tests/backend/test_perf_stage3_context.py
+          tests/backend/test_perf_stage3_postgres.py tests/backend/test_perf_stage3_measurements.py
+          tests/backend/test_stage1_4a_schema_compatibility.py
+          tests/scripts/test_collection_clock_operations.py
+      - name: Historical probe isolation and application pool cleanup
+        env:
+          PORTAL_PERF_STAGE3_REPORT: ''
+        run: uv run pytest -q tests/backend/test_perf_stage3a_postgres.py
+      - name: Prepare isolated target-photo database
+        run: >-
+          uv run python -c "import psycopg;
+          c=psycopg.connect('postgresql://perf_stage3a@127.0.0.1:5432/portal_perf_stage3a',autocommit=True);
+          c.execute('CREATE DATABASE portal_perf_stage4'); c.close()"
+      - name: Stage 4A target-photo and audit regressions
+        env:
+          PORTAL_PERF_STAGE4_DB_URL: postgresql://perf_stage3a@127.0.0.1:5432/portal_perf_stage4
+        run: uv run pytest -q tests/backend/test_perf_stage4_postgres.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolated-clock-postgres-${{ matrix.postgres }}
+          path: .tmp/perf_stage3/ci_comparison_scale*.json
+          if-no-files-found: error

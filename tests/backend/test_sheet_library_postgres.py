@@ -44,6 +44,14 @@ def test_migration_runner_applies_001_through_021_and_repeats_safely():
         isolated = make_conninfo(dsn, dbname=name)
         with psycopg.connect(isolated) as conn:
             ensure_db_schema_compatibility(conn)
+            # 023 deliberately fails closed without the reviewed stage-3
+            # preconditions. Compatibility-created tables have no child keys;
+            # prepare only this disposable fixture, never repair a live DB here.
+            conn.execute("ALTER TABLE payment_performance_fees ADD PRIMARY KEY(payment_id,performance_id)")
+            conn.execute("ALTER TABLE performance_pieces ADD FOREIGN KEY(performance_id) "
+                         "REFERENCES performances(id) ON DELETE CASCADE")
+            conn.execute("ALTER TABLE payment_performance_fees ADD FOREIGN KEY(payment_id) "
+                         "REFERENCES payments(id) ON DELETE CASCADE")
             conn.execute("INSERT INTO performances (id,title) VALUES (1,'Kept concert')")
             conn.execute("INSERT INTO sheet_library (id,performance_id,name,source,path) VALUES "
                          "(41,1,'kept.pdf','local','sheets/kept.pdf')")

@@ -1,0 +1,43 @@
+{
+  "observed_at_utc": "2026-10-22T11:40:41.815261+00:00",
+  "metric": "run.googleapis.com/container/instance_count",
+  "window_minutes": 10,
+  "series": [
+    {
+      "service": "kanade-orchestra",
+      "revision": "kanade-orchestra-images-20261020",
+      "location": "asia-northeast2",
+      "state": "active",
+      "point_count": 10,
+      "latest_point": {
+        "interval": {
+          "startTime": "2026-10-22T11:40:00Z",
+          "endTime": "2026-10-22T11:40:00Z"
+        },
+        "value": {
+          "int64Value": "1"
+        }
+      }
+    },
+    {
+      "service": "kanade-orchestra",
+      "revision": "kanade-orchestra-images-20261020",
+      "location": "asia-northeast2",
+      "state": "idle",
+      "point_count": 10,
+      "latest_point": {
+        "interval": {
+          "startTime": "2026-10-22T11:40:00Z",
+          "endTime": "2026-10-22T11:40:00Z"
+        },
+        "value": {
+          "int64Value": "0"
+        }
+      }
+    }
+  ],
+  "cache_hit_miss_frequency": "not_measured",
+  "runtime_worker_count": "not_measured",
+  "result": "read_succeeded",
+  "pagination_complete": true
+}

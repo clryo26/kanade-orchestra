@@ -9,7 +9,7 @@ function joinedAtMonthLabel(value) {
     return match ? `${match[1]}年${match[2]}月` : '';
 }
 
-function renderMembers() {
+function renderMembers(options = {}) {
     const list = $('memberListItems');
     if (list) {
         list.innerHTML = emptyText(appState.members, '団員情報はまだありません');
@@ -31,7 +31,7 @@ function renderMembers() {
             list.appendChild(item);
         });
     }
-    if (!appState.suppressDerivedRender) {
+    if (!appState.suppressDerivedRender && options.includeDerived !== false) {
         renderMemberExtraViews();
     }
 }
@@ -87,6 +87,11 @@ function renderMemberIntros() {
 async function showMemberIntroView() {
     const container = $('memberIntroInfo');
     if (!container) return;
+    const wait = window.portalRetryWaitInfo?.('/api/member-introductions', { _forceRevalidate: true });
+    if (wait?.blocked && appState.memberIntroIdentity && appState.memberIntroIdentity === memberIntroContext()) {
+        showAlert(wait.message, 'warning');
+        return;
+    }
     container.innerHTML = '<p class="text-muted mb-0">読み込み中です...</p>';
     const pending = ensureMemberIntroDataLoaded();
     // Loading initializes the generation synchronously, before its first await.
@@ -134,24 +139,28 @@ function renderMemberPerformances() {
 
 function renderMemberExtraViews(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
-    if (typeof renderAbsenceView === 'function') renderAbsenceView();
-    if (includeHeavyLists && typeof renderSheetLibraryView === 'function' && typeof bindSheetLibraryFilters === 'function') renderSheetLibraryView();
-    if (typeof renderPracticeInstructionView === 'function') renderPracticeInstructionView();
-    if (typeof renderFlyerDistributionView === 'function') renderFlyerDistributionView();
-    if (typeof renderPaymentView === 'function') renderPaymentView();
-    if (typeof renderCastingView === 'function') renderCastingView();
-    if (typeof renderMemberEventView === 'function') renderMemberEventView();
-    if (typeof renderPerformanceDayInfoView === 'function') renderPerformanceDayInfoView();
-    if (typeof renderDateAdjustmentView === 'function') renderDateAdjustmentView();
-    if (typeof renderPieceInfoView === 'function') renderPieceInfoView();
-    if (typeof renderDesiredPieceView === 'function') renderDesiredPieceView();
-    if (typeof renderManualView === 'function') renderManualView();
-    if (typeof renderPromotionView === 'function') renderPromotionView();
+    // Omitted collections keep the existing public full-render contract.
+    const changed = options.collections == null ? null : new Set(options.collections);
+    const needs = (...names) => !changed || names.some(name => changed.has(name));
+    const parts = !!changed?.has('partSettings');
+    if ((needs('absences') || parts) && typeof renderAbsenceView === 'function') renderAbsenceView();
+    if (includeHeavyLists && (needs('sheets') || parts) && typeof renderSheetLibraryView === 'function' && typeof bindSheetLibraryFilters === 'function') renderSheetLibraryView();
+    if ((needs('practiceInstructions', 'pieceInfos')) && typeof renderPracticeInstructionView === 'function') renderPracticeInstructionView();
+    if ((needs('flyerDistributions', 'flyerDistributionAssignments') || parts) && typeof renderFlyerDistributionView === 'function') renderFlyerDistributionView();
+    if ((needs('payments', 'castings', 'orgSettings') || parts) && typeof renderPaymentView === 'function') renderPaymentView();
+    if ((needs('castings') || parts) && typeof renderCastingView === 'function') renderCastingView();
+    if ((needs('eventResponses') || parts) && typeof renderMemberEventView === 'function') renderMemberEventView();
+    if ((needs('performanceDayInfos') || parts) && typeof renderPerformanceDayInfoView === 'function') renderPerformanceDayInfoView();
+    if ((needs('dateAdjustments', 'dateAdjustmentResponses') || parts) && typeof renderDateAdjustmentView === 'function') renderDateAdjustmentView();
+    if ((needs('pieceInfos')) && typeof renderPieceInfoView === 'function') renderPieceInfoView();
+    if ((needs('desiredPieces')) && typeof renderDesiredPieceView === 'function') renderDesiredPieceView();
+    if ((needs('orgSettings')) && typeof renderManualView === 'function') renderManualView();
+    if ((needs('promotions')) && typeof renderPromotionView === 'function') renderPromotionView();
     if (typeof renderAlbumView === 'function') {
-        renderAlbumView();
+        if (needs('albums')) renderAlbumView();
     }
-    if (typeof renderConcertRecordView === 'function') renderConcertRecordView();
-    if (typeof renderSnsView === 'function') renderSnsView();
+    if ((needs('concertRecordVideos')) && typeof renderConcertRecordView === 'function') renderConcertRecordView();
+    if ((needs('snsSettings')) && typeof renderSnsView === 'function') renderSnsView();
 }
 
 function renderCastingMembersList() {

@@ -7,7 +7,7 @@ import io
 import os
 from pathlib import Path
 from threading import Semaphore
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -134,17 +134,7 @@ def upload_album_photo(
 
 
 def _find_photo(album_id: int, photo_id: int) -> dict[str, Any]:
-    # Read only the requested album from committed storage. A per-process list
-    # cache can retain deleted photos or miss uploads from another instance.
-    album = _store().get("albums", album_id)
-    if album is None:
-        raise HTTPException(status_code=404, detail="Data not found")
-    photos = album.get("photos") or []
-    photo = next((item for item in photos if str(item.get("id")) == str(photo_id)), None)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-
-    return cast(dict[str, Any], photo)
+    return _repo.find_photo(album_id, photo_id, store=_store())
 
 
 def _thumbnail_key(photo: dict[str, Any]) -> str:
