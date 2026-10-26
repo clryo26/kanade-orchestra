@@ -33,7 +33,7 @@ jobs:
     env:
       UV_SYSTEM_CERTS: 'true'
       PORTAL_PERF_STAGE3_DB_URL: postgresql://perf_stage3a@127.0.0.1:5432/portal_perf_stage3a
-      PORTAL_PERF_STAGE3_REPORT: docs/perf_stage3/ci_comparison.json
+      PORTAL_PERF_STAGE3_REPORT: .tmp/perf_stage3/ci_comparison.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,9 +45,10 @@ jobs:
       - run: >-
           uv run pytest -q tests/backend/test_perf_stage3_context.py
           tests/backend/test_perf_stage3_postgres.py tests/backend/test_perf_stage3_measurements.py
+          tests/backend/test_stage1_4a_schema_compatibility.py
           tests/scripts/test_collection_clock_operations.py
       - uses: actions/upload-artifact@v4
         with:
           name: isolated-clock-postgres-${{ matrix.postgres }}
-          path: docs/perf_stage3/ci_comparison_scale*.json
+          path: .tmp/perf_stage3/ci_comparison_scale*.json
           if-no-files-found: error

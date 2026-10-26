@@ -120,7 +120,7 @@ def test_same_fixture_body_parity_and_http_measurements(database, monkeypatch, r
     dest = os.getenv("PORTAL_PERF_STAGE3_REPORT", "")
     if dest:
         report = Path(dest).resolve()
-        assert report.is_relative_to(Path("docs/perf_stage3").resolve())
+        assert report.is_relative_to(Path(".tmp/perf_stage3").resolve())
         report.parent.mkdir(parents=True, exist_ok=True)
         scale = request.node.callspec.params["database"]
         report = report.with_name(report.stem + f"_scale{scale}.json")

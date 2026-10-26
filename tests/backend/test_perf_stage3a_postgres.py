@@ -51,7 +51,7 @@ def isolated_db():
     destination = os.getenv("PORTAL_PERF_STAGE3_REPORT", "")
     if destination:
         target = Path(destination).resolve()
-        assert target.is_relative_to(Path("docs/perf_stage3a").resolve())
+        assert target.is_relative_to(Path(".tmp/perf_stage3a").resolve())
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(REPORT, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

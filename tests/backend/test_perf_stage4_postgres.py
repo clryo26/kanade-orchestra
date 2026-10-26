@@ -166,7 +166,7 @@ def isolated_db():
     destination = os.getenv("PORTAL_PERF_STAGE4_PG_REPORT", "").strip()
     if destination:
         path = (ROOT / destination).resolve()
-        assert path.parent == (ROOT / "docs/perf_stage4").resolve() and path.name.endswith("_AFTER.json")
+        assert path.parent == (ROOT / ".tmp/perf_stage4").resolve() and path.name.endswith("_AFTER.json")
         assert len(REPORT["photo_batches"]) == 60
         assert len(REPORT["writes"]) == 10 and len(REPORT["contention"]) == 4
         assert len(REPORT["same_loop_waves"]) == 2 and len(REPORT["omitted_photos"]) == 1
@@ -474,13 +474,15 @@ def test_real_reads_writes_audit_on_one_event_loop(environment):
 def test_capture_generic_put_omitted_photo_collection(environment):
     env = environment
     response, result = call(env, "PUT", "/api/extra/albums/1", json={"event_name": "Title-only API probe"})
-    assert response.status_code == 200 and response.json()["photos"] == []
+    # #150 is already on main. Historical BEFORE files retain the old loss;
+    # integrated runs must assert the fixed omission contract instead.
+    assert response.status_code == 200 and len(response.json()["photos"]) == 25
     with psycopg.connect(env["dsn"], autocommit=True) as observer:
-        assert observer.execute("SELECT count(*) FROM album_photos WHERE album_id=1").fetchone()[0] == 0
+        assert observer.execute("SELECT count(*) FROM album_photos WHERE album_id=1").fetchone()[0] == 25
         assert observer.execute("SELECT count(*) FROM audit_logs").fetchone()[0] == 1
     REPORT["omitted_photos"].append({
-        "status": 200, "remaining_album_photos": 0,
-        "scope": "Synthetic API probe, not a reproduced UI data-loss incident; no behaviour fix here",
+        "status": 200, "remaining_album_photos": 25,
+        "scope": "Integrated #150 contract: omitted photos preserved; historical BEFORE is unchanged",
         **result,
     })
 

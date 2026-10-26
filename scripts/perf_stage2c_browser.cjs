@@ -73,7 +73,7 @@ async function main() {
                 } finally { await context.close(); }
             }
         }
-        fs.writeFileSync('docs/perf_stage2_cde/c_browser.json', JSON.stringify(report, null, 2) + '\n');
+        fs.writeFileSync('.tmp/perf_stage2_cde/c_browser.json', JSON.stringify(report, null, 2) + '\n');
         console.log(JSON.stringify({ cases: report.cases.length, browser: report.browser, passed: true }));
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 }

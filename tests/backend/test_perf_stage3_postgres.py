@@ -33,7 +33,10 @@ def database(monkeypatch, request):
         assert conn.execute("SELECT current_database()").fetchone()[0] == "portal_perf_stage3a"
         conn.execute("DROP SCHEMA public CASCADE")
         conn.execute("CREATE SCHEMA public")
-        seed_baseline(conn, getattr(request, "param", 1), with_children=True)
+        options = getattr(request, "param", 1)
+        install_clocks = not isinstance(options, dict) or options.get("install_clocks", True)
+        seed_baseline(conn, options.get("scale", 1) if isinstance(options, dict) else options,
+                      with_children=True)
         conn.execute("ALTER TABLE performance_pieces ADD FOREIGN KEY(performance_id) "
                      "REFERENCES performances(id) ON DELETE CASCADE")
         conn.execute("ALTER TABLE payment_performance_fees ADD FOREIGN KEY(payment_id) "
@@ -43,12 +46,14 @@ def database(monkeypatch, request):
             if not conn.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (role,)).fetchone():
                 conn.execute(f"CREATE ROLE {role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION")
         conn.execute("GRANT portal_clock_maintainers TO perf_clock_sync")
-        with conn.transaction():
-            conn.execute(Path("db/migrations/023_portal_collection_versions.sql").read_text(encoding="utf-8"))
+        if install_clocks:
+            with conn.transaction():
+                conn.execute(Path("db/migrations/023_portal_collection_versions.sql").read_text(encoding="utf-8"))
         conn.execute("GRANT USAGE ON SCHEMA public TO perf_clock_app,perf_clock_sync")
         conn.execute("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO perf_clock_app,perf_clock_sync")
         conn.execute("GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO perf_clock_app,perf_clock_sync")
-        conn.execute("REVOKE INSERT,UPDATE,DELETE ON portal_data_generation,portal_collection_versions FROM perf_clock_app")
+        if install_clocks:
+            conn.execute("REVOKE INSERT,UPDATE,DELETE ON portal_data_generation,portal_collection_versions FROM perf_clock_app")
     monkeypatch.setenv("DATA_BACKEND", "db")
     monkeypatch.setenv("WEB_PUSH_ENABLED", "false")
     monkeypatch.setenv("PORTAL_READ_CONTEXT_PATHS", "")

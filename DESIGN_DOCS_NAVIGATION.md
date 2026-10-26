@@ -18,6 +18,7 @@
 - FRONTEND_LAYOUT_SPEC.md: 画面レイアウト仕様（表示イメージ中心）
 - API_DATABASE_SPEC.md: API と JSON データ仕様
 - PERFORMANCE_IMPROVEMENTS.md: 性能改善履歴
+- [第1〜4A 統合記録](docs/PERF_STAGE1_4A_INTEGRATION.md): 今回の配備候補の範囲、023有無の動作、計測要約と未配備条件
 - UNIT_TEST_SPEC.md: 単体テスト仕様（全体網羅）
 - INTEGRATION_TEST_SPEC.md: 結合テスト親仕様（担当別ハブ）
 - INTEGRATION_TEST_SPEC_BACKEND.md: 結合テスト仕様（バックエンド担当）

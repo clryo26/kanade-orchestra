@@ -33,7 +33,7 @@ async function run() {
     report.sourceSha256 = Object.fromEntries(files.map(f => [f, crypto.createHash('sha256').update(hashSource(f)).digest('hex')]));
     report.baselineSource = report.phase === 'before' && all ? 'replayed immutable eef4434 source' : null;
     const dest = path.resolve(process.argv[3] || '');
-    if (!dest.startsWith(path.resolve('docs/perf_stage2_cde') + path.sep)) throw new Error('Use docs/perf_stage2_cde output');
+    if (!dest.startsWith(path.resolve('.tmp/perf_stage2_cde') + path.sep)) throw new Error('Use .tmp/perf_stage2_cde output');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const { metrics, ...header } = report;
     // Preserve every sample on one line to keep repeated counters reviewable.

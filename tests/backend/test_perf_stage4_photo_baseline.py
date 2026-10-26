@@ -91,7 +91,7 @@ def photo_report():
                        "real_browser_cache": None, "iphone_bfcache": None},
         "samples": value["samples"],
     }
-    target = ROOT / "docs/perf_stage4/PHOTO_BASELINE_BEFORE.json"
+    target = ROOT / ".tmp/perf_stage4/PHOTO_BASELINE_BEFORE.json"
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 

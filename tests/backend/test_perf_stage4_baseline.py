@@ -163,9 +163,9 @@ def measurement_report():
     if not destination:
         return
     path = (ROOT / destination).resolve()
-    allowed = (ROOT / "docs/perf_stage4").resolve()
+    allowed = (ROOT / ".tmp/perf_stage4").resolve()
     if path.parent != allowed or path.suffix != ".json":
-        raise ValueError("Report must be a JSON file directly under docs/perf_stage4")
+        raise ValueError("Report must be a JSON file directly under .tmp/perf_stage4")
     assert len(samples) == 90, "Do not publish an incomplete baseline report"
     report = {
         "date": "2026-10-23", "phase": "4-0 BEFORE",

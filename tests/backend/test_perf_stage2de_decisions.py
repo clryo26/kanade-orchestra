@@ -16,7 +16,7 @@ from fastapi.responses import Response
 
 def report(name, value):
     if os.getenv("PORTAL_PERF_CDE_REPORT") == "1":
-        target = Path("docs/perf_stage2_cde") / name
+        target = Path(".tmp/perf_stage2_cde") / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

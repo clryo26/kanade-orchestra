@@ -11,5 +11,5 @@ for (const scale of [1, 2]) {
             htmlSha256: crypto.createHash('sha256').update(result.html).digest('hex') });
     }
 }
-fs.writeFileSync(`docs/perf_stage2_cde/r12_${process.argv[2]}.json`, JSON.stringify({ mode: 'real renderer, synthetic DOM sink, counted String key comparisons', metrics }, null, 2) + '\n');
+fs.writeFileSync(`.tmp/perf_stage2_cde/r12_${process.argv[2]}.json`, JSON.stringify({ mode: 'real renderer, synthetic DOM sink, counted String key comparisons', metrics }, null, 2) + '\n');
 console.log(metrics.map(({ scale, comparisons }) => ({ scale, comparisons })).filter((_, i) => i % 5 === 0));

@@ -15,8 +15,8 @@ async function main() {
         const cleanup = h.cache.cleanup ? await h.cache.cleanup() : null;
         const elapsedMs = performance.now() - started;
         const remaining = await h.records();
-        fs.mkdirSync('docs/perf_stage2_cde', { recursive: true });
-        fs.writeFileSync(`docs/perf_stage2_cde/e2_${before ? 'before' : 'after'}.json`, JSON.stringify({
+        fs.mkdirSync('.tmp/perf_stage2_cde', { recursive: true });
+        fs.writeFileSync(`.tmp/perf_stage2_cde/e2_${before ? 'before' : 'after'}.json`, JSON.stringify({
             phase: before ? 'before (committed eef4434 source)' : 'after (working source)',
             mode: 'fake-indexeddb, 205 synthetic response records, 5 expired',
             initialCount: initial.length, remainingCount: remaining.length,
