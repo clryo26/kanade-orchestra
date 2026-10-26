@@ -4,7 +4,7 @@
 
 本番反映前に、以下を実運用チェック表として記録する。
 
-## 第1〜4A 最終一括配備の実行票（TEST配備済み・受入中）
+## 第1〜4A 最終一括配備の実行票（TEST配備済み・利用者の簡易受入済み）
 
 対象は `ac5b4e337bcbab06de7008098b38baf41a810f90`（#161）。追加migrationは023だけ、024〜033・4C/4Dは含めない。本票の追加で配備候補SHAを変更しない。以下のコマンドは**配備を決定した時点だけ**実行する。
 
@@ -57,11 +57,11 @@ workflow自身は「TESTで実際に100%配信するrevisionのdigestとtemplate
 ### 2026-10-26 TEST配備の実施結果
 
 - [Deploy Test run 40306918165](https://github.com/clryo26/kanade-orchestra/actions/runs/40306918165)：19:22:33 JST開始、19:25:02 JST完了、success。入力SHA・実際の配信revisionの `GIT_SHA` は上記候補と一致し、同じ候補イメージのdigestへ100%配信を確認した。具体的なrevision/digestと直前の切り戻し先はGit対象外の `.tmp/test-release-before.json`・`test-release-after.json` に保持する。
-- migrationログは001〜022をskip、023だけapply、`DB migrations completed`。ローカルからの配備後読取接続は `OperationalError` で失敗したため、**実DBでの001〜023全checksum一致・有効トリガー等の再検証は未完了**。migration正常終了だけを外部からのschema検証成功とは扱わない。
+- migrationログは001〜022をskip、023だけapply、`DB migrations completed`。利用者がTESTで履歴照合SQLを再実行し、001〜023の23行すべて `checksum_matches=t`、余分なversionなしの結果を受領したため、**配備後の履歴照合は合格**。正確な再実行時刻は未申告。ローカルからの読取接続は `OperationalError` で失敗しており、追加表・有効トリガー等の独立したschema再検証は未実施。履歴照合とschema検証を混同しない。
 - 20:13 JST確認：`/api/health` は200/healthy、DB設定・GCS設定あり、maintenance無効。トップ画面・`/static/js/main.js` も200。healthの設定表示は実DBクエリの成功証明ではない。第3段階の読取・版ETagは空のまま、日次照合変数も未設定（無効）。
 - 配備後revisionの19:12:38〜20:12:38 JSTの既存ログ集計は要求3件、5xx 0件、ASGI例外・`No response returned` の文字列検出各0行。保存要求は0件で性能比較はしない。save_busy/タイムアウト総数は引き続き未計測。集計は `.tmp/test-release-after-logs.json` のみ。
 - クレジット上限による中断で配備完了の追跡が停止し、再開時の20:10 JSTにDeploy Testを `disabled_manually` へ戻した。停止期間中の追加の配備runはなく、mainも `f4c1264` のまま。本番のrevision/digest/100%配信は前後で同一で、本番migration・昇格は行っていない。
-- ログイン済みブラウザの操作ツールはNode runtime起動失敗で使用できず、画像・録音の再生/MP3変換・保存の実操作とiPhone（Safari/ホーム画面）の受入は利用者の確認待ち。CIの成功を実環境の操作確認に代用しない。これらと配備後schema検証の結果を受けて、本番昇格は別途判断する。
+- ログイン済みブラウザの操作ツールはNode runtime起動失敗で使用できず、エージェントによる実操作確認は未実施。その後、TESTの画像・録音再生/MP3変換・保存とiPhone（Safari/ホーム画面）の確認依頼に対し、利用者から「ざっと見たところ問題ありませんでした」と報告を受領した。**利用者の簡易受入は問題なし**と記録し、MP3変換を含む各操作・全実機チェック項目を個別に完了したとは扱わない。CIの成功で実操作の確認範囲を補わない。本番昇格はまだ指示・実行しておらず、別途判断する。
 
 ## 記録欄
 
