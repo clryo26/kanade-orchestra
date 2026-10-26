@@ -447,7 +447,8 @@ def test_real_reads_writes_audit_on_one_event_loop(environment):
 
         pulse = asyncio.create_task(heartbeat())
         try:
-            async with httpx.AsyncClient(app=main.app, base_url="http://synthetic", headers=dict(env["client"].headers)) as client:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app),
+                                         base_url="http://synthetic", headers=dict(env["client"].headers)) as client:
                 await asyncio.gather(*(one(client, index) for index in range(12)))
             await asyncio.sleep(0.02)
         finally:

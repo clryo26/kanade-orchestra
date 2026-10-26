@@ -47,6 +47,19 @@ jobs:
           tests/backend/test_perf_stage3_postgres.py tests/backend/test_perf_stage3_measurements.py
           tests/backend/test_stage1_4a_schema_compatibility.py
           tests/scripts/test_collection_clock_operations.py
+      - name: Historical probe isolation and application pool cleanup
+        env:
+          PORTAL_PERF_STAGE3_REPORT: ''
+        run: uv run pytest -q tests/backend/test_perf_stage3a_postgres.py
+      - name: Prepare isolated target-photo database
+        run: >-
+          uv run python -c "import psycopg;
+          c=psycopg.connect('postgresql://perf_stage3a@127.0.0.1:5432/portal_perf_stage3a',autocommit=True);
+          c.execute('CREATE DATABASE portal_perf_stage4'); c.close()"
+      - name: Stage 4A target-photo and audit regressions
+        env:
+          PORTAL_PERF_STAGE4_DB_URL: postgresql://perf_stage3a@127.0.0.1:5432/portal_perf_stage4
+        run: uv run pytest -q tests/backend/test_perf_stage4_postgres.py
       - uses: actions/upload-artifact@v4
         with:
           name: isolated-clock-postgres-${{ matrix.postgres }}

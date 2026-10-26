@@ -41,8 +41,13 @@ def isolated_db():
     cfg = conninfo_to_dict(DSN)
     assert cfg.get("host") in {"127.0.0.1", "localhost", "::1"}
     assert cfg.get("dbname") == "portal_perf_stage3a"
-    with psycopg.connect(DSN, connect_timeout=5) as conn:
+    with psycopg.connect(DSN, connect_timeout=5, autocommit=True) as conn:
         assert conn.execute("SELECT current_database()").fetchone()[0] == "portal_perf_stage3a"
+        # The combined suite runs 023 integration tests before this historical
+        # BEFORE harness. Reset only this already-validated dedicated database;
+        # old FK/clock triggers must not contaminate baseline/prototype probes.
+        conn.execute("DROP SCHEMA public CASCADE")
+        conn.execute("CREATE SCHEMA public")
         REPORT["postgres_version"] = conn.execute("SHOW server_version").fetchone()[0]
     REPORT["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     REPORT["python_version"] = platform.python_version()
