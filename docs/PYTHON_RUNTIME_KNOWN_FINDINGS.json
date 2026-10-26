@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "package": "aiohttp",
+      "version": "3.14.1",
+      "ids": [
+        "CVE-2026-111063",
+        "CVE-2026-111064",
+        "CVE-2026-111065",
+        "CVE-2026-111066",
+        "CVE-2026-111748",
+        "CVE-2026-111749",
+        "CVE-2026-111750",
+        "GHSA-2g87-pp6c-29x5",
+        "PYSEC-2026-3545",
+        "PYSEC-2026-3546",
+        "PYSEC-2026-3547"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "certifi",
+      "version": "2026.5.20",
+      "ids": [
+        "PYSEC-2026-4320"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "msgpack",
+      "version": "1.2.0",
+      "ids": [
+        "PYSEC-2026-3625"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "multidict",
+      "version": "6.7.1",
+      "ids": [
+        "PYSEC-2026-4244"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "pyasn1",
+      "version": "0.6.3",
+      "ids": [
+        "PYSEC-2026-3455",
+        "PYSEC-2026-3456",
+        "PYSEC-2026-3457"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "python-dotenv",
+      "version": "1.0.0",
+      "ids": [
+        "PYSEC-2026-2270"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "setuptools",
+      "version": "69.0.3",
+      "ids": [
+        "GHSA-xmj3-9gf7-h52w",
+        "PYSEC-2025-49",
+        "PYSEC-2026-1918",
+        "PYSEC-2026-3447"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    },
+    {
+      "package": "urllib3",
+      "version": "2.7.0",
+      "ids": [
+        "PYSEC-2026-4175",
+        "PYSEC-2026-4176",
+        "PYSEC-2026-4177"
+      ],
+      "reason": "利用経路と修正版の互換性を確認して更新する",
+      "owner": "リポジトリ管理者",
+      "expires_on": "2026-11-09"
+    }
+  ]
+}

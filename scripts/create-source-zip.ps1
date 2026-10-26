@@ -41,5 +41,5 @@ foreach ($cmd in $commands) {
 }
 
 Write-Host '[ERROR] Python runtime not found.' -ForegroundColor Red
-Write-Host 'Next action: install Python 3.10+ (or run npm run setup:local after Python install).' -ForegroundColor Yellow
+Write-Host 'Next action: install Python 3.12+ (or run npm run setup:local after Python install).' -ForegroundColor Yellow
 exit 1
