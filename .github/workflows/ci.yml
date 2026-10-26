@@ -27,7 +27,7 @@ jobs:
           python-version: '3.11'
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -78,7 +78,7 @@ jobs:
           python-version: '3.11'
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync --extra dev
@@ -125,7 +125,7 @@ jobs:
           python-version: '3.11'
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -173,7 +173,7 @@ jobs:
           python-version: '3.11'
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync --extra dev
