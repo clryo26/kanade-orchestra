@@ -27,6 +27,7 @@
 
 ## 2. PostgreSQL / DB
 
+- [ ] #150対応版は、[単独修正の契約・検証記録](ALBUM_PUT_PHOTOS_FIX.md)を確認し、写真の省略は保持、`photos: null` 等は422、全写真参照の削除には `photos: []` が必要、省略した作成者ID・名前は維持、という契約差分をリリース説明へ記載した。
 - [ ] 本番 DB 接続確認を実施した
 - [ ] マイグレーション適用状態を確認した
 - [ ] チューナーの履歴を公開する版では、`017_tuner_practice.sql` が `schema_migrations` に記録され、`members` のトリガー `trg_tuner_members_owner_guard_delete`／`_insert` があることを確認した（手順と戻し方は `docs/TUNER_ADVANCED_IMPLEMENTATION_STATUS.md` の8章）

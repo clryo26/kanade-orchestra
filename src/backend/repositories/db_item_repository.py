@@ -30,6 +30,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, TypeVar
@@ -133,6 +134,36 @@ def _vote_key(vote: Any) -> tuple[str, str]:
         member_id = str(vote.get("member_id") or "")
         return (member_id, "" if member_id else str(vote.get("name") or ""))
     return ("", str(vote or ""))
+
+
+def _album_update_snapshot(name: str, current: dict[str, Any]) -> dict[str, Any] | None:
+    if name != "albums":
+        return None
+    # Issue #150: preserve only these omission-sensitive fields, not a new
+    # PATCH contract for every parent/collection. Snapshot under the row lock.
+    return deepcopy({key: current[key] for key in ("photos", "created_by_member_id", "created_by_member_name") if key in current})
+
+
+def _complete_album_update(updated: dict[str, Any], snapshot: dict[str, Any] | None) -> bool:
+    """Validate after mutate's authorization; return whether photos were omitted."""
+    if snapshot is None:
+        return False
+    stored = snapshot.get("photos")
+    if stored is None:
+        stored = []  # Explicit local legacy records may not yet have photos.
+    if not isinstance(stored, list) or any(not isinstance(photo, dict) for photo in stored):
+        logger.error("Album update blocked: stored photos are not an array of objects")
+        raise RuntimeError("Stored album photos have invalid format")
+    snapshot["photos"] = stored
+    omitted = "photos" not in updated
+    if omitted:
+        updated["photos"] = stored
+    elif not isinstance(updated["photos"], list) or any(not isinstance(photo, dict) for photo in updated["photos"]):
+        raise HTTPException(status_code=422, detail="写真情報の形式が正しくありません")
+    for key in ("created_by_member_id", "created_by_member_name"):
+        if key not in updated and key in snapshot:
+            updated[key] = snapshot[key]
+    return omitted
 
 
 def apply_server_child_fields(
@@ -468,12 +499,21 @@ class PostgresRowStore:
             now = c.db_now(refresh=True)
             version = _next_version(current.get("updated_at"), now, table=table, item_id=item_id)
             ensure_expected_updated_at(current, expected_updated_at)
-            updated = dict(mutate(dict(current)))
+            snapshot = _album_update_snapshot(name, current)
+            # A mutator must not mutate nested persisted values through the
+            # shallow current dict, especially if it later fails validation.
+            updated = dict(mutate(deepcopy(current) if snapshot is not None else dict(current)))
+            photos_omitted = _complete_album_update(updated, snapshot)
             now_text = format_instant(version)
             updated.update(
                 {"id": current["id"], "created_at": current.get("created_at"), "updated_at": now_text, "organization_id": c.tenant_id}
             )
             apply_server_child_fields(name, updated, current, now_text)
+            if photos_omitted:
+                assert snapshot is not None
+                # No photo was edited: retain all stored child timestamps too.
+                # SQL replacement still happens; diff writes belong to stage 4C.
+                updated["photos"] = snapshot["photos"]
             # An unrecognized legacy date encoding is displayed as unknown.
             # A blank browser date input must not erase its original DB value
             # before Q04 establishes how that data is to be migrated.
@@ -742,10 +782,19 @@ class ListRowStore:
                 raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
             current = items[index]
             ensure_expected_updated_at(current, expected_updated_at)
-            updated = dict(mutate(dict(current)))
+            snapshot = _album_update_snapshot(name, current)
+            # A mutator must not mutate nested persisted values through the
+            # shallow current dict, especially if it later fails validation.
+            updated = dict(mutate(deepcopy(current) if snapshot is not None else dict(current)))
+            photos_omitted = _complete_album_update(updated, snapshot)
             now_text = next_updated_at(current.get("updated_at"))
             updated.update({"id": current["id"], "created_at": current.get("created_at") or now_text, "updated_at": now_text})
             apply_server_child_fields(name, updated, current, now_text, add_missing=False)
+            if photos_omitted:
+                assert snapshot is not None
+                # No photo was edited: retain all stored child timestamps too.
+                # SQL replacement still happens; diff writes belong to stage 4C.
+                updated["photos"] = snapshot["photos"]
             items[index] = updated
             self._save(name, items)
             return dict(updated)
