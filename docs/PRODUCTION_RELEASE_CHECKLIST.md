@@ -4,15 +4,15 @@
 
 本番反映前に、以下を実運用チェック表として記録する。
 
-## 第1〜4A 最終一括配備の実行票（準備のみ・未実行）
+## 第1〜4A 最終一括配備の実行票（TEST配備済み・受入中）
 
 対象は `ac5b4e337bcbab06de7008098b38baf41a810f90`（#161）。追加migrationは023だけ、024〜033・4C/4Dは含めない。本票の追加で配備候補SHAを変更しない。以下のコマンドは**配備を決定した時点だけ**実行する。
 
 ### 開始条件・履歴照合
 
-- [ ] TEST→本番の順に [履歴照合SQL](sql/PERF_RELEASE_MIGRATION_HISTORY_READONLY.sql) を利用者が全文実行し、環境・実行日時・結果を記録した。配備前は001〜022の `checksum_matches=true`、023だけNULL、余分なversionなしが合格。false、023以外のNULL、SQLエラーは中止する。出力はversionと一致判定だけで、接続情報を記録しない。
-- [ ] SQLの期待値は候補SHAの23ファイルを `migrate_db.py` と同じUTF-8テキスト読込（改行正規化・BOM保持）でSHA256化したもの。23件の再計算と隔離PG16での正常・不一致・別version欠落・余分なversion・全適用の5ケースを検証済み。**実DBの履歴照合は利用者の実行待ち**。
-- [ ] 対象SHAのCI・Isolated collection clock testsがすべて完了・成功し、実行待ち/実行中のmain CI・配備がないことを再確認した。Deploy Testを有効にしている**全期間**、mainへのpushを止める。他のCI再実行によるmain成功イベントも発生させない。
+- [x] TEST→本番の順に [履歴照合SQL](sql/PERF_RELEASE_MIGRATION_HISTORY_READONLY.sql) を利用者が全文実行し、両環境とも001〜022=true・023だけNULL・余分なしとの報告を受領した。実行日は2026-10-26、時刻は両方とも「ほんのさっき」との申告で正確な時刻は未記録。架空の実行時刻を補わない。false、023以外のNULL、SQLエラーは中止条件を維持する。
+- [x] SQLの期待値は候補SHAの23ファイルを `migrate_db.py` と同じUTF-8テキスト読込（改行正規化・BOM保持）でSHA256化したもの。23件の再計算と隔離PG16での正常・不一致・別version欠落・余分なversion・全適用の5ケースを検証済み。実DBの配備前履歴照合は上記の利用者報告による。
+- [x] 配備候補とmain `f4c1264` のCI・Isolated collection clock testsがすべて完了・成功していることを確認した。配備の有効化中はmainへpushせず、CIの再実行も行わなかった。実行中一覧に残る2026-08-09の古いDeploy Test runは変更せず、今回のrunをIDで追跡した。
 - [ ] TESTと本番それぞれの直前の100%配信revision・digest、バックアップ時刻・復元手順を記録した。利用の少ない時間帯に実行する。023が `lock_timeout` で失敗したら、配備されていないことを確認してから再実行する。023は5秒のロック待ちで失敗するとトランザクション全体が戻り、workflowも配備へ進まない。通常配備workflowのTEST maintenance検査は迂回しない。
 - [ ] 第3段階の `PORTAL_READ_CONTEXT_PATHS`・`PORTAL_VERSION_ETAG_PATHS` は未指定/空、TEST日次照合も無効を維持する。pooler容量とアプリロールの条件を満たす前に有効化しない。
 
@@ -24,7 +24,7 @@ TESTの既存ログは標本不足で保存性能を比較できないため、T
 
 `save_busy`とタイムアウト総数は応答本文/クライアント失敗等が一律にログへ出ないため未計測（null）とし、HTTP 503/504や文字列検出0件で代用しない。ASGIは例外の一意件数ではなくログ行数。標本なしを応答0msとせず、ログ除外/サンプリングの可能性も残す。この準備では実際の保存操作や本番ログ集計は行っていない。
 
-### TEST実行と受入（この票では未実行）
+### TEST実行と受入（実施結果は下記）
 
 ```powershell
 gh workflow enable deploy-test.yml --repo clryo26/kanade-orchestra
@@ -52,7 +52,16 @@ dispatch失敗・watch中断時も無効化を忘れず、開始済みrunは別�
 
 本番の [Promote Production](../.github/workflows/promote-production.yml) は2026-10-26確認時 **active・workflow_dispatchのみ**。TESTへの配備では起動しない。本番昇格は別の実行判断とし、`tested_sha` と `tested_image_digest` を渡す。TESTのサービスtemplateのdigestとの一致を強制し、同一digestを再ビルドせず本番へ配備する。その前に**本番DBの全未適用migration**を適用するため、本番でも未適用が023だけという照合結果が必要。
 
-workflow自身は「TESTで実際に100%配信するrevisionのdigestとtemplateの一致」「そのイメージのビルドSHAと入力tested_shaの一致」までは検査しない。昇格前にこの両方を実像のrevision情報・イメージのrevisionラベルで確認・記録する。migration後の停止点、health受入、自動rollbackもないため、本番も同じ検証・切り戻しを行う。現時点ではDeploy Testの無効、本番workflowのactiveを変更しておらず、配備・実DBへのmigrationは一切実行していない。
+workflow自身は「TESTで実際に100%配信するrevisionのdigestとtemplateの一致」「そのイメージのビルドSHAと入力tested_shaの一致」までは検査しない。昇格前にこの両方を実像のrevision情報・イメージのrevisionラベルで確認・記録する。migration後の停止点、health受入、自動rollbackもないため、本番も同じ検証・切り戻しを行う。本番昇格は未実行。TESTの実施結果は次のとおり。
+
+### 2026-10-26 TEST配備の実施結果
+
+- [Deploy Test run 40306918165](https://github.com/clryo26/kanade-orchestra/actions/runs/40306918165)：19:22:33 JST開始、19:25:02 JST完了、success。入力SHA・実際の配信revisionの `GIT_SHA` は上記候補と一致し、同じ候補イメージのdigestへ100%配信を確認した。具体的なrevision/digestと直前の切り戻し先はGit対象外の `.tmp/test-release-before.json`・`test-release-after.json` に保持する。
+- migrationログは001〜022をskip、023だけapply、`DB migrations completed`。ローカルからの配備後読取接続は `OperationalError` で失敗したため、**実DBでの001〜023全checksum一致・有効トリガー等の再検証は未完了**。migration正常終了だけを外部からのschema検証成功とは扱わない。
+- 20:13 JST確認：`/api/health` は200/healthy、DB設定・GCS設定あり、maintenance無効。トップ画面・`/static/js/main.js` も200。healthの設定表示は実DBクエリの成功証明ではない。第3段階の読取・版ETagは空のまま、日次照合変数も未設定（無効）。
+- 配備後revisionの19:12:38〜20:12:38 JSTの既存ログ集計は要求3件、5xx 0件、ASGI例外・`No response returned` の文字列検出各0行。保存要求は0件で性能比較はしない。save_busy/タイムアウト総数は引き続き未計測。集計は `.tmp/test-release-after-logs.json` のみ。
+- クレジット上限による中断で配備完了の追跡が停止し、再開時の20:10 JSTにDeploy Testを `disabled_manually` へ戻した。停止期間中の追加の配備runはなく、mainも `f4c1264` のまま。本番のrevision/digest/100%配信は前後で同一で、本番migration・昇格は行っていない。
+- ログイン済みブラウザの操作ツールはNode runtime起動失敗で使用できず、画像・録音の再生/MP3変換・保存の実操作とiPhone（Safari/ホーム画面）の受入は利用者の確認待ち。CIの成功を実環境の操作確認に代用しない。これらと配備後schema検証の結果を受けて、本番昇格は別途判断する。
 
 ## 記録欄
 
