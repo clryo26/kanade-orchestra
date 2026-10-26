@@ -4,7 +4,7 @@
 
 本番反映前に、以下を実運用チェック表として記録する。
 
-## 第1〜4A 最終一括配備の実行票（本番配備済み・本番受入中）
+## 第1〜4A 最終一括配備の実行票（本番配備・簡易受入済み、24時間比較待ち）
 
 対象は `ac5b4e337bcbab06de7008098b38baf41a810f90`（#161）。追加migrationは023だけ、024〜033・4C/4Dは含めない。本票の追加で配備候補SHAを変更しない。以下のコマンドは**配備を決定した時点だけ**実行する。
 
@@ -85,7 +85,8 @@ TESTの承認済みSHA・digest・100%配信と、本番の直前revision/digest
 - 開始直前の24時間ログを **00:06:22 JST** に再採取して `.tmp/production-before.json` を更新した。397要求、更新系33件、全更新系p50=2157.500ms・p95=5623.272ms、観測5xx/ASGI例外文字列各0。更新系のAPI構成と、通常の登録・編集の標本がないという制約は前項のとおり。
 - [Promote Production run 40346118077](https://github.com/clryo26/kanade-orchestra/actions/runs/40346118077)：**00:06:56 JST開始、00:08:30 JST完了、success**。`tested_sha=ac5b4e337bcbab06de7008098b38baf41a810f90`、`tested_image_digest=sha256:6fa88c379d9086dd5abc3eb00c18b6ba6d218e9addfeb651619d6d4e9ea521ed`。001〜022をskip、023だけapply、`DB migrations completed` を確認した。
 - 00:09 JSTの独立したCloud Run読取確認で、本番のSHA・digestが入力およびTESTと一致し、単一revisionへ100%配信を確認。第3段階の読取・版ETagは未指定/空。TESTのrevision/digest/交通配分は変更なし。`/api/health` は200/healthy、DB/GCS設定あり、maintenance無効、トップ画面とJSも200。詳細は `.tmp/test-release-promotion-after.json`・`production-release-acceptance.json` のみ保存する。
-- 初回の直後ログ集計は要求0件で、反映遅延の可能性があるためエラー率の判断には使わない。00:11:02 JSTまでの再集計では新revisionの27要求（200が26、304が1）、5xx・ASGI例外/`No response returned`文字列各0行、保存要求0件を確認した。本番の配備後履歴照合・48トリガー/2表の確認と画像・録音・保存の実操作は利用者へ依頼済み。CI・TESTの結果で本番実操作を代用しない。
+- 初回の直後ログ集計は要求0件で、反映遅延の可能性があるためエラー率の判断には使わない。00:11:02 JSTまでの再集計では新revisionの27要求（200が26、304が1）、5xx・ASGI例外/`No response returned`文字列各0行、保存要求0件を確認した。その後、利用者から本番の履歴照合結果001〜023の23行すべて `checksum_matches=t`、余分なversionなしを受領し、**本番の配備後履歴照合も合格**。48トリガー/2表の件数結果は未提示であり、実行済みとは記録しない。
+- 本番の画像・録音再生・保存等の確認依頼に対し、利用者から「簡単ですが、動かしてみた感じでは大丈夫」と報告を受領した。**利用者による本番の簡易受入は問題なし**。全操作・全実機項目やMP3変換を個別に網羅した確認とは区別する。正確なSQL/操作確認の時刻は未申告。CI・TESTの結果で本番実操作の確認範囲を補わない。
 - **24時間比較は未実施**。2026-10-28 **00:09 JST以降**に `python scripts/capture_test_release_baseline.py --environment production --hours 24 --output .tmp/production-after-24h.json` で再集計し、前後のAPI別標本数・窓長・p50/p95・5xx・ASGIログ行数を比較する。save_busy/タイムアウト総数は未計測を維持する。06:06 JST頃には6時間の復元基準点が保持範囲外になるため、24時間比較までそのPITR時点を保持できるとは扱わない。アプリの切り戻しは直前revisionへ100%を戻し、023と第3段階無効を維持する。
 
 ## 記録欄
