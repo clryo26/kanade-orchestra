@@ -72,8 +72,17 @@ describe('window.portalStartup metrics (Phase 2)', () => {
             error: () => {},
         };
 
-        // Run startup_guard.js in the context
-        vm.runInContext(startupGuardCode, global);
+        // Startup reads Date.now() at initialization and again for APP_START.
+        // Keep loading deterministic without changing clocks used by later tests.
+        const contextDate = vm.runInContext('Date', global);
+        const realNow = contextDate.now;
+        const loadTime = realNow();
+        contextDate.now = () => loadTime;
+        try {
+            vm.runInContext(startupGuardCode, global);
+        } finally {
+            contextDate.now = realNow;
+        }
     });
 
     describe('APP_START metric', () => {

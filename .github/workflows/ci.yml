@@ -84,7 +84,8 @@ jobs:
         run: uv sync --extra dev
 
       - name: Python dependency vulnerability scan
-        run: uvx pip-audit
+        # Keep the isolated audit tool's dependency patched; app deps are unchanged.
+        run: uvx --with "filelock>=4.2.1" pip-audit
 
       - name: Python syntax check
         run: uv run python -m compileall -q src/backend tests
