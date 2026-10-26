@@ -172,7 +172,7 @@ npm run test:e2e
 | レイヤー | 技術 |
 |---------|------|
 | **フロントエンド** | HTML5, CSS3, Bootstrap 5, Vanilla JavaScript |
-| **バックエンド** | FastAPI (Python 3.10+) |
+| **バックエンド** | FastAPI (Python 3.12+) |
 | **音声処理** | pydub, librosa |
 | **クラウドストレージ** | Google Cloud Storage |
 | **認証** | Google OAuth 2.0 |
@@ -181,7 +181,7 @@ npm run test:e2e
 
 ## 📋 システム要件
 
-- Python 3.10以上
+- Python 3.12以上
 - Windows 11（開発環境）
 - ffmpeg（音声変換用）
 - UV（パッケージマネージャー）
@@ -391,7 +391,7 @@ recordingsLoaded: false,
 
 ```dockerfile
 # Dockerfile例（実装予定）
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 

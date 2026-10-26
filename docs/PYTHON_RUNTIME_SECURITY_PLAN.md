@@ -63,6 +63,16 @@ Python更新時はDockerfile、`.python-version`、`requires-python`、Lint/型�
 
 マージ・配備は別の判断とし、TESTへの自動配備とmigrationの副作用を含めて確認する。#156の修正や未マージの性能改善は、この監査修正に含めない。
 
+## Python 3.12 / Pillow 13の実装単位
+
+`fix/python312-pillow-security-20261026`では、#158を土台にPython 3.12とPillow 13.0.0へ更新する。Docker・`.python-version`・requires-python・型/Lint対象版・アプリを実行するCI/同期ジョブを3.12へ揃える。監査ツールの独立した3.11指定は維持する。3.10/3.11のCIマトリクスは3.12の1組へ置き換える。マージ・配備済みという意味ではない。
+
+3.12/Linuxの実監査は75パッケージ、skip 0、8パッケージに25の既知報告ID組、新規・staleとも0、終了0。Pillowの37組だけを一覧から削除し、期限を延長しない。残る8パッケージの11月9日の期限は維持する。requirements SHA256は`4b06a91960dcbb3b0294ac2df6f8f17c81a538069be6f6ef83450bcc739a7705`。独立した脆弱性数や適用性の判断ではない。
+
+数値計算は既存のロックにあったPython別分岐から、NumPy 2.4.6・SciPy 1.17.1・scikit-learn 1.9.0などの3.12対応版を選ぶ。古いPython向けの分岐が不要になった分、lockが縮む。librosa・pydub・uvicornなどの直接指定は変更しない。
+
+JPEG・PNG・WebP・HEIF・EXIF回転・不正画像は既存の画像試験で確認する。実コーデックでのWAV→MP3変換と再生時間取得、librosaの有限なRMS計算を回帰試験に追加する。現在のHTTP録音解析サービスはplaceholderなので、librosaの計算試験を実装済みの解析APIの試験とは扱わない。受付画像形式は変えない。実iPhone・認証済みTEST/本番の受入と、マージ・配備は別途行う。
+
 ## 根拠
 
 - [pip-audit公式](https://github.com/pypa/pip-audit#usage)
