@@ -1,8 +1,58 @@
 # PRODUCTION_RELEASE_CHECKLIST
 
-最終更新: 2026-10-23
+最終更新: 2026-10-26
 
 本番反映前に、以下を実運用チェック表として記録する。
+
+## 第1〜4A 最終一括配備の実行票（準備のみ・未実行）
+
+対象は `ac5b4e337bcbab06de7008098b38baf41a810f90`（#161）。追加migrationは023だけ、024〜033・4C/4Dは含めない。本票の追加で配備候補SHAを変更しない。以下のコマンドは**配備を決定した時点だけ**実行する。
+
+### 開始条件・履歴照合
+
+- [ ] TEST→本番の順に [履歴照合SQL](sql/PERF_RELEASE_MIGRATION_HISTORY_READONLY.sql) を利用者が全文実行し、環境・実行日時・結果を記録した。配備前は001〜022の `checksum_matches=true`、023だけNULL、余分なversionなしが合格。false、023以外のNULL、SQLエラーは中止する。出力はversionと一致判定だけで、接続情報を記録しない。
+- [ ] SQLの期待値は候補SHAの23ファイルを `migrate_db.py` と同じUTF-8テキスト読込（改行正規化・BOM保持）でSHA256化したもの。23件の再計算と隔離PG16での正常・不一致・別version欠落・余分なversion・全適用の5ケースを検証済み。**実DBの履歴照合は利用者の実行待ち**。
+- [ ] 対象SHAのCI・Isolated collection clock testsがすべて完了・成功し、実行待ち/実行中のmain CI・配備がないことを再確認した。Deploy Testを有効にしている**全期間**、mainへのpushを止める。他のCI再実行によるmain成功イベントも発生させない。
+- [ ] TESTと本番それぞれの直前の100%配信revision・digest、バックアップ時刻・復元手順を記録した。利用の少ない時間帯に実行する。023が `lock_timeout` で失敗したら、配備されていないことを確認してから再実行する。023は5秒のロック待ちで失敗するとトランザクション全体が戻り、workflowも配備へ進まない。通常配備workflowのTEST maintenance検査は迂回しない。
+- [ ] 第3段階の `PORTAL_READ_CONTEXT_PATHS`・`PORTAL_VERSION_ETAG_PATHS` は未指定/空、TEST日次照合も無効を維持する。pooler容量とアプリロールの条件を満たす前に有効化しない。
+
+### 保存性能を比較する環境
+
+TESTの既存ログは標本不足で保存性能を比較できないため、TESTは機能受入を行う（必要なら利用者が前後で同じ保存操作を数回行い所要時間を記録する）。集計結果は `.tmp/` に置き、リポジトリには保存しない。
+
+本番昇格の直前に、既存スクリプトで `python scripts/capture_test_release_baseline.py --environment production --hours 24 --output .tmp/production-before.json` を実行し、昇格後も同じ長さの観測窓で `.tmp/production-after.json` に集計する。昇格後24時間の比較なら24時間経過後に採取し、両方とも対象revisionだけの24時間が揃うことを確認する。短い窓で比較する場合は前後とも同じ `--hours` にする。APIごとのp50/p95・標本数・HTTPエラー/504・ASGIログ行数を比較し、API構成や時間帯の違いも記録する。上限件数に達した集計は不完全として使わない。生ログ・要求URL・本文は保存しない。
+
+`save_busy`とタイムアウト総数は応答本文/クライアント失敗等が一律にログへ出ないため未計測（null）とし、HTTP 503/504や文字列検出0件で代用しない。ASGIは例外の一意件数ではなくログ行数。標本なしを応答0msとせず、ログ除外/サンプリングの可能性も残す。この準備では実際の保存操作や本番ログ集計は行っていない。
+
+### TEST実行と受入（この票では未実行）
+
+```powershell
+gh workflow enable deploy-test.yml --repo clryo26/kanade-orchestra
+gh workflow run deploy-test.yml --repo clryo26/kanade-orchestra --ref main -f target_sha=ac5b4e337bcbab06de7008098b38baf41a810f90
+# dispatchの対象SHA・開始時刻から当該run IDを特定して記録し、完了まで確認する。
+gh run watch <当該run-ID> --repo clryo26/kanade-orchestra --exit-status
+# 成否を問わず再び無効化し、disabled_manuallyを確認してからpush停止を解除する。
+gh workflow disable deploy-test.yml --repo clryo26/kanade-orchestra
+```
+
+dispatch失敗・watch中断時も無効化を忘れず、開始済みrunは別途状態確認する（無効化は実行のキャンセルではない）。workflowは未適用migration全件を適用してから直ちに配備する。migration失敗時は配備へ進まない。migration後・配備前の検証停止点はなく、023の検証は以下の配備後受入で行う。
+
+受入は次の順で、実施時刻・判定・対象revisionを記録する。
+
+1. **023**：同じ履歴照合SQLで001〜023がすべてtrue・余分なし。加えて [第3段階のschema検証](PERF_STAGE3_IMPLEMENTATION.md) に従い追加表・有効トリガーを確認する。履歴の一致だけで実schemaの完全性を代用しない。運用接続が確保済みなら `scripts/portal_collection_clocks.py preflight`（対象DB/環境を明示、`--application-role`なし）の読取専用検査を使える。
+2. **health**：期待SHA・digest・単一revisionへの100%配信と `/api/health`、第3段階の無効を確認する。
+3. **画像・録音**：原画像・サムネイル・EXIF回転、録音のアップロード/再生、実音声のMP3変換を確認する。
+4. **保存**：TESTは保存機能の受入を行い、必要なら前後で同じ操作の所要時間を記録する。p50/p95等の性能比較は本番昇格前後のログで行う。5秒ロック待ちは変更しない。
+5. **ログ**：ASGI例外・`No response returned`・5xxを同じ窓/母数で確認する。切断時ログを根拠なく無害と判定しない。
+6. **実iPhone**：[実機チェックリスト](MANUAL_DEVICE_QA_CHECKLIST.md) をSafari・ホーム画面で実施する。自動試験や端末エミュレーションで代用しない。未完了なら本番昇格の判定を保留する。
+
+### 中止・切り戻し・本番昇格
+
+配備失敗、schema/health/SHA/digest/交通配分の不一致、保存不能・画像/録音の主要機能の破損、継続する5xx/タイムアウト増加なら中止し、事前記録した**当該環境の直前revisionへ100%**を戻してhealth・ログを再確認する。自動rollbackはない。023は追加表/トリガーを残し第3段階を無効のままにする（トリガーの書込負荷は残るため観測を続け、schemaの巻戻しを即興で行わない）。標本不足だけで性能悪化とは判定せず、受入不足として記録する。
+
+本番の [Promote Production](../.github/workflows/promote-production.yml) は2026-10-26確認時 **active・workflow_dispatchのみ**。TESTへの配備では起動しない。本番昇格は別の実行判断とし、`tested_sha` と `tested_image_digest` を渡す。TESTのサービスtemplateのdigestとの一致を強制し、同一digestを再ビルドせず本番へ配備する。その前に**本番DBの全未適用migration**を適用するため、本番でも未適用が023だけという照合結果が必要。
+
+workflow自身は「TESTで実際に100%配信するrevisionのdigestとtemplateの一致」「そのイメージのビルドSHAと入力tested_shaの一致」までは検査しない。昇格前にこの両方を実像のrevision情報・イメージのrevisionラベルで確認・記録する。migration後の停止点、health受入、自動rollbackもないため、本番も同じ検証・切り戻しを行う。現時点ではDeploy Testの無効、本番workflowのactiveを変更しておらず、配備・実DBへのmigrationは一切実行していない。
 
 ## 記録欄
 
@@ -31,7 +81,7 @@
 - [ ] 本番 DB 接続確認を実施した
 - [ ] マイグレーション適用状態を確認した
 - [ ] 第4段階4Aの対象写真取得を含む版は、**本番・TESTの両方**で `public.albums.organization_id` と `public.album_photos.organization_id` が存在し、両方ともNOT NULLであることを、実DBへの読取専用照会で確認してから配備する。環境ごとの確認日時・対象コミット・2表の結果を記録し、未確認・列欠落・NULL許容なら配備を保留する。隔離PGの成功やmigrationファイルの存在で代用しない。手順は [4A実装記録](PERF_STAGE4A_IMPLEMENTATION.md#6-配備前の必須schema確認) を参照する。この確認はDDL適用の許可ではない。
-- [ ] 第3段階を含む版では、[実装記録](PERF_STAGE3_IMPLEMENTATION.md)に従って023の団体列・主キー/FK・親子一致・ロール前提を検査し、バックアップと書込排出後に適用した。未検証のまま自動適用しない
+- [ ] 第3段階を含む版では、[実装記録](PERF_STAGE3_IMPLEMENTATION.md)に従って023の団体列・主キー/FK・親子一致・ロール前提とバックアップを確認した。今回の適用は上の実行票に従い、5秒のロック待ちで競合したら配備へ進まず、未配備を確認して再実行する。
 - [ ] 第3段階のAPI設定とTEST日次照合は既定無効を確認し、実ワーカー数/監査を含む接続予算・旧版書込・完全ダイジェスト・API別計測を完了した対象だけ有効化した
 - [ ] 023のトリガーは機能無効でも書込時に動くため、配備前後の保存API応答時間・エラー/タイムアウト・save_busy件数を比較して記録した。読取専用preflightの成功を実環境の書込負荷検証と扱わず、通常書込の5秒ロック待ちは維持した
 - [ ] 同期/復元後の世代再発行とトリガー検証を、メンテナンス解除前に完了した。失敗時は解除しない
