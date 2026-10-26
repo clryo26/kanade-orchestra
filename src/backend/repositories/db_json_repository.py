@@ -39,6 +39,7 @@ from .db_row_repository import (
     db_write_value,
     table_has_organization_id,
 )
+from ..core.read_context import current_read_context, repository_read_connection
 from ..core.tenant_context import get_current_tenant_id
 from ..db.database import db_connection_string
 from .db_item_repository import attach_collection_children
@@ -110,12 +111,15 @@ def _stabilize_concert_record_video_sort_orders(cur: Any, tenant_id: str) -> Non
     )
 
 
-def load_json_data(name: str) -> list[dict[str, Any]]:
+def load_json_data(name: str, *, connection=None) -> list[dict[str, Any]]:
+    frame = current_read_context()
+    if frame and name not in frame.collections:
+        raise RuntimeError("Unregistered collection in snapshot read")
     table_name = JSON_COLLECTION_TABLES.get(name)
     if not table_name:
         return []
 
-    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+    with repository_read_connection(connection, factory=lambda: psycopg.connect(db_connection_string(), autocommit=True)) as conn:
         items = db_fetch_all(conn, table_name, order_by=DB_COLLECTION_ORDER_BY.get(name, "id"))
         if name == "concert_record_videos":
             items.sort(
@@ -129,7 +133,7 @@ def load_json_data(name: str) -> list[dict[str, Any]]:
         return attach_collection_children(conn, name, items, fetch_children=_tenant_children(conn))
 
 
-def load_auth_device_by_device_id(device_id: str) -> dict[str, Any] | None:
+def load_auth_device_by_device_id(device_id: str, *, connection=None) -> dict[str, Any] | None:
     # PostgreSQL text cannot contain NUL. The former Python lookup found no
     # match for this input, rather than raising a database parameter error.
     if "\x00" in str(device_id):
@@ -137,7 +141,7 @@ def load_auth_device_by_device_id(device_id: str) -> dict[str, Any] | None:
     # Session reads must bypass collection/process caches so logout and account
     # changes are visible across instances. Keep the first ID, as the previous
     # ID-ordered collection lookup did even if duplicate device IDs exist.
-    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+    with repository_read_connection(connection, factory=lambda: psycopg.connect(db_connection_string(), autocommit=True)) as conn:
         has_org = table_has_organization_id(conn, "auth_devices")
         with conn.cursor() as cur:
             if has_org:
@@ -149,14 +153,14 @@ def load_auth_device_by_device_id(device_id: str) -> dict[str, Any] | None:
             return db_row_to_json(dict(zip((d[0] for d in cur.description), row)), "auth_devices") if row is not None else None
 
 
-def load_member_by_id(member_id: Any) -> dict[str, Any] | None:
+def load_member_by_id(member_id: Any, *, connection=None) -> dict[str, Any] | None:
     # Preserve the former no-match result for identifiers PostgreSQL cannot
     # represent, before adapting them as SQL parameters.
     if "\x00" in str(member_id):
         return None
     # Members are the current authorization source of truth. Read only the
     # linked row without a process cache or a row-store write transaction.
-    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+    with repository_read_connection(connection, factory=lambda: psycopg.connect(db_connection_string(), autocommit=True)) as conn:
         has_org = table_has_organization_id(conn, "members")
         with conn.cursor() as cur:
             if has_org:
@@ -175,7 +179,7 @@ def _tenant_children(conn: Any) -> Any:
     return fetch
 
 
-def load_collection_etag(name: str) -> str:
+def load_collection_etag(name: str, *, connection=None) -> str:
     table_name = JSON_COLLECTION_TABLES.get(name)
     if not table_name:
         return ""
@@ -231,7 +235,7 @@ def load_collection_etag(name: str) -> str:
         row = cur.fetchone() or (0, "")
         return f"{target_table}:{row[0]}:{row[1]}"
 
-    with psycopg.connect(db_connection_string(), autocommit=True) as conn:
+    with repository_read_connection(connection, factory=lambda: psycopg.connect(db_connection_string(), autocommit=True)) as conn:
         with conn.cursor() as cur:
             signatures = [_table_signature(conn, cur, table_name)]
             signatures.extend(

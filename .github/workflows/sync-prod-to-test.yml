@@ -359,6 +359,18 @@ jobs:
           set -euo pipefail
           python -m scripts.sync_prod_to_test_gcs --execute
 
+      - name: Finalize TEST collection clocks after DB and GCS success
+        if: ${{ inputs.dry_run == 'false' && success() }}
+        shell: bash
+        env:
+          TEST_DB_DIRECT_URL: ${{ secrets.TEST_DB_DIRECT_URL }}
+          DB_NAME_TEST: ${{ vars.TEST_DB_NAME }}
+        run: |
+          set -euo pipefail
+          python scripts/portal_collection_clocks.py finalize \
+            --dsn-env TEST_DB_DIRECT_URL --expected-database "${DB_NAME_TEST}" \
+            --environment test --allow-uninstalled --execute
+
       - name: Disable test maintenance after successful synchronization
         if: ${{ inputs.dry_run == 'false' && success() }}
         shell: bash

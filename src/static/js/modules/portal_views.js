@@ -13,16 +13,22 @@ function joinedAtMonthInputValue(value) {
 function renderConcertRecordView() {
     const container = $('memberConcertRecordInfo');
     if (!container) return;
+    // Build once per render; no cross-render cache or invalidation is needed.
+    // Keep both performance order and each group's existing stable video sort.
+    const videosByPerformance = new Map();
+    for (const video of appState.concertRecordVideos || []) {
+        const key = String(video.performance_id || '');
+        if (!videosByPerformance.has(key)) videosByPerformance.set(key, []);
+        videosByPerformance.get(key).push(video);
+    }
     const performances = (appState.performances || []).filter((performance) =>
-        (appState.concertRecordVideos || []).some((video) => String(video.performance_id || '') === String(performance.id || ''))
-    );
+        videosByPerformance.has(String(performance.id || '')));
     if (!performances.length) {
         container.innerHTML = '<p class="text-muted mb-0">演奏会記録はまだ登録されていません</p>';
         return;
     }
     container.innerHTML = performances.map((performance) => {
-        const videos = [...(appState.concertRecordVideos || [])]
-            .filter((video) => String(video.performance_id || '') === String(performance.id || ''))
+        const videos = [...videosByPerformance.get(String(performance.id || ''))]
             .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id || 0) - Number(b.id || 0));
         return `
             <section class="info-block">

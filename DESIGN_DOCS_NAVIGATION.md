@@ -28,6 +28,17 @@
 - docs/CI_CD_PLAN_A_RELEASE_FLOW.md: CI/CD 案A のテスト自動デプロイ・本番リリース設計
 - docs/SYNC_PROD_TO_TEST_JOB_DETAIL_DESIGN.md: 本番→テスト同期 Job の詳細設計
 
+- docs/PERF_STAGE3_DETAILED_DESIGN.md: 性能改善第3段階の確定設計
+- docs/PERF_STAGE3_IMPLEMENTATION.md: 実装・検証・未有効化条件
+- docs/PERF_STAGE4_DETAILED_DESIGN.md: 性能改善第4段階の詳細設計（レビュー用・未実装）
+- docs/PERF_STAGE4_0_INVENTORY.md: 第4段階4-0の通信・書込・保守経路棚卸し
+- docs/PERF_STAGE4_0_BASELINE.md: 第4段階4-0の修正前計測・検証・残件
+- docs/PERF_STAGE4_0_POSTGRES_BASELINE.md: 第4段階4-0のSQL・接続・競合の修正前計測
+
+- [第4段階4A 実装記録](docs/PERF_STAGE4A_IMPLEMENTATION.md) — 対象写真のDB取得を実装。GCS条件付きGETは全体期限の方式確定まで保留。
+
+- [第4段階: 写真省略PUTの別不具合 #150（起票済み）](docs/PERF_STAGE4_ALBUM_PUT_ISSUE_DRAFT.md) — 4C着手・4D有効化の停止条件。
+
 ## 3. 読み順
 
 新規参画者:

@@ -402,7 +402,13 @@ class PostgresRowStore:
     def get(self, name: str, item_id: Any, *, ctx: ItemContext | None = None, lock: bool = False) -> dict[str, Any] | None:
         return self._run(ctx, lambda c: self._select(c, name, item_id, lock=lock))
 
-    def list(self, name: str, *, ctx: ItemContext | None = None) -> list[dict[str, Any]]:
+    def list(self, name: str, *, ctx: ItemContext | None = None, connection=None) -> list[dict[str, Any]]:
+        from ..core.read_context import current_read_context
+        if current_read_context() is not None or connection is not None:
+            if ctx is not None:
+                raise RuntimeError("Write context cannot be reused for snapshot reads")
+            from .db_json_repository import load_json_data
+            return load_json_data(name, connection=connection)
         def work(c: ItemContext) -> list[dict[str, Any]]:
             table = _table(name)
             order_by = DB_COLLECTION_ORDER_BY.get(name, "id")

@@ -1,0 +1,315 @@
+{
+  "samples": [
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 200,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 201,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 204,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.0009998911991715431,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 401,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 403,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 500,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.00100000761449337,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": null,
+      "actorMode": "member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 200,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 201,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.0004998873919248581
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 204,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 401,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.00100000761449337,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 403,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 500,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001200009137392044,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": null,
+      "actorMode": "no_member",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 200,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.0006998889148235321,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 201,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000700005330145359,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 204,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000700005330145359,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 401,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000700005330145359,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 403,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000700005330145359,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 500,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000700005330145359,
+        "insertMs": 0.000400003045797348
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": null,
+      "actorMode": "empty",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000700005330145359,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 200,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 201,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.00100000761449337,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 204,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000900006853044033,
+        "insertMs": 0.000600004568696022
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 401,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.000900006853044033,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 403,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000400003045797348
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": 500,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000500003807246685
+      }
+    },
+    {
+      "mode": "real middleware/audit function, fake DB adapter",
+      "status": null,
+      "actorMode": "lookup_error",
+      "counters": {
+        "actorLookups": 1,
+        "inserts": 1,
+        "actorMs": 0.001100008375942707,
+        "insertMs": 0.000600004568696022
+      }
+    }
+  ],
+  "realPoolWaitMs": null,
+  "realEventLoopDelayMs": null,
+  "decision": "E1 held: authentication snapshot can differ from current audit actor"
+}

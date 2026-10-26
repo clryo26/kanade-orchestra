@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from ..utils.datetime_utils import API_DATETIME_FORMAT_VERSION
+from ..core.http_cache import etag_matches
 from .image_asset_service import ensure_public_image_url
 
 
@@ -80,7 +81,7 @@ def request_not_modified(request: Request, etag: str) -> bool:
     if request.url.path == "/api/bootstrap":
         return False  # Full bootstrap includes live promotion image references.
     request_etag = str(request.headers.get("if-none-match", ""))
-    return request_etag == etag
+    return etag_matches(request_etag, etag)
 
 
 def not_modified_response(etag: str) -> Response:
@@ -91,7 +92,7 @@ def bootstrap_response(request: Request, data: dict[str, Any], etag: str) -> dic
     if request.url.path == "/api/bootstrap":
         return Response(content=json.dumps(data, ensure_ascii=False, separators=(",", ":")),
                         media_type="application/json", headers={"Cache-Control": "no-store"})
-    if request.headers.get("if-none-match", "") == etag:
+    if etag_matches(request.headers.get("if-none-match", ""), etag):
         return Response(status_code=304, headers={"ETag": etag})
     return Response(
         # Compact JSON reduces the bootstrap transfer without changing its schema.

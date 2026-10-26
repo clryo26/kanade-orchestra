@@ -7,12 +7,17 @@ import sys
 from collections import defaultdict, deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Json, Jsonb
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 try:
     from scripts.sync_prod_to_test_preflight import EXCLUDED_DB_TABLES, TARGET_DB_TABLES
@@ -248,6 +253,10 @@ def _foreign_keys(cursor: Any) -> tuple[ForeignKey, ...]:
 def _excluded_fingerprints(cursor: Any, existing_tables: set[str]) -> dict[str, tuple[int, str]]:
     fingerprints: dict[str, tuple[int, str]] = {}
     for table_name in EXCLUDED_DB_TABLES:
+        # Derived TEST clocks legitimately advance when trusted fast sync is
+        # unavailable; they are excluded from COPYING, not frozen during writes.
+        if table_name == "portal_collection_versions":
+            continue
         if table_name not in existing_tables:
             continue
         query = sql.SQL(
@@ -462,6 +471,16 @@ def synchronize_databases(
                 foreign_keys = _foreign_keys(test_cursor)
                 order = dependency_order(TARGET_DB_TABLES, foreign_keys)
                 excluded_before = _excluded_fingerprints(test_cursor, test_tables)
+                # PERF-R04: normal sync remains UPSERT/DELETE. Skip per-row clock
+                # work only for the trusted session role; GUC alone is not authority.
+                clock_tables = {"portal_data_generation", "portal_collection_versions"}
+                if clock_tables & test_tables:
+                    if not clock_tables <= test_tables:
+                        raise RuntimeError("Incomplete collection-clock installation")
+                    from src.backend import app_core as _compat  # noqa: F401
+                    from src.backend.services.collection_clock_maintenance import maintenance_allowed
+                    if maintenance_allowed(test_connection):
+                        test_cursor.execute("SET LOCAL app.portal_sync_mode='on'")
 
                 # Keep rows with matching primary keys in place. This avoids ON DELETE
                 # side effects in excluded audit/access tables while making target data exact.

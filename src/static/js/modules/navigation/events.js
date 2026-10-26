@@ -47,7 +47,7 @@ async function loadAttendanceReminderAfterStartup() {
         await ensureMemberFeatureLoaded('absence');
         await Promise.all([
             ensureAttendanceFollowupLoaded(),
-            loadExtraData(['absences']),
+            loadExtraData(['absences'], { _requestOrigin: 'automatic' }),
         ]);
         if (typeof markDeferredPortalDataLoaded === 'function') markDeferredPortalDataLoaded('absences');
         if (typeof renderMemberSchedules === 'function') renderMemberSchedules();
@@ -58,7 +58,7 @@ async function loadAttendanceReminderAfterStartup() {
 }
 
 // loadEssentialData完亁E��で征E��し、完亁E��に起動画面を非表示にする
-async function enterPortal() {
+async function enterPortal(options = {}) {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
     await showMemberPanel(false);
     renderPortalHome();
@@ -67,7 +67,7 @@ async function enterPortal() {
 
     if (!appState.essentialDataLoaded) {
         try {
-            await loadEssentialData({ useCachedPreview: true });
+            await loadEssentialData({ useCachedPreview: true, _requestOrigin: options._requestOrigin });
             appState.essentialDataLoaded = true;
         } catch (error) {
             clearLoadingBar();

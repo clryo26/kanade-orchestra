@@ -8,6 +8,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from .maintenance_mode import resolve_maintenance_mode
+from .http_cache import no_store_api
 from .tenant_context import reset_current_tenant_id, set_current_tenant_id
 
 
@@ -31,6 +32,15 @@ def configure_middlewares(
     maintenance = resolve_maintenance_mode(os.environ if environ is None else environ)
     app.state.maintenance_mode_enabled = maintenance.enabled
     app.state.maintenance_mode_status = maintenance.status
+
+    @app.middleware("http")
+    async def private_api_cache_policy(request: Request, call_next):
+        # Include error responses; authentication/operation results must never
+        # be persisted by browsers or intermediary caches.
+        response = await call_next(request)
+        if no_store_api(request.url.path):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     if not getattr(app.state, "tenant_context_middleware_attached", False):
 

@@ -331,7 +331,7 @@ function requestAdminPanel() {
     return (async () => {
         const authResult = await isPortalAuthenticated();
         if (authResult.status === 'unavailable') {
-            showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+            if (!authResult.error?.portalRetryWait?.noticeShown) showAlert(authResult.error?.portalRetryWait ? authResult.error.message : '通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
             return;
         }
         if (authResult.status !== 'authenticated') {
@@ -445,7 +445,7 @@ async function preparePortalTunerHistoryRestore(ticket, tabId) {
     const authResult = await isPortalAuthenticated();
     if (!isLatestPortalNavigation(ticket)) return false;
     if (authResult.status === 'unavailable') {
-        showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+        if (!authResult.error?.portalRetryWait?.noticeShown) showAlert(authResult.error?.portalRetryWait ? authResult.error.message : '通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
         return false;
     }
     if (authResult.status !== 'authenticated') {
@@ -489,7 +489,7 @@ function showSystemPanel() {
     return (async () => {
         const authResult = await isPortalAuthenticated();
         if (authResult.status === 'unavailable') {
-            showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+            if (!authResult.error?.portalRetryWait?.noticeShown) showAlert(authResult.error?.portalRetryWait ? authResult.error.message : '通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
             return;
         }
         if (authResult.status !== 'authenticated') {
@@ -554,7 +554,7 @@ function showMemberTab(tabName, shouldRender = true) {
     return (async () => {
         const authResult = await isPortalAuthenticated();
         if (authResult.status === 'unavailable') {
-            showAlert('通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
+            if (!authResult.error?.portalRetryWait?.noticeShown) showAlert(authResult.error?.portalRetryWait ? authResult.error.message : '通信が不安定なため確認できません。しばらくしてから再試行してください。', 'warning');
             return;
         }
         if (authResult.status !== 'authenticated') {
@@ -718,7 +718,7 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
         await ensureDeferredTabDataLoaded(tabName);
     }
     if (renderOnShow && tabName === 'member-schedule') renderMemberSchedules();
-    if (renderOnShow && tabName === 'member-home') renderPortalHome();
+    if (renderOnShow && tabName === 'member-home') renderPortalHome({ _requestOrigin: 'manual' });
     if (renderOnShow && tabName === 'member-flyer-distribution') renderFlyerDistributionView();
     if (renderOnShow && tabName === 'member-performance-day') renderPerformanceDayInfoView();
     if (renderOnShow && tabName === 'member-concert-record') renderConcertRecordView();

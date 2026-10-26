@@ -19,12 +19,12 @@ if (window.portalStartup && !window.__KANADE_STARTUP_PROGRESS_MARK_WRAPPED__) {
     };
 }
 
-async function loadPartSettingsForLogin() {
+async function loadPartSettingsForLogin(options = {}) {
     try {
         const [partSettings, orgSettings, snsSettings] = await Promise.all([
-            request('/api/extra/part_settings'),
-            request('/api/extra/org_settings'),
-            request('/api/extra/sns_settings')
+            request('/api/extra/part_settings', options),
+            request('/api/extra/org_settings', options),
+            request('/api/extra/sns_settings', options)
         ]);
         appState.partSettings = partSettings;
         appState.orgSettings = orgSettings;
@@ -167,6 +167,7 @@ async function loadEssentialData(options = {}) {
 
     try {
         const requestOptions = {
+            _requestOrigin: options._requestOrigin,
             ...(cachedPreviewRendered ? { _allowCacheFallback: false } : {}),
             ...(forceRevalidate ? { _forceRevalidate: true } : {}),
         };
@@ -451,7 +452,7 @@ function loadFullDataInBackground() {
         appState.backgroundLoadScheduled = false;
         setLoadingBar('全データを取得中...');
         try {
-            await loadAll({ includeHeavyLists: false });
+            await loadAll({ includeHeavyLists: false, _requestOrigin: 'automatic' });
             appState.dataLoaded = true;
             renderBackgroundViews({ includeHeavyLists: false });
         } catch (error) {
@@ -485,7 +486,8 @@ function loadFullDataInBackground() {
 async function loadAll(options = {}) {
     const includeHeavyLists = options.includeHeavyLists !== false;
     const data = await requestBootstrapData(
-        includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core'
+        includeHeavyLists ? '/api/bootstrap' : '/api/bootstrap-core',
+        { _requestOrigin: options._requestOrigin }
     );
     applyBootstrapData(data);
     renderInitialViews({ includeHeavyLists });
@@ -674,7 +676,88 @@ async function loadAuthManagement() {
     renderAuthDevices();
 }
 
-async function loadExtraData(collectionNames = null) {
+// HTTP coalescing alone cannot prevent callers of different batches from
+// applying the same response twice, or a slow batch from restoring older data.
+const portalExtraLoads = new Map();
+const portalExtraLatest = new Map();
+let portalExtraSequence = 0;
+function portalExtraAuthParts() {
+    return [typeof portalCacheIdentity === 'function' ? portalCacheIdentity()
+        : [appState.currentUserMemberId, appState.portalAuthGeneration],
+        appState.portalAuthTransition || 0];
+}
+// The account part alone: a change here means another user/session, never a retry.
+function portalExtraAuthContext() {
+    return JSON.stringify(portalExtraAuthParts());
+}
+function portalExtraContext() {
+    return JSON.stringify([...portalExtraAuthParts(), window.portalResponseEpoch || 0]);
+}
+// request() links a budget that joined another caller's in-flight GET to the
+// budget that GET really spent (sharedBudget). Follow it; the seen set guards
+// against a link cycle between repeated joins.
+function portalExtraUsedBudget(budget) {
+    const seen = new Set();
+    while (budget.sharedBudget && !seen.has(budget)) {
+        seen.add(budget);
+        budget = budget.sharedBudget;
+    }
+    return budget;
+}
+// retryContext: the used transient budget of the original load, passed on the
+// one retry after a save so request() continues it instead of starting anew.
+function beginPortalExtraLoad(name, url, options, retryContext = null) {
+    const context = portalExtraContext();
+    const shareable = Object.keys(options).every(key => ['_requestOrigin', '_forceRevalidate'].includes(key));
+    const key = JSON.stringify([context, name, options._requestOrigin || 'manual', !!options._forceRevalidate]);
+    if (shareable && portalExtraLoads.has(key)) return portalExtraLoads.get(key);
+    const entry = { context, authContext: portalExtraAuthContext(), sequence: ++portalExtraSequence, applied: false, reported: false,
+        retryContext: retryContext || { transientRetries: 0, unknown503Retries: 0 } };
+    portalExtraLatest.set(name, entry);
+    entry.promise = Promise.resolve().then(() => request(url, { ...options, _retryContext: entry.retryContext }))
+        .finally(() => {
+            if (portalExtraLoads.get(key) === entry) portalExtraLoads.delete(key);
+            entry.promise = null; // latest ownership must not retain a completed body
+        });
+    if (shareable) portalExtraLoads.set(key, entry);
+    return entry;
+}
+function renderAppliedExtraCollections(collections) {
+    const changed = new Set(collections);
+    const has = (...names) => names.some(name => changed.has(name));
+    const parts = has('partSettings');
+    if (parts) {
+        refreshPartSelectOptions();
+        // Avoid a second full member-extra cascade; its affected leaves run below.
+        if (typeof renderMembers === 'function') renderMembers({ includeDerived: false });
+    }
+    if (has('venueSettings')) refreshVenueOptions();
+    if (has('orgSettings')) applyOrgSettings();
+    renderMemberExtraViews({ collections });
+    if ((has('absences') || parts) && typeof renderMemberSchedules === 'function') renderMemberSchedules();
+    if (has('sheets') || parts) { if (typeof renderSheetAdmin === 'function') renderSheetAdmin(); }
+    if (has('payments', 'castings', 'orgSettings') || parts) renderPaymentAdmin({ preserveForm: true });
+    if (parts) renderPartManagement();
+    if (has('venueSettings')) renderVenueManagement();
+    if (has('flyerDistributions', 'flyerDistributionAssignments') || parts) renderFlyerDistributionManagement();
+    if (has('castings') || parts) { if (typeof renderCastingAdmin === 'function') renderCastingAdmin(); }
+    if (has('practiceInstructions', 'pieceInfos') && typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
+    if ((has('performanceDayInfos') || parts) && typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
+    if (has('concertRecordVideos') && typeof renderConcertRecordAdminList === 'function') renderConcertRecordAdminList();
+    if (has('orgSettings')) renderOrgManagement();
+    if (has('snsSettings')) renderSnsManagement();
+    if (has('connectionSettings') && typeof renderConnectionSettingsManagement === 'function') renderConnectionSettingsManagement();
+}
+
+async function loadExtraData(collectionNames = null, options = {}) {
+    return loadExtraDataBatch(collectionNames, options, true);
+}
+
+// allowContextRetry: a collection whose first load was discarded only because a
+// save advanced the response epoch is fetched again once in the new context, so
+// a visible tab does not stay on its empty placeholder. The retry itself passes
+// false: a second discard or failure uses the existing warning, never a loop.
+async function loadExtraDataBatch(collectionNames, options, allowContextRetry, inheritedRetryContexts = null) {
     const allRequestSpecs = [
         ['absences', '/api/extra/absences'],
         ['eventResponses', '/api/extra/event_responses'],
@@ -734,31 +817,60 @@ async function loadExtraData(collectionNames = null) {
             ([name]) => requestedNames.includes(name)
         );
 
+    const previousPromotionLoadState = appState.promotionLoadState;
+    const promotionWaiting = window.portalRetryWaitInfo?.('/api/extra/promotions', options)?.blocked;
     const requestSpecs = selectedSpecs.map(
-        ([name, url]) => [name, request(url)]
+        ([name, url]) => [name, beginPortalExtraLoad(name, url, options, inheritedRetryContexts?.get(name))]
     );
-    if (selectedSpecs.some(([name]) => name === 'promotions')) {
+    if (!promotionWaiting && selectedSpecs.some(([name]) => name === 'promotions')) {
         appState.promotionLoadState = 'loading';
     }
 
     const settled = await Promise.allSettled(
-        requestSpecs.map(([, promise]) => promise)
+        requestSpecs.map(([, entry]) => entry.promise)
     );
 
     const resultMap = new Map();
     const failed = [];
+    const contextRetryNames = [];
+    const currentContext = portalExtraContext();
+    const currentAuthContext = portalExtraAuthContext();
 
     settled.forEach((item, index) => {
-        const key = requestSpecs[index][0];
+        const [key, entry] = requestSpecs[index];
+        if (portalExtraLatest.get(key) !== entry || entry.applied) return;
+        if (entry.context !== currentContext) {
+            // Another account/session, or a 503 wait: discard without retrying.
+            if (entry.authContext !== currentAuthContext || item.reason?.portalRetryWait) return;
+            const discardedBySave = item.status === 'fulfilled' || item.reason?.portalContextChanged;
+            const unloaded = Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, key)
+                && !isDeferredPortalDataLoaded(key);
+            if (discardedBySave && !unloaded) return; // displayed data stays as it is
+            if (discardedBySave && allowContextRetry) { contextRetryNames.push([key, portalExtraUsedBudget(entry.retryContext)]); return; }
+            if (!entry.reported) { failed.push(key); entry.reported = true; }
+            if (key === 'promotions') appState.promotionLoadState = 'error';
+            return;
+        }
 
         if (item.status === 'fulfilled') {
             resultMap.set(key, item.value);
             if (key === 'promotions') appState.promotionLoadState = 'loaded';
         } else {
-            failed.push(key);
-            if (key === 'promotions') appState.promotionLoadState = 'error';
+            // A suppressed retry is neither empty data nor a new failed load.
+            // Keep already displayed data and do not mark the collection loaded.
+            if (!item.reason?.portalRetryWait && !entry.reported) { failed.push(key); entry.reported = true; }
+            if (key === 'promotions') {
+                if (!item.reason?.portalRetryWait) appState.promotionLoadState = 'error';
+                else if (appState.promotionLoadState === 'loading' && previousPromotionLoadState !== 'loading') {
+                    appState.promotionLoadState = previousPromotionLoadState;
+                }
+            }
         }
     });
+
+    if (settled.length && settled.every((item) => item.status === 'rejected' && item.reason?.portalRetryWait)) {
+        return; // Nothing changed: keep the current DOM, input/File and scroll.
+    }
 
     if (failed.length) {
         showAlert(
@@ -793,6 +905,7 @@ async function loadExtraData(collectionNames = null) {
     resultMap.forEach((value, key) => {
         if (key === 'sheets') {
             appState.sheetLibrary = value?.files || [];
+            portalExtraLatest.get(key).applied = true;
             return;
         }
 
@@ -800,24 +913,20 @@ async function loadExtraData(collectionNames = null) {
         if (stateKey) {
             appState[stateKey] = value || [];
             markDeferredPortalDataLoaded(stateKey);
+            portalExtraLatest.get(key).applied = true;
         }
     });
 
-    refreshPartSelectOptions();
-    refreshVenueOptions();
-    applyOrgSettings();
-    renderMemberExtraViews();
-    if (typeof renderSheetAdmin === 'function') renderSheetAdmin();
-    renderPaymentAdmin();
-    renderPartManagement();
-    renderVenueManagement();
-    renderFlyerDistributionManagement();
-    if (typeof renderCastingAdmin === 'function') renderCastingAdmin();
-    if (typeof renderPracticeInstructionAdmin === 'function') renderPracticeInstructionAdmin();
-    if (typeof renderPerformanceDayInfoAdmin === 'function') renderPerformanceDayInfoAdmin();
-    renderOrgManagement();
-    renderSnsManagement();
-    if (typeof renderConnectionSettingsManagement === 'function') renderConnectionSettingsManagement();
+    if (resultMap.size) renderAppliedExtraCollections([...resultMap.keys()]);
+
+    // Skip names a newer load has applied meanwhile; an in-flight newer load
+    // with the same options is joined by beginPortalExtraLoad, not duplicated.
+    // The retry continues each collection's used budget (agreed: two transient
+    // re-sends in total per logical load, not two more per attempt).
+    const retries = contextRetryNames.filter(([name]) => !isDeferredPortalDataLoaded(name));
+    if (retries.length) {
+        await loadExtraDataBatch(retries.map(([name]) => name), options, false, new Map(retries));
+    }
 }
 
 

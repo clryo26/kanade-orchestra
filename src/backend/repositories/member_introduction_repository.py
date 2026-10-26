@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.read_context import repository_read_connection
 from ..core.db_config import db_connection_string
 from ..core.db_pool import pooled_psycopg as psycopg
 from ..core.db_runtime import local_json_fallback_enabled
@@ -14,7 +15,7 @@ FIELDS = ("id", "name", "last_name", "first_name", "maiden_name", "last_name_kan
           "instrument_history", "past_orchestras", "comment", "photo_url")
 
 
-def list_introductions() -> list[dict[str, Any]]:
+def list_introductions(*, connection=None) -> list[dict[str, Any]]:
     if local_json_fallback_enabled():
         from ..core.compat_gateway import row_store
         return [dict(item) for item in row_store().list("members") if item.get("permission") != "エキストラ"]
@@ -22,7 +23,7 @@ def list_introductions() -> list[dict[str, Any]]:
     # from DB to the application merely to discard them in a serializer.
     columns = ", ".join('"' + f + '"' for f in FIELDS if f != "photo_url")
     columns += ", CASE WHEN photo_url LIKE 'data:image/%%' THEN '/api/members/' || id::text || '/photo' ELSE COALESCE(photo_url,'') END AS photo_url"
-    with psycopg.connect(db_connection_string(), autocommit=True, connect_timeout=10) as conn:
+    with repository_read_connection(connection, factory=lambda: psycopg.connect(db_connection_string(), autocommit=True, connect_timeout=10)) as conn:
         tenant_clause = "organization_id = %s AND " if table_has_organization_id(conn, "members") else ""
         with conn.cursor() as cur:
             cur.execute(f"SELECT {columns} FROM members WHERE {tenant_clause}COALESCE(permission,'') <> 'エキストラ' ORDER BY id",

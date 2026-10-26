@@ -41,6 +41,11 @@ def visibility_settings() -> dict[str, bool]:
     try:
         stored = _repository().load(get_current_tenant_id())
     except Exception as exc:
+        from ..core.read_context import current_read_context
+        if current_read_context() is not None:
+            # The snapshot boundary classifies its timeout/schema failures;
+            # preserve the dedicated menu API's existing contract outside it.
+            raise
         logger.warning("Menu settings DB read failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="メニュー設定を取得できません。DB接続・マイグレーションを確認してください。") from exc
     return {key: stored.get(key, True) for key in defaults}

@@ -7,6 +7,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
 from ..core.tenant_context import get_current_tenant_id
+from ..core.http_cache import etag_matches
 from ..models.schemas import MemberIntroduction
 from ..repositories.member_introduction_repository import list_introductions
 from .image_asset_service import ensure_public_image_url
@@ -21,6 +22,6 @@ def response(request: Request) -> Response:
     payload = json.dumps(items, ensure_ascii=False, sort_keys=True)
     etag = '"' + hashlib.sha256((get_current_tenant_id() + ":member-intro-v1:" + payload).encode()).hexdigest() + '"'
     headers = {"Cache-Control": "private, no-cache", "ETag": etag, "Vary": "X-Device-Id, X-Organization-Id"}
-    if request.headers.get("if-none-match") == etag:
+    if etag_matches(request.headers.get("if-none-match", ""), etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(items, headers=headers)

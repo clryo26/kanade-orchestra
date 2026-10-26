@@ -6,6 +6,7 @@
     let registrationPromise;
     let savedSettings = null;
     let renderVersion = 0;
+    let renderIdentity = '';
     const targets = new Set(['notice-history', 'member-schedule', 'member-practice-instruction', 'member-piece-info',
         'member-promotion', 'member-event', 'maintenance-history', 'system-improvement-suggestion',
         // Already delivered notifications remain usable; the server no longer sends these categories.
@@ -56,8 +57,15 @@
     function showStatus(text) { if (byId('notificationStatus')) byId('notificationStatus').textContent = text; }
 
     async function render() {
-        const version = ++renderVersion;
         const memberId = state().currentUserMemberId;
+        const identity = typeof global.portalCacheIdentity === 'function' ? global.portalCacheIdentity() : String(memberId || '');
+        const wait = global.portalRetryWaitInfo?.('/api/notifications/settings', { _forceRevalidate: true });
+        if (wait?.blocked && renderIdentity === identity && byId('notificationCategories')) {
+            showAlert(wait.message, 'warning');
+            return;
+        }
+        const version = ++renderVersion;
+        renderIdentity = identity;
         ensurePanel();
         savedSettings = null;
         byId('notificationCategories').replaceChildren();

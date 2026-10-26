@@ -1,0 +1,130 @@
+{
+  "phase": "4-0 pre-change isolated PostgreSQL measurement",
+  "head_before_artifacts": "92d0e6d3fb9fb1660ab978100a19301bd5d21dba",
+  "branch": "perf/portal-stage4-baseline-20261023",
+  "production_implementation_base": "4ed586d",
+  "measurement_sha256": "e73f07895a938a9cf8c9b423c7cd4ae553f70608fc2afefeb862d5d2eb2bd116",
+  "engines": {
+    "16": {
+      "postgres_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+      "fsync": "on",
+      "storage": "isolated tmpfs; not production I/O benchmark",
+      "cases": {
+        "photo_batches": 60,
+        "writes": 10,
+        "contention": 4,
+        "same_loop_waves": 2,
+        "omitted_photos": 1
+      },
+      "measured_http_requests": 1563,
+      "pytest": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "15",
+        "time": "49.195",
+        "timestamp": "2026-10-23T22:34:16.045585",
+        "hostname": "DESKTOP-FK"
+      },
+      "report_sha256": "beb583e58bab6601f71bf65a3d19b5a5f8f9cc25ebaec4664a45a84728297b44",
+      "junit_sha256": "f07f1ce2c64bf26ba4417254bc0e8627450732f5d1dadc6cbe37c090e0484b01",
+      "log_sha256": "e313a0284a82844e0f08f4f600aeb627414250201188dbc214aeb87e4276b47c"
+    },
+    "18": {
+      "postgres_version": "18.4 (Debian 18.4-1.pgdg13+1)",
+      "fsync": "on",
+      "storage": "isolated tmpfs; not production I/O benchmark",
+      "cases": {
+        "photo_batches": 60,
+        "writes": 10,
+        "contention": 4,
+        "same_loop_waves": 2,
+        "omitted_photos": 1
+      },
+      "measured_http_requests": 1563,
+      "pytest": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "15",
+        "time": "49.418",
+        "timestamp": "2026-10-23T22:34:16.364761",
+        "hostname": "DESKTOP-FK"
+      },
+      "report_sha256": "0902fda8409bb5378b121ac52349b0c3f4d000eab90051150822500ad382af17",
+      "junit_sha256": "c7df17fbe41860db92d34dc7429f4cb56a3c56e5bf525e20988f0053e264c7b2",
+      "log_sha256": "fcb9135065ca3855ae338a62ca5be82fd3deeb537eac23b5ee302a23ec286e16"
+    }
+  },
+  "checks": {
+    "without_opt_in_db": {
+      "passed": 4,
+      "skipped": 11
+    },
+    "ruff_check_all_exit_code": 0,
+    "compileall_src_backend_tests_exit_code": 0,
+    "old_evidence_and_fixture_bytes_unchanged": true,
+    "navigation_original_bytes_preserved": true,
+    "production_source_migrations_workflows_changed": false
+  },
+  "preserved_sha256": {
+    "tests/fixtures/perf_stage4_photos/exif_rotated.jpg": "5f9a5ecad744ed808c45738e98efe2d2e8b882d3e8927804f5bef4d7f82016da",
+    "tests/fixtures/perf_stage4_photos/high_resolution.jpg": "baabde302592f36cc5af143d2107b7f6905bc63a16cc52af61ff659454933b7a",
+    "tests/fixtures/perf_stage4_photos/landscape.jpg": "0c7186772900217bcd8fa37e5fbc2d51c23b234c48084b240bbbff642c9be297",
+    "tests/fixtures/perf_stage4_photos/manifest.json": "f694d1f074d87fc951e6b1484342db26f7ddd61a8628da58391b6c44fb27ca16",
+    "tests/fixtures/perf_stage4_photos/portrait.jpg": "0dad3c0ab98cdb99f073d2e1f63fbfbffaf1e6842c79bb4bb900e8f156e870fb",
+    "tests/fixtures/perf_stage4_photos/README.md": "00f00989f3539fd3b64578405cf5ccf909d14717a2032a5a276e1e9cfac51a19",
+    "docs/perf_stage4/BASELINE_BEFORE.json": "4add74b0506e20817618aaff567911f7b92ed6804d21b2b3b81d95f46093e194",
+    "docs/perf_stage4/VALIDATION.json": "a802f14fadbd3e3b0bd68dd58e38b33eae5f4f674d06cb10f7b85c26603fb37c",
+    "docs/perf_stage4/PHOTO_BASELINE_BEFORE.json": "37b78f000dfd547b00791fd9e54a8a26311bc024d4317c6659e8c8a5211e860f",
+    "docs/perf_stage4/PHOTO_VALIDATION.json": "db9e40d6b55e24d9d86a722ec20ece7ea96454dda66679459a73c0dc8489790f"
+  },
+  "source_sha256": {
+    "src/backend/services/album_service.py": "30bcd40ee81f42eff8d7f08dda65b094aa4cfed750467475cadbecb1878bb5bd",
+    "src/backend/routers/albums.py": "8379bb58badc48016b5192a11b46e05d17641b005f6fba60933331334ec22eba",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_json_repository.py": "871a9ef1e63170664cff9b08de734c07fdd9d801e135cc3ff998efd91f7fd1d4",
+    "src/backend/core/db_schema.py": "4f11941dd1caf0b5a73006dd3fa49439fa7433caf1fa676dd10b5a737543cf55"
+  },
+  "artifact_sha256": {
+    "BASELINE_BEFORE.json": "4add74b0506e20817618aaff567911f7b92ed6804d21b2b3b81d95f46093e194",
+    "ISOLATED_SCHEMA.json": "a73b3ce81063bc4676f22b7e55c539ff8aa3d3ad622972aae507a9036e2cd17d",
+    "PHOTO_BASELINE_BEFORE.json": "37b78f000dfd547b00791fd9e54a8a26311bc024d4317c6659e8c8a5211e860f",
+    "PHOTO_VALIDATION.json": "db9e40d6b55e24d9d86a722ec20ece7ea96454dda66679459a73c0dc8489790f",
+    "POSTGRES16_BEFORE.json": "beb583e58bab6601f71bf65a3d19b5a5f8f9cc25ebaec4664a45a84728297b44",
+    "POSTGRES18_BEFORE.json": "0902fda8409bb5378b121ac52349b0c3f4d000eab90051150822500ad382af17",
+    "READ_ONLY_ENVIRONMENT.json": "2572a134e75c079d814cc577031dd3146db393542a307b57a410e1c16b67c213",
+    "VALIDATION.json": "a802f14fadbd3e3b0bd68dd58e38b33eae5f4f674d06cb10f7b85c26603fb37c"
+  },
+  "cleanup": {
+    "owned_containers": [
+      "kanade-perf-stage4-pg16",
+      "kanade-perf-stage4-pg18"
+    ],
+    "ownership_label_checked": true,
+    "stopped_and_auto_removed": true,
+    "unrelated_containers_untouched": true
+  },
+  "live_environment": {
+    "report": "READ_ONLY_ENVIRONMENT.json",
+    "db_inventory_complete": false,
+    "gcs_inventory_complete": false,
+    "gcs_calls_performed": false,
+    "reason": "Both DB connections unavailable before session establishment; real inventory remains unmeasured"
+  },
+  "not_run": [
+    "full backend suite",
+    "frontend suite",
+    "e2e",
+    "WebKit comparison",
+    "real GCS SDK measurement",
+    "real device QA"
+  ],
+  "initial_fixture_corrections": [
+    "Applied existing audit migration 002 to isolated fixture after detecting missing audit table",
+    "Changed title-only write comparison to include unchanged photo collection; recorded omitted-photos semantics separately"
+  ],
+  "scope": "Tests and documentation only; no stage 4A implementation, live schema migration, push, merge, or deployment"
+}

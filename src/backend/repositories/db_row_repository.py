@@ -61,7 +61,10 @@ def _core() -> None:
 
 
 def table_has_organization_id(conn: Any, table_name: str) -> bool:
+    from ..core.read_context import current_read_context, ClockAnomaly
     if table_name in _ORG_COLUMN_CACHE:
+        if current_read_context() is not None and not _ORG_COLUMN_CACHE[table_name]:
+            raise ClockAnomaly("Organization column missing")
         return _ORG_COLUMN_CACHE[table_name]
     with conn.cursor() as cur:
         cur.execute(
@@ -76,6 +79,8 @@ def table_has_organization_id(conn: Any, table_name: str) -> bool:
         )
         has_column = cur.fetchone() is not None
     _ORG_COLUMN_CACHE[table_name] = has_column
+    if current_read_context() is not None and not has_column:
+        raise ClockAnomaly("Organization column missing")
     return has_column
 
 

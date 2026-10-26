@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-23",
+  "phase": "4-0 initial source inventory and synthetic before measurement",
+  "branch": "perf/portal-stage4-baseline-20261023",
+  "design_commit": "43c88c3942ad15f01ff746f5d1968086423a9f20",
+  "production_source_base": "4ed586d",
+  "checks": {
+    "targeted": {
+      "passed": 22,
+      "skipped": 0,
+      "new_baseline_tests": 10,
+      "existing_album_tests": 12,
+      "junit_sha256": "a42055ef69a6d8ec0300ffcd2c10571f45c55c44291cc840d720414d281127f7",
+      "log_sha256": "660d511f6b8c7918663f7604782b066993145cd4703d31b72edf7a22e73e59b2"
+    },
+    "ruff_all_exit_code": 0,
+    "compileall_backend_and_tests_exit_code": 0
+  },
+  "measurement": {
+    "batches": 90,
+    "http_requests": 2280,
+    "boundary": "Real photo routes and Pillow; fake store and fake GCS objects; SDK/network not exercised",
+    "real_sql_count": null,
+    "real_gcs_http_count": null,
+    "sdk_retry_count": null,
+    "wire_bytes": null,
+    "peak_memory_bytes": null
+  },
+  "artifacts_sha256": {
+    "docs/PERF_STAGE4_DETAILED_DESIGN.md": "ce151c68e4d04264c3ee5770d4621f4be9aec8cd1b5f2d284ff732e0ef1eea8d",
+    "docs/PERF_STAGE4_0_INVENTORY.md": "af961b01adb28a9d643098b07b0f444cdb4cdc6c8a65883fd9564c8344d0138b",
+    "docs/PERF_STAGE4_0_BASELINE.md": "2d15cc870d5e1f55d46eda059a9641660e3c9aa9590063e88b75894717e80b69",
+    "docs/perf_stage4/BASELINE_BEFORE.json": "4add74b0506e20817618aaff567911f7b92ed6804d21b2b3b81d95f46093e194",
+    "tests/backend/test_perf_stage4_baseline.py": "4a9d1ac13aba36e1eb6508eea126e4996be252bd026e77d30c055c70747377f3"
+  },
+  "production_sources_sha256": {
+    "src/backend/services/album_service.py": "30bcd40ee81f42eff8d7f08dda65b094aa4cfed750467475cadbecb1878bb5bd",
+    "src/backend/routers/albums.py": "8379bb58badc48016b5192a11b46e05d17641b005f6fba60933331334ec22eba",
+    "src/backend/repositories/db_item_repository.py": "a1161323321adfbfaf12b92aad8e1b4d3d224cd8cabfd6410d622604e2d239e3",
+    "src/backend/repositories/db_json_repository.py": "871a9ef1e63170664cff9b08de734c07fdd9d801e135cc3ff998efd91f7fd1d4",
+    "src/backend/core/db_schema.py": "4f11941dd1caf0b5a73006dd3fa49439fa7433caf1fa676dd10b5a737543cf55"
+  },
+  "initial_execution_failure": "Sandbox blocked Pydantic DLL import; rerun outside sandbox with same no-real-DB/GCS fixture",
+  "warnings": [
+    "Google api_core Python 3.10 support warning",
+    "pkg_resources deprecation",
+    "ffmpeg/avconv not found"
+  ],
+  "not_rerun": [
+    "full backend",
+    "frontend",
+    "e2e",
+    "WebKit screenshots"
+  ],
+  "remaining": [
+    "live read-only DB/GCS inventory",
+    "isolated PostgreSQL SQL/pool/concurrency baseline",
+    "varied image/data combinations",
+    "real browser/SDK retry/memory measurements",
+    "real roles and bucket settings",
+    "iPhone/BFCache"
+  ],
+  "source_db_workflow_changed": false,
+  "live_db_connected": false,
+  "live_gcs_connected": false,
+  "migration_applied": false,
+  "objects_deleted": false,
+  "phase_4_0_complete": false,
+  "merged": false,
+  "deployed": false
+}

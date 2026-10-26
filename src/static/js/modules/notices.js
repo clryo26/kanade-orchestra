@@ -14,10 +14,10 @@ var baseRenderPortalHomeForNotices = renderPortalHome;
 let portalNoticesLoaded = false;
 let portalNoticesLoadPromise = null;
 
-async function ensurePortalNoticesLoaded() {
+async function ensurePortalNoticesLoaded(options = {}) {
     if (portalNoticesLoaded) return appState.notices || [];
     if (!portalNoticesLoadPromise) {
-        portalNoticesLoadPromise = request('/api/notices')
+        portalNoticesLoadPromise = request('/api/notices', options)
             .then((items) => {
                 appState.notices = Array.isArray(items) ? items : [];
                 portalNoticesLoaded = true;
@@ -333,12 +333,12 @@ function portalNoticeItem(notice) {
     return item;
 }
 
-function renderPortalNoticeHome(container) {
+function renderPortalNoticeHome(container, options = { _requestOrigin: 'automatic' }) {
     ensurePortalNoticeHeaderActions();
     if (!portalNoticesLoaded) {
         container.innerHTML = '<p class="text-muted mb-0">お知らせを読み込み中...</p>';
-        ensurePortalNoticesLoaded()
-            .then(() => { if (container.isConnected) renderPortalNoticeHome(container); })
+        ensurePortalNoticesLoaded(options)
+            .then(() => { if (container.isConnected) renderPortalNoticeHome(container, options); })
             .catch((error) => {
                 console.warn('Portal notice load failed', error);
                 if (container.isConnected) container.innerHTML = '<p class="text-danger mb-0">お知らせを取得できませんでした</p>';
@@ -513,10 +513,10 @@ renderMenuGroups = function renderMenuGroupsWithMaintenanceInfo(container) {
     bindMaintenanceHome(container);
 };
 
-renderPortalHome = function renderPortalHomeWithNewNotices() {
+renderPortalHome = function renderPortalHomeWithNewNotices(options = { _requestOrigin: 'automatic' }) {
     baseRenderPortalHomeForNotices();
     const noticeContainer = $('portalHomeAnnouncements');
-    if (noticeContainer) renderPortalNoticeHome(noticeContainer);
+    if (noticeContainer) renderPortalNoticeHome(noticeContainer, options);
 };
 
 // Used by the bootstrap lazy loader to confirm the integration hooks are ready.

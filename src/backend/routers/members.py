@@ -6,12 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from ..core.auth_dependencies import get_admin_device_auth, get_device_auth
+from ..core.http_cache import PortalCacheRoute
 from ..models.schemas import Member, MemberSummary
 from ..services import member_service
 from ..services import member_introduction_service
 from ..services.extra_collection_helpers import read_json_body
 
-router = APIRouter()
+router = APIRouter(route_class=PortalCacheRoute)
 
 
 def _as_bool(value: Any) -> bool:

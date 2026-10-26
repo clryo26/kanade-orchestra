@@ -1,0 +1,17 @@
+{
+  "phase": "after (working source)",
+  "mode": "fake-indexeddb, 205 synthetic response records, 5 expired",
+  "initialCount": 205,
+  "remainingCount": 200,
+  "initialApproximateBytes": 12900,
+  "remainingApproximateBytes": 12600,
+  "cleanup": {
+    "scanned": 205,
+    "deleted": 5,
+    "remaining": 200,
+    "approximateBytes": 12600
+  },
+  "elapsedMs": 21.048299999999998,
+  "browserVerified": false,
+  "physicalStorageBytes": null
+}

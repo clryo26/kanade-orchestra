@@ -59,6 +59,12 @@
         var id = deviceId();
         if (id) headers['X-Device-Id'] = id;
         var init = { method: o.method || 'GET', headers: headers, cache: 'no-store', signal: o.signal };
+        // Preserve the transient budget across this helper's own 401 resend.
+        init._retryContext = { transientRetries: 0, unknown503Retries: 0 };
+        init._requestOrigin = o._requestOrigin;
+        // Design 6.1: the sheet API keeps its own contract. Reopening the
+        // library must fetch again, as its failure message promises.
+        init._skipRetryWait = true;
         if (o.json !== undefined) {
             headers['Content-Type'] = 'application/json';
             init.body = JSON.stringify(o.json);
@@ -70,7 +76,7 @@
         try {
             response = await fetchWithTimeout(url, init, timeout);
             if (response.status === 401 && !o.noRecovery && typeof tryRecoverPortalSession === 'function'
-                && await tryRecoverPortalSession(id)) {
+                && await tryRecoverPortalSession(id, o)) {
                 response = await fetchWithTimeout(url, init, timeout);
             }
         } catch (error) {

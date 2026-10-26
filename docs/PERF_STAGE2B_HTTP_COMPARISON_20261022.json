@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-10-22",
+  "baselineApplicationCommit": "0f917af",
+  "mode": "Node VM/mock HTTP; FastAPI TestClient/local temporary JSON; no real DB/GCS",
+  "limitations": [
+    "Frontend response-cache scenarios isolate transport (no transport retry wrapper).",
+    "Backend service_builds counts calls, not SQL queries.",
+    "Backend bytes are decompressed response body bytes for the empty-array fixture, not HAR transfer size.",
+    "Before source checksums are raw Windows worktree bytes; newline conversion may differ from Git blobs.",
+    "This JSON does not measure browser cache/BFCache/device performance. Synthetic WebKit visual checks are recorded separately."
+  ],
+  "afterSourceSha256": {
+    "src/backend/core/http_cache.py": "90c3d1e5c8242d445b1eac26671bedbd336dad6711cb9f7ea9367e81899aebc8",
+    "src/backend/core/middleware.py": "c9601b2aed46069021baee89940ddca7a5b7e898f5ab33db1afa03a5551a8524",
+    "src/backend/services/bootstrap_service.py": "191af6732dff24dc3a2c01af307286428672b8186574163c9188c78ecb36388d",
+    "src/backend/services/member_introduction_service.py": "20a4da5d2fd4e6da4a232d025761e11056f71f691c199bf8a1102af865e12ffc",
+    "src/static/js/modules/common_helpers/api_runtime.js": "93188da34e93eb034190bea774031dd8e9ed9001895a0ef17d1475d45754023b",
+    "src/static/js/utils/cache.js": "665221aae46d62f5c3d4ff0d457a841c9ed7b944c73c4d0d5e3ed3fa1e4b9d16",
+    "src/static/js/utils/portal_file_operations.js": "f351c39c739fe118392f978e1816e754b7867a383a2b3abf5b67a26a8dbe63a7",
+    "tests/backend/test_perf_stage2_http_cache.py": "4c069bb9b0662a7f6d34e7b2be91d0954392b07f761fd1dad2fd178cb284fd0d",
+    "tests/frontend/test_perf_stage2_http_contract.test.js": "27ebe7226f1158bd58a21854efd00071b1889e3a87168004a4c90473a5a96bc4",
+    "tests/frontend/helpers/portal_http_harness.cjs": "5a670e99a2ea33f159c265286471a707e619e82cddd4a716e57e7e101c7d85e0"
+  },
+  "comparison": {
+    "before": {
+      "frontend": {
+        "phase": "before",
+        "mode": "Node VM / mock HTTP",
+        "sourceSha256": {
+          "src/static/js/modules/common_helpers/api_runtime.js": "990677c270d840674a2f1d95567660fce3d249bb83eab73ce16a45798fd3e264",
+          "src/static/js/utils/cache.js": "df3e796392bc62581ee40e5c66e27994ea25f2fb9bf27afb4b208a4656310ded"
+        },
+        "metrics": [
+          {
+            "id": "force-flight",
+            "sends": 1
+          },
+          {
+            "id": "tenant-bypass",
+            "sends": 0,
+            "cacheReads": 1,
+            "cacheWrites": 0
+          },
+          {
+            "id": "304-freshness",
+            "sends": 2,
+            "writes": 0
+          },
+          {
+            "id": "304-missing-body",
+            "sends": 1,
+            "resolved": false
+          },
+          {
+            "id": "promotion-html-503",
+            "sends": 1,
+            "status": null,
+            "parseError": true
+          }
+        ],
+        "dbQueries": null,
+        "browserVerified": false
+      },
+      "backend": [
+        {
+          "endpoint": "/api/announcements",
+          "phase": "before",
+          "status": [
+            200,
+            200
+          ],
+          "bytes": [
+            2,
+            2
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/events",
+          "phase": "before",
+          "status": [
+            200,
+            200
+          ],
+          "bytes": [
+            2,
+            2
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/members",
+          "phase": "before",
+          "status": [
+            200,
+            200
+          ],
+          "bytes": [
+            2,
+            2
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/performances",
+          "phase": "before",
+          "status": [
+            200,
+            200
+          ],
+          "bytes": [
+            2,
+            2
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/schedules",
+          "phase": "before",
+          "status": [
+            200,
+            200
+          ],
+          "bytes": [
+            2,
+            2
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        }
+      ]
+    },
+    "after": {
+      "frontend": {
+        "phase": "after",
+        "mode": "Node VM / mock HTTP",
+        "sourceSha256": {
+          "src/static/js/modules/common_helpers/api_runtime.js": "93188da34e93eb034190bea774031dd8e9ed9001895a0ef17d1475d45754023b",
+          "src/static/js/utils/cache.js": "665221aae46d62f5c3d4ff0d457a841c9ed7b944c73c4d0d5e3ed3fa1e4b9d16"
+        },
+        "metrics": [
+          {
+            "id": "force-flight",
+            "sends": 2
+          },
+          {
+            "id": "tenant-bypass",
+            "sends": 1,
+            "cacheReads": 0,
+            "cacheWrites": 0
+          },
+          {
+            "id": "304-freshness",
+            "sends": 1,
+            "writes": 1
+          },
+          {
+            "id": "304-missing-body",
+            "sends": 2,
+            "resolved": true
+          },
+          {
+            "id": "promotion-html-503",
+            "sends": 1,
+            "status": 503,
+            "parseError": false
+          }
+        ],
+        "dbQueries": null,
+        "browserVerified": false
+      },
+      "backend": [
+        {
+          "endpoint": "/api/announcements",
+          "phase": "after",
+          "status": [
+            200,
+            304
+          ],
+          "bytes": [
+            2,
+            0
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/events",
+          "phase": "after",
+          "status": [
+            200,
+            304
+          ],
+          "bytes": [
+            2,
+            0
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/members",
+          "phase": "after",
+          "status": [
+            200,
+            304
+          ],
+          "bytes": [
+            2,
+            0
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/performances",
+          "phase": "after",
+          "status": [
+            200,
+            304
+          ],
+          "bytes": [
+            2,
+            0
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        },
+        {
+          "endpoint": "/api/schedules",
+          "phase": "after",
+          "status": [
+            200,
+            304
+          ],
+          "bytes": [
+            2,
+            0
+          ],
+          "service_builds": 2,
+          "db_queries": null
+        }
+      ]
+    }
+  }
+}

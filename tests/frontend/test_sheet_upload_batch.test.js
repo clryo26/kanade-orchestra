@@ -49,7 +49,8 @@ function makeBatch({ answer }) {
             sent.push({ url, method: init.method, key, name: init.body.fields.file.name });
             const r = await answer({ key, name: init.body.fields.file.name, count: sent.length });
             if (r instanceof Error) throw r;
-            return { status: r.status, headers: { get: () => 'application/json' }, json: async () => r.body };
+            return { status: r.status, headers: { get: () => r.html ? 'text/html' : 'application/json' },
+                json: async () => { if (r.html) throw new SyntaxError('HTML gateway'); return r.body; } };
         },
     };
     sandbox.window.localStorage = sandbox.localStorage;
@@ -63,6 +64,19 @@ function makeBatch({ answer }) {
 const done = (name, id) => ({ status: 200, body: { file: { id, name }, list_version: id } });
 
 describe('sheet upload batch', () => {
+    test('HTML 503 keeps an unknown result and reuses its operation ID', async () => {
+        const { sandbox, sent, elements } = makeBatch({ answer: async () => ({ status: 503, html: true }) });
+        const file = new FakeFile('a.pdf', '%PDF-a');
+        elements.sheetFileInput.files = [file];
+        await sandbox.uploadSheets();
+        const item = sandbox.portalSheetUpload.load().items[0];
+        expect(item.state).toBe('unknown');
+        await sandbox.portalSheetUpload.resumeWith([file]);
+        expect(sent).toHaveLength(2);
+        expect(sent[0].key).toBe(item.operationId);
+        expect(sent[1].key).toBe(item.operationId);
+        expect(sandbox.portalSheetUpload.load().items[0].state).toBe('unknown');
+    });
     test('each file keeps one operation ID; after a lost answer the resume resends the same ID', async () => {
         const seen = new Map();
         let lose = true;

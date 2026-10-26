@@ -1,0 +1,125 @@
+{
+  "phase": "after",
+  "mode": "Node VM, synthetic API, real loader/member dispatcher",
+  "dbQueries": null,
+  "gcsRequests": null,
+  "browserVerified": false,
+  "metrics": [
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 30,
+      "repeat": 0,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 30,
+      "repeat": 1,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 30,
+      "repeat": 2,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 30,
+      "repeat": 3,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 30,
+      "repeat": 4,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 60,
+      "repeat": 0,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 60,
+      "repeat": 1,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 60,
+      "repeat": 2,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 60,
+      "repeat": 3,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    },
+    {
+      "id": "C01",
+      "collection": "albums",
+      "rows": 60,
+      "repeat": 4,
+      "sends": 1,
+      "applications": 1,
+      "leafCalls": {
+        "renderAlbumView": 1
+      }
+    }
+  ],
+  "sourceSha256": {
+    "src/static/js/modules/bootstrap_loader.js": "8dd44f4549b9cbaff51fe155eae3ec6864ded26f770144f3ef04f201dc42fe6d",
+    "src/static/js/modules/members/render.js": "2eb8bacccfabd2fb2a137b5d5c184f823905ff099bcb49056edc5929fca50f52",
+    "src/static/js/utils/cache.js": "33a4a85f1707247faa5ee57988f16164f5853b033c120d1ef4ccb5f18f792587"
+  },
+  "baselineSource": null
+}

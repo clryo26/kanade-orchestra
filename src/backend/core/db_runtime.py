@@ -198,7 +198,15 @@ def run_db_startup_self_check(
 
     try:
         with psycopg.connect(db_connection_string_func(), autocommit=True) as conn:
-            ensure_db_schema_compatibility_func(conn)
+            from .collection_clock_schema import configured_paths
+            reads, clocks = configured_paths()
+            if reads:
+                # PERF-R05: the restricted app role must never repair schema.
+                # Additive migrations are a separately approved operations step.
+                from ..services.collection_clock_maintenance import verify_schema
+                verify_schema(conn, require_application_role=bool(clocks))
+            else:
+                ensure_db_schema_compatibility_func(conn)
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 cur.fetchone()

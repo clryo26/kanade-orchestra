@@ -1,0 +1,206 @@
+{
+  "date": "2026-10-22",
+  "baseCommit": "2d96739",
+  "scope": [
+    "Confirmed promotion writes and successful operation lookup release only related waits/cache",
+    "Shared authentication result forwards retry wait metadata to startup/resume callers"
+  ],
+  "sourceSha256": {
+    "src/static/js/modules/common_helpers/api_runtime.js": "62598e43c8238afdb3c66764b62e13085f971c9a6b4b1a7a08a12984b65b9e13",
+    "src/static/js/modules/date_piece_promotion/api.js": "eb065f088b93af7123c4476c29224c8cc849b62f65aea15b5db757015c315a73",
+    "tests/frontend/test_perf_stage2_retry_wait.test.js": "202a81c77cb33880176549122633ce7ba8b1a4a71747721dd4155ab524785541",
+    "scripts/perf_stage2_auth_races.cjs": "71fc4e1b154e479c3c71acd3fa06723545ad0719a6c49d5f5c4ce580366ca58e"
+  },
+  "regressionBeforeSourceFix": {
+    "failed": 6,
+    "passed": 34
+  },
+  "regressionAfterSourceFix": {
+    "failed": 0,
+    "passed": 40
+  },
+  "frontend": {
+    "numTotalTests": 1317,
+    "numPassedTests": 1317,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "success": true
+  },
+  "e2e": {
+    "command": "npm run test:e2e",
+    "passed": 95,
+    "failed": 0,
+    "project": "chromium",
+    "baseUrl": "http://127.0.0.1:8017",
+    "isolatedLocalData": true,
+    "api": "existing synthetic fixtures",
+    "playwrightResult": {
+      "status": "passed",
+      "failedTests": []
+    },
+    "powershellExit": 1,
+    "shellNote": "NO_COLOR/FORCE_COLOR stderr warning surfaced as NativeCommandError; Playwright reported 95 passed and last-run status passed with no failedTests."
+  },
+  "backend": {
+    "scope": "tests/backend/test_perf_stage2_http_cache.py",
+    "passed": 23,
+    "warnings": 3
+  },
+  "browserRuns": [
+    {
+      "scope": "synthetic API; actual WebKit UI; promotion save and auth wait metadata; not physical iPhone or BFCache",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "promotion-save",
+          "authSends": 0,
+          "pageErrors": [],
+          "listSends": 3,
+          "writes": 1,
+          "refreshedWithoutWaitWarning": true,
+          "passed": true
+        },
+        {
+          "order": "auth-wait",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "メンテナンス中です。あと300秒後に再試行できます。\nメンテナンス中です。あと300秒後に再試行できます。",
+          "manualWait": {
+            "blocked": true,
+            "remainingMs": 10000,
+            "message": "メンテナンス中です。あと10秒後に再試行できます。",
+            "suppressed": true,
+            "noticeShown": true
+          },
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "62598e43c8238afdb3c66764b62e13085f971c9a6b4b1a7a08a12984b65b9e13",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "cf6787b6447abbe1407186e0e1f824d863151d2ee3bbbbe000d5c01454b4f565"
+      }
+    },
+    {
+      "scope": "synthetic API; actual WebKit JS/DOM and manual clicks; not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "manual-wait",
+          "authSends": 0,
+          "pageErrors": [],
+          "manualFailureSends": 1,
+          "waitWarning": "一部データの読込に失敗しました: promotions\nメンテナンス中です。あと10秒後に再試行できます。\nメンテナンス中です。あと10秒後に再試行できます。",
+          "formPixelsEqual": true,
+          "unrelatedAlbumSends": 1,
+          "failureAndProbeSends": 2,
+          "afterSuccessfulProbeSends": 3,
+          "fileAndInputRetained": true,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "62598e43c8238afdb3c66764b62e13085f971c9a6b4b1a7a08a12984b65b9e13",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "cf6787b6447abbe1407186e0e1f824d863151d2ee3bbbbe000d5c01454b4f565"
+      }
+    },
+    {
+      "scope": "synthetic API; actual WebKit JS/DOM; headerless 503 and save-refresh; not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "headerless-wait",
+          "authSends": 0,
+          "pageErrors": [],
+          "initialSends": 2,
+          "blockedSends": 2,
+          "finalSends": 3,
+          "passed": true
+        },
+        {
+          "order": "save-refresh",
+          "authSends": 0,
+          "pageErrors": [],
+          "initialSends": 1,
+          "writes": 1,
+          "refreshedWithoutWaitWarning": true,
+          "finalSends": 2,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "62598e43c8238afdb3c66764b62e13085f971c9a6b4b1a7a08a12984b65b9e13",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "cf6787b6447abbe1407186e0e1f824d863151d2ee3bbbbe000d5c01454b4f565"
+      }
+    },
+    {
+      "scope": "synthetic API; actual WebKit JS/DOM; explicit pageshow, not BFCache or physical iPhone",
+      "platform": "linux",
+      "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+      "fixedTime": "2026-10-21T12:00:00+09:00",
+      "cases": [
+        {
+          "order": "data-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "resume-first",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 2,
+          "passed": true
+        },
+        {
+          "order": "other-tab-logout",
+          "authSends": 1,
+          "pageErrors": [],
+          "warning": "ログイン期限が切れました。もう一度ログインしてください。",
+          "loginVisible": true,
+          "clearCalls": 0,
+          "passed": true
+        }
+      ],
+      "browser": "26.5",
+      "sourceSha256": {
+        "src/static/js/modules/common_helpers/api_runtime.js": "62598e43c8238afdb3c66764b62e13085f971c9a6b4b1a7a08a12984b65b9e13",
+        "src/static/js/auth_feature.js": "52a9ffd84ceaf82add10ad3cc25b7fd04deb766acfefdf9d028107f28e716276",
+        "src/static/js/modules/common_helpers/transport_retry.js": "cf6787b6447abbe1407186e0e1f824d863151d2ee3bbbbe000d5c01454b4f565"
+      }
+    }
+  ],
+  "checks": {
+    "syntaxFiles": 170,
+    "loadOrderIndex": 43,
+    "loadOrderLegacy": 70,
+    "stateAccessFiles": 170,
+    "stateAccessViolations": 0,
+    "ruffExit": 0,
+    "browserScriptSyntaxExit": 0,
+    "diffCheckExit": 0
+  },
+  "limitations": [
+    "Full backend suite and 14-scene visual comparison not rerun",
+    "Not physical iPhone or actual BFCache",
+    "No real DB/GCS or performance measurement",
+    "Dependency audit fixes remain separate",
+    "No push, PR update or deployment in this change"
+  ]
+}

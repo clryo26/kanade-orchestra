@@ -1,6 +1,7 @@
 """Atomic PostgreSQL storage for organization-wide menu visibility."""
 from __future__ import annotations
 
+from ..core.read_context import repository_read_connection
 from ..core.db_config import db_connection_string
 from ..core.db_pool import pooled_psycopg as psycopg
 
@@ -17,8 +18,8 @@ class MenuSettingsRepository:
         )
         return {str(key): bool(visible) for key, visible in cur.fetchall()}
 
-    def load(self, organization_id: str) -> dict[str, bool]:
-        with self._connection() as conn, conn.cursor() as cur:
+    def load(self, organization_id: str, *, connection=None) -> dict[str, bool]:
+        with repository_read_connection(connection, factory=self._connection) as conn, conn.cursor() as cur:
             return self._load(cur, organization_id)
 
     def save(self, organization_id: str, settings: dict[str, bool]) -> dict[str, bool]:

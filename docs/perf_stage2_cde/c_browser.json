@@ -1,0 +1,194 @@
+{
+  "mode": "fixed Linux/WebKit, mocked API, not physical iPhone/BFCache",
+  "browser": "26.5",
+  "platform": "linux",
+  "image": "sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "dpr": 2,
+  "fixedTime": "2026-10-22T12:00:00+09:00",
+  "cases": [
+    {
+      "phase": "before",
+      "permission": "一般",
+      "tab": "member-album",
+      "image": "b989017b48049f3a07ef3bfad3a08eb945d4f85cdde84ca5d397cda2c3128ad0",
+      "dom": "026b335554419fdfac0a32a58e507347b6f22ebe06a9b8303c3c9eae66229184",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "一般",
+      "tab": "member-promotion",
+      "image": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "dom": "8622ea89543d04ffeda01b62a4644f037a3d60f047e5c7de38c895ca30b517b0",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "一般",
+      "tab": "member-concert-record",
+      "image": "14b079fe03edb9531816689ec168062489d747d0cd2a9ce8e7fff67c75d0111a",
+      "dom": "0b13a5aa631a20ae9921cb285e65b6d7b35f19272c23addb4531ddf225266185",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "一般",
+      "unrelatedInputAndFilePreserved": false,
+      "pageErrors": []
+    },
+    {
+      "phase": "before",
+      "permission": "管理者",
+      "tab": "member-album",
+      "image": "b989017b48049f3a07ef3bfad3a08eb945d4f85cdde84ca5d397cda2c3128ad0",
+      "dom": "026b335554419fdfac0a32a58e507347b6f22ebe06a9b8303c3c9eae66229184",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "管理者",
+      "tab": "member-promotion",
+      "image": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "dom": "8622ea89543d04ffeda01b62a4644f037a3d60f047e5c7de38c895ca30b517b0",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "管理者",
+      "tab": "member-concert-record",
+      "image": "14b079fe03edb9531816689ec168062489d747d0cd2a9ce8e7fff67c75d0111a",
+      "dom": "0b13a5aa631a20ae9921cb285e65b6d7b35f19272c23addb4531ddf225266185",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "管理者",
+      "unrelatedInputAndFilePreserved": false,
+      "pageErrors": []
+    },
+    {
+      "phase": "before",
+      "permission": "システム管理者",
+      "tab": "member-album",
+      "image": "b989017b48049f3a07ef3bfad3a08eb945d4f85cdde84ca5d397cda2c3128ad0",
+      "dom": "026b335554419fdfac0a32a58e507347b6f22ebe06a9b8303c3c9eae66229184",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "システム管理者",
+      "tab": "member-promotion",
+      "image": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "dom": "8622ea89543d04ffeda01b62a4644f037a3d60f047e5c7de38c895ca30b517b0",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "システム管理者",
+      "tab": "member-concert-record",
+      "image": "14b079fe03edb9531816689ec168062489d747d0cd2a9ce8e7fff67c75d0111a",
+      "dom": "0b13a5aa631a20ae9921cb285e65b6d7b35f19272c23addb4531ddf225266185",
+      "matchesBaseline": null
+    },
+    {
+      "phase": "before",
+      "permission": "システム管理者",
+      "unrelatedInputAndFilePreserved": false,
+      "pageErrors": []
+    },
+    {
+      "phase": "after",
+      "permission": "一般",
+      "tab": "member-album",
+      "image": "b989017b48049f3a07ef3bfad3a08eb945d4f85cdde84ca5d397cda2c3128ad0",
+      "dom": "026b335554419fdfac0a32a58e507347b6f22ebe06a9b8303c3c9eae66229184",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "一般",
+      "tab": "member-promotion",
+      "image": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "dom": "8622ea89543d04ffeda01b62a4644f037a3d60f047e5c7de38c895ca30b517b0",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "一般",
+      "tab": "member-concert-record",
+      "image": "14b079fe03edb9531816689ec168062489d747d0cd2a9ce8e7fff67c75d0111a",
+      "dom": "0b13a5aa631a20ae9921cb285e65b6d7b35f19272c23addb4531ddf225266185",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "一般",
+      "unrelatedInputAndFilePreserved": true,
+      "pageErrors": []
+    },
+    {
+      "phase": "after",
+      "permission": "管理者",
+      "tab": "member-album",
+      "image": "b989017b48049f3a07ef3bfad3a08eb945d4f85cdde84ca5d397cda2c3128ad0",
+      "dom": "026b335554419fdfac0a32a58e507347b6f22ebe06a9b8303c3c9eae66229184",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "管理者",
+      "tab": "member-promotion",
+      "image": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "dom": "8622ea89543d04ffeda01b62a4644f037a3d60f047e5c7de38c895ca30b517b0",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "管理者",
+      "tab": "member-concert-record",
+      "image": "14b079fe03edb9531816689ec168062489d747d0cd2a9ce8e7fff67c75d0111a",
+      "dom": "0b13a5aa631a20ae9921cb285e65b6d7b35f19272c23addb4531ddf225266185",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "管理者",
+      "unrelatedInputAndFilePreserved": true,
+      "pageErrors": []
+    },
+    {
+      "phase": "after",
+      "permission": "システム管理者",
+      "tab": "member-album",
+      "image": "b989017b48049f3a07ef3bfad3a08eb945d4f85cdde84ca5d397cda2c3128ad0",
+      "dom": "026b335554419fdfac0a32a58e507347b6f22ebe06a9b8303c3c9eae66229184",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "システム管理者",
+      "tab": "member-promotion",
+      "image": "97974d2c29f2abde92aed9353e497a8c7cded0df6bd63c2b0c76123ee13581fc",
+      "dom": "8622ea89543d04ffeda01b62a4644f037a3d60f047e5c7de38c895ca30b517b0",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "システム管理者",
+      "tab": "member-concert-record",
+      "image": "14b079fe03edb9531816689ec168062489d747d0cd2a9ce8e7fff67c75d0111a",
+      "dom": "0b13a5aa631a20ae9921cb285e65b6d7b35f19272c23addb4531ddf225266185",
+      "matchesBaseline": true
+    },
+    {
+      "phase": "after",
+      "permission": "システム管理者",
+      "unrelatedInputAndFilePreserved": true,
+      "pageErrors": []
+    }
+  ]
+}

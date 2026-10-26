@@ -62,6 +62,10 @@ async function fetchWithTimeout(url, options, timeoutMs) {
         _skipAuthRecovery: _omit1,
         _allowCacheFallback: _omit2,
         _forceRevalidate: _omit3,
+        _structuredResult: _omitStructured,
+        _retryContext: _omitRetryContext,
+        _requestOrigin: _omitRequestOrigin,
+        _skipRetryWait: _omitSkipRetryWait,
         signal: _omit4,
         ...fetchOptions
     } = Object(options || {});
@@ -121,6 +125,7 @@ function apiTargetLabel(url) {
 }
 
 function clearPortalAuthState() {
+    advancePortalAuthTransition();
     window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     // Authentication ended: the tuner must not keep the microphone open.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('auth-cleared');
@@ -149,6 +154,7 @@ function clearPortalAuthState() {
 
 function applyPortalAuthDevice(device) {
     if (!device || typeof device !== 'object') return;
+    const previousIdentity = typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : '';
     appState.portalAuthGeneration = device.authenticated_at || device.created_at || '';
     appState.portalAuthVerified = true;
     appState.lastPortalSessionVerifiedAt = Date.now();
@@ -160,6 +166,8 @@ function applyPortalAuthDevice(device) {
     appState.currentUserIsRecordingManager = Boolean(device.is_recording_manager);
     appState.currentUserIsSheetManager = Boolean(device.is_sheet_manager);
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
+    if (typeof window.resetPortalRequestWaits === 'function' && typeof portalCacheIdentity === 'function'
+        && previousIdentity !== portalCacheIdentity()) window.resetPortalRequestWaits();
     if (typeof window.portalFileOperationsResume === 'function') void window.portalFileOperationsResume();
 }
 
@@ -186,30 +194,86 @@ function showTransientNetworkNotice() {
     showAlert('通信が一時的に不安定なため、保存済みデータを表示しています。', 'warning');
 }
 
-async function tryRecoverPortalSession(deviceId) {
+var portalAuthCheckInFlight = null;
+
+// Authentication transitions are independent of response-cache invalidation:
+// saving data must not invalidate a concurrent session confirmation.
+function advancePortalAuthTransition() {
+    appState.portalAuthTransition = (appState.portalAuthTransition || 0) + 1;
+    portalAuthCheckInFlight = null;
+    if (typeof window.resetPortalRequestWaits === 'function') window.resetPortalRequestWaits();
+}
+
+if (typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', (event) => {
+        if (event.key === null || event.key === window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY
+            || event.key === window.portalRuntimeContext.PORTAL_AUTH_KEY) advancePortalAuthTransition();
+    });
+}
+
+function portalAuthCheckIsCurrent(check) {
+    return check.context.deviceId === localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY)
+        && check.context.transition === (appState.portalAuthTransition || 0)
+        && check.context.generation === (appState.portalAuthGeneration || '');
+}
+
+function notePortalAuthCheckApplied(check) {
+    // A second caller sharing this response may apply the same valid generation.
+    // Side effects remain with each caller, rather than moving into this helper.
+    check.context.generation = appState.portalAuthGeneration || '';
+}
+
+function notePortalAuthCheckCleared(check) {
+    // A clear caused by this shared response is legitimate for its other
+    // callers, just like an apply. External logout/login/storage transitions
+    // still invalidate it. Keep each caller's existing clear side effects.
+    check.context.transition = appState.portalAuthTransition || 0;
+    check.context.generation = appState.portalAuthGeneration || '';
+}
+
+function fetchPortalSessionCheck(deviceId, options = {}) {
+    const context = { deviceId, generation: appState.portalAuthGeneration || '', transition: appState.portalAuthTransition || 0 };
+    const key = JSON.stringify(context);
+    if (portalAuthCheckInFlight && portalAuthCheckInFlight.key === key) return portalAuthCheckInFlight.promise;
+    const pending = { key, promise: null };
+    pending.promise = (async () => {
+        const response = await fetchWithTimeout(`/api/auth/devices/${encodeURIComponent(deviceId)}`,
+            { method: 'GET', headers: { 'X-Device-Id': deviceId }, cache: 'no-store',
+                _requestOrigin: options._requestOrigin,
+                _retryContext: { transientRetries: 0, unknown503Retries: 0 } }, PORTAL_TIMEOUT_AUTH);
+        const payload = response.ok ? await response.json().catch(() => ({})) : null;
+        return { status: response.status, ok: response.ok, payload, context, portalRetryWait: response.portalRetryWait };
+    })().finally(() => {
+        if (portalAuthCheckInFlight === pending) portalAuthCheckInFlight = null;
+    });
+    portalAuthCheckInFlight = pending;
+    return pending.promise;
+}
+
+async function tryRecoverPortalSession(deviceId, options = {}) {
     if (!deviceId) {
         clearPortalAuthState();
         return false;
     }
     try {
-        const response = await fetchWithTimeout(
-            `/api/auth/devices/${encodeURIComponent(deviceId)}`,
-            { method: 'GET', headers: { 'X-Device-Id': deviceId } },
-            PORTAL_TIMEOUT_AUTH
-        );
+        const response = await fetchPortalSessionCheck(deviceId, options);
+        if (!portalAuthCheckIsCurrent(response)) return false;
         if (!response.ok) {
             // 明確な未認証(401/403/404)のみ認証状態をクリア
             if (response.status === 401 || response.status === 403 || response.status === 404) {
                 clearPortalAuthState();
+                notePortalAuthCheckCleared(response);
             }
             return false;
         }
-        const payload = await response.json().catch(() => ({}));
+        const payload = response.payload;
         if (!payload || !payload.authenticated || !payload.device) {
             clearPortalAuthState();
+            notePortalAuthCheckCleared(response);
             return false;
         }
         applyPortalAuthDevice(payload.device);
+        notePortalAuthCheckApplied(response);
         return true;
     } catch {
         // タイムアウトやネットワークエラー: 認証状態を保持して失敗扱い
@@ -232,6 +296,8 @@ function mutationRelatedCacheKeys(url) {
     }
     if (url.startsWith('/api/extra/')) {
         keys.add(url.split('?')[0]);
+        const collection = url.split('?')[0].match(/^\/api\/extra\/[^/]+/);
+        if (collection) keys.add(collection[0]);
         if (url.includes('/sheet_library') || url.includes('/date_adjust') || url.includes('/practice_instruction')) keys.add('/api/sheets');
         return [...keys];
     }
@@ -254,7 +320,11 @@ async function invalidateCacheForMutation(url) {
     // An older GET must not repopulate the cache after a successful mutation.
     window.portalResponseEpoch = (window.portalResponseEpoch || 0) + 1;
     const keys = mutationRelatedCacheKeys(url);
-    await Promise.all(keys.map((key) => window.portalRuntimeContext.dbCache.delete(key)));
+    if (typeof window.clearPortalRequestWaitsForKeys === 'function') window.clearPortalRequestWaitsForKeys(keys);
+    // Disk cache cleanup is auxiliary to an already confirmed business write.
+    // delete() blocks reuse in memory before IO, even if the transaction fails.
+    // Attempt every target; cache errors must not replace the HTTP save result.
+    await Promise.allSettled(keys.map(async (key) => window.portalRuntimeContext.dbCache.delete(key)));
 }
 
 // Only stable member-facing list endpoints can briefly use cache-first.
@@ -274,7 +344,7 @@ function freshCacheTtlMs(url) {
 
 function hasFreshCacheEntry(cacheEntry, url, forceRevalidate) {
     const ttlMs = freshCacheTtlMs(url);
-    const timestamp = Number(cacheEntry?.timestamp);
+    const timestamp = Number(cacheEntry?.validatedAt ?? cacheEntry?.timestamp);
     if (
         forceRevalidate ||
         !ttlMs ||
@@ -292,6 +362,24 @@ function isLivePromotionRequest(url) {
     const path = String(url || '').split('?')[0];
     return path === '/api/bootstrap' || path === '/api/extra/promotions'
         || path.startsWith('/api/extra/promotions/') || path.startsWith('/api/promotions/operations/');
+}
+
+function portalRequestHeaderEntries(headers) {
+    if (headers && typeof headers.entries === 'function' && !Array.isArray(headers)) return Array.from(headers.entries());
+    return Array.isArray(headers) ? headers : Object.entries(headers || {});
+}
+
+function portalNoStoreRequest(url) {
+    const path = String(url || '').split('?')[0];
+    return isLivePromotionRequest(url) || path.startsWith('/api/auth/')
+        || path === '/api/portal-file-actor' || path.startsWith('/api/portal-file-operations/');
+}
+
+function portalRetryWaitError(response) {
+    const error = new Error(response.portalRetryWait.message);
+    error.status = 503;
+    error.portalRetryWait = response.portalRetryWait;
+    return error;
 }
 
 async function purgePromotionCache() {
@@ -320,16 +408,26 @@ async function request(url, options = {}) {
         const { _portalFileOperation, ...fileOptions } = options;
         return window.portalFileRequest(url, fileOptions);
     }
-    const method = options.method || 'GET';
+    const method = String(options.method || 'GET').toUpperCase();
+    // This object survives the separate 401 resend; authentication has its own budget.
+    // A caller continuing the same logical load (the extra loader's one retry
+    // after a save) passes its used budget; it must not be reset here.
+    options = { ...options, _retryContext: options._retryContext || { transientRetries: 0, unknown503Retries: 0 } };
     const cacheKey = url;
     const contextKey = () => `${typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : ''}:${window.portalResponseEpoch || 0}`;
     const startedContext = contextKey();
-    const flightKey = `${startedContext}:${cacheKey}`;
+    const flightKey = `${startedContext}:${cacheKey}:${Boolean(options._forceRevalidate)}`;
     const requireCurrentContext = () => {
-        if (startedContext !== contextKey()) throw new Error('表示情報が更新されました。もう一度読み込んでください');
+        // Marked so callers can tell a save/auth context change from a real failure.
+        if (startedContext !== contextKey()) throw Object.assign(new Error('表示情報が更新されました。もう一度読み込んでください'), { portalContextChanged: true });
     };
     const deviceId = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
-    const baseHeaders = { ...(options.headers || {}), ...(deviceId ? { 'X-Device-Id': deviceId } : {}) };
+    const headerEntries = portalRequestHeaderEntries(options.headers);
+    const explicitTenant = headerEntries.some(([key]) => ['x-organization-id', 'x-tenant-id'].includes(String(key).toLowerCase()));
+    const useResponseCache = !explicitTenant && !portalNoStoreRequest(url);
+    const baseHeaders = Object.fromEntries(headerEntries.filter(([key]) => !deviceId || String(key).toLowerCase() !== 'x-device-id'));
+    if (deviceId) baseHeaders['X-Device-Id'] = deviceId;
+    if (!useResponseCache) options = { ...options, cache: 'no-store' };
     const skipAuthRecovery = Boolean(options._skipAuthRecovery);
     const allowCacheFallback = options._allowCacheFallback !== false;
     const forceRevalidate = Boolean(options._forceRevalidate);
@@ -339,14 +437,24 @@ async function request(url, options = {}) {
         // IndexedDB fallback would hide failed refreshes and stale operation results.
         const identity = `${deviceId}:${appState.currentUserMemberId}:${appState.currentUserPermission}`;
         let response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
-        if (response.status === 401 && !skipAuthRecovery && await tryRecoverPortalSession(deviceId)) {
-            response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+        // One 401 recovery per logical load, shared with the loader's retry after
+        // a save (the auth check itself keeps its own separate budget).
+        if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+            options._retryContext.authRecoveryUsed = true;
+            if (await tryRecoverPortalSession(deviceId, options)) {
+                response = await fetchWithTimeout(url, { ...options, headers: baseHeaders, cache: 'no-store' }, timeoutMs);
+            }
         }
         const currentDevice = localStorage.getItem(window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY) || '';
         if (identity !== `${currentDevice}:${appState.currentUserMemberId}:${appState.currentUserPermission}`) {
             throw new Error('認証情報が変わりました。再読み込みしてください');
         }
-        const data = await response.json();
+        if (response.portalRetryWait?.suppressed && !options._structuredResult) throw portalRetryWaitError(response);
+        const data = await response.json().catch((error) => { if (response.status < 500) throw error; return null; });
+        // Promotion writes return through this dedicated path, before the
+        // generic mutation handler. Only a confirmed save releases list waits;
+        // 202/5xx must remain result-unknown with their operation key intact.
+        if (method !== 'GET' && response.status === 200) await invalidateCacheForMutation(url);
         if (options._structuredResult) return { status: response.status, data, retryAfter: response.headers.get('Retry-After') };
         if (!response.ok) {
             throw new Error(data?.detail?.message || data?.detail || '宣伝の読み込みに失敗しました');
@@ -354,9 +462,18 @@ async function request(url, options = {}) {
         return data;
     }
     if (method === 'GET') {
-        if (window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) return window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+        if (!explicitTenant && window.portalRuntimeContext.inFlightGetRequests.has(flightKey)) {
+            const shared = window.portalRuntimeContext.inFlightGetRequests.get(flightKey);
+            // The joined GET spends the first caller's budget. Link it so a caller
+            // continuing this logical load (the loader's retry after a save)
+            // inherits what was really used, not its own untouched budget.
+            if (shared.portalRetryContext && shared.portalRetryContext !== options._retryContext) {
+                options._retryContext.sharedBudget = shared.portalRetryContext;
+            }
+            return shared;
+        }
         const pending = (async () => {
-            const cacheEntry = await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+            const cacheEntry = useResponseCache ? await window.portalRuntimeContext.dbCache.getEntry(cacheKey) : null;
             requireCurrentContext();
             const cached = cacheEntry?.data ?? null;
             const etag = cacheEntry?.etag ?? null;
@@ -387,14 +504,40 @@ async function request(url, options = {}) {
                 showAlert(message, 'danger');
                 throw new Error(message);
             }
-            if (response.status === 401 && !skipAuthRecovery) {
-                const recovered = await tryRecoverPortalSession(deviceId);
+            // One 401 recovery per logical load, shared with the loader's retry
+            // after a save; the auth check keeps its own separate budget.
+            if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+                options._retryContext.authRecoveryUsed = true;
+                const recovered = await tryRecoverPortalSession(deviceId, options);
                 if (recovered) {
                     response = await fetchWithTimeout(url, { ...options, method, headers }, timeoutMs);
                 }
             }
             requireCurrentContext();
-            if (response.status === 304 && cached) return cached;
+            if (response.portalRetryWait?.suppressed) throw portalRetryWaitError(response);
+            if (response.status === 304 && cached != null) {
+                // Validation success advances freshness, independently of cache reads.
+                if (useResponseCache && freshCacheTtlMs(url) > 0
+                    && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
+                    await window.portalRuntimeContext.dbCache.set(cacheKey, cached, response.headers.get('ETag') || etag);
+                }
+                requireCurrentContext();
+                return cached;
+            }
+            if (response.status === 304 && cached == null && options._retryContext.transientRetries < 2) {
+                // A validator without a body is unusable: one unconditional send,
+                // within this request's existing budget, never an infinite 304 loop.
+                options._retryContext.transientRetries += 1;
+                const unconditional = Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'if-none-match'));
+                response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                if (response.status === 401 && !skipAuthRecovery && !options._retryContext.authRecoveryUsed) {
+                    options._retryContext.authRecoveryUsed = true;
+                    if (await tryRecoverPortalSession(deviceId, options)) {
+                        response = await fetchWithTimeout(url, { ...options, method, headers: unconditional }, timeoutMs);
+                    }
+                }
+                requireCurrentContext();
+            }
             if (!response.ok) {
                 const contentType = response.headers.get('content-type') || '';
                 const data = contentType.includes('application/json') ? await response.json() : await response.text();
@@ -410,11 +553,15 @@ async function request(url, options = {}) {
             const data = contentType.includes('application/json') ? await response.json() : await response.text();
             const newETag = response.headers.get('ETag');
             requireCurrentContext();
-            if (newETag) await window.portalRuntimeContext.dbCache.set(cacheKey, data, newETag);
+            if (newETag && useResponseCache && !/\bno-store\b/i.test(response.headers.get('Cache-Control') || '')) {
+                await window.portalRuntimeContext.dbCache.set(cacheKey, data, newETag);
+            }
+            requireCurrentContext(); // A mutation may finish while the cache transaction commits.
             return data;
         })();
-        window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
-        try { return await pending; } finally { window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
+        pending.portalRetryContext = options._retryContext;
+        if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.set(flightKey, pending);
+        try { return await pending; } finally { if (!explicitTenant) window.portalRuntimeContext.inFlightGetRequests.delete(flightKey); }
     }
     let response;
     try {
@@ -430,7 +577,7 @@ async function request(url, options = {}) {
         throw new Error(message);
     }
     if (response.status === 401 && !skipAuthRecovery) {
-        const recovered = await tryRecoverPortalSession(deviceId);
+        const recovered = await tryRecoverPortalSession(deviceId, options);
         if (recovered) {
             response = await fetchWithTimeout(url, { ...options, headers: baseHeaders }, timeoutMs);
         }

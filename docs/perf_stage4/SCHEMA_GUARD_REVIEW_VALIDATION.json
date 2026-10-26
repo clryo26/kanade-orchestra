@@ -1,0 +1,50 @@
+{
+  "base_commit": "f11521204bac6d2a21454151e8f67df3e78b3944",
+  "scope": "Release prerequisite documentation and missing-organization-column diagnostic only",
+  "tests": {
+    "targeted": {
+      "passed": 10,
+      "skipped": 0,
+      "new_schema_guard_cases": 2,
+      "existing_photo_serving_cases": 8,
+      "junit_sha256": "66726af51276ed9aa8aabd9bdd2a655921c51c8ff1fbf732c42d94242274d8f9",
+      "log_sha256": "788d961ea86236e9b311347fdc5942d8f4c3d8859c788b34a9424eb24848002f"
+    },
+    "ruff_check_all_exit_code": 0,
+    "compileall_exit_code": 0
+  },
+  "source_sha256": {
+    "src/backend/repositories/album_repository.py": "50783c882ca15455d24e6a969e452b76b29381fdcf063cff0936b00101d151e5",
+    "tests/backend/test_album_photo_schema_guard.py": "96fd6e1d7efed90bfe69235a7ffeed097bd8259ed64bf21d27486cce5e59c145"
+  },
+  "not_rerun": [
+    "full backend",
+    "frontend",
+    "e2e",
+    "isolated PostgreSQL comparison",
+    "WebKit image comparison"
+  ],
+  "deployment_gate": {
+    "production": "NOT VERIFIED: both tables require NOT NULL organization_id before deployment",
+    "test": "NOT VERIFIED: both tables require NOT NULL organization_id before deployment",
+    "read_only_query_documented": true,
+    "live_db_queries_executed": false,
+    "ddl_executed": false
+  },
+  "gcs_budget_decision": "Do not redefine total budgets in this change. Metadata retry deadline plus final I/O timeout is a candidate with transport qualifications; media cumulative-sleep budget does not obey that formula. R14 remains held.",
+  "previous_evidence_unchanged": {
+    "BASELINE_BEFORE.json": "4add74b0506e20817618aaff567911f7b92ed6804d21b2b3b81d95f46093e194",
+    "ISOLATED_SCHEMA.json": "a73b3ce81063bc4676f22b7e55c539ff8aa3d3ad622972aae507a9036e2cd17d",
+    "PHOTO_BASELINE_BEFORE.json": "37b78f000dfd547b00791fd9e54a8a26311bc024d4317c6659e8c8a5211e860f",
+    "PHOTO_VALIDATION.json": "db9e40d6b55e24d9d86a722ec20ece7ea96454dda66679459a73c0dc8489790f",
+    "POSTGRES16_BEFORE.json": "beb583e58bab6601f71bf65a3d19b5a5f8f9cc25ebaec4664a45a84728297b44",
+    "POSTGRES16_TARGET_AFTER.json": "ed6ca480d4e8c62fd1968cf5a16705fdaa08e38b6e92063363b5c0720f312a94",
+    "POSTGRES18_BEFORE.json": "0902fda8409bb5378b121ac52349b0c3f4d000eab90051150822500ad382af17",
+    "POSTGRES18_TARGET_AFTER.json": "c62d6d5621ea589b4c2b4dd415ef60f6c629885ce097c3d2da2852321306ba17",
+    "POSTGRES_VALIDATION.json": "86253bc5d3500b2b2cef65240b5f773ae861a4a7208d29cd9ba95ec88a611891",
+    "READ_ONLY_ENVIRONMENT.json": "2572a134e75c079d814cc577031dd3146db393542a307b57a410e1c16b67c213",
+    "SDK_READ_BUDGET_REVIEW.json": "467e7205aa066ddb38e9fa4cf15a7133c19c75dbf2c4c64a888f206013b0bab3",
+    "TARGET_VALIDATION.json": "9a583a2d610188af4e74e4213da5858a3b54a6207d727d3022bf3728a34cd357",
+    "VALIDATION.json": "a802f14fadbd3e3b0bd68dd58e38b33eae5f4f674d06cb10f7b85c26603fb37c"
+  }
+}
