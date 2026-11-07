@@ -254,8 +254,9 @@ describe('targeted extra-data reload', () => {
             ['member-album', ['/api/extra/albums']],
             ['member-flyer-distribution', ['/api/extra/flyer_distributions', '/api/extra/flyer_distribution_assignments']],
             ['flyer-distribution-admin', ['/api/extra/flyer_distributions']],
-            ['payment-admin', ['/api/extra/payments']],
-            ['payment-setting', ['/api/extra/payments']],
+            ['payment-admin', ['/api/extra/payments', '/api/extra/castings']],
+            ['payment-setting', ['/api/extra/payments', '/api/extra/castings']],
+            ['member-payment', ['/api/extra/castings']],
             ['member-desired-piece', ['/api/extra/desired_pieces']],
             ['member-promotion', ['/api/extra/promotions']],
             ['member-concert-record', ['/api/extra/concert_record_videos']],
@@ -307,14 +308,21 @@ describe('targeted extra-data reload', () => {
         const { sandbox } = createBootstrapSandbox();
         sandbox.request.mockImplementation(retryRequest);
 
+        // payments fails, castings (needed for chargeable judgement) succeeds.
         await sandbox.ensureDeferredTabDataLoaded('payment-admin');
-        expect(retryRequest).toHaveBeenCalledTimes(1);
+        expect(retryRequest.mock.calls.map(([url]) => url)).toEqual(['/api/extra/payments', '/api/extra/castings']);
 
+        // Only the failed collection is retried.
         await sandbox.ensureDeferredTabDataLoaded('payment-admin');
-        expect(retryRequest).toHaveBeenCalledTimes(2);
+        expect(retryRequest).toHaveBeenCalledTimes(3);
+        expect(retryRequest.mock.calls[2][0]).toBe('/api/extra/payments');
 
         await sandbox.ensureDeferredTabDataLoaded('payment-setting');
-        expect(retryRequest).toHaveBeenCalledTimes(2);
+        expect(retryRequest).toHaveBeenCalledTimes(3);
+
+        // The member payment view reuses castings loaded by the admin tab.
+        await sandbox.ensureDeferredTabDataLoaded('member-payment');
+        expect(retryRequest).toHaveBeenCalledTimes(3);
     });
 
     test('payment admin concurrent opens reuse the same in-flight request', async () => {
@@ -342,7 +350,7 @@ describe('targeted extra-data reload', () => {
 
         await Promise.resolve();
 
-        expect(networkCalls).toEqual(['/api/extra/payments']);
+        expect(networkCalls).toEqual(['/api/extra/payments', '/api/extra/castings']);
 
         deferred.resolve([{ sourceUrl: '/api/extra/payments' }]);
         await Promise.all([first, second]);

@@ -319,7 +319,11 @@ async function ensureDeferredTabDataLoaded(tabName) {
     if (tabName === 'member-flyer-distribution') queueExtraLoad(['flyerDistributions', 'flyerDistributionAssignments']);
     if (tabName === 'member-concert-record' || tabName === 'concert-record-admin') queueExtraLoad(['concertRecordVideos']);
     if (tabName === 'flyer-distribution-admin') queueExtraLoad(['flyerDistributions']);
-    if (tabName === 'payment-admin' || tabName === 'payment-setting') queueExtraLoad(['payments']);
+    // Payment status (dues months and concert fees) is judged from castings:
+    // without them every performance looks non-chargeable and saved payments
+    // seem not to be reflected until the casting tab happens to be opened.
+    if (tabName === 'payment-admin' || tabName === 'payment-setting') queueExtraLoad(['payments', 'castings']);
+    if (tabName === 'member-payment') queueExtraLoad(['castings']);
     if (tabName === 'member-desired-piece') queueExtraLoad(['desiredPieces']);
     if (tabName === 'member-promotion') queueExtraLoad(['promotions']);
     if (tabName === 'venue-admin') queueExtraLoad(['venueSettings']);
