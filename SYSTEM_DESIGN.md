@@ -161,7 +161,7 @@
 - /api/bootstrap-core
 - /api/bootstrap
 - bootstrap-lite は初期表示用の軽量レスポンスとして performances / schedules / announcements / members / extras.payments / extras.part_settings / extras.org_settings / extras.sns_settings を返し、extras.connection_settings / extras.flyer_distributions / extras.flyer_distribution_assignments は返さない。
-- bootstrap-lite の payments は現在端末の持ち主の記録だけを返し、管理者の全件支払一覧は payment-admin か payment-setting を開いた時に `/api/extra/payments` で取得する。支払状況（団費の請求対象月・演奏会費の対象）は乗り番で判定するため、payment-admin / payment-setting / member-payment を開いた時は未取得の `/api/extra/castings` も取得する。
+- bootstrap-lite の payments は現在端末の持ち主の記録だけを返し、管理者の全件支払一覧は payment-admin か payment-setting を開いた時に `/api/extra/payments` で取得する。支払状況（団費の請求対象月・演奏会費の対象）は乗り番で判定するため、payment-admin / payment-setting / member-payment を開いた時は未取得の `/api/extra/castings` も取得する。メニューの支払状況の滞納警告も乗り番で判定するため、団員に紐づく端末では初回表示後に未取得の castings を自動取得し、payments / castings の反映時にホーム・ドロワーのメニューを再描画する（エキストラ制限やメニュー非表示の場合は取得しない）。
 - チラシ配布の一覧と割当は member-flyer-distribution または flyer-distribution-admin を開いた時に on-demand 取得する。
 - public performances は一覧表示に不要な created_at / updated_at を返さない。
 

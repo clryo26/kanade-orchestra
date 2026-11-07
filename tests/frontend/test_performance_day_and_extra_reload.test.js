@@ -276,6 +276,24 @@ describe('targeted extra-data reload', () => {
         }
     });
 
+    test('applying castings or payments redraws the menus that show the payment alert', async () => {
+        const { sandbox } = createBootstrapSandbox();
+        sandbox.renderMenuGroups = vi.fn();
+        sandbox.renderPortalDrawerMenu = vi.fn();
+
+        await sandbox.loadExtraData(['absences']);
+        expect(sandbox.renderMenuGroups).not.toHaveBeenCalled();
+        expect(sandbox.renderPortalDrawerMenu).not.toHaveBeenCalled();
+
+        await sandbox.loadExtraData(['castings']);
+        expect(sandbox.renderMenuGroups).toHaveBeenCalledTimes(1);
+        expect(sandbox.renderPortalDrawerMenu).toHaveBeenCalledTimes(1);
+
+        await sandbox.loadExtraData(['payments']);
+        expect(sandbox.renderMenuGroups).toHaveBeenCalledTimes(2);
+        expect(sandbox.renderPortalDrawerMenu).toHaveBeenCalledTimes(2);
+    });
+
     test('successful deferred load is not repeated for the same tab, but failures can be retried', async () => {
         const retryRequest = vi.fn(async (url) => {
             if (url === '/api/extra/promotions' && retryRequest.mock.calls.length === 1) {
