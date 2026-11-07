@@ -741,6 +741,12 @@ function renderAppliedExtraCollections(collections) {
     if ((has('absences') || parts) && typeof renderMemberSchedules === 'function') renderMemberSchedules();
     if (has('sheets') || parts) { if (typeof renderSheetAdmin === 'function') renderSheetAdmin(); }
     if (has('payments', 'castings', 'orgSettings') || parts) renderPaymentAdmin({ preserveForm: true });
+    // The payment overdue alert on the shared menus is judged from payments and
+    // castings; redraw only the menus (as applyPortalMenuVisibility does).
+    if (has('payments', 'castings') && typeof renderMenuGroups === 'function') {
+        renderMenuGroups($('portalHomeMenu'));
+        if (typeof renderPortalDrawerMenu === 'function') renderPortalDrawerMenu();
+    }
     if (parts) renderPartManagement();
     if (has('venueSettings')) renderVenueManagement();
     if (has('flyerDistributions', 'flyerDistributionAssignments') || parts) renderFlyerDistributionManagement();

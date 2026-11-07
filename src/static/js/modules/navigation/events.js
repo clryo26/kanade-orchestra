@@ -57,6 +57,22 @@ async function loadAttendanceReminderAfterStartup() {
     }
 }
 
+// The payment overdue alert on the home menu is judged from castings, which
+// bootstrap-lite does not return. Fetch them once after the first paint so the
+// alert does not depend on the casting tab having been opened; the menus are
+// redrawn by renderAppliedExtraCollections when castings are applied.
+async function loadPaymentAlertAfterStartup() {
+    if (!appState.currentUserMemberId) return;
+    if (typeof isExtraRestrictedMemberTab === 'function' && isExtraRestrictedMemberTab('member-payment')) return;
+    if (typeof isPortalMenuVisible === 'function' && !isPortalMenuVisible('member-payment')) return;
+    if (typeof isDeferredPortalDataLoaded === 'function' && isDeferredPortalDataLoaded('castings')) return;
+    try {
+        await loadExtraData(['castings'], { _requestOrigin: 'automatic' });
+    } catch (error) {
+        console.warn('Payment alert data load failed; alert stays unjudged', error);
+    }
+}
+
 // loadEssentialData完亁E��で征E��し、完亁E��に起動画面を非表示にする
 async function enterPortal(options = {}) {
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
@@ -88,6 +104,7 @@ async function enterPortal(options = {}) {
     // 出欠追加機能と最新の出欠データは初回表示後に取得し、
     // 両方の取得成功後だけ督促判定する。
     void loadAttendanceReminderAfterStartup();
+    void loadPaymentAlertAfterStartup();
     if (new URL(window.location.href).searchParams.has('notification') || localStorage.getItem('portalPushMemberId')) {
         try {
             await ensureNotificationsLoaded();
