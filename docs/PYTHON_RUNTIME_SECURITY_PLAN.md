@@ -83,6 +83,12 @@ setuptools 82以降はpkg_resourcesを含まないため、これを使うimagei
 
 配備は最後に一括で行う。Deploy Testはdisabled_manuallyを維持し、この更新では配備・migration・実DB/GCS操作を行わない。実iPhone・認証済みTEST/本番の受入、既知のASGI切断時ログ差は別の確認事項として残す。
 
+## pyasn1 0.6.5への更新（2026-11-07）
+
+最新main `f4c1264`から独立した更新。CIの依存監査でpyasn1 0.6.4にCVE-2026-119194〜119197の新規4件が報告されたため、`uv lock --upgrade-package pyasn1`でpyasn1だけを0.6.5へ更新する。直接依存ではなくgoogle-auth系の間接依存であり、pyproject.toml・他パッケージ・アプリ処理は変更しない。
+
+更新後のLinux/Python 3.12本番依存は75パッケージのまま。実監査で報告0・skip 0、新規・staleとも0、終了0。既知一覧への除外追加は行わない。requirements SHA256: `7219fabc820397893d295eb059b7e05d6d177f54bf6cdf6b75ac158f07bb502a`。この更新では配備・migration・実DB/GCS操作を行わない。
+
 ## 根拠
 
 - [pip-audit公式](https://github.com/pypa/pip-audit#usage)
