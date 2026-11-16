@@ -253,13 +253,15 @@ function sortedMembersByPartAndKana(members) {
 }
 
 function uniqueEventResponses(responses) {
-    const byName = new Map();
+    const byMember = new Map();
     responses.forEach((response) => {
-        const key = String(response.name || '');
-        if (!key) return;
-        byName.set(key, response);
+        const memberId = String(response.member_id || '');
+        const name = String(response.name || '');
+        const key = memberId ? `member:${memberId}` : `legacy:${name}`;
+        if (!memberId && !name) return;
+        byMember.set(key, response);
     });
-    return Array.from(byName.values());
+    return Array.from(byMember.values());
 }
 
 function renderGroupedEventResponses(responses) {
