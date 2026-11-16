@@ -44,6 +44,8 @@ dev = [
 
 [tool.uv]
 package = false
+# FastAPI's transitive dependency needs the traceparent fix for CVE-2026-126360.
+constraint-dependencies = ["opentelemetry-api>=1.45.2"]
 
 [tool.black]
 line-length = 100
