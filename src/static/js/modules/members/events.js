@@ -101,6 +101,26 @@ function renderMemberEventList() {
     });
 }
 
+function ownMemberEventResponses(eventId) {
+    const memberId = String(appState.currentUserMemberId || '');
+    const name = currentUserMemberName();
+    const responses = (appState.eventResponses || []).filter((response) => String(response.event_id) === String(eventId));
+    if (memberId) {
+        const byId = responses.filter((response) => String(response.member_id || '') === memberId);
+        if (byId.length) return byId;
+    }
+    // Only use a unique legacy name-only row. A matching name must never
+    // select a response explicitly owned by another member ID.
+    // Legacy name-only rows can be claimed only when the name identifies one
+    // member. Duplicate names are inherently ambiguous and need admin cleanup.
+    if (memberId) {
+        const matchingMembers = (appState.members || []).filter((member) => memberDisplayName(member) === name);
+        if (matchingMembers.length !== 1 || String(matchingMembers[0].id || '') !== memberId) return [];
+    }
+    const legacy = responses.filter((response) => !response.member_id && name && String(response.name || '') === String(name));
+    return legacy.length === 1 ? legacy : [];
+}
+
 function renderMemberEventDetail(id) {
     const listView = $('memberEventListView');
     const detailView = $('memberEventDetailView');
@@ -134,9 +154,9 @@ function renderMemberEventDetail(id) {
     $('eventResponseSaveBtn').addEventListener('click', (eventNode) => withButtonStatus(eventNode.currentTarget, '登録中...', async () => {
         const name = currentUserMemberName(); const status = $('eventResponseStatus').value;
         if (!name) { showAlert('ログイン中の団員情報が見つかりません', 'warning'); return; }
-        const existingResponses = appState.eventResponses.filter((r) => String(r.event_id) === String(id) && String(r.name || '') === String(name));
+        const existingResponses = ownMemberEventResponses(id);
         const existing = existingResponses[0];
-        const payload = { event_id: id, name, status };
+        const payload = { event_id: id, member_id: appState.currentUserMemberId, name, status };
         if (existing?.id) {
             await request(`/api/extra/event_responses/${existing.id}`, jsonOptions('PUT', payload));
             await Promise.all(existingResponses.slice(1).filter((r) => r.id).map((r) => request(`/api/extra/event_responses/${r.id}`, { method: 'DELETE' })));

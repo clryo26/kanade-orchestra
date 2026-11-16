@@ -230,6 +230,26 @@ def assert_extra_collection_permission(
         target = current or payload or {}
         owner_id = str(target.get("member_id") or "")
         owner_name = str(target.get("name") or "")
+        if name == "event_responses" and member_id:
+            if owner_id:
+                # An ID-owned response cannot be claimed by name alone.
+                if member_id == owner_id:
+                    return
+                raise HTTPException(status_code=403, detail="Only owner can modify this record")
+            # The original UI stored name-only rows. A legacy owner can claim
+            # one only when its name uniquely identifies the authenticated
+            # member. Otherwise an identically named member could steal it.
+            if current is not None and member_name and owner_name == member_name:
+                from ..auth_helpers import member_display_name
+                from .storage_service import load_json_data
+
+                matched = [
+                    member for member in load_json_data("members")
+                    if member_display_name(member) == member_name
+                ]
+                if len(matched) == 1 and str(matched[0].get("id") or "") == member_id:
+                    return
+            raise HTTPException(status_code=403, detail="Only owner can modify this record")
         if member_id and owner_id and member_id == owner_id:
             return
         if member_name and owner_name and member_name == owner_name:
