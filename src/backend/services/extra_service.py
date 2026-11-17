@@ -322,7 +322,16 @@ def _public(name: str, item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _owner_fields(name: str, body: dict[str, Any], device: dict[str, Any], current: dict[str, Any] | None) -> None:
-    if name not in {"desired_pieces", "promotions"} or is_admin_device(device):
+    if is_admin_device(device):
+        return
+    if name == "event_responses":
+        # Bind the owner to the authenticated session, never the client input.
+        # On a legacy name-only update, the verified actor claims the row.
+        body["member_id"] = (
+            (current or {}).get("member_id") or device.get("member_id") or ""
+        )
+        return
+    if name not in {"desired_pieces", "promotions"}:
         return
     if current is None:
         body["member_id"] = device.get("member_id") or ""
@@ -338,8 +347,9 @@ def build_create_payload(name: str, upsert_payload: dict[str, Any], device: dict
     require_input_dates(normalized_body, EXTRA_INPUT_DATE_FIELDS.get(name, ()))
     if name == "absences":
         normalized_body = _validate_absence_payload(normalized_body)
-    assert_extra_collection_permission(name, device, payload=normalized_body)
+    # Populate server-trusted event owner ID before ownership validation.
     _owner_fields(name, normalized_body, device, None)
+    assert_extra_collection_permission(name, device, payload=normalized_body)
     metadata = _concert_record_metadata(normalized_body) if name == "concert_record_videos" else None
     if name == "desired_pieces":
         normalized_body["reference_audio_url"] = validate_youtube_url(str(normalized_body.get("reference_audio_url") or ""))
