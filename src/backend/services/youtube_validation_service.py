@@ -59,11 +59,7 @@ def _extract_video_id(url: str) -> str:
 
 
 def _canonical_youtube_url(url: str, video_id: str) -> str:
-    parsed = urlparse(url)
-    host = parsed.netloc.lower()
-    if host == "youtu.be":
-        return f"https://www.youtube.com/watch?v={video_id}"
-    return url.strip()
+    return f"https://www.youtube.com/watch?v={video_id}"
 
 
 def normalize_youtube_url(url: str) -> YouTubeLookupResult:
