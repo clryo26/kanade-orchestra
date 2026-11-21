@@ -1,7 +1,10 @@
 const { defineConfig, devices } = require('@playwright/test');
+const { pbkdf2Sync, randomBytes } = require('node:crypto');
 
 const e2eBaseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:8000';
 const useExistingServer = process.env.E2E_USE_EXISTING_SERVER === 'true' && !!process.env.E2E_BASE_URL;
+const fixtureSalt = randomBytes(16).toString('hex');
+const fixtureHash = pbkdf2Sync('offline-hidden-pass-47', fixtureSalt, 260000, 32, 'sha256').toString('hex');
 
 module.exports = defineConfig({
   testDir: './tests/e2e',
@@ -29,6 +32,8 @@ module.exports = defineConfig({
           PYTHONUTF8: '1',
           DATA_BACKEND: 'local',
           LOCAL_JSON_FALLBACK_ENABLED: 'true',
+          HIDDEN_ADMIN_NAME: 'offline-hidden-admin',
+          HIDDEN_ADMIN_PASSWORD_HASH: `pbkdf2$sha256$260000$${fixtureSalt}$${fixtureHash}`,
           HTTP_PROXY: '',
           HTTPS_PROXY: '',
           ALL_PROXY: '',

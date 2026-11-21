@@ -309,7 +309,7 @@ def test_login_refreshes_cached_auth_devices_after_db_write(client, backend_env,
     assert device_response.json()["authenticated"] is True
 
 
-def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backend_env, monkeypatch):
+def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backend_env, monkeypatch, hidden_admin_credentials):
     db_store = {
         "members": [],
         "auth_devices": [],
@@ -320,9 +320,9 @@ def test_hidden_administrator_login_refreshes_cached_auth_devices(client, backen
 
     response = _login(
         client,
-        name="Administrator",
+        name="offline-hidden-admin",
         part="",
-        password="systemadminadmin",
+        password='offline-hidden-pass-47',
         device_id="device-hidden-admin",
     )
 
@@ -364,7 +364,7 @@ def test_login_accepts_fullwidth_ascii_password_input(client, backend_env, monke
     assert response.json()["authenticated"] is True
 
 
-def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, backend_env, monkeypatch):
+def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, backend_env, monkeypatch, hidden_admin_credentials):
     db_store = {
         "members": [],
         "auth_devices": [],
@@ -373,9 +373,9 @@ def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, bac
 
     response = _login(
         client,
-        name="Administrator",
+        name="offline-hidden-admin",
         part="",
-        password="ｓｙｓｔｅｍａｄｍｉｎａｄｍｉｎ",
+        password='ｏｆｆｌｉｎｅ－ｈｉｄｄｅｎ－ｐａｓｓ－４７',
         device_id="device-hidden-admin-fullwidth",
     )
 
@@ -383,7 +383,7 @@ def test_hidden_administrator_login_accepts_fullwidth_ascii_password(client, bac
     assert response.json()["authenticated"] is True
 
 
-def test_hidden_administrator_login_survives_auth_device_persistence_failure(client, backend_env, monkeypatch):
+def test_hidden_administrator_login_survives_auth_device_persistence_failure(client, backend_env, monkeypatch, hidden_admin_credentials):
     db_store = {
         "members": [],
         "auth_devices": [],
@@ -397,9 +397,9 @@ def test_hidden_administrator_login_survives_auth_device_persistence_failure(cli
 
     response = _login(
         client,
-        name="Administrator",
+        name="offline-hidden-admin",
         part="",
-        password="systemadminadmin",
+        password='offline-hidden-pass-47',
         device_id="device-hidden-admin-fallback",
     )
 

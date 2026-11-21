@@ -988,7 +988,7 @@ localStorage から device_id を取得（なければ生成）
   ↓
 POST /api/auth/portal-login
   ↓
-  ├─ (隠し認証) name == "Administrator" && password == "systemadminadmin"
+  - 隠し管理者ログインは、環境変数 `HIDDEN_ADMIN_NAME` と `HIDDEN_ADMIN_PASSWORD_HASH` が両方設定されている場合にのみ有効とし、既存のパスワードハッシュ方式で検証する。本番・テストでは両環境変数を設定せず、無効のまま運用する。
   │  → System Admin ロール付与
   │
   └─ members.json で検索
