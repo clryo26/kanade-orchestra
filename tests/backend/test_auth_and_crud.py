@@ -273,13 +273,13 @@ def test_portal_login_accepts_trimmed_mobile_password_input(client, backend_env,
     assert response.json()["authenticated"] is True
 
 
-def test_hidden_admin_login_accepts_lowercase_name(client):
+def test_hidden_admin_login_accepts_lowercase_name(client, hidden_admin_credentials):
     response = client.post(
         "/api/auth/portal-login",
         json={
-            "name": "administrator",
+            "name": "offline-hidden-admin",
             "part": "",
-            "password": "systemadminadmin",
+            "password": 'offline-hidden-pass-47',
             "device_id": "hidden-admin-device",
             "device_name": "Mobile",
         },

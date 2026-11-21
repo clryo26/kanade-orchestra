@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hmac
+import os
 import re
 import unicodedata
 from typing import Any
 
 from fastapi import HTTPException
 
+from .services.security_service import verify_password
 from .utils.datetime_utils import InvalidDateTimeValue, jst_today, parse_calendar_date
 
 
@@ -70,10 +73,29 @@ def find_member_by_login_name(items: list[dict[str, Any]], name: str, part: str 
 
 
 def is_hidden_system_admin_login(login: Any) -> bool:
+    configured_name = os.environ.get("HIDDEN_ADMIN_NAME", "")
+    configured_hash = os.environ.get("HIDDEN_ADMIN_PASSWORD_HASH", "")
+    normalized_name = compact_member_name(configured_name)
+    # Restrict this privileged account to hash_password's current storage format.
+    # verify_password also accepts legacy plain text for ordinary member migration.
+    if not normalized_name or not re.fullmatch(
+        r"pbkdf2\$sha256\$[1-9][0-9]*\$[0-9a-f]{32}\$[0-9a-f]{64}", configured_hash
+    ):
+        return False
+
     login_name = compact_member_name(getattr(login, "name", ""))
     login_password = unicodedata.normalize("NFKC", str(getattr(login, "password", "") or ""))
     login_password = re.sub(r"[\u200b-\u200d\u2060\ufeff]", "", login_password).strip()
-    return login_name == compact_member_name("Administrator") and login_password == "systemadminadmin"
+    password_matches = verify_password(login_password, configured_hash)
+    name_matches = hmac.compare_digest(
+        login_name.encode("utf-8"), normalized_name.encode("utf-8")
+    )
+    # verify_password retains a plaintext fallback for old member records.
+    # Never accept the configured hash itself as a privileged credential.
+    submitted_hash = hmac.compare_digest(
+        login_password.encode("utf-8"), configured_hash.encode("utf-8")
+    )
+    return name_matches and password_matches and not submitted_hash
 
 
 def member_part(member: dict[str, Any]) -> str:

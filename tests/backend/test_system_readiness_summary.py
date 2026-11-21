@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from src.backend.routers import scores as scores_router
+
+
+pytestmark = pytest.mark.usefixtures("hidden_admin_credentials")
 
 
 def _login_system_admin(client: TestClient, device_id: str = "dev-system") -> dict[str, str]:
     login = client.post(
         "/api/auth/portal-login",
         json={
-            "name": "administrator",
+            "name": "offline-hidden-admin",
             "part": "",
-            "password": "systemadminadmin",
+            "password": 'offline-hidden-pass-47',
             "device_id": device_id,
             "device_name": "Readiness Test Device",
         },

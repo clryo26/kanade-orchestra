@@ -153,3 +153,16 @@ def seed_device_fn(backend_env):
 @pytest.fixture
 def admin_headers_fixture() -> dict[str, str]:
     return admin_headers()
+
+
+
+@pytest.fixture
+def hidden_admin_credentials(monkeypatch):
+    """Configure an artificial hidden administrator only for tests that request it."""
+    from src.backend.services.security_service import hash_password
+
+    name = "offline-hidden-admin"
+    password = "offline-hidden-pass-47"
+    monkeypatch.setenv("HIDDEN_ADMIN_NAME", name)
+    monkeypatch.setenv("HIDDEN_ADMIN_PASSWORD_HASH", hash_password(password))
+    return name, password
