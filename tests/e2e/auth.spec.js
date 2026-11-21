@@ -4,7 +4,7 @@ test.describe('Authentication smoke', () => {
   test('hidden Administrator can enter the portal with local fallback data', async ({ page }) => {
     await page.goto('/');
 
-    await page.fill('#portalNameInput', 'offline-hidden-admin');
+    await page.fill('#portalNameInput', 'Administrator');
     await page.fill('#portalPasswordInput', 'offline-hidden-pass-47');
     await page.click('#portalLoginBtn');
 

@@ -32,7 +32,7 @@ module.exports = defineConfig({
           PYTHONUTF8: '1',
           DATA_BACKEND: 'local',
           LOCAL_JSON_FALLBACK_ENABLED: 'true',
-          HIDDEN_ADMIN_NAME: 'offline-hidden-admin',
+          HIDDEN_ADMIN_NAME: 'Administrator',
           HIDDEN_ADMIN_PASSWORD_HASH: `pbkdf2$sha256$260000$${fixtureSalt}$${fixtureHash}`,
           HTTP_PROXY: '',
           HTTPS_PROXY: '',
