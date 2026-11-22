@@ -80,7 +80,7 @@ def _public_member_payload_base(member: dict[str, Any]) -> dict[str, Any]:
     ]:
         payload[key] = bool(payload.get(key))
 
-    payload["password_set"] = bool(payload.get("password"))
+    payload["password_set"] = not is_password_placeholder(str(payload.get("password") or ""))
     payload.pop("password", None)
     payload.pop("created_at", None)
     payload.pop("updated_at", None)
