@@ -38,8 +38,11 @@ async function savePerformance() {
         performance_fee_amount: currentPerformance?.performance_fee_amount || 0,
         pieces: currentPerformancePieces()
     };
-    if (!payload.title || !payload.date) {
-        showAlert('タイトルと開催日を入力してください', 'warning');
+    // 開催日は日程未定なら空欄で保存でき、練習予定から紐づけられるようにするため、
+    // 必須はタイトルのみとする（空の date はバックエンドで「未設定」として扱われ、
+    // 入力された日付の妥当性はバックエンドの require_input_dates で検証される）。
+    if (!payload.title) {
+        showAlert('タイトルを入力してください', 'warning');
         return;
     }
 
@@ -66,7 +69,8 @@ function selectPerformance(id) {
     if (!item) return;
     $('perfId').value = item.id;
     $('perfTitle').value = item.title || '';
-    $('perfDate').value = item.date || window.portalRuntimeContext.today();
+    // 日程未定の演奏会を選んだときに今日の日付が入り、そのまま保存されないようにする
+    $('perfDate').value = item.date || '';
     $('perfOpenTime').value = item.open_time || '18:00';
     $('perfStartTime').value = item.start_time || '19:00';
     if ($('perfVenue')) $('perfVenue').innerHTML = venueSelectOptionsHtml('performance', item.venue || '');
