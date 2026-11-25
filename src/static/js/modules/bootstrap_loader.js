@@ -326,7 +326,12 @@ async function ensureDeferredTabDataLoaded(tabName) {
     if (tabName === 'member-payment') queueExtraLoad(['castings']);
     if (tabName === 'member-desired-piece') queueExtraLoad(['desiredPieces']);
     if (tabName === 'member-promotion') queueExtraLoad(['promotions']);
-    if (tabName === 'venue-admin') queueExtraLoad(['venueSettings']);
+    // The performance / schedule registration forms build their venue
+    // dropdowns from venueSettings, which is not part of the lite bootstrap.
+    // Load it here so registered venues appear without opening venue-admin first.
+    if (tabName === 'venue-admin' || tabName === 'performance' || tabName === 'schedule') {
+        queueExtraLoad(['venueSettings']);
+    }
     if (tabName === 'system-connection') queueExtraLoad(['connectionSettings']);
     if (tabName === 'system-auth' && !isDeferredPortalDataLoaded('authDevices')) {
         extraLoads.push(loadAuthManagement());

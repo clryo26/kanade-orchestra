@@ -262,6 +262,9 @@ describe('targeted extra-data reload', () => {
             ['member-concert-record', ['/api/extra/concert_record_videos']],
             ['concert-record-admin', ['/api/extra/concert_record_videos']],
             ['venue-admin', ['/api/extra/venue_settings']],
+            // The registration forms build their venue dropdowns from venueSettings.
+            ['performance', ['/api/extra/venue_settings']],
+            ['schedule', ['/api/extra/venue_settings']],
             ['system-connection', ['/api/extra/connection_settings']],
             ['system-auth', ['/api/auth/devices']],
         ];
@@ -372,6 +375,97 @@ describe('targeted extra-data reload', () => {
 
         deferred.resolve([{ sourceUrl: '/api/extra/payments' }]);
         await Promise.all([first, second]);
+    });
+
+    test('performance and schedule share one successful venue load and do not refetch on revisit', async () => {
+        const venues = [{ id: 1, name: '市民ホール' }];
+        const { sandbox, appState, request } = createBootstrapSandbox();
+        request.mockImplementation(async () => venues);
+
+        await sandbox.ensureDeferredTabDataLoaded('performance');
+        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/extra/venue_settings']);
+        expect(appState.venueSettings).toEqual(venues);
+        expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(true);
+        expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
+        expect(sandbox.renderVenueManagement).toHaveBeenCalledTimes(1);
+
+        // Revisits and moves between the two registration tabs reuse the result.
+        for (const tabName of ['schedule', 'performance', 'schedule', 'performance']) {
+            await sandbox.ensureDeferredTabDataLoaded(tabName);
+        }
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
+        expect(sandbox.showAlert).not.toHaveBeenCalled();
+    });
+
+    test('concurrent venue-dependent tab opens reuse the same in-flight venue request', async () => {
+        let resolveVenues;
+        const gate = new Promise((resolve) => { resolveVenues = resolve; });
+        const { sandbox, appState, request } = createBootstrapSandbox();
+        request.mockImplementation(() => gate);
+
+        const pending = Promise.all([
+            sandbox.ensureDeferredTabDataLoaded('performance'),
+            sandbox.ensureDeferredTabDataLoaded('schedule'),
+            sandbox.ensureDeferredTabDataLoaded('venue-admin'),
+        ]);
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/extra/venue_settings']);
+
+        resolveVenues([{ id: 2, name: '市民センター' }]);
+        await pending;
+
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(appState.venueSettings).toEqual([{ id: 2, name: '市民センター' }]);
+        // The shared response is applied (and the dropdowns refreshed) only once.
+        expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
+    });
+
+    test('an empty venue response is a successful load and is not refetched by the registration tabs', async () => {
+        const { sandbox, appState, request } = createBootstrapSandbox();
+        request.mockImplementation(async () => []);
+
+        await sandbox.ensureDeferredTabDataLoaded('schedule');
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(appState.venueSettings).toEqual([]);
+        expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(true);
+        expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
+
+        for (const tabName of ['schedule', 'performance', 'schedule', 'performance']) {
+            await sandbox.ensureDeferredTabDataLoaded(tabName);
+        }
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(sandbox.showAlert).not.toHaveBeenCalled();
+    });
+
+    test('a failed venue load warns, keeps existing data, and is retried on the next registration tab', async () => {
+        const previous = [{ id: 9, name: '既存の会場' }];
+        const fresh = [{ id: 1, name: '市民ホール' }, { id: 2, name: '市民センター' }];
+        const { sandbox, appState, request } = createBootstrapSandbox();
+        appState.venueSettings = previous;
+        request
+            .mockImplementationOnce(async () => { throw new Error('temporary failure'); })
+            .mockImplementation(async () => fresh);
+
+        await sandbox.ensureDeferredTabDataLoaded('performance');
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(sandbox.showAlert).toHaveBeenCalledTimes(1);
+        expect(sandbox.showAlert).toHaveBeenCalledWith(
+            expect.stringContaining('venueSettings'), 'warning'
+        );
+        expect(appState.venueSettings).toBe(previous);
+        expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(false);
+        expect(sandbox.refreshVenueOptions).not.toHaveBeenCalled();
+
+        await sandbox.ensureDeferredTabDataLoaded('schedule');
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(request.mock.calls[1][0]).toBe('/api/extra/venue_settings');
+        expect(appState.venueSettings).toEqual(fresh);
+        expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(true);
+        expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
+
+        await sandbox.ensureDeferredTabDataLoaded('performance');
+        expect(request).toHaveBeenCalledTimes(2);
     });
 
     test('flyer distribution tab loads both collections and retries a missing list only', async () => {
