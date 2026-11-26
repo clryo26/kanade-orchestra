@@ -70,6 +70,7 @@ function setDefaultDates() {
 
 // 読み込み失敗時はローディングバーを解除して例外を呼出元へ伝播する
 async function loadEssentialData(options = {}) {
+    const isRefetch = appState.essentialDataLoaded === true;
     const useCachedPreview = options.useCachedPreview === true;
     const forceRevalidate = options.forceRevalidate === true;
     const cacheKey = '/api/bootstrap-lite';
@@ -114,6 +115,9 @@ async function loadEssentialData(options = {}) {
             try {
                 cachedPreviewData = cachedEntry.data;
                 applyBootstrapData(cachedPreviewData);
+                if (Object.prototype.hasOwnProperty.call(cachedPreviewData.extras || {}, 'payments')) {
+                    allPaymentsHeldAuthContext = null;
+                }
 
                 if (window.portalStartup) {
                     window.portalStartup.mark('ESSENTIAL_RENDER_START');
@@ -176,9 +180,10 @@ async function loadEssentialData(options = {}) {
 
         if (cachedPreviewRendered) {
             try {
-                applyBootstrapData(data);
+                const protectedPayments = applyLatestEssentialBootstrap(data, isRefetch);
                 renderEssentialViews();
                 appState.lastEssentialDataLoadedAt = Date.now();
+                refetchVisibleDeferredData(isRefetch, protectedPayments, options);
                 clearLoadingBar();
                 return;
             } catch (error) {
@@ -198,6 +203,9 @@ async function loadEssentialData(options = {}) {
 
                 if (cachedPreviewData) {
                     applyBootstrapData(cachedPreviewData);
+                    if (Object.prototype.hasOwnProperty.call(cachedPreviewData.extras || {}, 'payments')) {
+                        allPaymentsHeldAuthContext = null;
+                    }
                     renderEssentialViews();
                     setLoadingBar(
                         '保存済みデータを表示しています。最新データの反映に失敗しました。'
@@ -209,7 +217,7 @@ async function loadEssentialData(options = {}) {
             }
         }
 
-        applyBootstrapData(data);
+        const protectedPayments = applyLatestEssentialBootstrap(data, isRefetch);
         clearLoadingBar();
 
         if (window.portalStartup) {
@@ -232,6 +240,7 @@ async function loadEssentialData(options = {}) {
         }
 
         appState.lastEssentialDataLoadedAt = Date.now();
+        refetchVisibleDeferredData(isRefetch, protectedPayments, options);
     } catch (error) {
         if (cachedPreviewRendered) {
             console.warn(
@@ -279,6 +288,63 @@ const deferredPortalDataFlags = {
     authDevices: false,
 };
 
+// Advance independently of authentication so pre-refetch loads cannot mark data latest.
+let deferredPortalDataGeneration = 0;
+// Keep full payments protected even when their flag is reset and a reload fails
+// or is still in flight. Account/permission/session changes invalidate ownership.
+let allPaymentsHeldAuthContext = null;
+let loadEventsSequence = 0;
+let loadAuthManagementSequence = 0;
+
+function isAllPaymentsHeld() {
+    return allPaymentsHeldAuthContext !== null
+        && allPaymentsHeldAuthContext === portalExtraAuthContext();
+}
+
+function applyLatestEssentialBootstrap(data, isRefetch) {
+    // Only protect the full list for the same auth identity, checked after await.
+    // Never mutate a response/cache object containing member-only payments.
+    const protect = isRefetch && isAllPaymentsHeld();
+    if (protect) {
+        const extras = { ...(data.extras || {}) };
+        delete extras.payments;
+        applyBootstrapData({ ...data, extras });
+    } else {
+        applyBootstrapData(data);
+        if (Object.prototype.hasOwnProperty.call(data.extras || {}, 'payments')) {
+            allPaymentsHeldAuthContext = null;
+        }
+    }
+    return protect;
+}
+
+function refetchVisibleDeferredData(isRefetch, protectedPayments, options) {
+    resetDeferredPortalDataFlags();
+    // Startup/login resets flags only; deferred requests must not precede navigation.
+    if (!isRefetch) return;
+    // Bypass the events 10-second cache and sharing with older ordinary GETs.
+    const picked = { _forceRevalidate: true };
+    if (options._requestOrigin !== undefined) picked._requestOrigin = options._requestOrigin;
+    const tabName = appState.currentPortalTab?.tabName;
+    // Promise callbacks also contain synchronous failures without failing bootstrap.
+    if (tabName) {
+        Promise.resolve().then(() => ensureDeferredTabDataLoaded(tabName, picked))
+            .catch(error => console.warn('[bootstrap] deferred tab refetch failed:', error));
+    }
+    if (protectedPayments) {
+        Promise.resolve().then(() => loadExtraData(['payments'], picked))
+            .catch(error => console.warn('[bootstrap] payments refetch failed:', error));
+    }
+}
+
+function pickDeferredRequestOptions(options) {
+    const picked = {};
+    for (const key of ['_requestOrigin', '_forceRevalidate']) {
+        if (options[key] !== undefined) picked[key] = options[key];
+    }
+    return picked;
+}
+
 function markDeferredPortalDataLoaded(name) {
     if (Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)) {
         deferredPortalDataFlags[name] = true;
@@ -291,21 +357,28 @@ function isDeferredPortalDataLoaded(name) {
         : false;
 }
 
-async function ensureDeferredTabDataLoaded(tabName) {
+function resetDeferredPortalDataFlags() {
+    Object.keys(deferredPortalDataFlags).forEach(name => { deferredPortalDataFlags[name] = false; });
+    deferredPortalDataGeneration += 1;
+}
+
+async function ensureDeferredTabDataLoaded(tabName, options = {}) {
+    const picked = pickDeferredRequestOptions(options);
+    const hasOptions = Object.keys(picked).length > 0;
     const extraLoads = [];
     const queueExtraLoad = (names) => {
         const requested = names.filter((name) => !isDeferredPortalDataLoaded(name));
         if (requested.length) {
-            extraLoads.push(loadExtraData(requested));
+            extraLoads.push(hasOptions ? loadExtraData(requested, picked) : loadExtraData(requested));
         }
     };
 
     if (tabName === 'event' && !isDeferredPortalDataLoaded('events')) {
-        extraLoads.push(loadEvents());
+        extraLoads.push(hasOptions ? loadEvents(picked) : loadEvents());
     }
     if (tabName === 'member-event') {
         if (!isDeferredPortalDataLoaded('events')) {
-            extraLoads.push(loadEvents());
+            extraLoads.push(hasOptions ? loadEvents(picked) : loadEvents());
         }
         queueExtraLoad(['eventResponses']);
     }
@@ -334,7 +407,7 @@ async function ensureDeferredTabDataLoaded(tabName) {
     }
     if (tabName === 'system-connection') queueExtraLoad(['connectionSettings']);
     if (tabName === 'system-auth' && !isDeferredPortalDataLoaded('authDevices')) {
-        extraLoads.push(loadAuthManagement());
+        extraLoads.push(hasOptions ? loadAuthManagement(picked) : loadAuthManagement());
     }
 
     if (extraLoads.length) {
@@ -591,9 +664,17 @@ async function loadAnnouncements() {
     renderAnnouncements();
 }
 
-async function loadEvents() {
-    appState.events = await request('/api/events');
-    markDeferredPortalDataLoaded('events');
+async function loadEvents(options = {}) {
+    // Events normally use a 10-second cache. Refetch options bypass it; sequence
+    // ownership prevents a slower save-triggered reload overwriting a newer call.
+    const seq = ++loadEventsSequence;
+    const generation = deferredPortalDataGeneration;
+    const picked = pickDeferredRequestOptions(options);
+    const events = await (Object.keys(picked).length
+        ? request('/api/events', picked) : request('/api/events'));
+    if (seq !== loadEventsSequence) return;
+    appState.events = events;
+    if (generation === deferredPortalDataGeneration) markDeferredPortalDataLoaded('events');
     renderEvents();
 }
 
@@ -678,10 +759,16 @@ function normalizeMemberSummaryCollection(members) {
 
 // ensureRecordingsLoaded moved to feature module.
 
-async function loadAuthManagement() {
-    const devices = await request('/api/auth/devices');
+async function loadAuthManagement(options = {}) {
+    // Refetch and save-triggered reloads can overlap, as with events above.
+    const seq = ++loadAuthManagementSequence;
+    const generation = deferredPortalDataGeneration;
+    const picked = pickDeferredRequestOptions(options);
+    const devices = await (Object.keys(picked).length
+        ? request('/api/auth/devices', picked) : request('/api/auth/devices'));
+    if (seq !== loadAuthManagementSequence) return;
     appState.authDevices = devices || [];
-    markDeferredPortalDataLoaded('authDevices');
+    if (generation === deferredPortalDataGeneration) markDeferredPortalDataLoaded('authDevices');
     renderAuthDevices();
 }
 
@@ -700,7 +787,7 @@ function portalExtraAuthContext() {
     return JSON.stringify(portalExtraAuthParts());
 }
 function portalExtraContext() {
-    return JSON.stringify([...portalExtraAuthParts(), window.portalResponseEpoch || 0]);
+    return JSON.stringify([...portalExtraAuthParts(), window.portalResponseEpoch || 0, deferredPortalDataGeneration]);
 }
 // request() links a budget that joined another caller's in-flight GET to the
 // budget that GET really spent (sharedBudget). Follow it; the seen set guards
@@ -716,11 +803,17 @@ function portalExtraUsedBudget(budget) {
 // retryContext: the used transient budget of the original load, passed on the
 // one retry after a save so request() continues it instead of starting anew.
 function beginPortalExtraLoad(name, url, options, retryContext = null) {
+    const previous = portalExtraLatest.get(name);
+    if (previous?.promise && previous.generation !== deferredPortalDataGeneration) {
+        // request() shares GETs with the same URL/force option. Avoid joining an
+        // ordinary GET started before bootstrap refetch; preserve caller options.
+        options = { ...options, _forceRevalidate: true };
+    }
     const context = portalExtraContext();
     const shareable = Object.keys(options).every(key => ['_requestOrigin', '_forceRevalidate'].includes(key));
     const key = JSON.stringify([context, name, options._requestOrigin || 'manual', !!options._forceRevalidate]);
     if (shareable && portalExtraLoads.has(key)) return portalExtraLoads.get(key);
-    const entry = { context, authContext: portalExtraAuthContext(), sequence: ++portalExtraSequence, applied: false, reported: false,
+    const entry = { context, authContext: portalExtraAuthContext(), generation: deferredPortalDataGeneration, sequence: ++portalExtraSequence, applied: false, reported: false,
         retryContext: retryContext || { transientRetries: 0, unknown503Retries: 0 } };
     portalExtraLatest.set(name, entry);
     entry.promise = Promise.resolve().then(() => request(url, { ...options, _retryContext: entry.retryContext }))
@@ -855,7 +948,8 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry, i
         const [key, entry] = requestSpecs[index];
         if (portalExtraLatest.get(key) !== entry || entry.applied) return;
         if (entry.context !== currentContext) {
-            // Another account/session, or a 503 wait: discard without retrying.
+            // Another account/session, a 503 wait, or a pre-bootstrap-refetch
+            // generation: discard; only same-auth unloaded data may retry once.
             if (entry.authContext !== currentAuthContext || item.reason?.portalRetryWait) return;
             const discardedBySave = item.status === 'fulfilled' || item.reason?.portalContextChanged;
             const unloaded = Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, key)
@@ -927,6 +1021,7 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry, i
         const stateKey = stateTargets[key];
         if (stateKey) {
             appState[stateKey] = value || [];
+            if (key === 'payments') allPaymentsHeldAuthContext = portalExtraLatest.get(key).authContext;
             markDeferredPortalDataLoaded(stateKey);
             portalExtraLatest.get(key).applied = true;
         }

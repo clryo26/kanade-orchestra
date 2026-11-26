@@ -20,6 +20,22 @@ bootstrap payloads.
 
 ## Change
 
+- Successful bootstrap-lite reloads (refresh, resume synchronization, or concert
+  fee saves) reset all deferred loaded flags and advance their generation without
+  clearing displayed data.
+- Only the visible screen (`appState.currentPortalTab`) reloads immediately with
+  `_forceRevalidate`; resume synchronization also preserves `_requestOrigin:
+  'automatic'`. Other screens load when next opened. Startup/login do not start
+  these deferred reloads.
+- While the full payment list from `/api/extra/payments` is held for the same
+  authentication identity, member-only bootstrap-lite payments cannot overwrite
+  it. The full list is reloaded immediately, with ownership tracked separately
+  from loaded flags so failures and overlapping refreshes preserve the list.
+- Extra loads started before a reload are discarded and may retry once in the
+  new generation. Earlier `loadEvents` / `loadAuthManagement` responses do not
+  mark a new generation loaded or overwrite responses from newer calls.
+- Bootstrap-core continues to return empty `extras`; startup does not load it
+  automatically.
 - Bootstrap requests now go through the shared `request()` helper when it is
   available.
 - The shared request helper provides IndexedDB cache restoration, in-flight GET

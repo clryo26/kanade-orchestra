@@ -144,6 +144,48 @@ function makeSandbox() {
 }
 
 describe('portal browser history navigation', () => {
+    test('back and forward retain member tab history and reload the restored visible screen without pushing entries', async () => {
+        const { sandbox, appState, history, popstateListeners } = makeSandbox();
+        await sandbox.switchTab('memberPanel', 'member-home', false);
+        await sandbox.switchTab('memberPanel', 'member-payment', false);
+        expect(appState.currentMemberTab).toBe('member-payment');
+        expect(appState.previousMemberTab).toBe('member-home');
+        expect(sandbox.ensureDeferredTabDataLoaded).not.toHaveBeenCalled();
+        const pushes = history.pushState.mock.calls.length;
+        const replaces = history.replaceState.mock.calls.length;
+
+        await popstateListeners[0]({ state: {
+            portalNavigation: true, panelId: 'memberPanel', tabName: 'member-home',
+        } });
+        expect(appState.currentPortalTab).toEqual({ panelId: 'memberPanel', tabName: 'member-home' });
+        expect(appState.currentMemberTab).toBe('member-home');
+        expect(appState.previousMemberTab).toBe('member-payment');
+        expect(sandbox.ensureDeferredTabDataLoaded).toHaveBeenLastCalledWith('member-home');
+        expect(sandbox.renderPortalHome).toHaveBeenCalledTimes(1);
+
+        await popstateListeners[0]({ state: {
+            portalNavigation: true, panelId: 'adminPanel', tabName: 'event',
+        } });
+        expect(appState.currentPortalTab).toEqual({ panelId: 'adminPanel', tabName: 'event' });
+        expect(appState.currentMemberTab).toBe('member-home');
+        expect(appState.previousMemberTab).toBe('member-payment');
+        expect(sandbox.ensureDeferredTabDataLoaded).toHaveBeenLastCalledWith('event');
+        expect(sandbox.renderEvents).toHaveBeenCalledTimes(1);
+        expect(history.pushState).toHaveBeenCalledTimes(pushes);
+        expect(history.replaceState).toHaveBeenCalledTimes(replaces);
+    });
+
+    test('records the resolved visible tab with or without rendering, preserving it for missing panels', async () => {
+        const { sandbox, appState } = makeSandbox();
+        await sandbox.switchTab('adminPanel', 'event', true);
+        expect(appState.currentPortalTab).toEqual({ panelId: 'adminPanel', tabName: 'event' });
+        appState.currentUserPermission = 'エキストラ';
+        await sandbox.switchTab('memberPanel', 'member-payment', false);
+        expect(appState.currentPortalTab).toEqual({ panelId: 'memberPanel', tabName: 'member-home' });
+        await sandbox.switchTab('missingPanel', 'event', false);
+        expect(appState.currentPortalTab).toEqual({ panelId: 'memberPanel', tabName: 'member-home' });
+    });
+
     test('first portal screen replaces the current browser entry and later screens are pushed', async () => {
         const { sandbox, history } = makeSandbox();
 
