@@ -308,6 +308,353 @@ describe('bootstrap-lite deferred refetch', () => {
     });
 });
 
+describe('payment 403 ownership release', () => {
+    test('refetch 403 keeps only personal payments without mutation, redraws once and releases protection', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        const original = Object.freeze(fullPayments.map(payment => Object.freeze({ ...payment })));
+        handlers.set('/api/extra/payments', () => original);
+        await s.loadExtraData(['payments']);
+        appState.currentPortalTab = { tabName: 'member-home' };
+        const response = Object.freeze({ extras: Object.freeze({ payments: Object.freeze([fullPayments[0]]) }) });
+        handlers.set('/api/bootstrap-lite', () => response);
+        handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('forbidden'), { status: 403 })));
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+
+        await s.loadEssentialData();
+        await tick();
+        expect(appState.payments).toEqual([{ member_id: 'one' }]);
+        expect(appState.payments).not.toBe(original);
+        expect(original).toEqual(fullPayments);
+        expect(response.extras.payments).toEqual([fullPayments[0]]);
+        expect(s.isAllPaymentsHeld()).toBe(false);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(1);
+        expect(s.renderMemberExtraViews).toHaveBeenCalledWith({ collections: ['payments'] });
+        expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledWith('一部データの読込に失敗しました: payments', 'warning');
+        expect(calls('/api/extra/payments')).toHaveLength(2);
+
+        const nextPersonal = Object.freeze([{ member_id: 'one', updated: true }]);
+        handlers.set('/api/bootstrap-lite', () => Object.freeze({ extras: Object.freeze({ payments: nextPersonal }) }));
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/extra/payments')).toHaveLength(2);
+        expect(appState.payments).toEqual(nextPersonal);
+    });
+
+    test('same-auth 403 after an epoch advance still purges and releases protection', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        appState.currentPortalTab = { tabName: 'member-home' };
+        const pending = deferred();
+        handlers.set('/api/extra/payments', () => pending.promise);
+        await s.loadEssentialData();
+        await tick();
+        s.portalResponseEpoch = (s.portalResponseEpoch || 0) + 1;
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+        pending.reject(Object.assign(new Error('forbidden'), { status: 403 }));
+        await tick();
+        expect(appState.payments).toEqual([fullPayments[0]]);
+        expect(s.isAllPaymentsHeld()).toBe(false);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(1);
+        expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledWith('一部データの読込に失敗しました: payments', 'warning');
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/extra/payments')).toHaveLength(2);
+    });
+
+    test('a replaced entry 403 cannot purge or release the held payments', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        const old = deferred(), newer = deferred();
+        handlers.set('/api/extra/payments', () => old.promise);
+        const first = s.loadExtraData(['payments']);
+        await tick();
+        handlers.set('/api/extra/payments', () => newer.promise);
+        const second = s.loadExtraData(['payments'], { _forceRevalidate: true });
+        await tick();
+        expect(calls('/api/extra/payments')).toHaveLength(3);
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+        old.reject(Object.assign(new Error('forbidden'), { status: 403 }));
+        await first;
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.renderMemberExtraViews).not.toHaveBeenCalled();
+        expect(s.renderPaymentAdmin).not.toHaveBeenCalled();
+        expect(s.showAlert).not.toHaveBeenCalled();
+        const latest = [{ member_id: 'one', updated: true }, fullPayments[1]];
+        newer.resolve(latest);
+        await second;
+        expect(appState.payments).toEqual(latest);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+    });
+
+    test.each([
+        ['503 retry wait', { status: 503, portalRetryWait: { blocked: true } }],
+        ['500', { status: 500 }],
+        ['timeout', { name: 'PortalTimeoutError' }],
+        ['context change', { portalContextChanged: true }],
+    ])('%s preserves full payments and retries on the next bootstrap', async (_label, errorProperties) => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        appState.currentPortalTab = { tabName: 'member-home' };
+        handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('failed'), errorProperties)));
+        await s.loadEssentialData();
+        await tick();
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        expect(calls('/api/extra/payments')).toHaveLength(2);
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/extra/payments')).toHaveLength(3);
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+    });
+
+    test.each([
+        ['name fallback', '', 'A', undefined, [{ name: 'A' }]],
+        ['member name helper', '', 'B', 'A', [{ name: 'A' }]],
+        ['member ID priority', 'one', 'A', undefined, [{ member_id: 'one', name: 'B' }]],
+        ['no identity', '', '', undefined, []],
+    ])('%s follows the server personal-payment selection', async (_label, memberId, name, helperName, expected) => {
+        const { s, appState, handlers } = createBootstrapSandbox();
+        appState.currentUserMemberId = memberId;
+        appState.currentUserName = name;
+        if (helperName !== undefined) s.currentUserMemberName = () => helperName;
+        const original = Object.freeze([{ name: 'A' }, { member_id: 'one', name: 'B' }]);
+        handlers.set('/api/extra/payments', () => original);
+        await s.loadExtraData(['payments']);
+        handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('forbidden'), { status: 403 })));
+        await s.loadExtraData(['payments']);
+        expect(appState.payments).toEqual(expected);
+        expect(appState.payments).not.toBe(original);
+        expect(s.isAllPaymentsHeld()).toBe(false);
+    });
+
+    test('403 after an auth change is discarded without purging or redrawing', async () => {
+        const { s, appState, handlers } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        const heldContext = vm.runInNewContext('allPaymentsHeldAuthContext', s);
+        const pending = deferred();
+        handlers.set('/api/extra/payments', () => pending.promise);
+        const loading = s.loadExtraData(['payments']);
+        await tick();
+        appState.currentUserPermission = '一般';
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+        pending.reject(Object.assign(new Error('forbidden'), { status: 403 }));
+        await loading;
+        expect(appState.payments).toBe(fullPayments);
+        expect(vm.runInNewContext('allPaymentsHeldAuthContext', s)).toBe(heldContext);
+        expect(s.renderMemberExtraViews).not.toHaveBeenCalled();
+        expect(s.renderPaymentAdmin).not.toHaveBeenCalled();
+        expect(s.showAlert).not.toHaveBeenCalled();
+    });
+});
+
+describe('payment ownership unchanged behavior', () => {
+    test('payments retry wait preserves ownership without warning, redrawing or marking loaded', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        s.resetDeferredPortalDataFlags();
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+        handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('waiting'), {
+            status: 503, portalRetryWait: { blocked: true, suppressed: true },
+        })));
+        await s.loadExtraData(['payments']);
+        expect(calls('/api/extra/payments')).toHaveLength(2);
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        expect(s.renderMemberExtraViews).not.toHaveBeenCalled();
+        expect(s.renderPaymentAdmin).not.toHaveBeenCalled();
+        expect(s.showAlert).not.toHaveBeenCalled();
+    });
+
+    test.each(['payment-admin', 'payment-setting'])(
+        '%s shares the protected bootstrap reload and applies a successful full list once', async tabName => {
+            const { s, appState, handlers, calls } = createBootstrapSandbox();
+            const original = Object.freeze(fullPayments.map(payment => Object.freeze({ ...payment })));
+            handlers.set('/api/extra/payments', () => original);
+            await s.loadExtraData(['payments']);
+            const personal = Object.freeze([Object.freeze({ member_id: 'one', source: 'bootstrap' })]);
+            const response = Object.freeze({ extras: Object.freeze({ payments: personal }) });
+            handlers.set('/api/bootstrap-lite', () => response);
+            const pending = deferred();
+            handlers.set('/api/extra/payments', () => pending.promise);
+            appState.currentPortalTab = { tabName };
+            await s.loadEssentialData();
+            await tick();
+            expect(calls('/api/extra/payments')).toHaveLength(2);
+            expect(appState.payments).toBe(original);
+            expect(s.isAllPaymentsHeld()).toBe(true);
+            expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+            s.renderMemberExtraViews.mockClear();
+            s.renderPaymentAdmin.mockClear();
+
+            const latest = Object.freeze([Object.freeze({ member_id: 'one', updated: true }), fullPayments[1]]);
+            pending.resolve(latest);
+            await tick();
+            expect(appState.payments).toBe(latest);
+            expect(s.isAllPaymentsHeld()).toBe(true);
+            expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
+            expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(1);
+            expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(1);
+            expect(s.showAlert).not.toHaveBeenCalled();
+            expect(original).toEqual(fullPayments);
+            expect(response.extras.payments).toBe(personal);
+            expect(personal).toEqual([{ member_id: 'one', source: 'bootstrap' }]);
+        });
+
+    test('network failure keeps ownership through overlapping bootstrap refreshes and later success', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        appState.currentPortalTab = { tabName: 'member-home' };
+        handlers.set('/api/extra/payments', () => Promise.reject(new Error('offline')));
+        await s.loadEssentialData();
+        await tick();
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        expect(s.showAlert).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledWith('一部データの読込に失敗しました: payments', 'warning');
+
+        const old = deferred(), latest = deferred();
+        handlers.set('/api/extra/payments', () => old.promise);
+        await s.loadEssentialData();
+        await tick();
+        handlers.set('/api/extra/payments', () => latest.promise);
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/extra/payments')).toHaveLength(4);
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        old.resolve([{ member_id: 'two', stale: true }]);
+        await tick();
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        const fresh = [{ member_id: 'one', updated: true }, fullPayments[1]];
+        latest.resolve(fresh);
+        await tick();
+        expect(appState.payments).toBe(fresh);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
+        expect(s.showAlert).toHaveBeenCalledTimes(1);
+    });
+
+    test.each(['payment-admin', 'payment-setting'])(
+        '%s failure warns once and reopening retries only payments', async tabName => {
+            const { s, appState, handlers, calls } = createBootstrapSandbox();
+            handlers.set('/api/extra/payments', () => fullPayments);
+            await s.loadExtraData(['payments']);
+            s.resetDeferredPortalDataFlags();
+            handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('failed'), { status: 500 })));
+            await s.ensureDeferredTabDataLoaded(tabName);
+            expect(appState.payments).toBe(fullPayments);
+            expect(s.isAllPaymentsHeld()).toBe(true);
+            expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+            expect(s.isDeferredPortalDataLoaded('castings')).toBe(true);
+            expect(s.showAlert).toHaveBeenCalledTimes(1);
+            expect(s.showAlert).toHaveBeenCalledWith('一部データの読込に失敗しました: payments', 'warning');
+            const fresh = [{ member_id: 'one', updated: true }, fullPayments[1]];
+            handlers.set('/api/extra/payments', () => fresh);
+            await s.ensureDeferredTabDataLoaded(tabName);
+            await s.ensureDeferredTabDataLoaded(tabName);
+            expect(calls('/api/extra/payments')).toHaveLength(3);
+            expect(calls('/api/extra/castings')).toHaveLength(1);
+            expect(appState.payments).toBe(fresh);
+            expect(s.isAllPaymentsHeld()).toBe(true);
+            expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
+            expect(s.showAlert).toHaveBeenCalledTimes(1);
+        });
+
+    test.each(['currentUserMemberId', 'currentUserPermission', 'portalAuthGeneration', 'portalAuthTransition'])(
+        'a successful payment response after %s changes is discarded without retry', async key => {
+            const { s, appState, handlers, calls } = createBootstrapSandbox();
+            handlers.set('/api/extra/payments', () => fullPayments);
+            await s.loadExtraData(['payments']);
+            s.resetDeferredPortalDataFlags();
+            const pending = deferred();
+            handlers.set('/api/extra/payments', () => pending.promise);
+            const loading = s.loadExtraData(['payments']);
+            await tick();
+            appState[key] = 'changed';
+            s.renderMemberExtraViews.mockClear();
+            s.renderPaymentAdmin.mockClear();
+            pending.resolve([{ member_id: 'two', stale: true }]);
+            await loading;
+            expect(appState.payments).toBe(fullPayments);
+            expect(s.isAllPaymentsHeld()).toBe(false);
+            expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+            expect(calls('/api/extra/payments')).toHaveLength(2);
+            expect(s.renderMemberExtraViews).not.toHaveBeenCalled();
+            expect(s.renderPaymentAdmin).not.toHaveBeenCalled();
+            expect(s.showAlert).not.toHaveBeenCalled();
+        });
+
+    test.each(['success', 'second discard'])(
+        'a save retries payments once with the spent retry budget: %s', async outcome => {
+            const { s, appState, handlers, calls } = createBootstrapSandbox();
+            handlers.set('/api/extra/payments', () => fullPayments);
+            await s.loadExtraData(['payments']);
+            s.resetDeferredPortalDataFlags();
+            s.renderMemberExtraViews.mockClear();
+            s.renderPaymentAdmin.mockClear();
+            const latest = [{ member_id: 'one', updated: true }, fullPayments[1]];
+            let attempts = 0, spentBudget, retrySnapshot;
+            handlers.set('/api/extra/payments', options => {
+                attempts += 1;
+                if (attempts === 1) {
+                    spentBudget = options._retryContext;
+                    spentBudget.transientRetries = 2;
+                    spentBudget.unknown503Retries = 1;
+                    s.portalResponseEpoch = (s.portalResponseEpoch || 0) + 1;
+                    throw Object.assign(new Error('saved'), { portalContextChanged: true });
+                }
+                // Assert outside the handler: loader error handling must not swallow assertion failures.
+                retrySnapshot = { budget: options._retryContext,
+                    counters: { ...options._retryContext }, payments: appState.payments,
+                    held: s.isAllPaymentsHeld(), loaded: s.isDeferredPortalDataLoaded('payments') };
+                if (outcome === 'second discard') {
+                    s.portalResponseEpoch += 1;
+                    return [{ member_id: 'two', stale: true }];
+                }
+                return latest;
+            });
+            await s.loadExtraData(['payments']);
+            expect(calls('/api/extra/payments')).toHaveLength(3);
+            expect(retrySnapshot.budget).toBe(spentBudget);
+            expect(retrySnapshot.counters).toMatchObject({ transientRetries: 2, unknown503Retries: 1 });
+            expect(retrySnapshot.payments).toBe(fullPayments);
+            expect(retrySnapshot.held).toBe(true);
+            expect(retrySnapshot.loaded).toBe(false);
+            expect(appState.payments).toBe(outcome === 'success' ? latest : fullPayments);
+            expect(s.isAllPaymentsHeld()).toBe(true);
+            expect(s.isDeferredPortalDataLoaded('payments')).toBe(outcome === 'success');
+            expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0);
+            expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0);
+            if (outcome === 'success') expect(s.showAlert).not.toHaveBeenCalled();
+            else {
+                expect(s.showAlert).toHaveBeenCalledTimes(1);
+                expect(s.showAlert).toHaveBeenCalledWith('一部データの読込に失敗しました: payments', 'warning');
+            }
+        });
+});
+
 describe('deferred loading unchanged behavior', () => {
     // Exercise real loaders so request URLs, flags and renderer effects stay linked.
     test.each([

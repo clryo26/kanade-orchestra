@@ -547,7 +547,8 @@ async function request(url, options = {}) {
                     showPortalLogin();
                 }
                 showAlert(message, 'danger');
-                throw new Error(message);
+                // 呼出元が 403（権限なし）を、通信エラーや 503 待機と区別するため status を付ける。
+                throw Object.assign(new Error(message), { status: response.status });
             }
             const contentType = response.headers.get('content-type') || '';
             const data = contentType.includes('application/json') ? await response.json() : await response.text();

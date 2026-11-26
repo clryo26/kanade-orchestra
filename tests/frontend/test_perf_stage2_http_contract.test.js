@@ -29,6 +29,85 @@ test('normal and forced GET have independent flights while normal GET still coal
     metrics.push({ id: 'force-flight', sends: h.calls.length });
 });
 
+test('GET 403 exposes its HTTP status and keeps the failure message and alert unchanged', async () => {
+    const h = createHttpHarness(() => new Response(JSON.stringify({ detail: 'forbidden' }), {
+        status: 403, headers: { 'Content-Type': 'application/json' },
+    }));
+    const message = 'paymentsの取得に失敗しました。原因: forbidden';
+    await expect(h.ctx.request('/api/extra/payments')).rejects.toMatchObject({ status: 403, message });
+    expect(h.calls).toHaveLength(1);
+    expect(h.ctx.showAlert).toHaveBeenCalledTimes(1);
+    expect(h.ctx.showAlert).toHaveBeenCalledWith(message, 'danger');
+    expect(h.ctx.showPortalLogin).not.toHaveBeenCalled();
+});
+
+test.each(['recovered', 'still unauthorized', 'recovery unavailable'])(
+    'GET 401 preserves one auth recovery and the existing login/alert behavior: %s', async outcome => {
+        const h = createHttpHarness(url => {
+            if (url.startsWith('/api/auth/devices/')) {
+                if (outcome === 'recovery unavailable') return new Response(null, { status: 503 });
+                return json({ authenticated: true, device: {
+                    member_id: 7, permission: '一般', authenticated_at: 'fixture-generation',
+                } });
+            }
+            if (outcome === 'recovered' && h.calls.filter(call => call.url === '/api/extra/payments').length === 2) {
+                return json([{ member_id: 7 }]);
+            }
+            return new Response(JSON.stringify({ detail: 'unauthorized' }), {
+                status: 401, headers: { 'Content-Type': 'application/json' },
+            });
+        });
+        const pending = h.ctx.request('/api/extra/payments');
+        if (outcome === 'recovered') {
+            expect(await pending).toEqual([{ member_id: 7 }]);
+            expect(h.ctx.showAlert).not.toHaveBeenCalled();
+            expect(h.ctx.showPortalLogin).not.toHaveBeenCalled();
+        } else {
+            await expect(pending).rejects.toMatchObject({ message: 'ログイン期限が切れました。再ログインしてください。' });
+            expect(h.ctx.showPortalLogin).toHaveBeenCalledTimes(1);
+            expect(h.ctx.showAlert).toHaveBeenCalledTimes(1);
+            expect(h.ctx.showAlert).toHaveBeenCalledWith('ログイン期限が切れました。再ログインしてください。', 'danger');
+        }
+        expect(h.calls.map(call => call.url)).toEqual(outcome === 'recovery unavailable'
+            ? ['/api/extra/payments', '/api/auth/devices/fixture-device']
+            : ['/api/extra/payments', '/api/auth/devices/fixture-device', '/api/extra/payments']);
+    });
+
+test.each(['network', 'timeout'])(
+    'GET %s failure still falls back to cached payments with one warning', async mode => {
+        const h = createHttpHarness((_url, options) => {
+            if (mode === 'network') throw new Error('offline');
+            return new Promise((_resolve, reject) => {
+                options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+            });
+        });
+        const payments = [{ member_id: 7 }, { member_id: 8 }];
+        const entry = { data: payments, timestamp: Date.now() - 60000, etag: 'old' };
+        h.cache.set('/api/extra/payments', entry);
+        const pending = h.ctx.request('/api/extra/payments');
+        if (mode === 'timeout') await vi.advanceTimersByTimeAsync(15000);
+        expect(await pending).toBe(payments);
+        expect(h.calls).toHaveLength(1);
+        expect(h.cache.get('/api/extra/payments')).toBe(entry);
+        expect(h.db.set).not.toHaveBeenCalled();
+        expect(h.ctx.showAlert).toHaveBeenCalledTimes(1);
+        expect(h.ctx.showAlert).toHaveBeenCalledWith('通信が一時的に不安定なため、保存済みデータを表示しています。', 'warning');
+        expect(h.ctx.showPortalLogin).not.toHaveBeenCalled();
+    });
+
+test('GET 503 retry wait keeps its structured error without falling back or showing another alert', async () => {
+    const wait = { suppressed: true, blocked: true, message: 'retry later' };
+    const h = createHttpHarness(() => Object.assign(new Response(null, { status: 503 }), { portalRetryWait: wait }));
+    h.cache.set('/api/extra/payments', { data: [{ member_id: 7 }, { member_id: 8 }], timestamp: Date.now() });
+    await expect(h.ctx.request('/api/extra/payments')).rejects.toMatchObject({
+        status: 503, message: 'retry later', portalRetryWait: wait,
+    });
+    expect(h.calls).toHaveLength(1);
+    expect(h.db.set).not.toHaveBeenCalled();
+    expect(h.ctx.showAlert).not.toHaveBeenCalled();
+    expect(h.ctx.showPortalLogin).not.toHaveBeenCalled();
+});
+
 test('explicit tenant headers bypass short reuse, conditional headers and cache writes', async () => {
     const h = createHttpHarness(() => json(['server'], { ETag: '"new"' }));
     h.cache.set('/api/events', { data: ['old'], etag: '"old"', timestamp: Date.now() });
