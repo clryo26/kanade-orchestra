@@ -150,10 +150,27 @@ function clearPortalAuthState() {
     appState.memberDetailLoadStates = {};
     appState.memberDetailLoadPromises = {};
     if (typeof clearMemberIntroCache === 'function') clearMemberIntroCache();
+    if (typeof resetPortalDataForAccountChange === 'function') resetPortalDataForAccountChange();
+}
+
+// Match personal_payment_list on the server: IDs take priority when both exist;
+// otherwise compare names exactly. A spelling change alone must not clear data.
+function isSamePortalMember(prevId, prevName, nextId, nextName) {
+    const a = String(prevId || '');
+    const b = String(nextId || '');
+    if (a && b) return a === b;
+    return String(prevName || '') === String(nextName || '');
 }
 
 function applyPortalAuthDevice(device) {
     if (!device || typeof device !== 'object') return;
+    const wasVerified = appState.portalAuthVerified === true;
+    const prevId = appState.currentUserMemberId;
+    const prevName = appState.currentUserName;
+    const hadIdentity = String(prevId || '') !== '' || String(prevName || '') !== '';
+    const memberChanged = wasVerified && hadIdentity
+        && !isSamePortalMember(prevId, prevName, device.member_id, device.member_name);
+    if (memberChanged) advancePortalAuthTransition();
     const previousIdentity = typeof portalCacheIdentity === 'function' ? portalCacheIdentity() : '';
     appState.portalAuthGeneration = device.authenticated_at || device.created_at || '';
     appState.portalAuthVerified = true;
@@ -168,6 +185,13 @@ function applyPortalAuthDevice(device) {
     localStorage.setItem(window.portalRuntimeContext.PORTAL_AUTH_KEY, 'true');
     if (typeof window.resetPortalRequestWaits === 'function' && typeof portalCacheIdentity === 'function'
         && previousIdentity !== portalCacheIdentity()) window.resetPortalRequestWaits();
+    if (memberChanged) {
+        // Only a member change restarts startup; the new member's IndexedDB
+        // preview remains available under the existing per-account cache key.
+        if (typeof resetPortalDataForAccountChange === 'function') resetPortalDataForAccountChange();
+        window.location.reload();
+        return;
+    }
     if (typeof window.portalFileOperationsResume === 'function') void window.portalFileOperationsResume();
 }
 
@@ -207,7 +231,21 @@ function advancePortalAuthTransition() {
 if (typeof window.addEventListener === 'function') {
     window.addEventListener('storage', (event) => {
         if (event.key === null || event.key === window.portalRuntimeContext.PORTAL_DEVICE_ID_KEY
-            || event.key === window.portalRuntimeContext.PORTAL_AUTH_KEY) advancePortalAuthTransition();
+            || event.key === window.portalRuntimeContext.PORTAL_AUTH_KEY) {
+            advancePortalAuthTransition();
+            const hadIdentity = appState.portalAuthVerified === true
+                || String(appState.currentUserMemberId || '') !== ''
+                || String(appState.currentUserName || '') !== '';
+            if (!hadIdentity) return;
+            // The other tab's new member is unknown here, so do not compare members.
+            if (localStorage.getItem(window.portalRuntimeContext.PORTAL_AUTH_KEY) !== 'true') {
+                clearPortalAuthState();
+                if (typeof showPortalLogin === 'function') showPortalLogin();
+            } else {
+                if (typeof resetPortalDataForAccountChange === 'function') resetPortalDataForAccountChange();
+                window.location.reload();
+            }
+        }
     });
 }
 

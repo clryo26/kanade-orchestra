@@ -92,6 +92,115 @@ function loadAuthModules(sandbox) {
 }
 
 describe('isPortalAuthenticated 3状態', () => {
+    test.each(['resolved', 'rejected', 'pending'])(
+        'T7: logout deletes only the current bootstrap preview without awaiting it (%s)', async outcome => {
+            const { sandbox, appState, localStorage } = buildAuthSandbox({ deviceId: 'dev-abc', authKey: 'true' });
+            loadAuthModules(sandbox);
+            Object.assign(appState, { portalAuthVerified: true, currentUserMemberId: 'A', portalAuthTransition: 7 });
+            const order = [];
+            sandbox.portalTunerLeave = vi.fn(() => order.push(['tuner', appState.portalAuthTransition]));
+            sandbox.resetPortalDataForAccountChange = vi.fn(() => order.push(['reset', appState.currentUserMemberId]));
+            sandbox.showPortalLogin = vi.fn(() => order.push(['login', appState.currentUserMemberId]));
+            let finish;
+            const deletion = outcome === 'pending' ? new Promise(resolve => { finish = resolve; })
+                : outcome === 'rejected' ? Promise.reject(new Error('fixture disk error')) : Promise.resolve();
+            const deleteIdentity = [];
+            sandbox.portalRuntimeContext.dbCache.delete.mockImplementation(key => {
+                deleteIdentity.push([key, appState.currentUserMemberId, localStorage.kanadePortalAuthenticated]);
+                return deletion;
+            });
+            await sandbox.logoutPortal();
+            expect(sandbox.portalRuntimeContext.dbCache.delete).toHaveBeenCalledTimes(1);
+            expect(deleteIdentity).toEqual([['/api/bootstrap-lite', 'A', 'true']]);
+            expect(appState.portalAuthVerified).toBe(false);
+            expect(appState.currentUserMemberId).toBeNull();
+            expect(localStorage.kanadePortalAuthenticated).toBeUndefined();
+            expect(order).toEqual([['tuner', 8], ['reset', null], ['login', null]]);
+            if (finish) finish();
+        });
+
+    test('T7: clear invokes the account reset exactly once after clearing identity', () => {
+        const { sandbox, appState } = buildAuthSandbox({ deviceId: 'dev-abc', authKey: 'true' });
+        loadAuthModules(sandbox);
+        Object.assign(appState, { portalAuthVerified: true, currentUserMemberId: 'A', portalAuthTransition: 3 });
+        const snapshots = [];
+        sandbox.resetPortalDataForAccountChange = vi.fn(() => snapshots.push([
+            appState.portalAuthTransition, appState.portalAuthVerified, appState.currentUserMemberId,
+        ]));
+        sandbox.clearPortalAuthState();
+        expect(sandbox.resetPortalDataForAccountChange).toHaveBeenCalledTimes(1);
+        expect(snapshots).toEqual([[4, false, null]]);
+    });
+
+    test.each(['navigation', 'auth feature'])('logout preserves tuner/notification/reset order in %s', async source => {
+        const { sandbox, appState } = buildAuthSandbox({ deviceId: 'dev-abc', authKey: 'true' });
+        loadAuthModules(sandbox);
+        if (source === 'navigation') {
+            sandbox.portalRuntimeContext.getById = () => null;
+            vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,
+                '../../src/static/js/modules/navigation/events.js'), 'utf8'), sandbox);
+        }
+        Object.assign(appState, { currentUserMemberId: 'A', portalAuthVerified: true, portalAuthTransition: 0 });
+        sandbox.localStorage.setItem('portalPushMemberId', 'A');
+        const order = [];
+        let finish;
+        sandbox.portalTunerLeave = vi.fn(() => order.push(['tuner', appState.portalAuthTransition]));
+        sandbox.ensureNotificationsLoaded = vi.fn(async () => { order.push(['notification module']); });
+        sandbox.PortalNotifications = { beforeLogout: vi.fn(() => {
+            order.push(['notifications']);
+            return new Promise(resolve => { finish = resolve; });
+        }) };
+        sandbox.portalRuntimeContext.dbCache.delete.mockImplementation(async key => {
+            order.push(['delete', key, appState.currentUserMemberId]);
+        });
+        sandbox.resetPortalDataForAccountChange = vi.fn(() => order.push(['reset', appState.currentUserMemberId]));
+        sandbox.showPortalLogin = vi.fn(() => order.push(['login']));
+        const pending = sandbox.logoutPortal();
+        // Both awaits must reach beforeLogout; one microtask does not establish this boundary.
+        await vi.waitFor(() => expect(sandbox.PortalNotifications.beforeLogout).toHaveBeenCalledTimes(1));
+        expect(order).toEqual([['tuner', 1], ['notification module'], ['notifications']]);
+        expect(appState.currentUserMemberId).toBe('A');
+        expect(appState.portalAuthVerified).toBe(true);
+        expect(sandbox.localStorage.getItem('kanadePortalAuthenticated')).toBe('true');
+        expect(sandbox.portalRuntimeContext.dbCache.delete).not.toHaveBeenCalled();
+        expect(sandbox.resetPortalDataForAccountChange).not.toHaveBeenCalled();
+        expect(sandbox.showPortalLogin).not.toHaveBeenCalled();
+        finish();
+        await pending;
+        expect(order).toEqual([['tuner', 1], ['notification module'], ['notifications'],
+            ['delete', '/api/bootstrap-lite', 'A'], ['reset', null], ['login']]);
+    });
+
+    test.each(['success', 'context change', 'network error'])(
+        'T7: resume reloads reset data and reports only real failures (%s)', async outcome => {
+            const { sandbox, appState } = buildAuthSandbox({ deviceId: 'dev-abc', authKey: 'true' });
+            loadAuthModules(sandbox);
+            const now = Date.now();
+            Object.assign(appState, { portalAuthVerified: true, lastPortalSessionVerifiedAt: now,
+                lastEssentialDataLoadedAt: now, essentialDataLoaded: false });
+            sandbox.navigator = { onLine: true };
+            sandbox.document = { visibilityState: 'visible', addEventListener: vi.fn() };
+            sandbox.portalRuntimeContext.today = () => '2026-11-26';
+            sandbox.isPortalAuthenticated = vi.fn();
+            const error = Object.assign(new Error('fixture failure'), { portalContextChanged: outcome === 'context change' });
+            sandbox.loadEssentialData = outcome === 'success' ? vi.fn().mockResolvedValue(undefined)
+                : vi.fn().mockRejectedValue(error);
+            let code = fs.readFileSync(path.resolve(__dirname,
+                '../../src/static/js/modules/common_helpers/bootstrap_init.js'), 'utf8');
+            // Export the actual block-scoped entry only in this VM, as in the baseline harness.
+            const end = code.lastIndexOf('}');
+            code = code.slice(0, end) + '\nglobalThis.testResume = syncPortalSessionOnResume;\n' + code.slice(end);
+            vm.runInNewContext(code, sandbox);
+            await sandbox.testResume();
+            expect(sandbox.isPortalAuthenticated).not.toHaveBeenCalled();
+            expect(sandbox.loadEssentialData).toHaveBeenCalledWith({ _requestOrigin: 'automatic' });
+            expect(appState.essentialDataLoaded).toBe(outcome === 'success');
+            if (outcome === 'network error') expect(sandbox.showAlert).toHaveBeenCalledWith(
+                '通信が切断されました。再接続しています... [再試行]', 'warning');
+            else expect(sandbox.showAlert).not.toHaveBeenCalled();
+            expect(sandbox.portalResumeSyncInFlight).toBe(false);
+        });
+
     test('ローカル認証情報なし → unauthenticated', async () => {
         const { sandbox } = buildAuthSandbox({ deviceId: null, authKey: null });
         loadAuthModules(sandbox);

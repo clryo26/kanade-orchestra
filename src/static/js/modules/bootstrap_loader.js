@@ -69,7 +69,16 @@ function setDefaultDates() {
 // 既に生成済みなら重複生成しない。
 
 // 読み込み失敗時はローディングバーを解除して例外を呼出元へ伝播する
+function assertPortalAuthTransition(startedTransition) {
+    if ((appState.portalAuthTransition || 0) !== startedTransition) {
+        const error = new Error('Portal authentication context changed');
+        error.portalContextChanged = true;
+        throw error;
+    }
+}
+
 async function loadEssentialData(options = {}) {
+    const startedTransition = appState.portalAuthTransition || 0;
     const isRefetch = appState.essentialDataLoaded === true;
     const useCachedPreview = options.useCachedPreview === true;
     const forceRevalidate = options.forceRevalidate === true;
@@ -88,6 +97,13 @@ async function loadEssentialData(options = {}) {
     ) {
         const cachedEntry =
             await window.portalRuntimeContext.dbCache.getEntry(cacheKey);
+        // A previous account's preview must not be applied after authentication changes.
+        try {
+            assertPortalAuthTransition(startedTransition);
+        } catch (error) {
+            clearLoadingBar();
+            throw error;
+        }
 
         if (
             cachedEntry &&
@@ -177,6 +193,7 @@ async function loadEssentialData(options = {}) {
         };
 
         const data = await requestBootstrapData(cacheKey, requestOptions);
+        assertPortalAuthTransition(startedTransition);
 
         if (cachedPreviewRendered) {
             try {
@@ -195,12 +212,17 @@ async function loadEssentialData(options = {}) {
                 try {
                     await window.portalRuntimeContext.dbCache.delete(cacheKey);
                 } catch (deleteError) {
-                    console.warn(
-                        '[bootstrap] failed to delete invalid latest bootstrap-lite cache:',
-                        deleteError
-                    );
+                    if ((appState.portalAuthTransition || 0) === startedTransition) {
+                        console.warn(
+                            '[bootstrap] failed to delete invalid latest bootstrap-lite cache:',
+                            deleteError
+                        );
+                    }
                 }
 
+                // Deletion can await across logout/account changes; restoring here
+                // would bring back the previous member's preview, including payments.
+                assertPortalAuthTransition(startedTransition);
                 if (cachedPreviewData) {
                     applyBootstrapData(cachedPreviewData);
                     if (Object.prototype.hasOwnProperty.call(cachedPreviewData.extras || {}, 'payments')) {
@@ -242,6 +264,15 @@ async function loadEssentialData(options = {}) {
         appState.lastEssentialDataLoadedAt = Date.now();
         refetchVisibleDeferredData(isRefetch, protectedPayments, options);
     } catch (error) {
+        if ((appState.portalAuthTransition || 0) !== startedTransition || error?.portalContextChanged) {
+            clearLoadingBar();
+            // Requests may throw primitive values; callers still need the context-change marker.
+            if (error === null || (typeof error !== 'object' && typeof error !== 'function')) {
+                error = new Error(String(error));
+            }
+            error.portalContextChanged = true;
+            throw error;
+        }
         if (cachedPreviewRendered) {
             console.warn(
                 '[bootstrap] latest bootstrap-lite request failed; keeping cached preview:',
@@ -364,6 +395,12 @@ function markDeferredPortalDataLoaded(name) {
     }
 }
 
+function unmarkDeferredPortalDataLoaded(name) {
+    if (Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)) {
+        deferredPortalDataFlags[name] = false;
+    }
+}
+
 function isDeferredPortalDataLoaded(name) {
     return Object.prototype.hasOwnProperty.call(deferredPortalDataFlags, name)
         ? deferredPortalDataFlags[name] === true
@@ -373,6 +410,25 @@ function isDeferredPortalDataLoaded(name) {
 function resetDeferredPortalDataFlags() {
     Object.keys(deferredPortalDataFlags).forEach(name => { deferredPortalDataFlags[name] = false; });
     deferredPortalDataGeneration += 1;
+}
+
+function resetPortalDataForAccountChange() {
+    // Replace account-specific arrays without mutating cached/shared data.
+    // Keep common collections and login-screen part/organization settings.
+    allPaymentsHeldAuthContext = null;
+    resetDeferredPortalDataFlags();
+    appState.payments = [];
+    appState.connectionSettings = [];
+    appState.authDevices = [];
+    appState.essentialDataLoaded = false;
+    appState.dataLoaded = false;
+    appState.lastEssentialDataLoadedAt = 0;
+    ['memberPerfInfo', 'memberSchedInfo', 'memberAnnounceList', 'memberPaymentInfo'].forEach((id) => {
+        const element = $(id);
+        if (element) element.innerHTML = '';
+    });
+    if (typeof renderMenuGroups === 'function') renderMenuGroups($('portalHomeMenu'));
+    if (typeof renderPortalDrawerMenu === 'function') renderPortalDrawerMenu();
 }
 
 async function ensureDeferredTabDataLoaded(tabName, options = {}) {
@@ -501,6 +557,7 @@ async function refreshPortalData(options = {}) {
                 loadFullDataInBackground();
             }
         } catch (error) {
+            if (error && error.portalContextChanged) return;
             console.warn('Portal refresh failed', error);
             if (typeof showAlert === 'function') {
                 showAlert(error.message || '更新に失敗しました', 'danger');
@@ -971,6 +1028,8 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry, i
             && entry.authContext === currentAuthContext) {
             allPaymentsHeldAuthContext = null;
             appState.payments = personalPaymentsOnly(appState.payments || []);
+            // Reload everyone's payments when payment administration is reopened as admin.
+            unmarkDeferredPortalDataLoaded('payments');
             paymentsForbiddenPurged = true;
             // return せず、既存の失敗処理（failed への追加と警告）に進める。
         }

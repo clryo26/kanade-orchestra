@@ -310,6 +310,95 @@ describe('bootstrap-lite deferred refetch', () => {
 });
 
 describe('payment 403 ownership release', () => {
+    test('T1: reopening payment administration after 403 and role recovery reloads everyone', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('forbidden'), { status: 403 })));
+        await s.loadExtraData(['payments']);
+        expect(appState.payments).toEqual([fullPayments[0]]);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        appState.currentUserPermission = '一般';
+        appState.currentUserPermission = '管理者';
+        const before = calls('/api/extra/payments').length;
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.ensureDeferredTabDataLoaded('payment-admin');
+        expect(calls('/api/extra/payments')).toHaveLength(before + 1);
+        expect(appState.payments).toEqual(fullPayments);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+    });
+
+    test('T2: account reset replaces private arrays, clears views and retains common data', async () => {
+        const { s, appState, handlers, flags } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        const privateData = { payments: appState.payments,
+            connectionSettings: [{ secretPlaceholder: 'fixture' }], authDevices: [{ id: 'fixture' }] };
+        const privateSnapshot = JSON.parse(JSON.stringify(privateData));
+        Object.assign(appState, privateData, { essentialDataLoaded: true, dataLoaded: true, lastEssentialDataLoadedAt: 123 });
+        const common = Object.fromEntries(['partSettings', 'orgSettings', 'snsSettings', 'performances',
+            'schedules', 'announcements', 'members', 'castings', 'recordings', 'sheetLibrary', 'events']
+            .map(key => [key, [{ id: key }]]));
+        Object.assign(appState, common, { cloudRunRevision: 'revision' });
+        const elements = Object.fromEntries(['memberPerfInfo', 'memberSchedInfo', 'memberAnnounceList',
+            'memberPaymentInfo', 'portalHomeMenu'].map(id => [id, { innerHTML: 'old' }]));
+        s.$ = id => elements[id] || null;
+        s.renderMenuGroups = vi.fn();
+        s.renderPortalDrawerMenu = vi.fn();
+        for (const key of Object.keys(flags())) s.markDeferredPortalDataLoaded(key);
+        s.resetPortalDataForAccountChange();
+        for (const [key, original] of Object.entries(privateData)) {
+            expect(appState[key]).toEqual([]);
+            expect(appState[key]).not.toBe(original);
+            expect(original).toEqual(privateSnapshot[key]);
+        }
+        expect(Object.values(flags())).toEqual(Object.keys(flags()).map(() => false));
+        expect(s.isAllPaymentsHeld()).toBe(false);
+        expect(appState).toMatchObject({ essentialDataLoaded: false, dataLoaded: false, lastEssentialDataLoadedAt: 0,
+            cloudRunRevision: 'revision' });
+        for (const [key, original] of Object.entries(common)) expect(appState[key]).toBe(original);
+        for (const id of ['memberPerfInfo', 'memberSchedInfo', 'memberAnnounceList', 'memberPaymentInfo']) {
+            expect(elements[id].innerHTML).toBe('');
+        }
+        expect(s.renderMenuGroups).toHaveBeenCalledTimes(1);
+        expect(s.renderMenuGroups).toHaveBeenCalledWith(elements.portalHomeMenu);
+        expect(s.renderPortalDrawerMenu).toHaveBeenCalledTimes(1);
+    });
+
+    test('unmarking payments leaves other flags, generation and full-list ownership intact', async () => {
+        const { s, handlers, flags } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        for (const key of Object.keys(flags())) s.markDeferredPortalDataLoaded(key);
+        const generation = vm.runInNewContext('deferredPortalDataGeneration', s);
+        s.unmarkDeferredPortalDataLoaded('payments');
+        s.unmarkDeferredPortalDataLoaded('unknown');
+        expect(flags()).toEqual(Object.fromEntries(Object.keys(flags()).map(key => [key, key !== 'payments'])));
+        expect(vm.runInNewContext('deferredPortalDataGeneration', s)).toBe(generation);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+    });
+
+    test('resetDeferredPortalDataFlags advances only the deferred generation and keeps collections and ownership', async () => {
+        const { s, appState, handlers, flags } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        const payments = appState.payments;
+        const castings = appState.castings;
+        for (const key of Object.keys(flags())) s.markDeferredPortalDataLoaded(key);
+        const generation = vm.runInNewContext('deferredPortalDataGeneration', s);
+
+        s.resetDeferredPortalDataFlags();
+
+        expect(Object.values(flags()).every(value => value === false)).toBe(true);
+        expect(vm.runInNewContext('deferredPortalDataGeneration', s)).toBe(generation + 1);
+        expect(appState.payments).toBe(payments);
+        expect(appState.castings).toBe(castings);
+        expect(appState.essentialDataLoaded).toBe(true);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.renderEssentialViews).not.toHaveBeenCalled();
+    });
+
     test('request parses the server 403 JSON and the loader releases full payments and redraws', async () => {
         const h = createHttpHarness(() => new Response(JSON.stringify({
             detail: 'Admin permission is required',
@@ -339,8 +428,8 @@ describe('payment 403 ownership release', () => {
         expect(appState.payments).toEqual([fullPayments[0]]);
         expect(fullPayments).toEqual([{ member_id: 'one' }, { member_id: 'two' }]);
         expect(s.isAllPaymentsHeld()).toBe(false);
-        // 直接の再取得失敗では読込済みフラグを維持し、全件保持だけを解除する。
-        expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
+        // 本人分だけになったので、管理者として開き直したとき全員分を再取得する。
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
         expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(1);
         expect(s.renderMemberExtraViews).toHaveBeenCalledWith({ collections: ['payments'] });
         expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(1);
@@ -478,6 +567,7 @@ describe('payment 403 ownership release', () => {
         expect(appState.payments).toEqual(expected);
         expect(appState.payments).not.toBe(original);
         expect(s.isAllPaymentsHeld()).toBe(false);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
     });
 
     test('403 after an auth change is discarded without purging or redrawing', async () => {
@@ -503,6 +593,24 @@ describe('payment 403 ownership release', () => {
 });
 
 describe('payment ownership unchanged behavior', () => {
+    test.each([
+        ['network', {}], ['timeout', { name: 'PortalTimeoutError' }],
+        ['503 wait', { status: 503, portalRetryWait: { blocked: true } }], ['500', { status: 500 }],
+    ])('direct %s failure retains full payments, ownership and the loaded flag', async (_label, properties) => {
+        const { s, appState, handlers } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+        handlers.set('/api/extra/payments', () => Promise.reject(Object.assign(new Error('fixture failure'), properties)));
+        await s.loadExtraData(['payments']);
+        expect(appState.payments).toBe(fullPayments);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
+        expect(s.renderMemberExtraViews).not.toHaveBeenCalled();
+        expect(s.renderPaymentAdmin).not.toHaveBeenCalled();
+    });
+
     test('payments retry wait preserves ownership without warning, redrawing or marking loaded', async () => {
         const { s, appState, handlers, calls } = createBootstrapSandbox();
         handlers.set('/api/extra/payments', () => fullPayments);

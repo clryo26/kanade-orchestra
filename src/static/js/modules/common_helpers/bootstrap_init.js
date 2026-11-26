@@ -93,7 +93,7 @@ async function syncPortalSessionOnResume() {
             : await isPortalAuthenticated({ forceVerify: true, _requestOrigin: 'automatic' });
 
         if (authResult.status === 'authenticated') {
-            if (appState.portalAuthVerified && !essentialDataIsFresh) {
+            if (appState.portalAuthVerified && (!essentialDataIsFresh || appState.essentialDataLoaded !== true)) {
                 await loadEssentialData({ _requestOrigin: 'automatic' });
                 appState.essentialDataLoaded = true;
             }
@@ -105,8 +105,10 @@ async function syncPortalSessionOnResume() {
                 showAlert(authResult.error?.portalRetryWait ? authResult.error.message : '通信が不安定です。しばらくしてから再試行してください。', 'warning');
             }
         }
-    } catch {
-        showAlert('通信が切断されました。再接続しています... [再試行]', 'warning');
+    } catch (error) {
+        if (!error?.portalContextChanged) {
+            showAlert('通信が切断されました。再接続しています... [再試行]', 'warning');
+        }
     } finally {
         portalResumeSyncInFlight = false;
     }
