@@ -345,6 +345,36 @@ describe('portal account lifecycle', () => {
             }
         });
 
+    test('T8 regression: same ID and auth context retain full-payment ownership after a name change', async () => {
+        const h = createHarness();
+        h.setMember(701, '山田 太郎');
+        h.state.currentUserPermission = '管理者';
+        const allPayments = [{ member_id: 701 }, { member_id: 702 }];
+        h.handlers.set('/api/extra/payments', () => response(allPayments));
+        await h.s.loadExtraData(['payments']);
+        expect(h.s.isAllPaymentsHeld()).toBe(true);
+        expect(h.s.isDeferredPortalDataLoaded('payments')).toBe(true);
+        const payments = h.state.payments;
+        const flags = h.flags();
+        const identity = h.s.portalCacheIdentity();
+        h.s.renderMenuGroups.mockClear();
+        h.s.renderPortalDrawerMenu.mockClear();
+
+        h.s.applyPortalAuthDevice({ member_id: 701, member_name: '山田太郎',
+            permission: '管理者', authenticated_at: 'session-A' });
+
+        expect(h.state.currentUserName).toBe('山田太郎');
+        expect(h.state.portalAuthTransition).toBe(10);
+        expect(h.s.portalCacheIdentity()).toBe(identity);
+        expect(h.state.payments).toBe(payments);
+        expect(h.state.payments).toEqual(allPayments);
+        expect(h.flags()).toEqual(flags);
+        expect(h.s.isAllPaymentsHeld()).toBe(true);
+        expect(h.s.location.reload).not.toHaveBeenCalled();
+        expect(h.s.renderMenuGroups).not.toHaveBeenCalled();
+        expect(h.s.renderPortalDrawerMenu).not.toHaveBeenCalled();
+    });
+
     test('T5: verified state without previous identity does not reset on first device', () => {
         const h = createHarness();
         h.setMember(null, '', true);

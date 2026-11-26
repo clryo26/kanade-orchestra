@@ -156,9 +156,15 @@ describe('isPortalAuthenticated 3状態', () => {
         sandbox.resetPortalDataForAccountChange = vi.fn(() => order.push(['reset', appState.currentUserMemberId]));
         sandbox.showPortalLogin = vi.fn(() => order.push(['login']));
         const pending = sandbox.logoutPortal();
-        await Promise.resolve();
+        // Both awaits must reach beforeLogout; one microtask does not establish this boundary.
+        await vi.waitFor(() => expect(sandbox.PortalNotifications.beforeLogout).toHaveBeenCalledTimes(1));
         expect(order).toEqual([['tuner', 1], ['notification module'], ['notifications']]);
         expect(appState.currentUserMemberId).toBe('A');
+        expect(appState.portalAuthVerified).toBe(true);
+        expect(sandbox.localStorage.getItem('kanadePortalAuthenticated')).toBe('true');
+        expect(sandbox.portalRuntimeContext.dbCache.delete).not.toHaveBeenCalled();
+        expect(sandbox.resetPortalDataForAccountChange).not.toHaveBeenCalled();
+        expect(sandbox.showPortalLogin).not.toHaveBeenCalled();
         finish();
         await pending;
         expect(order).toEqual([['tuner', 1], ['notification module'], ['notifications'],
