@@ -55,6 +55,23 @@ test.use({
   },
 });
 
+// Launch options belong to a worker fixture. Give this variant its own browser
+// so the file's default 440 Hz test.use options cannot override the 460 Hz input.
+const fixedNoteTest = test.extend({
+  browser: [async ({ playwright, launchOptions }, use) => {
+    const browser = await playwright.chromium.launch({
+      ...launchOptions,
+      channel: 'chromium',
+      args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav460Path}`],
+    });
+    try {
+      await use(browser);
+    } finally {
+      await browser.close();
+    }
+  }, { scope: 'worker' }],
+});
+
 // Records every AudioContext, microphone stream and Worker so the tests can
 // prove that leaving the tuner really releases them.
 async function instrument(page) {
@@ -324,6 +341,42 @@ test.describe('measurement acceptance: equal temperament, readout and sticky tab
     });
   }
 
+  test('meter range settings update reference markers without changing pitch judgment or restarting capture', async ({ page }) => {
+    await login(page);
+    await openTuner(page);
+    await expectMeasuringA4(page);
+    const tuner = page.locator('#systemTunerHost');
+    for (const [range, positions] of [[25, [22.6, 81.3]], [10, null], [100, [43.2, 57.8]], [50, [36.3, 65.6]]]) {
+      await showTunerTab(page, '履歴・楽器・設定');
+      await tuner.locator('[data-tuner-menu-section="settings"]').click();
+      await tuner.locator('[data-tuner-meter-range]').selectOption(String(range));
+      await showTunerTab(page, '測定');
+      await expect(tuner.locator('[data-tuner-root]')).toHaveAttribute('data-meter-range', String(range));
+      for (const [index, id] of ['major-third', 'minor-third'].entries()) {
+        const marker = tuner.locator(`[data-tuner-meter-ref="${id}"]`);
+        if (positions === null) {
+          await expect(marker).toHaveAttribute('hidden', '');
+          await expect(marker).toBeHidden();
+        } else {
+          await expect(marker).toBeVisible();
+          const position = await marker.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const scale = element.parentElement.getBoundingClientRect();
+            return 100 * (rect.left + rect.width / 2 - scale.left) / scale.width;
+          });
+          expect(Math.abs(position - positions[index])).toBeLessThanOrEqual(0.2);
+        }
+      }
+      await expectMeasuringA4(page);
+      await expectCents(page, 1200 * Math.log2(440 / 442));
+      await expect(tuner.locator('[data-tuner-judgment]')).toHaveText('低い');
+      const state = await probe(page);
+      expect(state.gum).toBe(1);
+      expect(state.tracks.length).toBeGreaterThan(0);
+      expect(state.tracks.every((track) => track === 'live')).toBe(true);
+    }
+  });
+
   test('saved fractional A4 rounds in memory without rewriting the valid saved data', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -338,14 +391,8 @@ test.describe('measurement acceptance: equal temperament, readout and sticky tab
   });
 });
 
-test.describe('fixed-note acceptance with a real 460 Hz fake microphone signal', () => {
-  test.use({
-    launchOptions: {
-      args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav460Path}`],
-    },
-  });
-
-  test('automatic → A4 fixed → reload → automatic preserves equal-temperament judgment and saved selection', async ({ page, context }) => {
+fixedNoteTest.describe('fixed-note acceptance with a real 460 Hz fake microphone signal', () => {
+  fixedNoteTest('automatic → A4 fixed → reload → automatic preserves equal-temperament judgment and saved selection', async ({ page, context }) => {
     await context.grantPermissions(['microphone']);
     await instrument(page);
     await installPortalApiMocks(page, { permission: 'システム管理者' });
@@ -930,6 +977,15 @@ test.describe('advanced tuner: tabs, pause, saving off, voices and narrow screen
     for (const name of ['音源', '解析', '練習', '診断', '履歴・楽器・設定', '測定']) {
       await showTunerTab(page, name);
       await expect(tuner.locator('[data-tuner-chip-mic]')).toBeVisible();
+      await expect(tuner.locator('[data-tuner-chip-mic]')).toHaveAttribute('data-state', 'running');
+      await expect(tuner.locator('[data-tuner-chip-output]')).toBeHidden();
+      await expect(tuner.locator('[data-tuner-chip-simultaneous]')).toBeHidden();
+      const active = await probe(page);
+      expect(active.gum).toBe(1);
+      expect(active.tracks.length).toBeGreaterThan(0);
+      expect(active.tracks.every((track) => track === 'live')).toBe(true);
+      expect(active.captureContexts).toContain('running');
+      expect(active.workers.some((terminated) => !terminated)).toBe(true);
     }
     const state = await probe(page);
     expect(state.gum).toBe(1); // no restart for an internal tab change
@@ -948,11 +1004,20 @@ test.describe('advanced tuner: tabs, pause, saving off, voices and narrow screen
     await tuner.locator('[data-tuner-pause]').click();
     await expect.poll(async () => (await probe(page)).tracks.every((s) => s === 'ended'), { timeout: 5000 }).toBe(true);
     await expect.poll(async () => (await probe(page)).captureContexts.every((s) => s === 'closed')).toBe(true);
+    await expect.poll(async () => (await probe(page)).workers.every(Boolean)).toBe(true);
+    await expect(tuner.locator('[data-tuner-chip-mic]')).toHaveAttribute('data-state', 'paused');
+    await expect(tuner.locator('[data-tuner-pause]')).toHaveText('測定を再開');
     await page.waitForTimeout(1000);
     expect((await probe(page)).gum).toBe(1); // no automatic restart
     await tuner.locator('[data-tuner-pause]').click();
     await expectMeasuringA4(page);
     expect((await probe(page)).gum).toBe(2);
+    await expect(tuner.locator('[data-tuner-chip-mic]')).toHaveAttribute('data-state', 'running');
+    await expect(tuner.locator('[data-tuner-pause]')).toHaveText('測定を一時停止');
+    const resumed = await probe(page);
+    expect(resumed.tracks).toContain('live');
+    expect(resumed.captureContexts).toContain('running');
+    expect(resumed.workers.some((terminated) => !terminated)).toBe(true);
   });
 
   test('with history saving off (default) no IndexedDB is opened and nothing is sent to /api/tuner', async ({ page }) => {

@@ -70,7 +70,7 @@ describe('tuner reference A4 setting', () => {
     expect(settings.createSettingsStore(null).load()).toBe(442);
   });
 
-  // Design T-011: 390.0-480.0 Hz in 0.1 Hz steps, stored as integer tenths.
+  // The storage API still steps in tenths; the measurement UI sends ten per 1 Hz.
   it('steps by 0.1 Hz, stops at 390.0 / 480.0 Hz and never rewrites the legacy key', () => {
     const storage = memoryStorage({ [settings.STORAGE_KEY]: '431' });
     const store = settings.createSettingsStore(storage);
@@ -115,6 +115,17 @@ describe('tuner reference A4 setting', () => {
     expect(store.isReadOnly()).toBe(true);
     store.step(1);
     expect(store.get()).toBe(442.1);
+    expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
+  });
+
+  it('ignores saved preferences without opt-in while restoring and rounding A4 without a write', () => {
+    const raw = JSON.stringify({ schemaVersion: 1, a4Tenths: 4425, persistSettings: false,
+      prefs: { toleranceCents: 10, judgment: { temperament: 'custom', fixedMidi: 69 }, displayMode: 'detail' } });
+    const storage = memoryStorage({ [settings.SETTINGS_KEY]: raw });
+    const store = settings.createSettingsStore(storage);
+    expect(store.load()).toBe(443);
+    expect(store.getPrefs()).toEqual(settings.normalizePrefs(null));
+    expect(store.isPersisting()).toBe(false);
     expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
   });
 

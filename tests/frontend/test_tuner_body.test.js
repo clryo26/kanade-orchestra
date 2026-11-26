@@ -32,6 +32,8 @@ function param(initial) {
 
 function harness(options = {}) {
   let clockMs = 0;
+  let nextFrameId = 0;
+  const animationFrames = new Map();
   const contexts = [];
   class Ctx {
     constructor() { this.state = 'running'; this.currentTime = 0; this.closed = false; this.destination = {}; this.oscillators = []; contexts.push(this); }
@@ -97,8 +99,12 @@ function harness(options = {}) {
     lib: { ...lib, settings: { ...lib.settings, createSettingsStore: () => settingsStore } },
     storage,
     now: () => clockMs,
-    requestAnimationFrame: () => 1,
-    cancelAnimationFrame: () => {},
+    requestAnimationFrame: (callback) => {
+      const frameId = ++nextFrameId;
+      animationFrames.set(frameId, callback);
+      return frameId;
+    },
+    cancelAnimationFrame: (frameId) => animationFrames.delete(frameId),
     isDocumentHidden: () => false,
     reload: vi.fn(),
     wakeLock: {
@@ -133,6 +139,12 @@ function harness(options = {}) {
     pendingTimeouts: () => timeouts.map((t) => t.ms),
     controllerCallbacks: () => controllerCallbacks,
     advanceTime: (ms) => { clockMs += ms; },
+    runAnimationFrame: () => {
+      // Run only this frame's callbacks; the body's next frame stays queued.
+      const due = [...animationFrames.values()];
+      animationFrames.clear();
+      due.forEach((callback) => callback(clockMs));
+    },
   };
 }
 
@@ -153,8 +165,11 @@ function feedPitch(h, frequency) {
   for (let i = 0; i < 60; i += 1) {
     h.advanceTime(50); // allow the real display smoothing to settle across frames
     h.controllerCallbacks().onPitch({ valid: true, frequency, reason: 'ok' });
+    h.runAnimationFrame(); // pitch delivery and rendering use separate callbacks in production
   }
-  return h.view.showReading.mock.calls.filter(([reading]) => reading).at(-1)[0];
+  const [reading] = h.view.showReading.mock.calls.at(-1);
+  expect(reading).toBeTruthy();
+  return reading;
 }
 
 describe('equal-temperament measurement and fixed-note regression', () => {
@@ -222,6 +237,67 @@ describe('equal-temperament measurement and fixed-note regression', () => {
     expect(reading.judgment).toBe('sharp');
     expect(reading.needlePercent).toBeCloseTo(50 + 50 * cents / range, 6);
     expect(h.graph.setMarkers.mock.calls.at(-1)[0].equalTarget).toBe(0);
+  });
+
+  it.each([3, 5, 10])('keeps the ±%i cent tolerance and its one-cent exit hysteresis on both sides', async (tolerance) => {
+    for (const direction of [-1, 1]) {
+      const stored = savedSettings({ temperament: 'equal' });
+      stored.prefs.toleranceCents = tolerance;
+      const h = harness({ stored });
+      await h.body.start(h.startOptions);
+      const at = (cents) => feedPitch(h, 440 * 2 ** (direction * cents / 1200));
+      const outside = direction < 0 ? 'flat' : 'sharp';
+      expect(at(tolerance + 2).judgment).toBe(outside);
+      expect(at(tolerance - 0.2).judgment).toBe('in-tune');
+      expect(at(tolerance + 0.8).judgment).toBe('in-tune');
+      expect(at(tolerance + 1.2).judgment).toBe(outside);
+    }
+  });
+
+  it.each([-1, 1])('clamps only the needle, not fixed-note cents outside the meter (direction %i)', async (direction) => {
+    const stored = savedSettings({ temperament: 'equal', fixedMidi: 69 });
+    stored.prefs.meterRangeCents = 10;
+    const h = harness({ stored });
+    await h.body.start(h.startOptions);
+    const reading = feedPitch(h, 440 * 2 ** (direction * 70 / 1200));
+    expect(reading.cents).toBeCloseTo(direction * 70, 6);
+    expect(reading.needleCents).toBe(direction * 10);
+    expect(reading.needlePercent).toBe(direction < 0 ? 0 : 100);
+    expect(reading.targetFrequency).toBe(440);
+  });
+
+  it('recalculates a fixed note after an A4 change without changing or losing the selection', async () => {
+    const h = harness({ stored: savedSettings({ temperament: 'equal', fixedMidi: 69 }, 4420) });
+    await h.body.start(h.startOptions);
+    expect(feedPitch(h, 460).cents).toBeCloseTo(1200 * Math.log2(460 / 442), 6);
+    h.handlers.onStep(1);
+    const reading = h.view.showReading.mock.calls.at(-1)[0];
+    expect(reading.targetFrequency).toBe(443);
+    expect(reading.cents).toBeCloseTo(1200 * Math.log2(460 / 443), 6);
+    expect(h.body.api.getA4Tenths()).toBe(4430);
+    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: 69 });
+    expect(JSON.parse(h.storage.data.portalTunerSettings)).toMatchObject({
+      schemaVersion: 1, a4Tenths: 4430,
+      prefs: { judgment: { temperament: 'equal', fixedMidi: 69 } },
+    });
+    expect(h.controller.start).toHaveBeenCalledTimes(1);
+    expect(h.controller.stop).not.toHaveBeenCalled();
+  });
+
+  it('keeps fixed-note changes in memory when preference saving is off, while still saving A4', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.handlers.onTargetOption('fixedMidi', 69);
+    expect(h.body.api.getTargetConfig().fixedMidi).toBe(69);
+    expect(h.storage.data.portalTunerSettings).toBeUndefined();
+    h.handlers.onStep(1);
+    const saved = JSON.parse(h.storage.data.portalTunerSettings);
+    expect(saved).toMatchObject({ schemaVersion: 1, a4Tenths: 4430, persistSettings: false });
+    expect(saved.prefs).toBeUndefined();
+    const restored = harness({ stored: saved });
+    await restored.body.start(restored.startOptions);
+    expect(restored.body.api.getA4()).toBe(443);
+    expect(restored.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: null });
   });
 });
 
@@ -316,6 +392,37 @@ describe('tuner body: playback and measurement switching', () => {
     h.handlers.onStep(1); // A4 = 444 Hz: Hz mode keeps 443.0
     expect(freq.length).toBe(count);
     expect(h.playbackView().summary).toContain('443.000 Hz');
+  });
+
+  it.each([28, 4700, 442.5])('preserves Hz playback at %s Hz, its decimal display and independence from A4', async (frequency) => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.handlers.onPlaybackSource('hz');
+    h.handlers.onPlaybackHzInput(frequency.toFixed(1));
+    expect(h.playbackView().error).toBeFalsy();
+    expect(h.playbackView().hzText).toBe(frequency.toFixed(1));
+    h.handlers.onPlay();
+    const events = h.contexts[0].oscillators[0].frequency.events;
+    expect(events[0][1]).toBe(frequency);
+    const before = events.length;
+    h.handlers.onStep(1);
+    expect(events).toHaveLength(before);
+    expect(h.playbackView().summary).toContain(frequency.toFixed(3) + ' Hz');
+    h.handlers.onStop();
+    h.runTimeouts();
+    expect(h.contexts[0].closed).toBe(true);
+  });
+
+  it.each(['27.9', '4700.1', '442.25'])('refuses invalid Hz playback %s without stopping measurement', async (text) => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.handlers.onPlaybackSource('hz');
+    h.handlers.onPlaybackHzInput(text);
+    h.handlers.onPlay();
+    expect(h.playbackView().error).toBeTruthy();
+    expect(h.contexts).toHaveLength(0);
+    expect(h.controller.stop).not.toHaveBeenCalled();
+    expect(h.body.getState()).toBe('measuring');
   });
 
   it('a full stop (leave, background, logout) ends tone and measurement and is idempotent', async () => {
