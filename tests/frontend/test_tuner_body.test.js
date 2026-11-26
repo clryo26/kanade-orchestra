@@ -7,6 +7,7 @@ const root = process.cwd();
 const dir = path.join(root, 'src/static/js/modules/tuner');
 const lib = {
   music: require(path.join(dir, 'music.js')),
+  targetModel: require(path.join(dir, 'target_model.js')),
   temperament: require(path.join(dir, 'temperament.js')),
   displayFilter: require(path.join(dir, 'display_filter.js')),
   settings: require(path.join(dir, 'settings.js')),
@@ -61,7 +62,8 @@ function harness(options = {}) {
     root: {},
     graph,
     bind: vi.fn(),
-    setRootOptions: vi.fn(),
+    setTemperamentOptions: vi.fn(),
+    setTargetConfig: vi.fn(),
     setJudgment: vi.fn(),
     setRange: vi.fn(),
     setReference: vi.fn(),
@@ -87,12 +89,14 @@ function harness(options = {}) {
   };
   const locks = [];
   const pendingLocks = [];
-  const storage = { data: {}, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = String(v); } };
+  let now = 0;
+  let animationFrame;
+  const storage = { data: { ...options.storage }, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = String(v); } };
   const body = createTunerBody({
     lib,
     storage,
-    now: () => 0,
-    requestAnimationFrame: () => 1,
+    now: () => now,
+    requestAnimationFrame: (fn) => { animationFrame = fn; return 1; },
     cancelAnimationFrame: () => {},
     isDocumentHidden: () => false,
     reload: vi.fn(),
@@ -120,7 +124,15 @@ function harness(options = {}) {
     isScreenActive: () => state.active,
   };
   return {
-    body, view, graph, controller, contexts, calls, locks, pendingLocks, state, startOptions, timers,
+    body, view, graph, controller, contexts, calls, locks, pendingLocks, state, startOptions, timers, storage,
+    pitch: (frequency, frames = 40) => {
+      for (let i = 0; i < frames; i += 1) {
+        now += 50;
+        controllerCallbacks.onPitch({ valid: true, frequency, reason: 'ok' });
+        animationFrame(now);
+      }
+    },
+    reading: () => view.showReading.mock.calls.filter(([reading]) => reading).at(-1)[0],
     handlers: body.handlers,
     playbackView: () => lastPlayback,
     runIntervals: () => intervals.forEach((t) => t.fn()),
@@ -225,27 +237,6 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.playbackView().summary).toContain('443.000 Hz');
   });
 
-  it('passes the unrounded pure target to playback and does not follow later root/mode changes', async () => {
-    const h = harness();
-    await h.body.start(h.startOptions);
-    h.handlers.onMode('major-third');
-    const target = lib.temperament.justTarget('major-third', 60, 442);
-    h.handlers.onSetPlaybackFromTarget();
-    expect(h.contexts).toHaveLength(0); // setting does not play
-    expect(h.playbackView().source).toBe('hz');
-    expect(h.playbackView().summary).toContain(target.targetFrequency.toFixed(3));
-    h.handlers.onPlay();
-    const firstFrequency = h.contexts[0].oscillators[0].frequency.events[0][1];
-    expect(firstFrequency).toBe(target.targetFrequency); // exact, not 0.1 Hz-rounded
-    expect(Number.isInteger(firstFrequency * 10)).toBe(false);
-    h.handlers.onRoot(62);
-    h.handlers.onMode('minor-third');
-    expect(h.contexts[0].oscillators[0].frequency.events).toHaveLength(1); // no implicit follow
-    h.handlers.onSetPlaybackFromRoot();
-    const rootHz = lib.temperament.justTarget('minor-third', 62, 442).rootFrequency;
-    expect(h.contexts[0].oscillators[0].frequency.events.at(-1)).toEqual(['exp', rootHz, lib.playback.FREQUENCY_GLIDE_SECONDS]);
-  });
-
   it('a full stop (leave, background, logout) ends tone and measurement and is idempotent', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
@@ -293,17 +284,18 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.controllerCallbacks().getDisplayRange()).toEqual(second); // used by the next start
   });
 
-  it('judgment mode changes recalculate and update the view', async () => {
+  it('judges only in equal temperament and exposes no removed handlers', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
-    h.handlers.onMode('minor-third');
-    const config = h.view.setJudgment.mock.calls.at(-1)[0];
-    expect(config.mode).toBe('minor-third');
-    expect(config.just.target.label).toBe('E♭4');
-    h.handlers.onRoot(57); // A3 -> minor third above is C4
-    expect(h.view.setJudgment.mock.calls.at(-1)[0].just.target.label).toBe('C4');
-    h.handlers.onMode('equal');
-    expect(h.view.setJudgment.mock.calls.at(-1)[0].just).toBeNull();
+    expect(h.view.setJudgment).toHaveBeenLastCalledWith({ mode: 'equal', rootMidi: lib.temperament.DEFAULT_ROOT_MIDI, just: null, usesRoot: false });
+    for (const name of ['onMode', 'onTemperament', 'onRoot', 'onCustomOffset', 'onFreeze', 'onDetailToggle']) expect(h.handlers[name]).toBeUndefined();
+    h.pitch(442);
+    expect(h.reading()).toMatchObject({ mode: 'equal', just: null, judgment: 'in-tune', targetNote: { midi: 69 } });
+    const playback = h.playbackView();
+    h.handlers.onSetPlaybackFromRoot();
+    h.handlers.onSetPlaybackFromTarget();
+    expect(h.playbackView()).toEqual(playback);
+    expect(h.contexts).toHaveLength(0);
   });
 
   it('a late wake-lock answer from an earlier playback is released at once', async () => {
@@ -336,18 +328,88 @@ describe('tuner body: playback and measurement switching', () => {
   it('an A4 change re-judges against the new target instead of keeping "in tune"', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
-    h.handlers.onMode('major-third');
-    const target442 = lib.temperament.justTarget('major-third', 60, 442).targetFrequency;
-    let now = 0;
-    for (let i = 0; i < 40; i += 1) {
-      now += 50;
-      h.controllerCallbacks().onPitch({ valid: true, frequency: target442, reason: 'ok' });
-    }
+    const target442 = 442;
+    h.pitch(target442);
+    expect(h.reading().judgment).toBe('in-tune');
     h.handlers.onStep(10); // A4 442.0 -> 443.0 (ten 0.1 Hz steps)
     const shown = h.view.showReading.mock.calls.filter((c) => c[0]).at(-1)[0];
-    expect(shown.cents).toBeCloseTo(1200 * Math.log2(target442 / lib.temperament.justTarget('major-third', 60, 443).targetFrequency), 6);
+    expect(shown.cents).toBeCloseTo(1200 * Math.log2(target442 / 443), 6);
     expect(shown.cents).toBeCloseTo(-3.91, 2);
     expect(shown.judgment).toBe('flat'); // beyond ±3 for the new target
+  });
+
+  it('preserves note-switch hysteresis across an A4 change at the semitone boundary (R1)', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    // Initially 49 cent above A4; lowering A4 by 1 Hz moves it to ~52.9 cent.
+    // The nearest rounded note changes, but the existing A4 stays within the 53 cent margin.
+    const frequency = 442 * 2 ** (49 / 1200);
+    h.pitch(frequency);
+    expect(h.reading().note.midi).toBe(69);
+    h.handlers.onStep(-10);
+    const shown = h.reading();
+    expect(shown.note.midi).toBe(69);
+    expect(shown.targetNote.midi).toBe(69);
+    expect(shown.frequency).toBeCloseTo(frequency, 8);
+    expect(shown.cents).toBeCloseTo(1200 * Math.log2(frequency / 441), 6);
+    expect(shown.judgment).toBe('sharp');
+    expect(shown.needlePercent).toBe(100);
+    h.pitch(frequency);
+    expect(h.reading().note.midi).toBe(69);
+    h.pitch(441 * 2 ** (54 / 1200));
+    expect(h.reading().note.midi).toBe(70); // switch still works beyond the margin
+  });
+
+  it('selects B-flat4 and returns to the nearest note when fixedMidi is cleared', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.pitch(442);
+    h.handlers.onTargetOption('fixedMidi', 70);
+    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: 70 });
+    expect(h.reading()).toMatchObject({ targetNote: { midi: 70 }, judgment: 'flat', needlePercent: 0 });
+    expect(h.reading().cents).toBeCloseTo(-100, 6);
+    expect(h.view.setTargetConfig.mock.calls.at(-1)[0].fixedMidi).toBe(70);
+    h.handlers.onStep(10); // the fixed target survives A4 recomputation too
+    expect(h.reading().targetNote.midi).toBe(70);
+    h.handlers.onStep(-10);
+    h.handlers.onTargetOption('fixedMidi', null);
+    expect(h.body.api.getTargetConfig().fixedMidi).toBeNull();
+    expect(h.reading()).toMatchObject({ targetNote: { midi: 69 }, judgment: 'in-tune' });
+    expect(h.reading().cents).toBeCloseTo(0, 6);
+    expect(h.reading().needlePercent).toBeCloseTo(50, 6);
+    expect(h.view.setTargetConfig.mock.calls.at(-1)[0].fixedMidi).toBeNull();
+    const before = h.body.api.getTargetConfig();
+    for (const name of ['temperament', 'rootMidi', 'role', 'customOffsets']) h.handlers.onTargetOption(name, 'custom');
+    expect(h.body.api.getTargetConfig()).toEqual(before);
+  });
+
+  it.each(['minor-third', 'major-third', 'pythagorean', 'custom'])('starts with legacy %s/detail preferences and preserves fixedMidi', async (temperament) => {
+    const raw = JSON.stringify({ schemaVersion: 1, a4Tenths: 4420, persistSettings: true, prefs: { judgment: { temperament, rootMidi: 62, fixedMidi: 70 }, displayMode: 'detail' } });
+    const h = harness({ storage: { portalTunerSettings: raw } });
+    await expect(h.body.start(h.startOptions)).resolves.toBeUndefined();
+    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: 70 });
+    expect(h.view.setJudgment.mock.calls.at(-1)[0]).toMatchObject({ mode: 'equal', just: null });
+    expect(h.view.setTargetConfig.mock.calls.at(-1)[0].fixedMidi).toBe(70);
+    for (const name of ['onMode', 'onFreeze', 'onDetailToggle']) expect(h.handlers[name]).toBeUndefined();
+    h.pitch(442);
+    expect(h.reading()).toMatchObject({ mode: 'equal', just: null, targetNote: { midi: 70 }, judgment: 'flat' });
+    expect(h.reading().cents).toBeCloseTo(-100, 6);
+    expect(h.storage.data.portalTunerSettings).toBe(raw);
+  });
+
+  it('applies only equal-temperament preset fields while keeping the boolean API', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.pitch(442);
+    expect(h.body.api.applyTargetConfig({ temperament: 'pythagorean', fixedMidi: 70, rootMidi: 62, role: 'third' })).toBe(true);
+    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: 70 });
+    expect(h.reading().cents).toBeCloseTo(-100, 6);
+    expect(h.reading().targetNote.midi).toBe(70);
+    expect(h.body.api.applyTargetConfig({ temperament: 'equal', fixedMidi: null })).toBe(true);
+    expect(h.reading().cents).toBeCloseTo(0, 6);
+    expect(h.body.api.applyTargetConfig(null)).toBe(false);
+    expect(h.body.api.getA4()).toBe(442);
+    expect(h.body.api.getA4Tenths()).toBe(4420);
   });
 });
 

@@ -94,16 +94,33 @@ describe('tuner reference A4 setting', () => {
     expect(store.setTenths(4801)).toMatchObject({ changed: false });
   });
 
-  it('parses typed A4 values (one decimal, full-width digits) and refuses the rest', () => {
-    expect(settings.parseA4Input('442')).toEqual({ ok: true, tenths: 4420 });
-    expect(settings.parseA4Input(' 441.5 ')).toEqual({ ok: true, tenths: 4415 });
-    expect(settings.parseA4Input('４４３．２')).toEqual({ ok: true, tenths: 4432 });
-    expect(settings.parseA4Input('390.0')).toEqual({ ok: true, tenths: 3900 });
-    expect(settings.parseA4Input('480.0')).toEqual({ ok: true, tenths: 4800 });
-    for (const [text, reason] of [['', 'empty'], ['389.9', 'range'], ['480.1', 'range'], ['442.25', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
-      expect(settings.parseA4Input(text), text).toMatchObject({ ok: false, reason });
+  it('parses only whole Hz, normalizes full-width digits and reports format/range errors', () => {
+    for (const [text, tenths] of [['442', 4420], [' ４４３ ', 4430], ['390', 3900], ['480', 4800]]) {
+      expect(settings.parseA4Input(text)).toEqual({ ok: true, tenths });
+    }
+    for (const text of ['', '442.5', '390.0', '480.0', '442.25', '4.42e2', '+442', 'abc']) {
+      expect(settings.parseA4Input(text)).toEqual({ ok: false, reason: 'format', message: '390～480 の整数で入力してください。' });
+    }
+    for (const text of ['389', '481']) {
+      expect(settings.parseA4Input(text)).toEqual({ ok: false, reason: 'range', message: '390～480 Hz の範囲で入力してください。' });
     }
     expect(settings.PRESETS_TENTHS).toEqual([4400, 4410, 4420, 4430]);
+  });
+
+  it.each([[4424, 442], [4425, 443], [3901, 390], [4799, 480]])('rounds legacy tenths %i to whole Hz %i in memory without writing', (tenths, hz) => {
+    const raw = JSON.stringify({ schemaVersion: 1, a4Tenths: tenths, persistSettings: true, prefs: { displayMode: 'detail', judgment: { temperament: 'custom', fixedMidi: 70 } } });
+    const storage = memoryStorage({ [settings.SETTINGS_KEY]: raw });
+    let writes = 0;
+    const write = storage.setItem;
+    storage.setItem = (...args) => { writes += 1; write(...args); };
+    const store = settings.createSettingsStore(storage);
+    expect(store.load()).toBe(hz);
+    expect(store.getTenths()).toBe(hz * 10);
+    expect(store.getPrefs()).toMatchObject({ displayMode: 'detail', judgment: { temperament: 'custom', fixedMidi: 70 } });
+    expect(writes).toBe(0);
+    expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
+    store.step(hz === 480 ? -10 : 10);
+    expect(JSON.parse(storage.data[settings.SETTINGS_KEY]).a4Tenths % 10).toBe(0);
   });
 
   it('keeps an unknown settings schema untouched and works with defaults', () => {
@@ -162,10 +179,10 @@ describe('tuner reference A4 setting', () => {
     const storage = memoryStorage();
     const first = settings.createSettingsStore(storage);
     first.load();
-    first.step(1);
-    first.step(1);
+    first.step(10);
+    first.step(10);
     const second = settings.createSettingsStore(storage);
-    expect(second.load()).toBe(442.2);
+    expect(second.load()).toBe(444);
   });
 
   it('does not touch storage while loading the module', () => {

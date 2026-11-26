@@ -68,7 +68,9 @@
 }
 
 .tuner-readout-label {
-    flex-basis: 100%;
+    height: calc(0.85rem * 1.2);
+    line-height: 1.2;
+    white-space: nowrap;
     margin: 0;
     text-align: center;
 }
@@ -105,24 +107,6 @@
     gap: 8px;
 }
 
-.tuner-target-line {
-    background: #eef6f1;
-    flex-basis: 100%;
-    text-align: left;
-    border-left: 4px solid var(--tuner-graph-target);
-    border-radius: 4px;
-    font-weight: 600;
-    margin: 0;
-    padding: 6px 10px;
-}
-
-.tuner-equal-diff {
-    color: var(--tuner-muted);
-    font-size: 0.95rem;
-    margin: 6px 0 0;
-    text-align: center;
-}
-
 .tuner-status,
 .tuner-fallback {
     background: #fff8e6;
@@ -147,12 +131,21 @@
 }
 
 .tuner-readout {
-    align-items: baseline;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: calc(0.85rem * 1.2) clamp(3rem, 16vw, 4.5rem) calc(1.4rem * 1.2);
+    justify-items: center;
+    gap: 4px;
     text-align: center;
+}
+
+.tuner .tuner-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: clamp(3rem, 16vw, 4.5rem);
+    white-space: nowrap;
+    overflow: visible;
 }
 
 .tuner-note-name {
@@ -162,12 +155,10 @@
     line-height: 1;
 }
 
-.tuner-note-solfege {
-    font-size: 1.4rem;
-    margin-left: 4px;
-}
-
 .tuner-frequency {
+    height: calc(1.4rem * 1.2);
+    line-height: 1.2;
+    white-space: nowrap;
     font-size: 1.4rem;
     font-variant-numeric: tabular-nums;
 }
@@ -205,6 +196,31 @@
     top: 0;
     transform: translateX(-50%);
     width: 2px;
+}
+
+.tuner .tuner-meter-mark {
+    position: absolute;
+    top: 20px;
+    bottom: 3px;
+    width: 1px;
+    background: var(--tuner-muted);
+    color: var(--tuner-muted);
+    transform: translateX(-50%);
+}
+
+.tuner .tuner-meter-mark > span {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    padding-bottom: 2px;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+.tuner .tuner-meter-mark[hidden] {
+    display: none;
 }
 
 .tuner-meter-needle {
@@ -277,7 +293,6 @@
 
 .tuner-legend-item:nth-child(1) { color: var(--tuner-graph-fundamental); }
 .tuner-legend-item:nth-child(2) { color: var(--tuner-graph-target); }
-.tuner[data-mode="just"] .tuner-legend-item:nth-child(3) { color: var(--tuner-graph-equal); }
 
 .tuner-range {
     margin-bottom: 6px;
@@ -446,7 +461,7 @@
     min-width: 0;
 }
 
-/* 状態チップ（マイク・表示固定・再生中・同時使用） */
+/* 状態チップ（マイク・再生中・同時使用） */
 .tuner-statusbar {
     display: flex;
     flex-wrap: wrap;
@@ -549,6 +564,19 @@
 
 .tuner.tuner-maximized .tuner-note-name {
     font-size: clamp(4rem, 24vw, 7rem);
+}
+
+.tuner.tuner-maximized .tuner-readout {
+    grid-template-rows: calc(0.85rem * 1.2) clamp(4rem, 24vw, 7rem) calc(1.4rem * 1.2);
+}
+
+.tuner.tuner-maximized .tuner-note {
+    height: clamp(4rem, 24vw, 7rem);
+}
+
+.tuner.tuner-maximized .tuner-frequency {
+    height: calc(1.4rem * 1.2);
+    line-height: 1.2;
 }
 
 /* フォーム部品 */

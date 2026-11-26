@@ -424,7 +424,7 @@
     // not grow. It must be present before the tuner button is tapped because
     // the tap creates the AudioContext synchronously (iOS Safari). The rev
     // value is maintained by scripts/generate_tuner_release.mjs.
-    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-e9e90e4b853c';
+    var TUNER_LAUNCHER_URL = '/static/js/modules/tuner/launcher.js?rev=t-7435989441ba';
     var tunerLauncherPromise = null;
 
     function ensureTunerLauncherLoaded() {
