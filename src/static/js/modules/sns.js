@@ -26,10 +26,15 @@ function clearSnsSettingForm() {
 
 
 async function saveSnsSetting() {
+    const inputValues = {
+        snsFacebookUrl: $('snsFacebookUrl')?.value || '',
+        snsInstagramUrl: $('snsInstagramUrl')?.value || '',
+        snsXUrl: $('snsXUrl')?.value || ''
+    };
     const payload = {
-        facebook_url: $('snsFacebookUrl')?.value.trim() || '',
-        instagram_url: $('snsInstagramUrl')?.value.trim() || '',
-        x_url: $('snsXUrl')?.value.trim() || ''
+        facebook_url: inputValues.snsFacebookUrl.trim(),
+        instagram_url: inputValues.snsInstagramUrl.trim(),
+        x_url: inputValues.snsXUrl.trim()
     };
     if (!(typeof isDeferredPortalDataLoaded === 'function' && isDeferredPortalDataLoaded('snsSettings'))) {
         const generation = typeof currentDeferredPortalDataGeneration === 'function'
@@ -39,6 +44,11 @@ async function saveSnsSetting() {
         if (!(typeof isDeferredPortalDataLoaded === 'function' && isDeferredPortalDataLoaded('snsSettings'))
             || typeof currentDeferredPortalDataGeneration !== 'function'
             || generation !== currentDeferredPortalDataGeneration()) {
+            // A new-generation retry may have redrawn the form before we abort.
+            // Restore the original input, including whitespace, when no write is sent.
+            Object.entries(inputValues).forEach(([id, value]) => {
+                if ($(id)) $(id).value = value;
+            });
             showAlert('SNS情報を読み込めなかったため、保存していません。時間をおいてもう一度保存してください。', 'warning');
             return;
         }

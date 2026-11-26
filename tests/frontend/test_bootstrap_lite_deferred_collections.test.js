@@ -322,18 +322,22 @@ describe('SNS save with real extra loader and form redraw', () => {
         expect(s.showAlert).toHaveBeenCalledWith(warning, 'warning');
     });
 
-    test('generation change alone prevents a write even if a retry successfully loads SNS', async () => {
-        const { s, handlers, request, elements } = snsSetup();
+    test.each([
+        { latest: [] },
+        { latest: [{ id: 'latest', facebook_url: 'https://example.com/latest' }] },
+    ])('generation change prevents a write and restores inputs after retry redraw (%j)', async ({ latest }) => {
+        const { s, appState, handlers, request, elements } = snsSetup();
         const before = values(elements);
         const pending = deferred();
         handlers.set('/api/extra/sns_settings', () => pending.promise);
         const saving = s.saveSnsSetting();
         await tick();
         s.resetDeferredPortalDataFlags();
-        handlers.set('/api/extra/sns_settings', () => [{ id: 'latest' }]);
+        handlers.set('/api/extra/sns_settings', () => latest);
         pending.resolve([{ id: 'old' }]);
         await saving;
         expect(s.isDeferredPortalDataLoaded('snsSettings')).toBe(true);
+        expect(appState.snsSettings).toEqual(latest);
         expect(writes(request)).toHaveLength(0);
         expect(values(elements)).toEqual(before);
         expect(s.showAlert).toHaveBeenCalledWith(warning, 'warning');
