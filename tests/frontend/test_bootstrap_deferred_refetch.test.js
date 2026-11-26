@@ -149,6 +149,39 @@ describe('bootstrap-lite deferred refetch', () => {
         expect(appState.castings).toEqual([{ id: 'new' }]);
     });
 
+    test('repeated generation changes retry a discarded extra load only once and retain visible data', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        const previous = [{ id: 'visible' }];
+        appState.castings = previous;
+        handlers.set('/api/extra/castings', () => {
+            s.resetDeferredPortalDataFlags();
+            return [{ id: 'discarded' }];
+        });
+        await s.loadExtraData(['castings']);
+        expect(calls('/api/extra/castings')).toHaveLength(2);
+        expect(appState.castings).toBe(previous);
+        expect(s.isDeferredPortalDataLoaded('castings')).toBe(false);
+        expect(s.renderCastingAdmin).not.toHaveBeenCalled();
+        expect(s.showAlert).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledWith(expect.stringContaining('castings'), 'warning');
+    });
+
+    test('visible events bypass a still-fresh cache after bootstrap refetch', async () => {
+        const { s, appState, handlers, calls } = createBootstrapSandbox();
+        const cached = [{ id: 'cached' }], latest = [{ id: 'latest' }];
+        // Model request() returning its fresh cache unless revalidation is forced.
+        handlers.set('/api/events', options => options?._forceRevalidate ? latest : cached);
+        await s.ensureDeferredTabDataLoaded('event');
+        expect(appState.events).toEqual(cached);
+        appState.currentPortalTab = { tabName: 'event' };
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/events')).toHaveLength(2);
+        expect(calls('/api/events')[1][1]).toEqual({ _forceRevalidate: true });
+        expect(appState.events).toEqual(latest);
+        expect(s.isDeferredPortalDataLoaded('events')).toBe(true);
+    });
+
     test('only the visible collection reloads immediately; other tabs load on opening', async () => {
         const { s, appState, calls } = createBootstrapSandbox();
         appState.currentPortalTab = { tabName: 'casting-admin' };
@@ -473,31 +506,53 @@ describe('deferred loading unchanged behavior', () => {
             expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/bootstrap-lite']);
         });
 
-    test.each([
+    test.each(['pageshow', 'visibilitychange'].flatMap(lifecycleEvent => [
         ['fresh auth and data', 1000, 1000, 'visible', 'true', false, false],
         ['stale auth only', 61000, 1000, 'visible', 'true', true, false],
         ['stale data only', 1000, 61000, 'visible', 'true', false, true],
         ['both stale', 61000, 61000, 'visible', 'true', true, true],
+        ['just before expiry', 59999, 59999, 'visible', 'true', false, false],
+        ['exactly at expiry', 60000, 60000, 'visible', 'true', true, true],
         ['hidden', 61000, 61000, 'hidden', 'true', false, false],
         ['logged out', 61000, 61000, 'visible', 'false', false, false],
-    ])('resume retains the refresh condition: %s', async (_label, authAge, dataAge, visibility, storedAuth, verify, reload) => {
+    ].map(row => [lifecycleEvent, ...row])))('resume via %s retains the refresh condition: %s', async (lifecycleEvent, _label, authAge, dataAge, visibility, storedAuth, verify, reload) => {
         const { s, appState, calls } = createBootstrapSandbox();
         const now = Date.now();
+        // Fix the clock in this VM only so the 60-second boundary is deterministic.
+        s.Date = class extends Date { static now() { return now; } };
         Object.assign(appState, { portalAuthVerified: true,
             lastPortalSessionVerifiedAt: now - authAge, lastEssentialDataLoadedAt: now - dataAge,
             currentPortalTab: { tabName: 'casting-admin' } });
         s.document.visibilityState = visibility;
         s.localStorage = { getItem: () => storedAuth };
         s.portalRuntimeContext.today = () => '2026-11-26';
+        s.portalRuntimeContext.dbCache.init = vi.fn(async () => {});
         s.isPortalAuthenticated = vi.fn(async () => ({ status: 'authenticated' }));
-        // Register lifecycle callbacks without executing DOMContentLoaded startup.
+        const documentListeners = new Map();
+        const windowListeners = new Map();
+        s.document.addEventListener = (name, handler) => documentListeners.set(name, handler);
+        s.addEventListener = (name, handler) => windowListeners.set(name, handler);
+        s.setInterval = vi.fn();
+        for (const name of ['setDefaultDates', 'setupPortalHome', 'setupMemberManagerTabs',
+            'bindNavigation', 'bindUpload', 'bindForms', 'bindDownloadConfirmations',
+            'updateSavePath', 'loadCloudRunRevision', 'enterPortal']) s[name] = vi.fn();
+        // The resume helper is scoped inside the initialization guard. Exercise
+        // its registered lifecycle callback, as the browser does, rather than
+        // assuming the helper is exported as a sandbox global.
         vm.runInNewContext(RESUME_SOURCE, s);
-        await s.syncPortalSessionOnResume();
+        expect(documentListeners.get('DOMContentLoaded')).toEqual(expect.any(Function));
+        await documentListeners.get('DOMContentLoaded')();
+        s.isPortalAuthenticated.mockClear();
+        const resume = lifecycleEvent === 'pageshow'
+            ? windowListeners.get('pageshow') : documentListeners.get('visibilitychange');
+        expect(resume).toEqual(expect.any(Function));
+        resume();
         await tick();
         expect(s.isPortalAuthenticated).toHaveBeenCalledTimes(verify ? 1 : 0);
         if (verify) expect(s.isPortalAuthenticated).toHaveBeenCalledWith({ forceVerify: true, _requestOrigin: 'automatic' });
         expect(calls('/api/bootstrap-lite')).toHaveLength(reload ? 1 : 0);
         expect(calls('/api/extra/castings')).toHaveLength(reload ? 1 : 0);
         if (reload) expect(calls('/api/extra/castings')[0][1]).toMatchObject({ _requestOrigin: 'automatic', _forceRevalidate: true });
+        expect(s.showAlert).not.toHaveBeenCalled();
     });
 });
