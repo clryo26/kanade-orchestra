@@ -259,6 +259,11 @@ function scheduleToIcsEvent(sched) {
 // downloadSchedulesIcs moved to feature module.
 
 
+function schedulesAwaitingFirstLoad() {
+    return !(typeof isDeferredPortalDataLoaded === 'function' && isDeferredPortalDataLoaded('schedules'))
+        && !(appState.schedules || []).length;
+}
+
 function renderSchedules() {
     const container = $('schedListItems');
     if (!container) return;
@@ -281,7 +286,7 @@ function renderSchedules() {
         });
     });
     if (!schedules.length) {
-        container.insertAdjacentHTML('beforeend', `<p class="text-muted mb-0">${period === 'past' ? '過去の練習予定はありません' : '当日以降の練習予定はありません'}</p>`);
+        container.insertAdjacentHTML('beforeend', `<p class="text-muted mb-0">${schedulesAwaitingFirstLoad() ? '読み込み中です...' : period === 'past' ? '過去の練習予定はありません' : '当日以降の練習予定はありません'}</p>`);
         if (!appState.suppressDerivedRender) renderMemberSchedules();
         return;
     }
@@ -318,7 +323,7 @@ function renderMemberSchedules() {
     const container = $('memberSchedInfo');
     const upcoming = sortedSchedules(appState.schedules).filter((sched) => !sched.date || sched.date >= window.portalRuntimeContext.today());
     if (!upcoming.length) {
-        container.innerHTML = '<p class="text-muted mb-0">練習予定はまだありません</p>';
+        container.innerHTML = `<p class="text-muted mb-0">${schedulesAwaitingFirstLoad() ? '読み込み中です...' : '練習予定はまだありません'}</p>`;
         return;
     }
     const grouped = groupSchedulesByPerformance(upcoming);

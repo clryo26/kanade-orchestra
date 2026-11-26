@@ -89,13 +89,11 @@ async def get_bootstrap_lite_data(
         etag = bootstrap_service.combined_collection_etag(
             (
                 "performances",
-                "schedules",
                 "announcements",
                 "members",
                 "payments",
                 "part_settings",
                 "org_settings",
-                "sns_settings",
             ),
             lambda name: get_memory_cache_instance().etag(name) or "",
             _collection_etag,

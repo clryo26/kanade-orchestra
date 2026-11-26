@@ -233,7 +233,7 @@ describe('venue load from the registration tabs', () => {
         elements.perfTitle.value = '入力途中のタイトル';
         request
             .mockImplementationOnce(async () => { throw new Error('offline'); })
-            .mockImplementation(async () => VENUES);
+            .mockImplementation(async (url) => url === '/api/schedules' ? [] : VENUES);
 
         await sandbox.ensureDeferredTabDataLoaded('performance');
         expect(sandbox.showAlert).toHaveBeenCalledWith(expect.stringContaining('venueSettings'), 'warning');
@@ -241,7 +241,12 @@ describe('venue load from the registration tabs', () => {
         expect(selectedText(elements.perfVenue)).toBe('さくらホール（未登録会場）');
 
         await sandbox.ensureDeferredTabDataLoaded('schedule');
-        expect(request).toHaveBeenCalledTimes(2);
+        expect(request.mock.calls.map(([url]) => url)).toEqual([
+            '/api/extra/venue_settings', '/api/schedules', '/api/extra/venue_settings',
+        ]);
+        expect(sandbox.isDeferredPortalDataLoaded('schedules')).toBe(true);
+        expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(true);
+        expect(sandbox.showAlert).toHaveBeenCalledTimes(1);
         expect(elements.perfVenue.value).toBe('さくらホール');
         expect(selectedText(elements.perfVenue)).toBe('さくらホール');
         expect(elements.schedVenue.options.map((option) => option.value)).toEqual(['', 'あおば練習場', 'かもめ会館', 'たちばな会館']);

@@ -458,22 +458,60 @@ def test_bootstrap_reads_from_db_mode_for_members_and_extras(client, backend_env
     assert payload["extras"]["payments"][0]["member_id"] == 10
 
 
-def test_bootstrap_lite_etag_changes_when_non_performance_data_changes(client, backend_env):
+def test_bootstrap_lite_etag_changes_when_non_performance_data_changes(client, backend_env, monkeypatch):
+    monkeypatch.setenv("PORTAL_READ_CONTEXT_PATHS", "")
+    monkeypatch.setenv("PORTAL_VERSION_ETAG_PATHS", "")
     backend_env._memory_cache.clear()
     backend_env.save_json_data("performances", [{"id": 1, "title": "Concert"}])
-    backend_env.save_json_data("schedules", [{"id": 1, "date": "2026-06-29", "venue": "A"}])
+    backend_env.save_json_data("announcements", [{"id": 1, "content": "A"}])
 
     first = client.get("/api/bootstrap-lite")
     assert first.status_code == 200
     etag = first.headers.get("etag") or first.headers.get("ETag")
     assert etag
 
-    backend_env.save_json_data("schedules", [{"id": 1, "date": "2026-06-29", "venue": "B"}])
+    backend_env.save_json_data("announcements", [{"id": 1, "content": "B"}])
     second = client.get("/api/bootstrap-lite", headers={"If-None-Match": etag})
 
     assert second.status_code == 200
-    assert second.json()["schedules"][0]["venue"] == "B"
+    assert second.json()["announcements"][0]["content"] == "B"
     assert (second.headers.get("etag") or second.headers.get("ETag")) != etag
+
+
+@pytest.mark.parametrize("name,rows", [
+    ("schedules", [{"id": 1, "date": "2026-06-29", "venue": "changed"}]),
+    ("sns_settings", [{"id": 1, "facebook_url": "https://example.com/changed"}]),
+])
+def test_lite_etag_ignores_deferred_collections_without_read_context(client, backend_env, monkeypatch, name, rows):
+    monkeypatch.setenv("PORTAL_READ_CONTEXT_PATHS", "")
+    monkeypatch.setenv("PORTAL_VERSION_ETAG_PATHS", "")
+    first = client.get("/api/bootstrap-lite")
+    assert first.status_code == 200
+    backend_env.save_json_data(name, rows)
+    second = client.get("/api/bootstrap-lite", headers={"If-None-Match": first.headers["ETag"]})
+    assert second.status_code == 304
+    assert second.content == b""
+    assert second.headers["ETag"] == first.headers["ETag"]
+
+
+def test_lite_payload_reads_only_initial_screen_collections():
+    loaded = []
+
+    def load(name):
+        loaded.append(name)
+        assert name not in {"schedules", "sns_settings"}
+        return []
+
+    payload = asyncio.run(bootstrap_router.bootstrap_service.bootstrap_lite_payload(
+        load_json_data=load,
+        public_member_list=lambda rows: rows,
+        personal_payment_list=lambda rows: rows,
+        cloud_run_revision=lambda: "test-revision",
+    ))
+    assert set(loaded) == {"performances", "announcements", "members", "payments", "part_settings", "org_settings"}
+    assert len(loaded) == 6
+    assert "schedules" not in payload
+    assert "sns_settings" not in payload["extras"]
 
 
 def test_bootstrap_lite_if_none_match_short_circuits_payload_build(client):

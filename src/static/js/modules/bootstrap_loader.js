@@ -21,14 +21,12 @@ if (window.portalStartup && !window.__KANADE_STARTUP_PROGRESS_MARK_WRAPPED__) {
 
 async function loadPartSettingsForLogin(options = {}) {
     try {
-        const [partSettings, orgSettings, snsSettings] = await Promise.all([
+        const [partSettings, orgSettings] = await Promise.all([
             request('/api/extra/part_settings', options),
-            request('/api/extra/org_settings', options),
-            request('/api/extra/sns_settings', options)
+            request('/api/extra/org_settings', options)
         ]);
         appState.partSettings = partSettings;
         appState.orgSettings = orgSettings;
-        appState.snsSettings = snsSettings;
         refreshPartSelectOptions();
         applyOrgSettings();
     } catch {
@@ -298,6 +296,8 @@ function renderLoadingPlaceholders() {
 }
 
 const deferredPortalDataFlags = {
+    schedules: false,
+    snsSettings: false,
     events: false,
     absences: false,
     eventResponses: false,
@@ -321,10 +321,15 @@ const deferredPortalDataFlags = {
 
 // Advance independently of authentication so pre-refetch loads cannot mark data latest.
 let deferredPortalDataGeneration = 0;
+
+function currentDeferredPortalDataGeneration() {
+    return deferredPortalDataGeneration;
+}
 // Keep full payments protected even when their flag is reset and a reload fails
 // or is still in flight. Account/permission/session changes invalidate ownership.
 let allPaymentsHeldAuthContext = null;
 let loadEventsSequence = 0;
+let loadSchedulesSequence = 0;
 let loadAuthManagementSequence = 0;
 
 function isAllPaymentsHeld() {
@@ -452,6 +457,11 @@ async function ensureDeferredTabDataLoaded(tabName, options = {}) {
         queueExtraLoad(['eventResponses']);
     }
     if (tabName === 'member-schedule' || tabName === 'member-absence') queueExtraLoad(['absences']);
+    if (['member-schedule', 'member-absence', 'schedule'].includes(tabName)
+        && !isDeferredPortalDataLoaded('schedules')) {
+        extraLoads.push(loadSchedules(picked));
+    }
+    if (tabName === 'member-sns' || tabName === 'system-sns') queueExtraLoad(['snsSettings']);
     if (tabName === 'member-date-adjustment') queueExtraLoad(['dateAdjustments', 'dateAdjustmentResponses']);
     if (tabName === 'member-piece-info') queueExtraLoad(['pieceInfos']);
     if (tabName === 'member-practice-instruction') queueExtraLoad(['practiceInstructions', 'pieceInfos']);
@@ -724,9 +734,29 @@ async function loadPerformances() {
     renderPaymentAdmin();
 }
 
-async function loadSchedules() {
-    appState.schedules = await request('/api/schedules');
-    renderSchedules();
+async function loadSchedules(options = {}) {
+    // Save-triggered reloads own a newer sequence; old requests must not undo them.
+    const seq = ++loadSchedulesSequence;
+    const generation = deferredPortalDataGeneration;
+    const picked = pickDeferredRequestOptions(options);
+    const handleFailure = arguments.length > 0;
+    try {
+        const schedules = await (Object.keys(picked).length
+            ? request('/api/schedules', picked) : request('/api/schedules'));
+        if (seq !== loadSchedulesSequence || generation !== deferredPortalDataGeneration) return false;
+        appState.schedules = schedules;
+        markDeferredPortalDataLoaded('schedules');
+        if (typeof renderSchedules === 'function') renderSchedules();
+        if (typeof renderMemberSchedules === 'function') renderMemberSchedules();
+        if (typeof renderAbsenceView === 'function') renderAbsenceView();
+        return true;
+    } catch (error) {
+        if (!handleFailure) throw error;
+        if (!error?.portalRetryWait) {
+            showAlert('一部データの読込に失敗しました: schedules', 'warning');
+        }
+        return false;
+    }
 }
 
 async function loadAnnouncements() {

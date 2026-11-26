@@ -46,6 +46,10 @@ async function installVenueScenario(page, { schedules = [SCHEDULE], holdVenue = 
   bootstrap.schedules = schedules;
   // Registered after the shared mock, so these handlers take precedence.
   await page.route((url) => BOOTSTRAP_PATHS.has(url.pathname), (route) => route.fulfill({ json: bootstrap }));
+  await page.route((url) => url.pathname === '/api/schedules', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ json: schedules });
+  });
 
   const venueApi = { requests: 0 };
   let releaseVenue;

@@ -69,7 +69,10 @@ describe('schedule admin period switching', () => {
         view.click('past');
         expect(view.rows).toHaveLength(1);
         view.state.schedules = [];
+        // This case represents a successful load with no schedules, not an initial load.
+        view.sandbox.isDeferredPortalDataLoaded = (name) => name === 'schedules';
         view.sandbox.renderSchedules();
+        expect(view.container.innerHTML).not.toContain('読み込み中です...');
         expect(view.container.innerHTML).toContain('過去の練習予定はありません');
         view.click('future');
         expect(view.container.innerHTML).toContain('当日以降の練習予定はありません');

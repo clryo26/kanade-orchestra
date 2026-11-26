@@ -40,7 +40,8 @@ function createBootstrapSandbox() {
         'updateManagerNavigationVisibility', 'showAlert', 'renderEvents',
         'renderAuthDevices', 'renderMemberExtraViews', 'renderPaymentAdmin',
         'renderCastingAdmin', 'renderVenueManagement',
-        'renderFlyerDistributionManagement']) sandbox[name] = vi.fn();
+        'renderFlyerDistributionManagement', 'renderSnsManagement',
+        'renderSchedules', 'renderMemberSchedules', 'renderAbsenceView']) sandbox[name] = vi.fn();
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(SOURCE, sandbox);
@@ -52,6 +53,77 @@ function createBootstrapSandbox() {
 }
 
 describe('bootstrap-lite deferred refetch', () => {
+    test.each(['member-schedule', 'member-absence', 'schedule', 'member-sns', 'system-sns'])(
+        'initial bootstrap/login does not start deferred requests for remembered %s', async tabName => {
+            const { s, appState, calls } = createBootstrapSandbox();
+            appState.essentialDataLoaded = false;
+            appState.currentPortalTab = { tabName };
+            await s.loadEssentialData();
+            await tick();
+            expect(calls('/api/schedules')).toHaveLength(0);
+            expect(calls('/api/extra/sns_settings')).toHaveLength(0);
+            expect(s.isDeferredPortalDataLoaded('schedules')).toBe(false);
+            expect(s.isDeferredPortalDataLoaded('snsSettings')).toBe(false);
+        });
+
+    test.each([
+        ['member-schedule', '/api/schedules', 'schedules'],
+        ['member-absence', '/api/schedules', 'schedules'],
+        ['schedule', '/api/schedules', 'schedules'],
+        ['member-sns', '/api/extra/sns_settings', 'snsSettings'],
+        ['system-sns', '/api/extra/sns_settings', 'snsSettings'],
+    ])('%s revalidates only its visible deferred data once', async (tabName, url, key) => {
+        const { s, appState, calls } = createBootstrapSandbox();
+        await s.ensureDeferredTabDataLoaded(tabName);
+        expect(s.isDeferredPortalDataLoaded(key)).toBe(true);
+        appState.currentPortalTab = { tabName };
+        await s.loadEssentialData({ _requestOrigin: 'automatic' });
+        await tick();
+        expect(calls(url)).toHaveLength(2);
+        expect(calls(url)[1][1]).toMatchObject({ _forceRevalidate: true, _requestOrigin: 'automatic' });
+        expect(s.isDeferredPortalDataLoaded(key)).toBe(true);
+        const other = key === 'schedules' ? '/api/extra/sns_settings' : '/api/schedules';
+        expect(calls(other)).toHaveLength(0);
+        await s.ensureDeferredTabDataLoaded(tabName);
+        expect(calls(url)).toHaveLength(2);
+    });
+
+    test('home refetch does not load schedules or SNS', async () => {
+        const { s, appState, calls } = createBootstrapSandbox();
+        appState.currentPortalTab = { tabName: 'member-home' };
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/schedules')).toHaveLength(0);
+        expect(calls('/api/extra/sns_settings')).toHaveLength(0);
+    });
+
+    test.each(['legacy preview', 'loaded this session'])(
+        'lite refetch preserves schedules and SNS from %s while resetting flags', async origin => {
+            const { s, appState, handlers, calls } = createBootstrapSandbox();
+            const schedules = [{ id: 'saved-schedule' }], snsSettings = [{ id: 'saved-sns' }];
+            if (origin === 'legacy preview') {
+                s.applyBootstrapData({ schedules, extras: { sns_settings: snsSettings } });
+            } else {
+                handlers.set('/api/schedules', () => schedules);
+                handlers.set('/api/extra/sns_settings', () => snsSettings);
+                await s.loadSchedules();
+                await s.loadExtraData(['snsSettings']);
+            }
+            appState.currentPortalTab = { tabName: 'member-home' };
+            s.renderEssentialViews.mockClear();
+            const scheduleCount = calls('/api/schedules').length;
+            const snsCount = calls('/api/extra/sns_settings').length;
+            await s.loadEssentialData();
+            await tick();
+            expect(appState.schedules).toBe(schedules);
+            expect(appState.snsSettings).toBe(snsSettings);
+            expect(s.isDeferredPortalDataLoaded('schedules')).toBe(false);
+            expect(s.isDeferredPortalDataLoaded('snsSettings')).toBe(false);
+            expect(s.renderEssentialViews).toHaveBeenCalledTimes(1);
+            expect(calls('/api/schedules')).toHaveLength(scheduleCount);
+            expect(calls('/api/extra/sns_settings')).toHaveLength(snsCount);
+        });
+
     test('resets every flag without clearing collections', async () => {
         const { s, appState, flags } = createBootstrapSandbox();
         for (const name of Object.keys(flags())) s.markDeferredPortalDataLoaded(name);
@@ -807,8 +879,8 @@ describe('deferred loading unchanged behavior', () => {
     test.each([
         ['event', ['/api/events']],
         ['member-event', ['/api/events', '/api/extra/event_responses']],
-        ['member-schedule', ['/api/extra/absences']],
-        ['member-absence', ['/api/extra/absences']],
+        ['member-schedule', ['/api/schedules', '/api/extra/absences']],
+        ['member-absence', ['/api/schedules', '/api/extra/absences']],
         ['member-date-adjustment', ['/api/extra/date_adjustments', '/api/extra/date_adjustment_responses']],
         ['member-piece-info', ['/api/extra/piece_infos']],
         ['member-practice-instruction', ['/api/extra/piece_infos', '/api/extra/practice_instructions']],
@@ -828,7 +900,7 @@ describe('deferred loading unchanged behavior', () => {
         ['member-promotion', ['/api/extra/promotions']],
         ['venue-admin', ['/api/extra/venue_settings']],
         ['performance', ['/api/extra/venue_settings']],
-        ['schedule', ['/api/extra/venue_settings']],
+        ['schedule', ['/api/schedules', '/api/extra/venue_settings']],
         ['system-connection', ['/api/extra/connection_settings']],
         ['system-auth', ['/api/auth/devices']],
         ['member-home', []],

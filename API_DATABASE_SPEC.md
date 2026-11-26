@@ -52,7 +52,8 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - GET /api/bootstrap
 - 画像系 bootstrap レスポンスでは `photo_url` / `flyer_image` / `image_url` を画像配信 API の URL に正規化する。
 - 画像配信 API は `GET /api/members/{member_id}/photo`、`GET /api/performances/{performance_id}/flyer-image`、`GET /api/extra/promotions/{promotion_id}/image` を使用する。
-- `bootstrap-lite` は初期表示用の軽量レスポンスとして `performances` / `schedules` / `announcements` / `members` / `extras.payments` / `extras.part_settings` / `extras.org_settings` / `extras.sns_settings` を返し、`extras.connection_settings` / `extras.flyer_distributions` / `extras.flyer_distribution_assignments` は返さない。
+- `bootstrap-lite` は初期表示用の軽量レスポンスとして `performances` / `announcements` / `members` / `extras.payments` / `extras.part_settings` / `extras.org_settings` を返し、`schedules` / `extras.sns_settings` / `extras.connection_settings` / `extras.flyer_distributions` / `extras.flyer_distribution_assignments` は返さない。
+- 練習予定と SNS 情報は、使う画面を開いたときにそれぞれ `/api/schedules` と `/api/extra/sns_settings` から読み込む。
 - `extras.payments` は bootstrap-lite では現在端末の持ち主の記録だけを返し、`/api/extra/payments` は管理者向けの全件取得に用いる。
 - `flyer_distributions` と `flyer_distribution_assignments` はチラシ配布画面でのみ取得する。
 - `performances` の公開レスポンスでは一覧表示に不要な `created_at` / `updated_at` を返さない。

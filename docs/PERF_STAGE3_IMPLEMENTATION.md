@@ -32,10 +32,12 @@ PERF-R04/R05の版管理、要求単位の整合読取、版ETag、同期・復�
 
 | GET対象 | 版の依存 |
 |---|---|
-| /api/bootstrap-lite | performances、schedules、announcements、members、payments、part_settings、org_settings、sns_settings、menu_visibility |
+| /api/bootstrap-lite | performances、announcements、members、payments、part_settings、org_settings、sns_settings、menu_visibility |
 | /api/bootstrap-core | menu_visibility |
 | /api/performances、/api/schedules、/api/announcements、/api/events、/api/members | 各集合。performancesは子曲目も含む |
 | /api/member-introductions | RRのみ。既存の本人認証と本文ハッシュを維持し、版だけの早期304をしない |
+
+lite の本文に sns_settings は含めないが、LITE_COLLECTIONS には残す。CLOCK_COLLECTIONS と migration 023 の生成結果・適用済みトリガーを一致させ、生成物の `--check` を維持するためである（SNS 更新時に lite が追加で 200 を返す場合がある）。schedules は一覧 API の依存として残り、CLOCK_COLLECTIONS と table_dependencies() の結果は変わらない。
 
 5一覧とcoreの公開性を変えない。liteは既存の任意認証、団員紹介は必須認証。公開一覧に新たな権限判定を加えない。
 

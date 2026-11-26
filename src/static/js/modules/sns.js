@@ -26,12 +26,38 @@ function clearSnsSettingForm() {
 
 
 async function saveSnsSetting() {
-    const current = currentSnsSetting();
-    const payload = {
-        facebook_url: $('snsFacebookUrl')?.value.trim() || '',
-        instagram_url: $('snsInstagramUrl')?.value.trim() || '',
-        x_url: $('snsXUrl')?.value.trim() || ''
+    const inputValues = {
+        snsFacebookUrl: $('snsFacebookUrl')?.value || '',
+        snsInstagramUrl: $('snsInstagramUrl')?.value || '',
+        snsXUrl: $('snsXUrl')?.value || ''
     };
+    const payload = {
+        facebook_url: inputValues.snsFacebookUrl.trim(),
+        instagram_url: inputValues.snsInstagramUrl.trim(),
+        x_url: inputValues.snsXUrl.trim()
+    };
+    if (!(typeof isDeferredPortalDataLoaded === 'function' && isDeferredPortalDataLoaded('snsSettings'))) {
+        const generation = typeof currentDeferredPortalDataGeneration === 'function'
+            ? currentDeferredPortalDataGeneration() : null;
+        await loadExtraData(['snsSettings']);
+        // A resolved extra load can mean failure/retry wait. Never create a duplicate row.
+        if (!(typeof isDeferredPortalDataLoaded === 'function' && isDeferredPortalDataLoaded('snsSettings'))
+            || typeof currentDeferredPortalDataGeneration !== 'function'
+            || generation !== currentDeferredPortalDataGeneration()) {
+            // A new-generation retry may have redrawn the form before we abort.
+            // Restore the original input, including whitespace, when no write is sent.
+            Object.entries(inputValues).forEach(([id, value]) => {
+                if ($(id)) $(id).value = value;
+            });
+            showAlert('SNS情報を読み込めなかったため、保存していません。時間をおいてもう一度保存してください。', 'warning');
+            return;
+        }
+        // Loading redraws the form; preserve the values captured when Save was pressed.
+        if ($('snsFacebookUrl')) $('snsFacebookUrl').value = payload.facebook_url;
+        if ($('snsInstagramUrl')) $('snsInstagramUrl').value = payload.instagram_url;
+        if ($('snsXUrl')) $('snsXUrl').value = payload.x_url;
+    }
+    const current = currentSnsSetting();
     if (current.id) {
         await request(`/api/extra/sns_settings/${encodeURIComponent(current.id)}`, jsonOptions('PUT', payload));
     } else {

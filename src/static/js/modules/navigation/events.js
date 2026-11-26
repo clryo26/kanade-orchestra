@@ -43,13 +43,26 @@ function ensureAttendanceFollowupLoaded() {
 }
 
 async function loadAttendanceReminderAfterStartup() {
+    const generation = typeof currentDeferredPortalDataGeneration === 'function'
+        ? currentDeferredPortalDataGeneration() : null;
     try {
         await ensureMemberFeatureLoaded('absence');
         await Promise.all([
             ensureAttendanceFollowupLoaded(),
             loadExtraData(['absences'], { _requestOrigin: 'automatic' }),
+            ...(isDeferredPortalDataLoaded('schedules')
+                ? [] : [loadSchedules({ _requestOrigin: 'automatic' })]),
         ]);
-        if (typeof markDeferredPortalDataLoaded === 'function') markDeferredPortalDataLoaded('absences');
+        // Extra loads can resolve after failure; only applied data in this generation is safe.
+        const absencesLoaded = isDeferredPortalDataLoaded('absences');
+        const schedulesLoaded = isDeferredPortalDataLoaded('schedules');
+        const sameGeneration = typeof currentDeferredPortalDataGeneration === 'function'
+            && generation === currentDeferredPortalDataGeneration();
+        if (!absencesLoaded || !schedulesLoaded || !sameGeneration) {
+            console.warn('Attendance reminder suppressed: data incomplete or generation changed',
+                { absencesLoaded, schedulesLoaded, sameGeneration });
+            return;
+        }
         if (typeof renderMemberSchedules === 'function') renderMemberSchedules();
         if (typeof showUpcomingAttendanceReminder === 'function') showUpcomingAttendanceReminder();
     } catch (error) {

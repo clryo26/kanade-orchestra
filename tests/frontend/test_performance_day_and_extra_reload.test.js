@@ -246,7 +246,7 @@ describe('targeted extra-data reload', () => {
     test('deferred tab loading maps each tab to only the needed collections', async () => {
         const cases = [
             ['member-event', ['/api/events', '/api/extra/event_responses']],
-            ['member-absence', ['/api/extra/absences']],
+            ['member-absence', ['/api/schedules', '/api/extra/absences']],
             ['member-date-adjustment', ['/api/extra/date_adjustments', '/api/extra/date_adjustment_responses']],
             ['member-practice-instruction', ['/api/extra/piece_infos', '/api/extra/practice_instructions']],
             ['member-performance-day', ['/api/extra/performance_day_infos']],
@@ -264,7 +264,7 @@ describe('targeted extra-data reload', () => {
             ['venue-admin', ['/api/extra/venue_settings']],
             // The registration forms build their venue dropdowns from venueSettings.
             ['performance', ['/api/extra/venue_settings']],
-            ['schedule', ['/api/extra/venue_settings']],
+            ['schedule', ['/api/schedules', '/api/extra/venue_settings']],
             ['system-connection', ['/api/extra/connection_settings']],
             ['system-auth', ['/api/auth/devices']],
         ];
@@ -380,7 +380,7 @@ describe('targeted extra-data reload', () => {
     test('performance and schedule share one successful venue load and do not refetch on revisit', async () => {
         const venues = [{ id: 1, name: '市民ホール' }];
         const { sandbox, appState, request } = createBootstrapSandbox();
-        request.mockImplementation(async () => venues);
+        request.mockImplementation(async (url) => url === '/api/schedules' ? [] : venues);
 
         await sandbox.ensureDeferredTabDataLoaded('performance');
         expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/extra/venue_settings']);
@@ -393,7 +393,10 @@ describe('targeted extra-data reload', () => {
         for (const tabName of ['schedule', 'performance', 'schedule', 'performance']) {
             await sandbox.ensureDeferredTabDataLoaded(tabName);
         }
-        expect(request).toHaveBeenCalledTimes(1);
+        expect(request.mock.calls.map(([url]) => url)).toEqual([
+            '/api/extra/venue_settings', '/api/schedules',
+        ]);
+        expect(sandbox.isDeferredPortalDataLoaded('schedules')).toBe(true);
         expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
         expect(sandbox.showAlert).not.toHaveBeenCalled();
     });
@@ -402,7 +405,7 @@ describe('targeted extra-data reload', () => {
         let resolveVenues;
         const gate = new Promise((resolve) => { resolveVenues = resolve; });
         const { sandbox, appState, request } = createBootstrapSandbox();
-        request.mockImplementation(() => gate);
+        request.mockImplementation((url) => url === '/api/schedules' ? Promise.resolve([]) : gate);
 
         const pending = Promise.all([
             sandbox.ensureDeferredTabDataLoaded('performance'),
@@ -410,12 +413,14 @@ describe('targeted extra-data reload', () => {
             sandbox.ensureDeferredTabDataLoaded('venue-admin'),
         ]);
         await new Promise((resolve) => setImmediate(resolve));
-        expect(request.mock.calls.map(([url]) => url)).toEqual(['/api/extra/venue_settings']);
+        expect(request.mock.calls.map(([url]) => url)).toEqual([
+            '/api/schedules', '/api/extra/venue_settings',
+        ]);
 
         resolveVenues([{ id: 2, name: '市民センター' }]);
         await pending;
 
-        expect(request).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledTimes(2);
         expect(appState.venueSettings).toEqual([{ id: 2, name: '市民センター' }]);
         // The shared response is applied (and the dropdowns refreshed) only once.
         expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
@@ -426,15 +431,20 @@ describe('targeted extra-data reload', () => {
         request.mockImplementation(async () => []);
 
         await sandbox.ensureDeferredTabDataLoaded('schedule');
-        expect(request).toHaveBeenCalledTimes(1);
+        expect(request.mock.calls.map(([url]) => url)).toEqual([
+            '/api/schedules', '/api/extra/venue_settings',
+        ]);
         expect(appState.venueSettings).toEqual([]);
         expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(true);
+        expect(sandbox.isDeferredPortalDataLoaded('schedules')).toBe(true);
         expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
 
         for (const tabName of ['schedule', 'performance', 'schedule', 'performance']) {
             await sandbox.ensureDeferredTabDataLoaded(tabName);
         }
-        expect(request).toHaveBeenCalledTimes(1);
+        expect(request.mock.calls.map(([url]) => url)).toEqual([
+            '/api/schedules', '/api/extra/venue_settings',
+        ]);
         expect(sandbox.showAlert).not.toHaveBeenCalled();
     });
 
@@ -445,7 +455,7 @@ describe('targeted extra-data reload', () => {
         appState.venueSettings = previous;
         request
             .mockImplementationOnce(async () => { throw new Error('temporary failure'); })
-            .mockImplementation(async () => fresh);
+            .mockImplementation(async (url) => url === '/api/schedules' ? [] : fresh);
 
         await sandbox.ensureDeferredTabDataLoaded('performance');
         expect(request).toHaveBeenCalledTimes(1);
@@ -458,14 +468,15 @@ describe('targeted extra-data reload', () => {
         expect(sandbox.refreshVenueOptions).not.toHaveBeenCalled();
 
         await sandbox.ensureDeferredTabDataLoaded('schedule');
-        expect(request).toHaveBeenCalledTimes(2);
-        expect(request.mock.calls[1][0]).toBe('/api/extra/venue_settings');
+        expect(request.mock.calls.map(([url]) => url)).toEqual([
+            '/api/extra/venue_settings', '/api/schedules', '/api/extra/venue_settings',
+        ]);
         expect(appState.venueSettings).toEqual(fresh);
         expect(sandbox.isDeferredPortalDataLoaded('venueSettings')).toBe(true);
         expect(sandbox.refreshVenueOptions).toHaveBeenCalledTimes(1);
 
         await sandbox.ensureDeferredTabDataLoaded('performance');
-        expect(request).toHaveBeenCalledTimes(2);
+        expect(request).toHaveBeenCalledTimes(3);
     });
 
     test('flyer distribution tab loads both collections and retries a missing list only', async () => {

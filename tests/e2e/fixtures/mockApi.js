@@ -91,6 +91,10 @@ async function installPortalApiMocks(page, options = {}) {
       return fulfillJson(route, bootstrapData);
     }
 
+    if (path === '/api/schedules' && method === 'GET') {
+      return fulfillJson(route, bootstrapData.schedules || []);
+    }
+
     if (path === '/api/member-introductions' && method === 'GET') {
       // Match the public projection without filling private member details.
       const fields = ['id', 'name', 'last_name', 'first_name', 'maiden_name',
