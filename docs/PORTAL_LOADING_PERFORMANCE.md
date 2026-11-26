@@ -31,6 +31,11 @@ bootstrap payloads.
   authentication identity, member-only bootstrap-lite payments cannot overwrite
   it. The full list is reloaded immediately, with ownership tracked separately
   from loaded flags so failures and overlapping refreshes preserve the list.
+  If `/api/extra/payments` fails with 403, ownership is released and
+  `appState.payments` is filtered to the current member's records (matching
+  `member_id`, or matching `name` when the current member ID is absent).
+  Other failures (network errors, timeouts, 503 retry waits, and 5xx responses)
+  preserve the full list and its ownership.
 - Extra loads started before a reload are discarded and may retry once in the
   new generation. Earlier `loadEvents` / `loadAuthManagement` responses do not
   mark a new generation loaded or overwrite responses from newer calls.

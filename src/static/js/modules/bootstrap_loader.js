@@ -301,6 +301,19 @@ function isAllPaymentsHeld() {
         && allPaymentsHeldAuthContext === portalExtraAuthContext();
 }
 
+// サーバーの personal_payment_list() と同じ判定（member_id を優先し、なければ name）。
+// 元の配列は書き換えず、新しい配列を返す。
+function personalPaymentsOnly(payments) {
+    const list = Array.isArray(payments) ? payments : [];
+    const memberId = String(appState.currentUserMemberId || '');
+    if (memberId) return list.filter((p) => String(p?.member_id || '') === memberId);
+    const name = typeof currentUserMemberName === 'function'
+        ? currentUserMemberName()
+        : (appState.currentUserName || '');
+    if (name) return list.filter((p) => p?.name === name);
+    return [];
+}
+
 function applyLatestEssentialBootstrap(data, isRefetch) {
     // Only protect the full list for the same auth identity, checked after await.
     // Never mutate a response/cache object containing member-only payments.
@@ -944,9 +957,23 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry, i
     const currentContext = portalExtraContext();
     const currentAuthContext = portalExtraAuthContext();
 
+    let paymentsForbiddenPurged = false;
     settled.forEach((item, index) => {
         const [key, entry] = requestSpecs[index];
         if (portalExtraLatest.get(key) !== entry || entry.applied) return;
+        // 権限を外された端末に他団員の支払いを残さない。403 以外の失敗
+        // （通信エラー・タイムアウト・503 待機・5xx・portalContextChanged）は一時的なものとして全員分を残す。
+        // 認証の組が同じなら、保存などで epoch だけ進んだ場合も対象にするため、context の判定より前に置く。
+        if (key === 'payments'
+            && item.status === 'rejected'
+            && item.reason?.status === 403
+            && !item.reason?.portalRetryWait
+            && entry.authContext === currentAuthContext) {
+            allPaymentsHeldAuthContext = null;
+            appState.payments = personalPaymentsOnly(appState.payments || []);
+            paymentsForbiddenPurged = true;
+            // return せず、既存の失敗処理（failed への追加と警告）に進める。
+        }
         if (entry.context !== currentContext) {
             // Another account/session, a 503 wait, or a pre-bootstrap-refetch
             // generation: discard; only same-auth unloaded data may retry once.
@@ -1027,7 +1054,9 @@ async function loadExtraDataBatch(collectionNames, options, allowContextRetry, i
         }
     });
 
-    if (resultMap.size) renderAppliedExtraCollections([...resultMap.keys()]);
+    const renderNames = [...resultMap.keys()];
+    if (paymentsForbiddenPurged && !renderNames.includes('payments')) renderNames.push('payments');
+    if (renderNames.length) renderAppliedExtraCollections(renderNames);
 
     // Skip names a newer load has applied meanwhile; an in-flight newer load
     // with the same options is joined by beginPortalExtraLoad, not duplicated.
