@@ -347,6 +347,9 @@ describe('portal account lifecycle', () => {
 
     test('T8 regression: same ID and auth context retain full-payment ownership after a name change', async () => {
         const h = createHarness();
+        // Payment loading renders these views; this test checks data ownership.
+        h.s.renderMemberExtraViews = vi.fn();
+        h.s.renderPaymentAdmin = vi.fn();
         h.setMember(701, '山田 太郎');
         h.state.currentUserPermission = '管理者';
         const allPayments = [{ member_id: 701 }, { member_id: 702 }];
