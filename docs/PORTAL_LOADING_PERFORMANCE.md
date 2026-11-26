@@ -36,6 +36,12 @@ bootstrap payloads.
   `member_id`, or matching `name` when the current member ID is absent).
   Other failures (network errors, timeouts, 503 retry waits, and 5xx responses)
   preserve the full list and its ownership.
+- サーバーは `/api/extra/payments` と `/api/extra/connection_settings` の読み取りで、
+  未認証なら 401、管理者（管理者・システム管理者）でなければ 403 を返します。
+  200 の応答には `Cache-Control: no-store` を付けます。
+- `/api/bootstrap` は、管理者以外には本人分の payments、空の connection_settings、
+  空の auth_devices を返します（未認証の payments も空です）。bootstrap-lite の ETag は、
+  read context がないときも端末と本人ごとに分かれます。
 - Extra loads started before a reload are discarded and may retry once in the
   new generation. Earlier `loadEvents` / `loadAuthManagement` responses do not
   mark a new generation loaded or overwrite responses from newer calls.

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, Header, Request, UploadFile, HTTPException
 from fastapi.responses import Response
 
 from ..core.auth_dependencies import get_device_auth
-from ..services.extra_collection_helpers import read_json_body
+from ..services.extra_collection_helpers import (
+    ADMIN_ONLY_READ_EXTRA_COLLECTIONS,
+    assert_extra_collection_read_permission,
+    read_json_body,
+)
 from ..services import album_service, extra_service
 from ..services import promotion_service
 from ..services import portal_file_asset_service
@@ -15,11 +19,25 @@ from ..services.image_asset_service import serve_stored_image
 router = APIRouter()
 
 
-@router.get("/api/extra/{name}")
+def _extra_read_guard(
+    name: str,
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> None:
+    # 同期の依存関数は FastAPI のスレッドプールで動き、DB 認証でイベントループを止めない。
+    if name not in ADMIN_ONLY_READ_EXTRA_COLLECTIONS:
+        return
+    device = get_device_auth(x_device_id)
+    assert_extra_collection_read_permission(name, device)
+
+
+@router.get("/api/extra/{name}", dependencies=[Depends(_extra_read_guard)])
 async def get_extra_items(name: str, response: Response) -> list[dict[str, Any]]:
     if name == "promotions":
         response.headers["Cache-Control"] = "no-store"
         return promotion_service.list_items()
+    if name in ADMIN_ONLY_READ_EXTRA_COLLECTIONS:
+        # 権限を外したあとに、ブラウザや中間のキャッシュに全件を残さないため。
+        response.headers["Cache-Control"] = "no-store"
     return extra_service.list_items(name)
 
 

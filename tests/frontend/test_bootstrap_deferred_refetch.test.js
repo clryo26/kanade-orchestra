@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createHttpHarness } = require('./helpers/portal_http_harness.cjs');
 
 const SOURCE = fs.readFileSync(path.resolve(__dirname,
     '../../src/static/js/modules/bootstrap_loader.js'), 'utf8');
@@ -309,6 +310,42 @@ describe('bootstrap-lite deferred refetch', () => {
 });
 
 describe('payment 403 ownership release', () => {
+    test('request parses the server 403 JSON and the loader releases full payments and redraws', async () => {
+        const h = createHttpHarness(() => new Response(JSON.stringify({
+            detail: 'Admin permission is required',
+        }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+        const err = await h.ctx.request('/api/extra/payments').then(
+            () => { throw new Error('Expected the payment request to reject'); },
+            error => error,
+        );
+        expect(err.status).toBe(403);
+        expect(err.portalRetryWait).toBeUndefined();
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0].url).toBe('/api/extra/payments');
+        expect(h.ctx.showAlert).toHaveBeenCalledTimes(1);
+        expect(h.ctx.showAlert).toHaveBeenCalledWith(
+            'paymentsの取得に失敗しました。原因: Admin permission is required', 'danger');
+
+        const { s, appState, handlers } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        s.renderMemberExtraViews.mockClear();
+        s.renderPaymentAdmin.mockClear();
+        handlers.set('/api/extra/payments', () => Promise.reject(err));
+
+        await s.loadExtraData(['payments']);
+        expect(appState.payments).toEqual([fullPayments[0]]);
+        expect(fullPayments).toEqual([{ member_id: 'one' }, { member_id: 'two' }]);
+        expect(s.isAllPaymentsHeld()).toBe(false);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(1);
+        expect(s.renderMemberExtraViews).toHaveBeenCalledWith({ collections: ['payments'] });
+        expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledTimes(1);
+        expect(s.showAlert).toHaveBeenCalledWith('一部データの読込に失敗しました: payments', 'warning');
+    });
+
     test('refetch 403 keeps only personal payments without mutation, redraws once and releases protection', async () => {
         const { s, appState, handlers, calls } = createBootstrapSandbox();
         const original = Object.freeze(fullPayments.map(payment => Object.freeze({ ...payment })));

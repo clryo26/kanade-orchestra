@@ -46,9 +46,21 @@ ADMIN_ONLY_EXTRA_COLLECTIONS = {
     "connection_settings",
 }
 
+# payments は全団員分の支払いで、本人分は bootstrap-lite の personal_payment_list で返す。
+# connection_settings は google_service_account_json などのサービスアカウント情報を含む。
+# castings, performance_day_infos, flyer_distributions, concert_record_videos,
+# part_settings, org_settings, sns_settings は団員画面やログイン前の画面が読むので制限しない。
+# sheet_library は /api/sheets で団員も読め、venue_settings は機密ではないので制限しない。
+ADMIN_ONLY_READ_EXTRA_COLLECTIONS = frozenset({"payments", "connection_settings"})
+
 
 def _is_admin(device: dict[str, Any]) -> bool:
     return str(device.get("permission") or "") in {"管理者", "システム管理者"}
+
+
+def assert_extra_collection_read_permission(name: str, device: dict[str, Any]) -> None:
+    if name in ADMIN_ONLY_READ_EXTRA_COLLECTIONS and not _is_admin(device):
+        raise HTTPException(status_code=403, detail="Admin permission is required")
 
 
 def _same_member(

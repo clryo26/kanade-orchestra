@@ -77,6 +77,17 @@ def combined_collection_etag(
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
+def principal_scoped_etag(etag: str, device_id: str, device: dict[str, Any] | None) -> str:
+    parts = [etag, device_id]
+    if device is None:
+        parts.append("anonymous")
+    else:
+        parts.extend(str(device.get(key) or "") for key in ("member_id", "member_name", "permission"))
+    # JSON の区切りとエスケープで値の境界を保ち、端末と本人ごとに決定的な値を作る。
+    encoded = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def request_not_modified(request: Request, etag: str) -> bool:
     if request.url.path == "/api/bootstrap":
         return False  # Full bootstrap includes live promotion image references.
@@ -146,6 +157,8 @@ async def bootstrap_payload(
     sheet_payload: Callable[[], Any],
     list_auth_devices: Callable[[], Awaitable[list[dict[str, Any]]]],
     cloud_run_revision: Callable[[], str],
+    is_admin: bool = False,
+    personal_payment_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     extra_names = (
         "absences",
@@ -175,6 +188,9 @@ async def bootstrap_payload(
     # The library list and the extras copy come from the same snapshot.
     extras = {name: (sheets["files"] if name == "sheet_library" else load_json_data(name)) for name in extra_names}
     extras["org_settings"] = _public_org_settings(extras["org_settings"])
+    if not is_admin:
+        extras["payments"] = personal_payment_list(extras["payments"]) if personal_payment_list else []
+        extras["connection_settings"] = []
     return {
         "performances": _public_performances(load_json_data("performances")),
         "schedules": load_json_data("schedules"),
@@ -184,6 +200,7 @@ async def bootstrap_payload(
         "recordings": recording_payload(),
         "sheets": sheets,
         "extras": {**extras, "promotions": _public_promotions(extras["promotions"])},
-        "auth_devices": await list_auth_devices(),
+        # device_id は認証に使える値なので、管理者以外に返さない。
+        "auth_devices": await list_auth_devices() if is_admin else [],
         "cloudRunRevision": cloud_run_revision(),
     }

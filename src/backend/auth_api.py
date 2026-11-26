@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, cast
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 
 from .auth_helpers import (
     find_member_by_login_name,
@@ -283,7 +283,15 @@ async def get_auth_device(device_id: str) -> dict[str, Any]:
 
 
 @router.get("/devices")
-async def get_auth_devices() -> list[dict[str, Any]]:
+async def get_auth_devices(
+    response: Response,
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+) -> list[dict[str, Any]]:
+    # device_id は X-Device-Id として認証に使えるため、管理者以外への公開は
+    # 管理者へのなりすましと /api/extra の読み取り制限の迂回を許してしまう。
+    persistence_api().require_admin_device(x_device_id)
+    # 権限を外したあとも端末一覧がキャッシュに残らないようにする。
+    response.headers["Cache-Control"] = "no-store"
     persisted = load_collection("auth_devices")
     merged: dict[str, dict[str, Any]] = {
         str(item.get("device_id") or ""): dict(item)
