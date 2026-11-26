@@ -120,18 +120,17 @@ async def bootstrap_lite_payload(
     personal_payment_list: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
     cloud_run_revision: Callable[[], str],
 ) -> dict[str, Any]:
+    # Collections unused by the initial screens are loaded when their screen opens.
     extra_names = (
         "payments",
         "part_settings",
         "org_settings",
-        "sns_settings",
     )
     extras = {name: load_json_data(name) for name in extra_names}
     extras["org_settings"] = _public_org_settings(extras["org_settings"])
     extras["payments"] = personal_payment_list(extras["payments"])
     return {
         "performances": _public_performances(load_json_data("performances")),
-        "schedules": load_json_data("schedules"),
         "announcements": load_json_data("announcements"),
         "members": public_member_list(load_json_data("members")),
         "extras": extras,

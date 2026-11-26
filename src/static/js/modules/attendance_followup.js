@@ -142,7 +142,8 @@ function renderAbsenceView() {
 
     const schedules = attendanceOverviewSchedules();
     if (!schedules.length) {
-        container.innerHTML = '<p class="text-muted mb-0">今後の練習予定はありません</p>';
+        const loading = typeof schedulesAwaitingFirstLoad === 'function' && schedulesAwaitingFirstLoad();
+        container.innerHTML = `<p class="text-muted mb-0">${loading ? '読み込み中です...' : '今後の練習予定はありません'}</p>`;
         return;
     }
 

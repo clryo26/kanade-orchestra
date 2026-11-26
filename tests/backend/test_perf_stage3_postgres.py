@@ -175,22 +175,28 @@ def test_snapshot_body_keeps_version_after_other_writer_commits(database, monkey
     from src.backend.services import bootstrap_service
     original = bootstrap_service.bootstrap_lite_payload
     once = []
+    # The baseline seeds schedules but no announcements; use a real lite row
+    # so this still exercises snapshot consistency after schedules are deferred.
+    with psycopg.connect(DSN, autocommit=True) as writer:
+        writer.execute("INSERT INTO announcements(id,organization_id,date,title,content) "
+                       "VALUES(1,%s,'2026-11-26','Snapshot test','before snapshot')", (TENANT,))
 
     async def build(**kwargs):
         if not once:
             once.append(True)
             with psycopg.connect(DSN, autocommit=True) as writer:
-                writer.execute("UPDATE schedules SET notes='after snapshot' WHERE id=1")
+                writer.execute("UPDATE announcements SET content='after snapshot' WHERE id=1")
         return await original(**kwargs)
 
     monkeypatch.setattr(bootstrap_service, "bootstrap_lite_payload", build)
     with enabled(database, monkeypatch, ["/api/bootstrap-lite"]) as client:
         old = client.get("/api/bootstrap-lite")
         assert old.status_code == 200
-        assert old.json()["schedules"][0]["notes"] != "after snapshot"
+        assert old.json()["announcements"][0]["content"] != "after snapshot"
         fresh = client.get("/api/bootstrap-lite", headers={"If-None-Match": old.headers["ETag"]})
         assert fresh.status_code == 200
-        assert fresh.json()["schedules"][0]["notes"] == "after snapshot"
+        assert fresh.json()["announcements"][0]["content"] == "after snapshot"
+        assert fresh.headers["ETag"] != old.headers["ETag"]
 
 
 def test_required_auth_precedes_intro_304_and_writeful_get_is_excluded(database, monkeypatch):
@@ -262,10 +268,16 @@ def test_unknown_empty_tenant_zero_versions_then_first_write(database, monkeypat
             conn.execute("INSERT INTO schedules(id,organization_id,date,venue,start_time,end_time,available_start_time,available_end_time) "
                          "VALUES(9999,%s,'2026-10-23','First write','18:00','20:00','17:00','21:00')", (tenant,))
             assert version(conn, org=tenant) == 1
-        for path in ("/api/schedules", "/api/bootstrap-lite"):
+        for path in ("/api/schedules",):
             fresh = client.get(path, headers={"X-Tenant-Id": tenant, "If-None-Match": tags[path]})
             assert fresh.status_code == 200
             assert "First write" in fresh.text
+        lite = client.get("/api/bootstrap-lite", headers={
+            "X-Tenant-Id": tenant, "If-None-Match": tags["/api/bootstrap-lite"],
+        })
+        assert lite.status_code == 304
+        assert lite.headers["ETag"] == tags["/api/bootstrap-lite"]
+        assert lite.content == b""
         assert client.get("/api/events", headers={"X-Tenant-Id": tenant,
                                                  "If-None-Match": tags["/api/events"]}).status_code == 304
     with psycopg.connect(DSN) as conn:

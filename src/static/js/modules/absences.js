@@ -104,7 +104,11 @@ function renderAbsenceView() {
     const container = $('memberAbsenceInfo');
     if (!container) return;
     const schedules = visibleAttendanceSchedules();
-    if (!schedules.length) { container.innerHTML = '<p class="text-muted mb-0">今後の練習予定はありません</p>'; return; }
+    if (!schedules.length) {
+        const loading = typeof schedulesAwaitingFirstLoad === 'function' && schedulesAwaitingFirstLoad();
+        container.innerHTML = `<p class="text-muted mb-0">${loading ? '読み込み中です...' : '今後の練習予定はありません'}</p>`;
+        return;
+    }
     container.innerHTML = schedules.map((schedule) => attendanceOverviewHtml(schedule, appState.members || [])).join('');
     bindAttendanceOverviewTabs(container, renderAbsenceView);
 }

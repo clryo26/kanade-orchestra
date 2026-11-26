@@ -221,10 +221,10 @@ def test_lite_preserves_schema_and_only_personal_payments_for_every_role(
     assert response.status_code == 200
     body = response.json()
     assert set(body) == {
-        "performances", "schedules", "announcements", "members", "extras",
+        "performances", "announcements", "members", "extras",
         "cloudRunRevision", "menu_visibility",
     }
-    assert set(body["extras"]) == {"payments", "part_settings", "org_settings", "sns_settings"}
+    assert set(body["extras"]) == {"payments", "part_settings", "org_settings"}
     assert body["extras"]["payments"] == expected_payments
     for marker in (*ADMIN_DEVICES, "synthetic-account-marker", "synthetic-account-file"):
         assert marker not in response.text

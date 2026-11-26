@@ -6,7 +6,10 @@ import os
 from .db_schema import DB_CHILD_PARENT_KEYS, DB_CHILD_TABLES, JSON_COLLECTION_TABLES
 
 CLOCK_SCHEMA_VERSION = "clock-v1"
-LITE_COLLECTIONS = ("performances", "schedules", "announcements", "members", "payments",
+# Keep sns_settings even though lite omits its payload: removing it would change
+# CLOCK_COLLECTIONS and migration 023's generated/applied triggers, failing --check.
+# SNS changes may cause extra lite 200 responses, but preserve cache correctness.
+LITE_COLLECTIONS = ("performances", "announcements", "members", "payments",
                     "part_settings", "org_settings", "sns_settings", "menu_visibility")
 READ_DEPENDENCIES = {
     "/api/bootstrap-lite": LITE_COLLECTIONS,

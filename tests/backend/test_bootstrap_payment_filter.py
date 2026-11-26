@@ -227,7 +227,8 @@ def test_other_fields_not_affected(two_member_client, two_member_env):
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["performances"]) == 1
-    assert len(body["schedules"]) == 1
+    assert "schedules" not in body
+    assert "sns_settings" not in body["extras"]
     assert len(body["announcements"]) == 1
     assert "members" in body
     assert "cloudRunRevision" in body

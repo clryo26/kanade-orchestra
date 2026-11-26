@@ -40,7 +40,8 @@ function createBootstrapSandbox() {
         'updateManagerNavigationVisibility', 'showAlert', 'renderEvents',
         'renderAuthDevices', 'renderMemberExtraViews', 'renderPaymentAdmin',
         'renderCastingAdmin', 'renderVenueManagement',
-        'renderFlyerDistributionManagement']) sandbox[name] = vi.fn();
+        'renderFlyerDistributionManagement', 'renderSnsManagement',
+        'renderSchedules', 'renderMemberSchedules', 'renderAbsenceView']) sandbox[name] = vi.fn();
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
     vm.runInNewContext(SOURCE, sandbox);
@@ -52,6 +53,50 @@ function createBootstrapSandbox() {
 }
 
 describe('bootstrap-lite deferred refetch', () => {
+    test.each(['member-schedule', 'member-absence', 'schedule', 'member-sns', 'system-sns'])(
+        'initial bootstrap/login does not start deferred requests for remembered %s', async tabName => {
+            const { s, appState, calls } = createBootstrapSandbox();
+            appState.essentialDataLoaded = false;
+            appState.currentPortalTab = { tabName };
+            await s.loadEssentialData();
+            await tick();
+            expect(calls('/api/schedules')).toHaveLength(0);
+            expect(calls('/api/extra/sns_settings')).toHaveLength(0);
+            expect(s.isDeferredPortalDataLoaded('schedules')).toBe(false);
+            expect(s.isDeferredPortalDataLoaded('snsSettings')).toBe(false);
+        });
+
+    test.each([
+        ['member-schedule', '/api/schedules', 'schedules'],
+        ['member-absence', '/api/schedules', 'schedules'],
+        ['schedule', '/api/schedules', 'schedules'],
+        ['member-sns', '/api/extra/sns_settings', 'snsSettings'],
+        ['system-sns', '/api/extra/sns_settings', 'snsSettings'],
+    ])('%s revalidates only its visible deferred data once', async (tabName, url, key) => {
+        const { s, appState, calls } = createBootstrapSandbox();
+        await s.ensureDeferredTabDataLoaded(tabName);
+        expect(s.isDeferredPortalDataLoaded(key)).toBe(true);
+        appState.currentPortalTab = { tabName };
+        await s.loadEssentialData({ _requestOrigin: 'automatic' });
+        await tick();
+        expect(calls(url)).toHaveLength(2);
+        expect(calls(url)[1][1]).toMatchObject({ _forceRevalidate: true, _requestOrigin: 'automatic' });
+        expect(s.isDeferredPortalDataLoaded(key)).toBe(true);
+        const other = key === 'schedules' ? '/api/extra/sns_settings' : '/api/schedules';
+        expect(calls(other)).toHaveLength(0);
+        await s.ensureDeferredTabDataLoaded(tabName);
+        expect(calls(url)).toHaveLength(2);
+    });
+
+    test('home refetch does not load schedules or SNS', async () => {
+        const { s, appState, calls } = createBootstrapSandbox();
+        appState.currentPortalTab = { tabName: 'member-home' };
+        await s.loadEssentialData();
+        await tick();
+        expect(calls('/api/schedules')).toHaveLength(0);
+        expect(calls('/api/extra/sns_settings')).toHaveLength(0);
+    });
+
     test('resets every flag without clearing collections', async () => {
         const { s, appState, flags } = createBootstrapSandbox();
         for (const name of Object.keys(flags())) s.markDeferredPortalDataLoaded(name);
