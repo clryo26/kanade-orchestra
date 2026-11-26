@@ -134,6 +134,27 @@ describe('tuner reference A4 setting', () => {
     expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
   });
 
+  it('uses the new schema after migration and never reads or rewrites the old key again', () => {
+    const storage = memoryStorage({ [settings.STORAGE_KEY]: '441' });
+    const writes = [];
+    const write = storage.setItem;
+    storage.setItem = (key, value) => { writes.push(key); write(key, value); };
+    const first = settings.createSettingsStore(storage);
+    expect(first.load()).toBe(441);
+    expect(writes).toEqual([]); // migration is in memory until the next change
+    first.step(10);
+    expect(writes).toEqual([settings.SETTINGS_KEY]);
+    expect(JSON.parse(storage.data[settings.SETTINGS_KEY])).toMatchObject({ schemaVersion: 1, a4Tenths: 4420 });
+    expect(storage.data[settings.STORAGE_KEY]).toBe('441');
+    const reads = [];
+    const read = storage.getItem;
+    storage.getItem = (key) => { reads.push(key); return read(key); };
+    const second = settings.createSettingsStore(storage);
+    expect(second.load()).toBe(442);
+    expect(reads).toEqual([settings.SETTINGS_KEY]);
+    expect(writes).toEqual([settings.SETTINGS_KEY]);
+  });
+
   it('saves display preferences only after "save on this device" and can reset them', () => {
     const storage = memoryStorage();
     const store = settings.createSettingsStore(storage);

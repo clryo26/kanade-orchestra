@@ -151,6 +151,10 @@ async function openTuner(page) {
 // running while another tuner tab is shown.
 async function showTunerTab(page, name) {
   const tab = page.locator('#systemTunerHost').getByRole('tab', { name, exact: true });
+  await expect(tab).toBeVisible();
+  // After editing presets, the tab can be above the viewport. Center it so
+  // Playwright's nearest-edge scrolling does not leave it under the sticky navbar.
+  await tab.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }));
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
@@ -913,6 +917,31 @@ test.describe('advanced tuner: tabs, pause, saving off, voices and narrow screen
     expect(result.steady).toBeGreaterThan(0.01);
     expect(result.steady).toBeLessThanOrEqual(result.maxGain + 1e-6); // master limit holds for the sum
     expect(result.afterStop).toBeLessThan(0.001);
+  });
+
+  test('tabs remain clickable after scrolling settings below the sticky navbar (C1)', async ({ page }) => {
+    await login(page);
+    await openTuner(page);
+    await expectMeasuringA4(page);
+    const tuner = page.locator('#systemTunerHost');
+    const before = await probe(page);
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-menu-section="settings"]').click();
+    // Reproduce the CI failure: editing the bottom of settings leaves the
+    // tab bar above the viewport, where nearest-edge scrolling hits the navbar.
+    await tuner.locator('[data-tuner-temperament-preset-name]').fill('スクロール回帰確認');
+    await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+    const sound = tuner.getByRole('tab', { name: '音源', exact: true });
+    expect(await sound.evaluate((el) => el.getBoundingClientRect().top)).toBeLessThan(0);
+    await showTunerTab(page, '音源'); // real pointer click; no force or synthetic click
+    await expect(tuner.locator('[data-tuner-voice-add]')).toBeVisible();
+    await showTunerTab(page, '測定');
+    await expectMeasuringA4(page);
+    const after = await probe(page);
+    expect(after.gum).toBe(before.gum);
+    expect(after.captureContexts).toEqual(before.captureContexts);
+    expect(after.workers).toEqual(before.workers);
+    expect(after.tracks.every((state) => state === 'live')).toBe(true);
   });
 
   test('temperament presets report equal-only recall; save/delete and sound presets still work', async ({ page }) => {

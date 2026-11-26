@@ -298,6 +298,39 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.contexts).toHaveLength(0);
   });
 
+  it.each([
+    [0, 'in-tune', 50], [-20, 'flat', 30], [20, 'sharp', 70],
+  ])('keeps equal-temperament cents and needle position at %i cent', async (cents, judgment, needlePercent) => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    const frequency = 442 * 2 ** (cents / 1200);
+    h.pitch(frequency);
+    expect(h.reading()).toMatchObject({ note: { midi: 69 }, targetNote: { midi: 69 }, judgment, just: null });
+    expect(h.reading().cents).toBeCloseTo(cents, 6);
+    expect(h.reading().needlePercent).toBeCloseTo(needlePercent, 6);
+    expect(h.graph.setMarkers).toHaveBeenLastCalledWith({ fundamental: expect.closeTo(frequency, 6), target: 442, equalTarget: 0 });
+    h.handlers.onRange('full');
+    h.pitch(frequency);
+    expect(h.reading().cents).toBeCloseTo(cents, 6);
+    expect(h.reading().needlePercent).toBeCloseTo(needlePercent, 6);
+    expect(h.controller.start).toHaveBeenCalledTimes(1);
+    expect(h.controller.stop).not.toHaveBeenCalled();
+  });
+
+  it.each([4400, 4410, 4420, 4430])('keeps A4 preset %i connected to calculation, storage and the public API', async (tenths) => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.pitch(442);
+    h.handlers.onA4Preset(tenths);
+    expect(h.body.api.getA4()).toBe(tenths / 10);
+    expect(h.body.api.getA4Tenths()).toBe(tenths);
+    expect(h.reading().targetFrequency).toBe(tenths / 10);
+    expect(h.reading().cents).toBeCloseTo(1200 * Math.log2(4420 / tenths), 6);
+    expect(JSON.parse(h.storage.data.portalTunerSettings)).toMatchObject({ schemaVersion: 1, a4Tenths: tenths });
+    expect(h.controller.start).toHaveBeenCalledTimes(1);
+    expect(h.controller.stop).not.toHaveBeenCalled();
+  });
+
   it('a late wake-lock answer from an earlier playback is released at once', async () => {
     const h = harness({ deferWakeLock: true });
     await h.body.start(h.startOptions);
