@@ -2,7 +2,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
-// Body-level regression tests for the advanced flows: pause / freeze,
+// Body-level regression tests for the advanced flows: pause,
 // exclusive vs. simultaneous output and leaving while outputs are planned.
 // Real modules (coordinator, workspace, playback, scheduler); fake audio.
 const require = createRequire(import.meta.url);
@@ -52,7 +52,7 @@ function harness() {
   const statuses = [];
   const view = {
     root: {}, graph,
-    bind: vi.fn(), setRootOptions: vi.fn(), setJudgment: vi.fn(), setRange: vi.fn(), setReference: vi.fn(),
+    bind: vi.fn(), setFixedNoteOptions: vi.fn(), setTargetConfig: vi.fn(), setJudgment: vi.fn(), setRange: vi.fn(), setReference: vi.fn(),
     setStatus: vi.fn((info) => statuses.push(info.state)), showReading: vi.fn(), setPlayback: vi.fn(), announce: vi.fn(),
   };
   let cb = null;
@@ -102,14 +102,13 @@ function harness() {
 
 const flush = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); };
 
-describe('tuner body: pause and freeze', () => {
-  it('"表示固定" keeps measuring; "測定一時停止" releases the microphone and resumes only by a tap', async () => {
+describe('tuner body: pause', () => {
+  it('pause releases the microphone and resumes only by a tap', async () => {
     const h = harness();
     expect(h.body.api).toBeTruthy();
     await h.body.start(h.startOptions);
-    h.body.handlers.onFreeze();
     expect(h.controller.stop).not.toHaveBeenCalled();
-    expect(h.coordinator().get()).toMatchObject({ displayFrozen: true, capture: 'running' });
+    expect(h.coordinator().get()).toMatchObject({ displayFrozen: false, capture: 'running' });
     h.body.handlers.onPauseToggle();
     expect(h.controller.stop).toHaveBeenCalledTimes(1);
     expect(h.coordinator().get().capture).toBe('paused');

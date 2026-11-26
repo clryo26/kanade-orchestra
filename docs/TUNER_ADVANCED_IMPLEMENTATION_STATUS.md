@@ -20,7 +20,7 @@
 
 | Phase | 実装 | 自動検証 | 残件 |
 |---|---|---|---|
-| 1 測定・表示・音律 | A4 0.1 Hz刻み（390.0～480.0 Hz）・プリセット・数値入力、音律（平均律・純正律の三和音と役割・7度・ピタゴラス・カスタム）、応答速度・合格範囲・メーター範囲、表示固定と測定一時停止、タブ構成、状態チップ | 試験済み | 適応窓切替の公開（Q-006）。iPhoneの初回起動・停止・再開（実機） |
+| 1 測定・表示・音律 | A4整数表示・1 Hz刻み（390～480 Hz整数入力）、平均律固定と判定する音の自動／固定、純正3度の参考目印、固定高の音名枠、測定一時停止・最大化、ナビバー直下のタブバー | 改修済み・今回未検査 | CI検査・テスト更新は段階8、iPhone実機確認は未実施 |
 | 2 音源・解析 | 最大4音・音色（サイン・三角・倍音合成）・和音プリセット・持続／指定時間／繰り返し／交互／メトロノーム、同時使用モード（明示選択・統計除外）、音符分割・定常／発音／終了・ビブラート・倍音要約、スペクトログラム（保存しない） | 試験済み（描画は実装済み） | 端末の音声経路（SN-001）、実楽器 |
 | 3 練習 | 12種類の課題、期待列との照合（未演奏・誤音・余分）、状態機械（中断は利用者の操作でのみ再開）、結果の個別指標 | 試験済み | 総合スコアの正規化（PR-008、校正前のため常に非表示） |
 | 4 保存・診断 | 履歴保存（初期は保存しない）、端末内IndexedDB（標準Float32形式）、アカウントへの要約同期（/api/tuner）、診断（イベント・セッション数併記、条件分離、不足時保留）、楽器・演奏環境、CSV・JSON出力、削除 | 試験済み（API・使い捨てPostgreSQL含む） | 共有テスト環境DBへの017適用（下記8章）、実機 |
@@ -54,8 +54,8 @@
 | T-007 | 合格範囲 ±3／±5／±10 cent・任意 | 1 | 試験済み | settings.js toleranceCents（±3/5/10・任意0.5～25） | U:target_model（入る閾値・出る閾値+1） | 未実施 |
 | T-008 | 自動判定と指定音判定の切替 | 1 | 試験済み | target_model.js resolve（自動／fixedMidi） | U:target_model | 未実施 |
 | T-009 | 発音停止後、最後の値を一定時間表示 | 1 | 試験済み | display_filter.js（保持1秒、目標変更で判定解除） | U:display_filter, target_model | 未実施 |
-| T-010 | 表示と解析の一時停止・再開 | 1 | 試験済み | index.js onFreeze／onPauseToggle | U:body_advanced／E2E:固定中もマイク継続、一時停止で解放 | 未実施 |
-| T-011 | A4 = 390～480 Hz、0.1 Hz 刻み | 1 | 試験済み | settings.js（a4Tenths 3900～4800）・view.js入力 | U:music_settings／E2E | 未実施 |
+| T-010 | 測定一時停止・再開（表示固定は削除） | 1 | 改修済み・今回未検査 | index.js onPauseToggle | 段階8で既存テストを更新 | 未実施 |
+| T-011 | A4 = 390～480 Hzの整数、1 Hz刻み | 1 | 改修済み・今回未検査 | settings.js（保存はa4Tenths、旧端数を四捨五入・読み込み時は書き戻さない）・view.js整数入力 | 段階8で既存テストを更新 | 未実施 |
 | T-012 | プリセット 440／441／442／443 Hz など | 1 | 試験済み | settings.js PRESETS_TENTHS 440/441/442/443 | E2E | 未実施 |
 | T-013 | 応答速度: 高速・標準・安定重視 | 1 | 試験済み | settings.js RESPONSE_PRESETS（表示専用） | U:target_model, music_settings | 未実施 |
 | T-014 | 画面表示用の平滑化強度を調整 | 1 | 試験済み | display_filter.js（表示平滑化のみ） | U:target_model（生値は不変） | 未実施 |
@@ -63,7 +63,7 @@
 | T-016 | 入力の相対音量を表示 | 1 | 実装済み | view.js レベルメーター | 自動試験なし（表示のみ） | 未実施 |
 | T-017 | 信頼度不足時に警告・測定保留 | 1 | 試験済み | pitch.js invalidReason／qualityFlags・view.js警告 | U:analysis_pipeline, pitch_spectrum | 未実施 |
 | T-018 | 音域設定: 全音域・低音重視・高音重視 | 1 | 試験済み | analysis.worker.js PROFILES full/low/high/vibrato | U:analysis_pipeline | 未実施 |
-| T-019 | 通常・詳細・全画面 | 1・5 | 実装済み | view.js 詳細表示・画面いっぱい表示（API不可時は画面内最大化） | 自動試験なし。iPhoneの代替表示は実機未実施 | 未実施 |
+| T-019 | 通常・全画面（詳細表示は削除） | 1・5 | 改修済み・今回未検査 | view.js 画面いっぱい表示（API不可時は画面内最大化） | iPhone代替表示・固定高・タブ操作を実機確認 | 未実施 |
 | T-020 | 画面のスリープ抑制 | 1・5 | 試験済み | index.js／controller.js Wake Lock（遅延取得の解放） | U:body, lifecycle | 未実施 |
 
 ### Q: 測定品質
@@ -81,18 +81,20 @@
 
 ### M: 音律
 
+測定・bodyApiの目標設定は平均律に固定。音律選択・根音・偏差・詳細表示・表示固定・3度専用再生欄ボタンは削除。計算ライブラリと音源タブの連動音APIは維持する。古い設定も平均律へ正規化し、fixedMidiは保持する。今回の自動検査と実機確認は未実施。
+
 | ID | 要件 | Phase | 状態 | 実装箇所 | 自動検証 | 実機 |
 |---|---|---|---|---|---|---|
 | M-001 | 12平均律 | 1 | 試験済み | target_model.js equal | U:target_model（A4 390～480、C1～C8、1e-9） | 未実施 |
-| M-002 | 純正律・短3度（現行を維持） | 1 | 試験済み | target_model.js（temperament.justTargetと同一） | U:target_model, temperament／E2E | 未実施 |
-| M-003 | 純正律・長3度（現行を維持） | 1 | 試験済み | target_model.js（同上） | U:target_model, temperament／E2E | 未実施 |
+| M-002 | 純正律・短3度（計算API維持、測定モード削除） | 1 | 試験済み | target_model.js（temperament.justTargetと同一） | U:target_model, temperament／E2E | 未実施 |
+| M-003 | 純正律・長3度（計算API維持、測定モード削除） | 1 | 試験済み | target_model.js（同上） | U:target_model, temperament／E2E | 未実施 |
 | M-004 | 純正律・長三和音（根音・長3度・完全5度） | 1 | 試験済み | target_model.js just-major | U:target_model（1, 5/4, 3/2、オクターブ） | 未実施 |
 | M-005 | 純正律・短三和音 | 1 | 試験済み | target_model.js just-minor | U:target_model（1, 6/5, 3/2） | 未実施 |
 | M-006 | 和声上の役割（根音・3度・5度など）を手動指定 | 1 | 試験済み | target_model.js role・7度（15/8, 9/5既定, 16/9, 7/4） | U:target_model | 未実施 |
 | M-007 | ピタゴラス音律 | 1 | 試験済み | target_model.js pythagorean（開始位置-3既定） | U:target_model（折返し表・コンマ） | 未実施 |
 | M-008 | カスタム音律（各音の目標偏差） | 1 | 試験済み | target_model.js custom（±100 cent、0.1刻み） | U:target_model | 未実施 |
-| M-009 | 平均律と選択音律との差を同時表示 | 1 | 試験済み | view.js 平均律との差 | E2E（純正律で平均律差を同時表示） | 未実施 |
-| M-010 | 音律プリセットの保存・呼出 | 1 | 試験済み | settings.js presets.temperament・view_history.js・index.js applyTargetConfig | U:music_settings／E2E:保存・呼出・削除 | 未実施 |
+| M-009 | 測定は平均律固定、純正長3度 −13.7／短3度 +15.6 centの参考目印 | 1 | 改修済み・今回未検査 | view.js setMeterScale（±10では非表示）・tuner.css | 段階8でテスト追加 | 未実施 |
+| M-010 | 音律プリセットの保存・呼出 | 1 | 試験済み | settings.js presets.temperament・view_history.js・index.js applyTargetConfig（呼び出し後も平均律） | U:music_settings／E2E:保存・呼出・削除 | 未実施 |
 
 ### S: 音源
 
@@ -130,7 +132,7 @@
 | A-006 | スペクトログラム | 2 | 実装済み | spectrogram.js（メモリーのみ、保存しない） | 自動試験なし | 未実施 |
 | A-007 | 倍音分析（周波数・相対強度） | 2 | 試験済み | analysis.worker.js harmonics・analysis_stats.js harmonicSummary | U:harmonics_sound（1, 1/2, 1/4の倍音音） | 未実施 |
 | A-008 | グラフ上で測定区間を選択 | 2 | 実装済み | view_analyzer.js 区間の開始・終了入力 | 自動試験なし | 未実施 |
-| A-009 | 測定中にグラフを固定 | 2 | 試験済み | view_analyzer.js 固定・index.js onFreeze | E2E（固定中も測定継続） | 未実施 |
+| A-009 | 測定中にグラフを固定 | 2 | 試験済み | view_analyzer.js 固定（測定タブの表示固定は削除） | E2E（固定中も測定継続） | 未実施 |
 | A-010 | 測定セッションの保存 | 2→4 | 試験済み | workspace.js saveSnapshot（Phase4で永続化） | U:workspace, storage_local | 未実施 |
 | A-011 | アタック（発音開始時刻）検出 | 2 | 試験済み | onset.js・note_events.js | U:analysis_pipeline（再アタック・境界±） | 未実施 |
 | A-012 | 発音直後の音程偏差 | 2・5 | 試験済み | analysis_stats.js attack（最初の100 ms、測れなければ欠測） | U:analysis_pipeline | 未実施 |

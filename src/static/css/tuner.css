@@ -68,7 +68,6 @@
 }
 
 .tuner-readout-label {
-    flex-basis: 100%;
     margin: 0;
     text-align: center;
 }
@@ -105,24 +104,6 @@
     gap: 8px;
 }
 
-.tuner-target-line {
-    background: #eef6f1;
-    flex-basis: 100%;
-    text-align: left;
-    border-left: 4px solid var(--tuner-graph-target);
-    border-radius: 4px;
-    font-weight: 600;
-    margin: 0;
-    padding: 6px 10px;
-}
-
-.tuner-equal-diff {
-    color: var(--tuner-muted);
-    font-size: 0.95rem;
-    margin: 6px 0 0;
-    text-align: center;
-}
-
 .tuner-status,
 .tuner-fallback {
     background: #fff8e6;
@@ -147,12 +128,20 @@
 }
 
 .tuner-readout {
-    align-items: baseline;
+    align-items: center;
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    flex-wrap: nowrap;
     gap: 4px 16px;
     justify-content: center;
     text-align: center;
+}
+
+.tuner-note {
+    height: clamp(3rem, 16vw, 4.5rem);
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .tuner-note-name {
@@ -162,12 +151,10 @@
     line-height: 1;
 }
 
-.tuner-note-solfege {
-    font-size: 1.4rem;
-    margin-left: 4px;
-}
-
 .tuner-frequency {
+    line-height: 1.2;
+    height: 1.68rem;
+    white-space: nowrap;
     font-size: 1.4rem;
     font-variant-numeric: tabular-nums;
 }
@@ -185,6 +172,39 @@
     height: 56px;
     overflow: hidden;
     position: relative;
+}
+
+.tuner .tuner-meter-ref {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 2px dashed var(--tuner-graph-fundamental);
+    color: var(--tuner-graph-text, #374151);
+    transform: translateX(-1px);
+}
+
+.tuner .tuner-meter-ref > span {
+    background: var(--tuner-surface, #ffffff);
+    position: absolute;
+    top: 0;
+    left: 3px;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.tuner[data-contrast="high"] .tuner-meter-ref {
+    border-left-width: 3px;
+}
+
+.tuner .tuner-meter-ref[hidden] { display: none; }
+
+.tuner .tuner-meter-ref-note {
+    color: var(--tuner-muted);
+    font-size: 0.8rem;
+    margin: 4px 0;
+    text-align: center;
 }
 
 /* ±3 cent（合っている範囲）の帯。全幅は100 cent。 */
@@ -277,7 +297,6 @@
 
 .tuner-legend-item:nth-child(1) { color: var(--tuner-graph-fundamental); }
 .tuner-legend-item:nth-child(2) { color: var(--tuner-graph-target); }
-.tuner[data-mode="just"] .tuner-legend-item:nth-child(3) { color: var(--tuner-graph-equal); }
 
 .tuner-range {
     margin-bottom: 6px;
@@ -292,7 +311,6 @@
     padding-top: 12px;
 }
 
-.tuner-playback-just,
 .tuner-playback-buttons {
     display: flex;
     flex-wrap: wrap;
@@ -389,7 +407,7 @@
     overflow-x: auto;
     position: sticky;
     scrollbar-width: none;
-    top: 0;
+    top: var(--tuner-tabbar-top, 0px);
     z-index: 2;
 }
 
@@ -545,6 +563,12 @@
     padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     position: fixed;
     z-index: 1050;
+}
+
+.tuner.tuner-maximized .tuner-tabbar { top: 0; }
+
+.tuner.tuner-maximized .tuner-note {
+    height: clamp(4rem, 24vw, 7rem);
 }
 
 .tuner.tuner-maximized .tuner-note-name {

@@ -94,15 +94,16 @@ describe('tuner reference A4 setting', () => {
     expect(store.setTenths(4801)).toMatchObject({ changed: false });
   });
 
-  it('parses typed A4 values (one decimal, full-width digits) and refuses the rest', () => {
+  it('parses only whole-Hz A4 values, including full-width digits', () => {
     expect(settings.parseA4Input('442')).toEqual({ ok: true, tenths: 4420 });
-    expect(settings.parseA4Input(' 441.5 ')).toEqual({ ok: true, tenths: 4415 });
-    expect(settings.parseA4Input('４４３．２')).toEqual({ ok: true, tenths: 4432 });
-    expect(settings.parseA4Input('390.0')).toEqual({ ok: true, tenths: 3900 });
-    expect(settings.parseA4Input('480.0')).toEqual({ ok: true, tenths: 4800 });
-    for (const [text, reason] of [['', 'empty'], ['389.9', 'range'], ['480.1', 'range'], ['442.25', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
+    expect(settings.parseA4Input(' ４４０ ')).toEqual({ ok: true, tenths: 4400 });
+    expect(settings.parseA4Input('390')).toEqual({ ok: true, tenths: 3900 });
+    expect(settings.parseA4Input('480')).toEqual({ ok: true, tenths: 4800 });
+    for (const [text, reason] of [['', 'empty'], ['389', 'range'], ['481', 'range'], ['442.5', 'format'], ['442.0', 'format'], ['442.25', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
       expect(settings.parseA4Input(text), text).toMatchObject({ ok: false, reason });
     }
+    expect(settings.parseA4Input('442.5').message).toBe('390～480 の整数で入力してください。');
+    expect(settings.parseA4Input('389').message).toBe('390～480 Hz の範囲で入力してください。');
     expect(settings.PRESETS_TENTHS).toEqual([4400, 4410, 4420, 4430]);
   });
 
@@ -162,10 +163,21 @@ describe('tuner reference A4 setting', () => {
     const storage = memoryStorage();
     const first = settings.createSettingsStore(storage);
     first.load();
-    first.step(1);
-    first.step(1);
+    first.step(10);
+    first.step(10);
     const second = settings.createSettingsStore(storage);
-    expect(second.load()).toBe(442.2);
+    expect(second.load()).toBe(444);
+  });
+
+  it.each([[4425, 4430], [4424, 4420]])('rounds saved %i tenths to %i in memory without rewriting storage', (saved, rounded) => {
+    const raw = JSON.stringify({ schemaVersion: 1, a4Tenths: saved, persistSettings: true, prefs: { displayMode: 'detail' } });
+    const storage = memoryStorage({ [settings.SETTINGS_KEY]: raw });
+    const store = settings.createSettingsStore(storage);
+    expect(store.load()).toBe(rounded / 10);
+    expect(store.getTenths()).toBe(rounded);
+    expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
+    store.step(10);
+    expect(JSON.parse(storage.data[settings.SETTINGS_KEY]).a4Tenths).toBe(rounded + 10);
   });
 
   it('does not touch storage while loading the module', () => {
