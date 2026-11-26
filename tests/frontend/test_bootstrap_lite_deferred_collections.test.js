@@ -24,7 +24,7 @@ function setup({ sns = false } = {}) {
         jsonOptions: (method, payload) => ({ method, body: JSON.stringify(payload) }),
     };
     for (const name of ['showAlert', 'renderSchedules', 'renderMemberSchedules', 'renderAbsenceView',
-        'renderSnsManagement', 'renderMemberExtraViews', 'refreshVenueOptions', 'renderVenueManagement',
+        'renderSnsManagement', 'renderMemberExtraViews', 'renderPaymentAdmin', 'refreshVenueOptions', 'renderVenueManagement',
         'refreshPartSelectOptions', 'applyOrgSettings', 'renderOrgManagement',
         'ensureMemberFeatureLoaded', 'attendanceOverviewSchedules', 'showUpcomingAttendanceReminder']) {
         s[name] = vi.fn();
@@ -48,6 +48,23 @@ const tabs = [
 ];
 
 describe('lite deferred collections', () => {
+    test.each([
+        [['member-schedule', 'member-absence', 'schedule'], '/api/schedules', 'schedules'],
+        [['schedule', 'member-absence', 'member-schedule'], '/api/schedules', 'schedules'],
+        [['member-sns', 'system-sns'], '/api/extra/sns_settings', 'snsSettings'],
+        [['system-sns', 'member-sns'], '/api/extra/sns_settings', 'snsSettings'],
+    ])('%j share the successfully loaded collection', async (relatedTabs, url, key) => {
+        const { s, appState, handlers, calls } = setup();
+        const rows = [{ id: 'shared' }];
+        handlers.set(url, () => rows);
+        for (const tab of [...relatedTabs, ...relatedTabs]) {
+            await s.ensureDeferredTabDataLoaded(tab);
+        }
+        expect(calls(url)).toHaveLength(1);
+        expect(appState[key]).toBe(rows);
+        expect(s.isDeferredPortalDataLoaded(key)).toBe(true);
+    });
+
     test.each(tabs)('%s loads once, including successful empty lists', async (tab, url, key) => {
         const { s, calls, appState } = setup();
         await s.ensureDeferredTabDataLoaded(tab);
@@ -119,6 +136,24 @@ describe('lite deferred collections', () => {
         expect(s.currentDeferredPortalDataGeneration()).toBe(generation + 1);
         expect(request).not.toHaveBeenCalled();
     });
+
+    test.each(['/api/extra/part_settings', '/api/extra/org_settings'])(
+        'login settings retain both cached collections when %s fails', async url => {
+            const { s, appState, handlers, request } = setup();
+            const parts = [{ id: 'cached-part' }], org = [{ id: 'cached-org' }];
+            Object.assign(appState, { partSettings: parts, orgSettings: org });
+            handlers.set(url, () => Promise.reject(new Error('offline')));
+            const options = { _requestOrigin: 'automatic' };
+            await expect(s.loadPartSettingsForLogin(options)).resolves.toBeUndefined();
+            expect(appState.partSettings).toBe(parts);
+            expect(appState.orgSettings).toBe(org);
+            expect(request.mock.calls).toEqual([
+                ['/api/extra/part_settings', options], ['/api/extra/org_settings', options],
+            ]);
+            expect(s.refreshPartSelectOptions).toHaveBeenCalledTimes(1);
+            expect(s.applyOrgSettings).toHaveBeenCalledTimes(1);
+            expect(s.showAlert).not.toHaveBeenCalled();
+        });
 });
 
 describe('loadSchedules ordering and return value', () => {
@@ -184,6 +219,62 @@ describe('loadSchedules ordering and return value', () => {
 });
 
 describe('startup attendance reminder with real collection loaders', () => {
+    test('first render and startup ready precede background requests without waiting for them', async () => {
+        const { s, appState, handlers, request } = setup();
+        const essential = deferred(), background = deferred(), order = [];
+        appState.essentialDataLoaded = false;
+        s.showMemberPanel = vi.fn();
+        s.renderPortalHome = vi.fn();
+        s.renderLoadingPlaceholders = vi.fn();
+        s.setLoadingBar = vi.fn();
+        s.renderEssentialViews = vi.fn(() => order.push('render'));
+        s.loadEssentialData = vi.fn(async () => {
+            await essential.promise;
+            s.renderEssentialViews();
+        });
+        s.portalStartup = { ready: vi.fn(() => order.push('ready')) };
+        s.URL = URL;
+        s.location = { href: 'https://example.com/' };
+        s.localStorage = { getItem: () => null };
+        for (const url of ['/api/schedules', '/api/extra/absences', '/api/extra/castings']) {
+            handlers.set(url, () => { order.push(url); return background.promise; });
+        }
+        const entering = s.enterPortal({ _requestOrigin: 'automatic' });
+        await tick();
+        expect(request).not.toHaveBeenCalled();
+        expect(s.portalStartup.ready).not.toHaveBeenCalled();
+        essential.resolve();
+        await entering;
+        await tick();
+        expect(order.slice(0, 2)).toEqual(['render', 'ready']);
+        expect(order.slice(2).sort()).toEqual([
+            '/api/extra/absences', '/api/extra/castings', '/api/schedules',
+        ]);
+        expect(appState.essentialDataLoaded).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('schedules')).toBe(false);
+        expect(s.isDeferredPortalDataLoaded('absences')).toBe(false);
+        expect(s.showUpcomingAttendanceReminder).not.toHaveBeenCalled();
+        background.resolve([]);
+        await tick();
+        expect(s.showUpcomingAttendanceReminder).toHaveBeenCalledTimes(1);
+        expect(s.console.warn).not.toHaveBeenCalled();
+    });
+
+    test('a newer authentication transition cancels startup before background loads', async () => {
+        const { s, appState, request } = setup();
+        const panel = deferred();
+        s.showMemberPanel = vi.fn(() => panel.promise);
+        s.portalStartup = { ready: vi.fn() };
+        s.renderPortalHome = vi.fn();
+        const entering = s.enterPortal();
+        appState.portalAuthTransition = 1;
+        panel.resolve();
+        await entering;
+        expect(s.renderPortalHome).not.toHaveBeenCalled();
+        expect(request).not.toHaveBeenCalled();
+        expect(s.portalStartup.ready).toHaveBeenCalledTimes(1);
+    });
+
     test('waits for both applied collections before reminding', async () => {
         const { s, handlers, calls } = setup();
         const schedules = deferred(), absences = deferred();
@@ -206,13 +297,18 @@ describe('startup attendance reminder with real collection loaders', () => {
     });
 
     test.each([
-        ['/api/extra/absences', 'absences'], ['/api/schedules', 'schedules'],
-    ])('suppresses reminder when %s failure is swallowed', async (url, key) => {
-        const { s, handlers } = setup();
-        handlers.set(url, () => Promise.reject(new Error('offline')));
+        ['/api/extra/absences', 'absences', false], ['/api/schedules', 'schedules', false],
+        ['/api/extra/absences', 'absences', true], ['/api/schedules', 'schedules', true],
+    ])('suppresses reminder when %s failure is swallowed (%s, retry wait=%s)', async (url, key, retryWait) => {
+        const { s, appState, handlers } = setup();
+        const cached = [{ id: 'cached-but-not-revalidated' }];
+        appState[key] = cached;
+        handlers.set(url, () => Promise.reject(Object.assign(new Error('offline'), { portalRetryWait: retryWait })));
         await expect(s.loadAttendanceReminderAfterStartup()).resolves.toBeUndefined();
+        expect(appState[key]).toBe(cached);
         expect(s.isDeferredPortalDataLoaded(key)).toBe(false);
         expect(s.showUpcomingAttendanceReminder).not.toHaveBeenCalled();
+        expect(s.showAlert).toHaveBeenCalledTimes(retryWait ? 0 : 1);
         expect(s.console.warn).toHaveBeenCalled();
     });
 
@@ -239,6 +335,22 @@ describe('startup attendance reminder with real collection loaders', () => {
         await s.loadSchedules();
         await s.loadAttendanceReminderAfterStartup();
         expect(calls('/api/schedules')).toHaveLength(1);
+        expect(s.showUpcomingAttendanceReminder).toHaveBeenCalledTimes(1);
+    });
+
+    test('a newer successful load in the same generation may supply the reminder schedules', async () => {
+        const { s, appState, handlers } = setup();
+        const pending = deferred();
+        handlers.set('/api/schedules', () => pending.promise);
+        const reminding = s.loadAttendanceReminderAfterStartup();
+        await tick();
+        handlers.set('/api/schedules', () => [{ id: 'latest' }]);
+        expect(await s.loadSchedules()).toBe(true);
+        pending.resolve([{ id: 'stale' }]);
+        await reminding;
+        expect(appState.schedules).toEqual([{ id: 'latest' }]);
+        expect(s.isDeferredPortalDataLoaded('schedules')).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('absences')).toBe(true);
         expect(s.showUpcomingAttendanceReminder).toHaveBeenCalledTimes(1);
     });
 });

@@ -97,6 +97,33 @@ describe('bootstrap-lite deferred refetch', () => {
         expect(calls('/api/extra/sns_settings')).toHaveLength(0);
     });
 
+    test.each(['legacy preview', 'loaded this session'])(
+        'lite refetch preserves schedules and SNS from %s while resetting flags', async origin => {
+            const { s, appState, handlers, calls } = createBootstrapSandbox();
+            const schedules = [{ id: 'saved-schedule' }], snsSettings = [{ id: 'saved-sns' }];
+            if (origin === 'legacy preview') {
+                s.applyBootstrapData({ schedules, extras: { sns_settings: snsSettings } });
+            } else {
+                handlers.set('/api/schedules', () => schedules);
+                handlers.set('/api/extra/sns_settings', () => snsSettings);
+                await s.loadSchedules();
+                await s.loadExtraData(['snsSettings']);
+            }
+            appState.currentPortalTab = { tabName: 'member-home' };
+            s.renderEssentialViews.mockClear();
+            const scheduleCount = calls('/api/schedules').length;
+            const snsCount = calls('/api/extra/sns_settings').length;
+            await s.loadEssentialData();
+            await tick();
+            expect(appState.schedules).toBe(schedules);
+            expect(appState.snsSettings).toBe(snsSettings);
+            expect(s.isDeferredPortalDataLoaded('schedules')).toBe(false);
+            expect(s.isDeferredPortalDataLoaded('snsSettings')).toBe(false);
+            expect(s.renderEssentialViews).toHaveBeenCalledTimes(1);
+            expect(calls('/api/schedules')).toHaveLength(scheduleCount);
+            expect(calls('/api/extra/sns_settings')).toHaveLength(snsCount);
+        });
+
     test('resets every flag without clearing collections', async () => {
         const { s, appState, flags } = createBootstrapSandbox();
         for (const name of Object.keys(flags())) s.markDeferredPortalDataLoaded(name);
