@@ -266,6 +266,10 @@ async function loadEssentialData(options = {}) {
     } catch (error) {
         if ((appState.portalAuthTransition || 0) !== startedTransition || error?.portalContextChanged) {
             clearLoadingBar();
+            // Requests may throw primitive values; callers still need the context-change marker.
+            if (error === null || (typeof error !== 'object' && typeof error !== 'function')) {
+                error = new Error(String(error));
+            }
             error.portalContextChanged = true;
             throw error;
         }

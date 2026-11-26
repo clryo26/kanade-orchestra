@@ -379,6 +379,26 @@ describe('payment 403 ownership release', () => {
         expect(s.isAllPaymentsHeld()).toBe(true);
     });
 
+    test('resetDeferredPortalDataFlags advances only the deferred generation and keeps collections and ownership', async () => {
+        const { s, appState, handlers, flags } = createBootstrapSandbox();
+        handlers.set('/api/extra/payments', () => fullPayments);
+        await s.loadExtraData(['payments']);
+        const payments = appState.payments;
+        const castings = appState.castings;
+        for (const key of Object.keys(flags())) s.markDeferredPortalDataLoaded(key);
+        const generation = vm.runInNewContext('deferredPortalDataGeneration', s);
+
+        s.resetDeferredPortalDataFlags();
+
+        expect(Object.values(flags()).every(value => value === false)).toBe(true);
+        expect(vm.runInNewContext('deferredPortalDataGeneration', s)).toBe(generation + 1);
+        expect(appState.payments).toBe(payments);
+        expect(appState.castings).toBe(castings);
+        expect(appState.essentialDataLoaded).toBe(true);
+        expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.renderEssentialViews).not.toHaveBeenCalled();
+    });
+
     test('request parses the server 403 JSON and the loader releases full payments and redraws', async () => {
         const h = createHttpHarness(() => new Response(JSON.stringify({
             detail: 'Admin permission is required',

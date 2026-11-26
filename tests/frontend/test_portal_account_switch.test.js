@@ -201,14 +201,19 @@ describe('portal account lifecycle', () => {
         await h.cache.set(BOOTSTRAP, payload('A'));
         h.handlers.set(BOOTSTRAP, () => response(payload('latest-A')));
         const gate = deferred();
-        h.cache.delete.mockReturnValueOnce(gate.promise);
+        const deletionStarted = deferred();
+        h.cache.delete.mockImplementationOnce(() => {
+            deletionStarted.resolve();
+            return gate.promise;
+        });
         h.s.renderEssentialViews.mockImplementationOnce(() => {})
             .mockImplementationOnce(() => { throw new Error('latest render failed'); });
         const apply = h.s.applyBootstrapData;
         h.s.applyBootstrapData = vi.fn(apply);
         const pending = h.s.loadEssentialData({ useCachedPreview: true }).catch(error => error);
-        await tick();
+        await deletionStarted.promise;
         expect(h.cache.delete).toHaveBeenCalledWith(BOOTSTRAP);
+        expect(h.s.applyBootstrapData).toHaveBeenCalledTimes(2);
         expect(h.s.renderEssentialViews).toHaveBeenCalledTimes(2);
         h.s.advancePortalAuthTransition();
         h.s.resetPortalDataForAccountChange();
@@ -232,20 +237,36 @@ describe('portal account lifecycle', () => {
         h.setMember();
         await h.cache.set(BOOTSTRAP, payload('A'));
         h.handlers.set(BOOTSTRAP, () => response(payload('latest-A')));
+        h.s.markDeferredPortalDataLoaded('payments');
+        const originalFlags = h.flags();
+        h.state.lastEssentialDataLoadedAt = 123;
         const gate = deferred();
-        h.cache.delete.mockReturnValueOnce(gate.promise);
+        const deletionStarted = deferred();
+        h.cache.delete.mockImplementationOnce(() => {
+            deletionStarted.resolve();
+            return gate.promise;
+        });
         h.s.renderEssentialViews.mockImplementationOnce(() => {})
             .mockImplementationOnce(() => { throw new Error('latest render failed'); });
+        const apply = h.s.applyBootstrapData;
+        h.s.applyBootstrapData = vi.fn(apply);
         const pending = h.s.loadEssentialData({ useCachedPreview: true });
-        await tick();
+        await deletionStarted.promise;
         expect(h.cache.delete).toHaveBeenCalledWith(BOOTSTRAP);
+        expect(h.s.applyBootstrapData).toHaveBeenCalledTimes(2);
         if (result === 'resolve') gate.resolve();
         else gate.reject(new Error('delete failed'));
         await pending;
         expect(h.state.payments).toEqual(payload('A').extras.payments);
+        expect(h.s.applyBootstrapData).toHaveBeenCalledTimes(3);
+        expect(h.s.applyBootstrapData).toHaveBeenLastCalledWith(payload('A'));
         expect(h.s.renderEssentialViews).toHaveBeenCalledTimes(3);
         expect(h.s.setLoadingBar).toHaveBeenLastCalledWith('保存済みデータを表示しています。最新データの反映に失敗しました。');
         expect(h.state.portalAuthTransition).toBe(10);
+        expect(h.flags()).toEqual(originalFlags);
+        expect(h.s.isAllPaymentsHeld()).toBe(false);
+        expect(h.state.lastEssentialDataLoadedAt).toBe(123);
+        expect(h.calls(BOOTSTRAP)).toHaveLength(1);
     });
 
     test.each([AUTH, DEVICE, null])('T5: storage %s clears data before reload or login', key => {
