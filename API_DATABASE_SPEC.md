@@ -42,7 +42,7 @@ Version 5.1 では、運用データの正を PostgreSQL に統一する（DB On
 - POST /api/auth/portal-login
 - POST /api/auth/member-password
 - GET /api/auth/devices/{device_id}
-- GET /api/auth/devices
+- GET /api/auth/devices：管理者（管理者・システム管理者）だけが使えます。X-Device-Id が必要です。未認証は 401、非管理者は 403。応答は no-store。
 - DELETE /api/auth/devices/{device_id}
 
 ### 3.3 bootstrap

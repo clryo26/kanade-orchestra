@@ -64,7 +64,7 @@ def test_device_list_is_ordered_by_instant_not_text(client, backend_env, seed_de
         {"id": 2, "device_id": "b", "member_id": None, "authenticated_at": "2026-10-19T01:00:00Z"},  # 10:00 JST, later
     ]
     backend_env.save_json_data("auth_devices", devices)
-    listed = client.get("/api/auth/devices").json()
+    listed = client.get("/api/auth/devices", headers={"X-Device-Id": "a"}).json()
     assert [item["device_id"] for item in listed] == ["b", "a"]
 
 

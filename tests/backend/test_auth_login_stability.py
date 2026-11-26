@@ -413,7 +413,9 @@ def test_hidden_administrator_login_survives_auth_device_persistence_failure(cli
     assert device_response.status_code == 200
     assert device_response.json()["authenticated"] is True
 
-    devices_response = client.get("/api/auth/devices")
+    devices_response = client.get(
+        "/api/auth/devices", headers={"X-Device-Id": "device-hidden-admin-fallback"},
+    )
     assert devices_response.status_code == 200
     device_ids = {str(item.get("device_id") or "") for item in devices_response.json()}
     assert "device-hidden-admin-fallback" in device_ids
@@ -471,12 +473,15 @@ def test_auth_device_management_list_reads_db_instead_of_stale_cache(client, bac
         ],
     }
     _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+    # Admin authentication must read the same test DB, bypassing the stale cache.
+    monkeypatch.setattr(auth_service, "db_data_enabled", backend_env.db_data_enabled)
+    monkeypatch.setattr(auth_service, "db_load_auth_device", backend_env.db_load_auth_device)
     backend_env._memory_cache.set(
         "auth_devices",
         [{"device_id": "stale-cache-device", "authenticated_at": "2026-01-01T00:00:00"}],
     )
 
-    response = client.get("/api/auth/devices")
+    response = client.get("/api/auth/devices", headers={"X-Device-Id": "device-db-visible"})
 
     assert response.status_code == 200
     device_ids = {item["device_id"] for item in response.json()}

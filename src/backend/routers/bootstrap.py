@@ -18,6 +18,7 @@ from ..services.file_service import format_duration
 from ..services.json_collection_service import list_auth_devices
 from ..services import bootstrap_service, meta_service
 from ..services import menu_settings_service
+from ..services.extra_collection_helpers import is_admin_device
 from ..repositories.db_json_repository import load_collection_etag
 from ..services.recording_asset_service import recording_payload
 from .notices import router as notices_router
@@ -101,6 +102,8 @@ async def get_bootstrap_lite_data(
         )
     menu_visibility = menu_settings_service.visibility_settings()
     etag = menu_settings_service.bootstrap_etag(etag, menu_visibility)
+    if frame is None:
+        etag = bootstrap_service.principal_scoped_etag(etag, x_device_id, device)
     if bootstrap_service.request_not_modified(request, etag):
         return bootstrap_service.not_modified_response(etag)
     data = await bootstrap_service.bootstrap_lite_payload(
@@ -129,7 +132,19 @@ async def get_bootstrap_core_data(request: Request):
 
 
 @router.get("/api/bootstrap", response_model=None)
-async def get_bootstrap_data(request: Request):
+async def get_bootstrap_data(
+    request: Request,
+    x_device_id: str = Header(default="", alias="X-Device-Id"),
+):
+    # bootstrap-lite と同じ任意認証。認証失敗だけを未認証扱いにし、障害は投げ直す。
+    device: dict[str, Any] | None = None
+    if x_device_id:
+        try:
+            device = device_auth_record(x_device_id)
+        except HTTPException as exc:
+            if exc.status_code not in {401, 403}:
+                raise
+
     etag = bootstrap_service.combined_collection_etag(
         (
             "performances",
@@ -175,6 +190,8 @@ async def get_bootstrap_data(request: Request):
         sheet_payload=_sheet_payload,
         list_auth_devices=_list_auth_devices,
         cloud_run_revision=meta_service.cloud_run_revision,
+        is_admin=device is not None and is_admin_device(device),
+        personal_payment_list=lambda payments: personal_payment_list(payments, device),
     )
     data["menu_visibility"] = menu_visibility
     return bootstrap_service.bootstrap_response(request, data, etag)
