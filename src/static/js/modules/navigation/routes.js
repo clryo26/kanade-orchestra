@@ -670,6 +670,8 @@ async function switchTab(panelId, tabName, renderOnShow = true, historyMode = 'p
     }
     const panel = $(panelId);
     if (!panel) return;
+    // Used to refetch the visible screen after a bootstrap-lite refetch.
+    appState.currentPortalTab = { panelId, tabName };
     nextPortalNavigation();
     const isTunerTab = panelId === 'systemPanel' && tabName === 'system-tuner';
     const isMetronomeTab = panelId === 'systemPanel' && tabName === 'system-metronome';
