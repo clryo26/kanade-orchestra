@@ -75,8 +75,14 @@ async function loadPaymentAlertAfterStartup() {
 
 // loadEssentialData完亁E��で征E��し、完亁E��に起動画面を非表示にする
 async function enterPortal(options = {}) {
+    const startedTransition = appState.portalAuthTransition || 0;
     if ($('portalLoginPanel')) $('portalLoginPanel').hidden = true;
     await showMemberPanel(false);
+    // A newer login/logout owns the display and startup flags after each await.
+    if ((appState.portalAuthTransition || 0) !== startedTransition) {
+        window.portalStartup?.ready();
+        return;
+    }
     renderPortalHome();
     renderLoadingPlaceholders();
     setLoadingBar('読み込み中...');
@@ -84,8 +90,16 @@ async function enterPortal(options = {}) {
     if (!appState.essentialDataLoaded) {
         try {
             await loadEssentialData({ useCachedPreview: true, _requestOrigin: options._requestOrigin });
+            if ((appState.portalAuthTransition || 0) !== startedTransition) {
+                window.portalStartup?.ready();
+                return;
+            }
             appState.essentialDataLoaded = true;
         } catch (error) {
+            if ((appState.portalAuthTransition || 0) !== startedTransition) {
+                window.portalStartup?.ready();
+                return;
+            }
             clearLoadingBar();
             showAlert(error.message || 'データの読み込みに失敗しました', 'danger');
             throw error; // 呼出允E_runAuthAndStart筁Eへ伝播
@@ -218,12 +232,26 @@ function bindNavigation() {
     });
 }
 
-function logoutPortal() {
-    // Overridden at runtime by auth_feature.js (loaded later); kept consistent.
+async function logoutPortal() {
+    advancePortalAuthTransition();
+    // Release the microphone before awaiting the notification shutdown below.
     if (typeof window.portalTunerLeave === 'function') window.portalTunerLeave('logout');
+    if (localStorage.getItem('portalPushMemberId')) {
+        try {
+            await ensureNotificationsLoaded();
+            await window.PortalNotifications.beforeLogout();
+        } catch { showAlert('通知停止を確認できませんでした。ブラウザの設定を確認してください。', 'warning'); }
+    }
+    // Remove this member's preview before clearing identity on a shared device.
+    // Re-login changes the auth generation, so startup speed is barely affected.
+    if (window.portalRuntimeContext?.dbCache) {
+        window.portalRuntimeContext.dbCache.delete('/api/bootstrap-lite').catch(() => {});
+    }
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
+    appState.lastPortalSessionVerifiedAt = 0;
+    appState.lastEssentialDataLoadedAt = 0;
     appState.currentUserMemberId = null;
     appState.currentUserName = '';
     appState.currentUserPermission = '';
@@ -232,5 +260,6 @@ function logoutPortal() {
     appState.currentUserIsRecordingManager = false;
     appState.currentUserIsSheetManager = false;
     closePortalDrawer();
+    if (typeof resetPortalDataForAccountChange === 'function') resetPortalDataForAccountChange();
     showPortalLogin();
 }

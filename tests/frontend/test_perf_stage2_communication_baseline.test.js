@@ -409,14 +409,18 @@ describe('stage 2B authentication and transport contracts', () => {
         await vi.advanceTimersByTimeAsync(0);
         h.sandbox.localStorage.removeItem('kanadePortalAuthenticated');
         const listener = h.sandbox.addEventListener.mock.calls.find(([name]) => name === 'storage')[1];
+        h.sandbox.showPortalLogin = vi.fn();
         listener({ key: 'kanadePortalAuthenticated', newValue: null });
+        const clearsAfterStorage = h.sandbox.clearPortalAuthState.mock.calls.length;
+        expect(clearsAfterStorage).toBe(1);
+        expect(h.sandbox.showPortalLogin).toHaveBeenCalledTimes(1);
         h.sandbox.advancePortalAuthTransition();
         h.sandbox.applyPortalAuthDevice({ ...DEVICE, authenticated_at: 'new-login' });
         h.releaseAuth();
         expect((await pending).status).toBe('unavailable');
         expect(h.state.portalAuthGeneration).toBe('new-login');
         expect(h.state.portalAuthVerified).toBe(true);
-        expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();
+        expect(h.sandbox.clearPortalAuthState).toHaveBeenCalledTimes(clearsAfterStorage);
         h.expectConsumed();
     });
 
@@ -426,11 +430,15 @@ describe('stage 2B authentication and transport contracts', () => {
         await vi.advanceTimersByTimeAsync(0);
         h.sandbox.localStorage.removeItem('kanadePortalAuthenticated');
         const listener = h.sandbox.addEventListener.mock.calls.find(([name]) => name === 'storage')[1];
+        h.sandbox.showPortalLogin = vi.fn();
         listener({ key: 'kanadePortalAuthenticated', newValue: null });
+        const clearsAfterStorage = h.sandbox.clearPortalAuthState.mock.calls.length;
+        expect(clearsAfterStorage).toBe(1);
+        expect(h.sandbox.showPortalLogin).toHaveBeenCalledTimes(1);
         h.releaseAuth();
         expect((await pending).status).toBe('unauthenticated');
         expect(h.sandbox.applyPortalAuthDevice).not.toHaveBeenCalled();
-        expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();
+        expect(h.sandbox.clearPortalAuthState).toHaveBeenCalledTimes(clearsAfterStorage);
         h.expectConsumed();
     });
 
@@ -540,9 +548,11 @@ describe('stage 2B authentication and transport contracts', () => {
                 h.sandbox.localStorage.setItem('kanadePortalDeviceId', 'other-device');
             } else {
                 const listener = h.sandbox.addEventListener.mock.calls.find(([name]) => name === 'storage')[1];
+                h.sandbox.location = { reload: vi.fn() };
                 listener({ key: 'kanadePortalAuthenticated' });
             }
             h.releaseAuth();
+            if (transition === 'storage-event') expect(h.sandbox.location.reload).toHaveBeenCalledTimes(1);
             expect(await pending).toBe(false);
             expect(h.sandbox.applyPortalAuthDevice).not.toHaveBeenCalled();
             expect(h.sandbox.clearPortalAuthState).not.toHaveBeenCalled();

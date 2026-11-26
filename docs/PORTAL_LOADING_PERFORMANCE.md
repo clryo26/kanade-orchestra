@@ -36,6 +36,30 @@ bootstrap payloads.
   `member_id`, or matching `name` when the current member ID is absent).
   Other failures (network errors, timeouts, 503 retry waits, and 5xx responses)
   preserve the full list and its ownership.
+- 403 で本人分に絞ったときは payments を「読込済みでない」状態に戻します。
+  管理者に戻ったあと、次に支払管理・支払設定を開くと全員分を取得します。
+- ログアウト・セッション解除では、前の利用者の payments、connectionSettings、
+  authDevices を新しい空配列に置き換え、全件保持、遅延読込フラグ、起動の読込済み
+  フラグと取得時刻をリセットします。団員ホームの公演・予定・お知らせ・支払い表示を
+  空にし、ホームとドロワーのメニューを描き直して滞納警告を消します。
+  partSettings、orgSettings、snsSettings、cloudRunRevision と全員共通のコレクションは残します。
+- 別タブでログアウトされた場合も本人情報と上記データを消してログイン画面を出します。
+  別タブでログインした場合や端末IDが変わった場合は、上記データを消してページを
+  読み直します。ログイン画面のタブでは認証の遷移番号だけを進めます。
+  セッション確認で別の団員と分かった場合は、遷移番号を進め、本人情報を反映し、
+  上記データを消してページを読み直します。
+- 「別の団員」は、前と次の両方に団員IDがあればIDだけで比べ、どちらかにIDが
+  なければ名前を完全一致で比べます。サーバーの `personal_payment_list` と同じ基準で、
+  同じ団員IDなら名前の表記が変わっただけでは読み直しやデータの消去は起きません。
+- `loadEssentialData` と `enterPortal` は開始時の認証遷移番号を覚え、await 後に
+  変わっていたら古い処理から状態・フラグ・表示を反映しません。最新データの反映に
+  失敗して保存済みプレビューに戻す場合も、キャッシュ削除を待つ間に認証が変わって
+  いたら、前の利用者のプレビューを戻さず、失敗の文言や警告も出しません。
+  同じ本人・同じ遷移でのプレビュー表示と失敗時の復元は従来どおりです。
+- IndexedDB の鍵は端末ID・団員ID・権限・認証世代により本人ごとに分かれます。
+  鍵の形式と cleanup 条件は変更しません。ログアウト時は本人情報を消す前に
+  `/api/bootstrap-lite` のプレビュー1件だけを非同期で削除します。再ログインでは
+  認証世代が変わるため、通常の起動の速さへの影響はほとんどありません。
 - サーバーは `/api/extra/payments` と `/api/extra/connection_settings` の読み取りで、
   未認証なら 401、管理者（管理者・システム管理者）でなければ 403 を返します。
   200 の応答には `Cache-Control: no-store` を付けます。

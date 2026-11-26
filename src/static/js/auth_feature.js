@@ -270,6 +270,11 @@ async function logoutPortal() {
             await window.PortalNotifications.beforeLogout();
         } catch { showAlert('通知停止を確認できませんでした。ブラウザの設定を確認してください。', 'warning'); }
     }
+    // Remove this member's preview before clearing identity on a shared device.
+    // Re-login changes the auth generation, so startup speed is barely affected.
+    if (window.portalRuntimeContext?.dbCache) {
+        window.portalRuntimeContext.dbCache.delete('/api/bootstrap-lite').catch(() => {});
+    }
     localStorage.removeItem(window.portalRuntimeContext.PORTAL_AUTH_KEY);
     localStorage.removeItem('userRole');
     appState.portalAuthVerified = false;
@@ -283,5 +288,6 @@ async function logoutPortal() {
     appState.currentUserIsRecordingManager = false;
     appState.currentUserIsSheetManager = false;
     closePortalDrawer();
+    if (typeof resetPortalDataForAccountChange === 'function') resetPortalDataForAccountChange();
     showPortalLogin();
 }
