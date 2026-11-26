@@ -473,6 +473,9 @@ def test_auth_device_management_list_reads_db_instead_of_stale_cache(client, bac
         ],
     }
     _setup_db_only_auth_env(backend_env, monkeypatch, db_store)
+    # Admin authentication must read the same test DB, bypassing the stale cache.
+    monkeypatch.setattr(auth_service, "db_data_enabled", backend_env.db_data_enabled)
+    monkeypatch.setattr(auth_service, "db_load_auth_device", backend_env.db_load_auth_device)
     backend_env._memory_cache.set(
         "auth_devices",
         [{"device_id": "stale-cache-device", "authenticated_at": "2026-01-01T00:00:00"}],

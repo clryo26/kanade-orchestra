@@ -209,6 +209,99 @@ def test_lite_etag_does_not_reuse_another_members_payments(read_client):
         assert unchanged.headers["ETag"] == tag
 
 
+@pytest.mark.parametrize("device_id,expected_payments", [
+    (None, []), ("no-such-device", []),
+    ("dev-alice", [PAYMENTS[0]]), ("dev-bob", [PAYMENTS[1]]),
+    ("dev-admin", [PAYMENTS[2]]), ("dev-sysadmin", [PAYMENTS[3]]),
+])
+def test_lite_preserves_schema_and_only_personal_payments_for_every_role(
+    read_client, device_id, expected_payments,
+):
+    response = read_client.get("/api/bootstrap-lite", headers=headers(device_id))
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "performances", "schedules", "announcements", "members", "extras",
+        "cloudRunRevision", "menu_visibility",
+    }
+    assert set(body["extras"]) == {"payments", "part_settings", "org_settings", "sns_settings"}
+    assert body["extras"]["payments"] == expected_payments
+    for marker in (*ADMIN_DEVICES, "synthetic-account-marker", "synthetic-account-file"):
+        assert marker not in response.text
+    # Even administrators receive only their own rows through lite, and each
+    # role (including anonymous) retains same-principal conditional requests.
+    unchanged = read_client.get("/api/bootstrap-lite", headers={
+        **headers(device_id), "If-None-Match": response.headers["ETag"],
+    })
+    assert unchanged.status_code == 304
+    assert unchanged.content == b""
+    assert unchanged.headers["ETag"] == response.headers["ETag"]
+
+
+@pytest.mark.parametrize("device_id", [None, "dev-alice", "dev-bob", *ADMIN_DEVICES])
+def test_core_keeps_shared_etag_and_response_without_personal_data(read_client, device_id):
+    first = read_client.get("/api/bootstrap-core")
+    assert first.status_code == 200
+    assert set(first.json()) == {"extras", "cloudRunRevision", "menu_visibility"}
+    assert first.json()["extras"] == {}
+    response = read_client.get("/api/bootstrap-core", headers=headers(device_id))
+    assert response.status_code == 200
+    assert response.json() == first.json()
+    assert response.headers["ETag"] == first.headers["ETag"]
+    unchanged = read_client.get("/api/bootstrap-core", headers={
+        **headers(device_id), "If-None-Match": first.headers["ETag"],
+    })
+    assert unchanged.status_code == 304
+    assert unchanged.content == b""
+
+
+@pytest.mark.parametrize("device_id", ADMIN_DEVICES)
+def test_removed_admin_permission_cannot_reuse_warm_private_data(
+    read_client, read_permission_env, device_id,
+):
+    # Prime the shared server collection caches with successful admin reads.
+    # Keep the saved device role unchanged: authorization must resolve the
+    # linked member's current permission on every subsequent response.
+    for collection, expected in (("payments", PAYMENTS), ("connection_settings", CONNECTION_SETTINGS)):
+        response = read_client.get(f"/api/extra/{collection}", headers=headers(device_id))
+        assert response.status_code == 200
+        assert response.json() == expected
+    listed = read_client.get("/api/auth/devices", headers=headers(device_id))
+    assert listed.status_code == 200
+    assert {item["device_id"] for item in listed.json()} == {item[0] for item in DEVICES}
+    full = read_client.get("/api/bootstrap", headers=headers(device_id))
+    assert full.status_code == 200
+    assert full.json()["extras"]["payments"] == PAYMENTS
+
+    _, member_id, _, old_permission = next(item for item in DEVICES if item[0] == device_id)
+    members = read_permission_env.load_json_data("members")
+    for member in members:
+        if member["id"] == member_id:
+            member["permission"] = "一般"
+    read_permission_env.save_json_data("members", members)
+    saved_device = next(item for item in read_permission_env.load_json_data("auth_devices")
+                        if item["device_id"] == device_id)
+    assert saved_device["permission"] == old_permission
+
+    for endpoint in ("/api/extra/payments", "/api/extra/connection_settings", "/api/auth/devices"):
+        denied = read_client.get(endpoint, headers={
+            **headers(device_id), "If-None-Match": "*",
+        })
+        assert denied.status_code == 403
+        assert denied.json() == {"detail": "Admin permission is required"}
+        for marker in (*ADMIN_DEVICES, "paid_until_month", "synthetic-account-marker"):
+            assert marker not in denied.text
+    filtered = read_client.get("/api/bootstrap", headers=headers(device_id))
+    assert filtered.status_code == 200
+    assert "no-store" in filtered.headers["Cache-Control"]
+    body = filtered.json()
+    assert body["extras"]["payments"] == [payment for payment in PAYMENTS if payment["member_id"] == member_id]
+    assert body["extras"]["connection_settings"] == []
+    assert body["auth_devices"] == []
+    for marker in (*ADMIN_DEVICES, "synthetic-account-marker", "synthetic-account-file"):
+        assert marker not in filtered.text
+
+
 @pytest.mark.parametrize("change,expected_payments", [
     ({"member_id": 2}, [PAYMENTS[1]]),
     ({"member_name": "Renamed Alice"}, [PAYMENTS[0]]),

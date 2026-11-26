@@ -330,6 +330,7 @@ describe('payment 403 ownership release', () => {
         handlers.set('/api/extra/payments', () => fullPayments);
         await s.loadExtraData(['payments']);
         expect(s.isAllPaymentsHeld()).toBe(true);
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
         s.renderMemberExtraViews.mockClear();
         s.renderPaymentAdmin.mockClear();
         handlers.set('/api/extra/payments', () => Promise.reject(err));
@@ -338,7 +339,8 @@ describe('payment 403 ownership release', () => {
         expect(appState.payments).toEqual([fullPayments[0]]);
         expect(fullPayments).toEqual([{ member_id: 'one' }, { member_id: 'two' }]);
         expect(s.isAllPaymentsHeld()).toBe(false);
-        expect(s.isDeferredPortalDataLoaded('payments')).toBe(false);
+        // 直接の再取得失敗では読込済みフラグを維持し、全件保持だけを解除する。
+        expect(s.isDeferredPortalDataLoaded('payments')).toBe(true);
         expect(s.renderMemberExtraViews).toHaveBeenCalledTimes(1);
         expect(s.renderMemberExtraViews).toHaveBeenCalledWith({ collections: ['payments'] });
         expect(s.renderPaymentAdmin).toHaveBeenCalledTimes(1);
