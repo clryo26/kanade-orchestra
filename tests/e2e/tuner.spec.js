@@ -512,8 +512,8 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     const fixed = tuner.getByLabel('判定する音', { exact: true });
     await expect(fixed).toHaveValue('');
     await expect(fixed.locator('option')).toHaveCount(86); // auto + C1..C8
-    await expect(fixed.locator('option').nth(1)).toHaveValue('24');
-    await expect(fixed.locator('option').last()).toHaveValue('108');
+    await expect(fixed.locator('option').nth(1)).toHaveAttribute('value', '24');
+    await expect(fixed.locator('option').last()).toHaveAttribute('value', '108');
     for (const [midi, cents] of [['24', /\+(4491|4492|4493) cent/], ['108', /−(3907|3908|3909) cent/]]) {
       await fixed.selectOption(midi);
       await expect(fixed).toHaveValue(midi);
@@ -544,10 +544,13 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     await expectMeasuringA4(page);
     const tuner = page.locator('#systemTunerHost');
     const expectReferences = async (range) => {
-      for (const cent of [-13.7, 15.6]) {
+      const positions = { 10: [-18.5, 128], 25: [22.6, 81.2], 50: [36.3, 65.6], 100: [43.15, 57.8] };
+      for (const [index, cent] of [-13.7, 15.6].entries()) {
         const marks = tuner.locator(`[data-tuner-reference-cent="${cent}"]`);
         await expect(marks).toHaveCount(2); // stem and its accessible label
         for (const mark of await marks.all()) {
+          // Even hidden references keep their true position, never a clamped edge.
+          expect(await mark.evaluate((el) => parseFloat(el.style.left))).toBeCloseTo(positions[range][index], 5);
           if (range === 10) await expect(mark).toBeHidden();
           else {
             await expect(mark).toBeVisible();
@@ -556,7 +559,7 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
               const parent = el.parentElement.getBoundingClientRect();
               return { left: parseFloat(el.style.left), x: box.x + (el.classList.contains('tuner-meter-reference-label') ? box.width / 2 : 0), origin: parent.x, width: el.parentElement.clientWidth };
             });
-            const expected = 50 + 50 * cent / range;
+            const expected = positions[range][index];
             expect(geometry.left).toBeCloseTo(expected, 5);
             expect(Math.abs(geometry.x - geometry.origin - geometry.width * expected / 100)).toBeLessThan(2);
           }
@@ -602,6 +605,34 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     await showTunerTab(page, '測定');
     await expectReferences(50);
   });
+
+  for (const width of [277, 390]) {
+    test(`reference stems and labels have distinct borders at ${width} px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await login(page);
+      await openTuner(page);
+      const tuner = page.locator('#systemTunerHost');
+      // R1: a bare minor-reference selector also draws a spurious vertical
+      // dotted border at the label's left edge, away from the true reference.
+      for (const forcedColors of ['none', 'active']) {
+        await page.emulateMedia({ forcedColors });
+        for (const [kind, style] of [['major', 'dashed'], ['minor', 'dotted']]) {
+          const stem = tuner.locator(`.tuner-meter-reference.tuner-meter-reference-${kind}`);
+          const label = tuner.locator(`.tuner-meter-reference-label.tuner-meter-reference-${kind}`);
+          await expect(stem).toBeVisible();
+          await expect(stem).toHaveCSS('border-left-style', style);
+          await expect(stem).toHaveCSS('border-left-width', '2px');
+          await expect(stem).toHaveCSS('pointer-events', 'none');
+          await expect(label).toBeVisible();
+          await expect(label).toHaveCSS('border-left-width', '0px');
+          await expect(label).toHaveCSS('border-right-width', '0px');
+          await expect(label).toHaveCSS('border-bottom-style', style);
+          await expect(label).toHaveCSS('border-bottom-width', '1px');
+          await expect(label).toHaveCSS('pointer-events', 'none');
+        }
+      }
+    });
+  }
 
   test('display range switches between 500 Hz-16 kHz (default) and 25 Hz-16 kHz without stopping detection', async ({ page }) => {
     await login(page);
@@ -995,6 +1026,7 @@ test.describe('advanced tuner: tabs, pause, saving off, voices and narrow screen
     await expect(tuner.locator('[data-tuner-announcer]')).toHaveText('音律「平均律C4」を呼び出しました');
     await showTunerTab(page, '測定');
     await expect(fixed).toHaveValue('60');
+    expect((await probe(page)).playbackContexts).toHaveLength(0); // equal preset recall alone never plays
     await showTunerTab(page, '履歴・楽器・設定');
     await tuner.locator('[data-tuner-temperament-preset-delete]').click();
     await expect(tuner.locator('[data-tuner-temperament-preset-use]')).toHaveCount(0);

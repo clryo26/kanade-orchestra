@@ -120,7 +120,7 @@ function harness(options = {}) {
     isScreenActive: () => state.active,
   };
   return {
-    body, view, graph, controller, contexts, calls, locks, pendingLocks, state, startOptions, timers,
+    body, storage, view, graph, controller, contexts, calls, locks, pendingLocks, state, startOptions, timers,
     handlers: body.handlers,
     playbackView: () => lastPlayback,
     runIntervals: () => intervals.forEach((t) => t.fn()),
@@ -371,13 +371,19 @@ describe('tuner body: playback and measurement switching', () => {
         portalTunerSettings: JSON.stringify({ schemaVersion: 1, a4Tenths: 4420, persistSettings: true, prefs: { judgment: { mode: 'major-third', temperament: 'minor-third', rootMidi: 65 } } }),
       } });
       expect(globalThis.PortalTunerLib.targetModel).toBeUndefined();
+      expect(h.body.api.getTargetConfig().temperament).toBe('equal'); // constructor restoration
       await h.body.start(h.startOptions);
       expect(setJudgment.mock.calls.at(-1)[0].mode).toBe('equal');
       expect(setTarget).not.toHaveBeenCalled(); // proves the model-backed branch was not used
       h.body.stop();
+      h.storage.data.portalTunerSettings = JSON.stringify({ schemaVersion: 1, a4Tenths: 4420, persistSettings: true,
+        prefs: { judgment: { mode: 'minor-third', temperament: 'major-third', rootMidi: 57 } },
+      });
       await h.body.start(h.startOptions);
       expect(setJudgment).toHaveBeenCalledTimes(2);
-      expect(setJudgment.mock.calls.at(-1)[0].mode).toBe('equal');
+      expect(setJudgment.mock.calls.every(([config]) => config.mode === 'equal')).toBe(true);
+      expect(setTarget).not.toHaveBeenCalled();
+      expect(h.body.api.getTargetConfig().temperament).toBe('equal');
       expect(h.view.setJudgment.mock.calls.at(-1)[0]).toMatchObject({ mode: 'equal', just: null });
       for (const name of ['onMode', 'onTemperament', 'onRoot', 'onCustomOffset']) expect(h.handlers[name]).toBeUndefined();
     } finally {

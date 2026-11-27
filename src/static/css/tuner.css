@@ -896,7 +896,7 @@
     opacity: .8;
     pointer-events: none;
 }
-.tuner-meter-reference-minor { border-left-style: dotted; }
+.tuner-meter-reference.tuner-meter-reference-minor { border-left-style: dotted; }
 .tuner-meter-references {
     position: relative;
     height: 6.4rem;

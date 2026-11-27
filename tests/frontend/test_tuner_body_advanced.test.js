@@ -327,6 +327,73 @@ describe('measurement target compatibility', () => {
     expect(after.prefs.judgment).toMatchObject({ temperament: 'equal', fixedMidi: 62 });
   });
 
+  it('legacy copy handlers cannot overwrite direct Hz settings or retune playing audio', async () => {
+    const h = harness({ storageData: saved({ temperament: 'just-major', fixedMidi: 60 }) });
+    await h.body.start(h.startOptions);
+    const handlers = h.body.handlers;
+    handlers.onPlaybackSource('hz');
+    handlers.onPlaybackHzInput('333.3');
+    const before = h.view.setPlayback.mock.calls.at(-1)[0];
+    handlers.onSetPlaybackFromRoot();
+    handlers.onSetPlaybackFromTarget();
+    expect(h.view.setPlayback.mock.calls.at(-1)[0]).toEqual(before);
+    expect(h.contexts).toHaveLength(0);
+    handlers.onPlay();
+    expect(h.body.api.isPlaying()).toBe(true);
+    const frequency = h.contexts[0].oscillators[0].frequency.events;
+    const initialEvents = frequency.slice();
+    expect(initialEvents[0][1]).toBe(333.3);
+    handlers.onTargetOption('fixedMidi', 62);
+    handlers.onStep(10);
+    handlers.onSetPlaybackFromRoot();
+    handlers.onSetPlaybackFromTarget();
+    expect(frequency).toEqual(initialEvents);
+    expect(h.view.setPlayback.mock.calls.at(-1)[0]).toMatchObject({ source: 'hz', hzText: '333.3', playing: true });
+    expect(h.view.setJudgment.mock.calls.at(-1)[0]).toMatchObject({ mode: 'equal', just: null });
+    handlers.onStop();
+    expect(h.body.api.isPlaying()).toBe(false);
+  });
+
+  it('records fixed-note and A4 condition boundaries but adds none for a rejected preset', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.workspace.onSession({ captureEpoch: 1, sampleRate: 48000 });
+    const initial = h.workspace.store.snapshot();
+    expect(initial.conditions).toHaveLength(1);
+    expect(initial.conditions[0].conditions).toMatchObject({ a4Tenths: 4420, targetConfig: { temperament: 'equal', fixedMidi: null } });
+    expect(h.body.api.applyTargetConfig({ temperament: 'just-major', fixedMidi: 69 })).toBe(false);
+    expect(h.workspace.store.snapshot()).toEqual(initial);
+    h.body.handlers.onTargetOption('fixedMidi', 60);
+    h.body.handlers.onStep(10);
+    const after = h.workspace.store.snapshot();
+    expect(after.boundaries.map((boundary) => boundary.type)).toEqual(['targetChange', 'targetChange']);
+    expect(after.conditions.map(({ conditions }) => [conditions.a4Tenths, conditions.targetConfig.fixedMidi])).toEqual([
+      [4420, null], [4420, 60], [4430, 60],
+    ]);
+    expect(after.conditions[0]).toEqual(initial.conditions[0]); // earlier conditions are not rewritten
+    const beforeReject = h.workspace.store.snapshot();
+    expect(h.body.api.applyTargetConfig({ temperament: 'custom', fixedMidi: 62 })).toBe(false);
+    expect(h.workspace.store.snapshot()).toEqual(beforeReject);
+  });
+
+  it('with saving off, fixed-note and display edits stay in memory and A4 saves no preferences', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    expect(h.body.api.isPersistingSettings()).toBe(false);
+    expect(h.body.api.applyTargetConfig({ temperament: 'equal', fixedMidi: 60 })).toBe(true);
+    h.body.api.setPrefs({ meterRangeCents: 25, toleranceCents: 10 });
+    expect(h.storage.data.portalTunerSettings).toBeUndefined();
+    expect(h.body.api.getTargetConfig().fixedMidi).toBe(60);
+    h.body.handlers.onStep(10);
+    expect(JSON.parse(h.storage.data.portalTunerSettings)).toEqual({ schemaVersion: 1, a4Tenths: 4430, persistSettings: false });
+    h.body.stop();
+    await h.body.start(h.startOptions);
+    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: null });
+    expect(h.body.api.getPrefs()).toMatchObject({ meterRangeCents: 50, toleranceCents: 3 });
+    expect(h.body.api.getA4()).toBe(443);
+    expect(h.contexts).toHaveLength(0);
+  });
+
   it('keeps unknown saved schemas untouched even after measurement edits', async () => {
     const raw = JSON.stringify({ schemaVersion: 999, a4Tenths: 4420, persistSettings: true, prefs: { judgment: { temperament: 'custom', fixedMidi: 60 } } });
     const h = harness({ storageData: { portalTunerSettings: raw } });
