@@ -134,6 +134,48 @@ describe('target model: Pythagorean and custom', () => {
 describe('display filter with the target model', () => {
   const push = (f, freq, n = 30, t0 = 0) => { let s; let t = t0; for (let i = 0; i < n; i += 1) { t += 50; s = f.push({ valid: true, frequency: freq }, t, 442); } return { s, t }; };
 
+  it('keeps detected A4 separate from fixed C4 and clamps only the needle', () => {
+    const f = displayFilter.createDisplayFilter({ meterRangeCents: 25 });
+    f.setTarget({ temperament: 'equal', fixedMidi: 60 }, 0, 442);
+    const { s } = push(f, 442, 40);
+    expect(s.note.midi).toBe(69);
+    expect(s.targetNote.midi).toBe(60);
+    expect(s.frequency).toBeCloseTo(442, 9);
+    expect(s.targetFrequency).toBeCloseTo(equal(60, 442), 9);
+    expect(s.cents).toBeCloseTo(900, 6);
+    expect(s.needleCents).toBe(25);
+    expect(s.needlePercent).toBe(100);
+    expect(s.judgment).toBe('sharp');
+    f.setOptions({ meterRangeCents: 100 }, 2050, 442);
+    const after = push(f, 442, 40, 2050).s;
+    expect(after.cents).toBeCloseTo(s.cents, 6);
+    expect(after.targetFrequency).toBe(s.targetFrequency);
+    expect(after.frequency).toBeCloseTo(s.frequency, 9);
+    expect(after.note.midi).toBe(69);
+    expect(after.targetNote.midi).toBe(60);
+    expect(after.needleCents).toBe(100);
+    expect(after.needlePercent).toBe(100);
+    expect(after.judgment).toBe('sharp');
+  });
+
+  it.each([-13.7, 15.6])('reference position %s cent is judged by the normal tolerance at every meter range', (cents) => {
+    const frequency = 442 * 2 ** (cents / 1200);
+    for (const meterRangeCents of [10, 25, 50, 100]) {
+      const f = displayFilter.createDisplayFilter({ meterRangeCents });
+      f.setTarget({ temperament: 'equal', fixedMidi: 69 }, 0, 442);
+      const { s, t } = push(f, frequency, 40);
+      expect(s.cents).toBeCloseTo(cents, 6);
+      expect(s.inTune).toBe(false);
+      expect(s.toleranceCents).toBe(3);
+      expect(s.judgment).toBe(cents < 0 ? 'flat' : 'sharp');
+      const widerTolerance = f.setOptions({ enterInTuneCents: 20, exitInTuneCents: 21 }, t, 442);
+      expect(widerTolerance.inTune).toBe(true);
+      expect(widerTolerance.cents).toBeCloseTo(cents, 6);
+      expect(widerTolerance.frequency).toBeCloseTo(frequency, 9);
+      expect(widerTolerance.targetFrequency).toBe(442);
+    }
+  });
+
   it('judges against the Pythagorean target and resets "in tune" when the target changes', () => {
     const f = displayFilter.createDisplayFilter();
     f.setTarget({ temperament: 'pythagorean', rootMidi: 60 }, 0, 442);

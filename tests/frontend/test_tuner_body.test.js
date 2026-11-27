@@ -61,7 +61,7 @@ function harness(options = {}) {
     root: {},
     graph,
     bind: vi.fn(),
-    setRootOptions: vi.fn(),
+    setFixedNoteOptions: vi.fn(), setTargetConfig: vi.fn(),
     setJudgment: vi.fn(),
     setRange: vi.fn(),
     setReference: vi.fn(),
@@ -288,25 +288,20 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.playbackView().summary).toContain('443.000 Hz');
   });
 
-  it('passes the unrounded pure target to playback and does not follow later root/mode changes', async () => {
+  it('keeps direct Hz independent of A4 and leaves legacy copy handlers inert', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
-    h.handlers.onMode('major-third');
-    const target = lib.temperament.justTarget('major-third', 60, 442);
+    h.handlers.onPlaybackSource('hz');
+    h.handlers.onPlaybackHzInput('333.3');
     h.handlers.onSetPlaybackFromTarget();
-    expect(h.contexts).toHaveLength(0); // setting does not play
-    expect(h.playbackView().source).toBe('hz');
-    expect(h.playbackView().summary).toContain(target.targetFrequency.toFixed(3));
-    h.handlers.onPlay();
-    const firstFrequency = h.contexts[0].oscillators[0].frequency.events[0][1];
-    expect(firstFrequency).toBe(target.targetFrequency); // exact, not 0.1 Hz-rounded
-    expect(Number.isInteger(firstFrequency * 10)).toBe(false);
-    h.handlers.onRoot(62);
-    h.handlers.onMode('minor-third');
-    expect(h.contexts[0].oscillators[0].frequency.events).toHaveLength(1); // no implicit follow
     h.handlers.onSetPlaybackFromRoot();
-    const rootHz = lib.temperament.justTarget('minor-third', 62, 442).rootFrequency;
-    expect(h.contexts[0].oscillators[0].frequency.events.at(-1)).toEqual(['exp', rootHz, lib.playback.FREQUENCY_GLIDE_SECONDS]);
+    expect(h.contexts).toHaveLength(0);
+    expect(h.playbackView().summary).toContain('333.300 Hz');
+    h.handlers.onPlay();
+    const events = h.contexts[0].oscillators[0].frequency.events;
+    expect(events[0][1]).toBe(333.3);
+    h.handlers.onStep(10);
+    expect(events).toHaveLength(1);
   });
 
   it('a full stop (leave, background, logout) ends tone and measurement and is idempotent', async () => {
@@ -356,17 +351,39 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.controllerCallbacks().getDisplayRange()).toEqual(second); // used by the next start
   });
 
-  it('judgment mode changes recalculate and update the view', async () => {
-    const h = harness();
-    await h.body.start(h.startOptions);
-    h.handlers.onMode('minor-third');
-    const config = h.view.setJudgment.mock.calls.at(-1)[0];
-    expect(config.mode).toBe('minor-third');
-    expect(config.just.target.label).toBe('E♭4');
-    h.handlers.onRoot(57); // A3 -> minor third above is C4
-    expect(h.view.setJudgment.mock.calls.at(-1)[0].just.target.label).toBe('C4');
-    h.handlers.onMode('equal');
-    expect(h.view.setJudgment.mock.calls.at(-1)[0].just).toBeNull();
+  it('passes equal judgment on first start and restart without a target model', async () => {
+    expect(lib.targetModel).toBeUndefined();
+    const globalModel = globalThis.PortalTunerLib.targetModel;
+    delete globalThis.PortalTunerLib.targetModel;
+    const setJudgment = vi.fn();
+    const setTarget = vi.fn();
+    const original = lib.displayFilter.createDisplayFilter;
+    const spy = vi.spyOn(lib.displayFilter, 'createDisplayFilter').mockImplementation((options) => {
+      const filter = original(options);
+      const apply = filter.setJudgment;
+      filter.setJudgment = (...args) => { setJudgment(...args); return apply(...args); };
+      const applyTarget = filter.setTarget;
+      filter.setTarget = (...args) => { setTarget(...args); return applyTarget(...args); };
+      return filter;
+    });
+    try {
+      const h = harness({ storageData: {
+        portalTunerSettings: JSON.stringify({ schemaVersion: 1, a4Tenths: 4420, persistSettings: true, prefs: { judgment: { mode: 'major-third', temperament: 'minor-third', rootMidi: 65 } } }),
+      } });
+      expect(globalThis.PortalTunerLib.targetModel).toBeUndefined();
+      await h.body.start(h.startOptions);
+      expect(setJudgment.mock.calls.at(-1)[0].mode).toBe('equal');
+      expect(setTarget).not.toHaveBeenCalled(); // proves the model-backed branch was not used
+      h.body.stop();
+      await h.body.start(h.startOptions);
+      expect(setJudgment).toHaveBeenCalledTimes(2);
+      expect(setJudgment.mock.calls.at(-1)[0].mode).toBe('equal');
+      expect(h.view.setJudgment.mock.calls.at(-1)[0]).toMatchObject({ mode: 'equal', just: null });
+      for (const name of ['onMode', 'onTemperament', 'onRoot', 'onCustomOffset']) expect(h.handlers[name]).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+      if (globalModel !== undefined) globalThis.PortalTunerLib.targetModel = globalModel;
+    }
   });
 
   it('a late wake-lock answer from an earlier playback is released at once', async () => {
@@ -399,8 +416,7 @@ describe('tuner body: playback and measurement switching', () => {
   it('an A4 change re-judges against the new target instead of keeping "in tune"', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
-    h.handlers.onMode('major-third');
-    const target442 = lib.temperament.justTarget('major-third', 60, 442).targetFrequency;
+    const target442 = 442;
     let now = 0;
     for (let i = 0; i < 40; i += 1) {
       now += 50;
@@ -408,7 +424,7 @@ describe('tuner body: playback and measurement switching', () => {
     }
     h.handlers.onStep(10); // A4 442.0 -> 443.0 (ten 0.1 Hz steps)
     const shown = h.view.showReading.mock.calls.filter((c) => c[0]).at(-1)[0];
-    expect(shown.cents).toBeCloseTo(1200 * Math.log2(target442 / lib.temperament.justTarget('major-third', 60, 443).targetFrequency), 6);
+    expect(shown.cents).toBeCloseTo(1200 * Math.log2(target442 / 443), 6);
     expect(shown.cents).toBeCloseTo(-3.91, 2);
     expect(shown.judgment).toBe('flat'); // beyond ±3 for the new target
   });

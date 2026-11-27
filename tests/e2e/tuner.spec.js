@@ -498,33 +498,109 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     await installPortalApiMocks(page, { permission: 'システム管理者' });
   });
 
-  test('just-intonation mode judges against the fixed pure third over the chosen root', async ({ page }) => {
+  test('measurement keeps only equal temperament and fixed note selection', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
     await login(page);
     await openTuner(page);
     await expectMeasuringA4(page);
     const tuner = page.locator('#systemTunerHost');
-    await expect(tuner.getByRole('button', { name: '平均律' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(tuner.locator('[data-tuner-root-field]')).toBeHidden();
-    await tuner.getByRole('button', { name: '純正律・長3度' }).click();
-    await expect(tuner.getByRole('button', { name: '純正律・長3度' })).toHaveAttribute('aria-pressed', 'true');
-    const rootSelect = tuner.getByLabel('根音（比較の基準にする音）');
-    await expect(rootSelect).toHaveValue('60'); // C4
-    await expect(tuner.locator('[data-tuner-target-line]')).toContainText('根音 C4 → 純正長3度 E4');
-    // Root F4: target is the pure major third A4 = F4 x 5/4 (A4 = 442).
-    const pureA4 = 442 * 2 ** ((65 - 69) / 12) * 5 / 4;
-    await rootSelect.selectOption('65');
-    await expect(tuner.locator('[data-tuner-target-line]')).toContainText(`根音 F4 → 純正長3度 A4（目標 ${pureA4.toFixed(2)} Hz）`);
-    await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4'); // detected note still shown
-    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/^\+(5|6|7) cent$/);
-    await expect(tuner.locator('[data-tuner-judgment]')).toContainText('高い');
-    await expect(tuner.locator('[data-tuner-equal-diff]')).toHaveText(/^平均律の A4 との差：\u2212(7|8|9) cent$/);
-    await expect(tuner.locator('[data-tuner-legend]')).toContainText('破線：純正律の目標');
-    await expect(tuner.locator('[data-tuner-legend]')).toContainText('点線：同じ音の平均律');
-    // Back to equal temperament: nearest-note judgment again.
-    await tuner.getByRole('button', { name: '平均律' }).click();
-    await expect(tuner.locator('[data-tuner-target-line]')).toBeHidden();
-    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/^\u2212(7|8|9) cent$/);
-    await expect(tuner.locator('[data-tuner-equal-diff]')).toBeHidden();
+    for (const attr of ['mode', 'temperament', 'root-field', 'root-select', 'role-field', 'role', 'seventh-field', 'seventh', 'octave-field', 'octave-shift', 'pythagorean-field', 'pyth-start', 'custom-field', 'custom-grid', 'custom-pc', 'temperament-note', 'target-line', 'equal-diff']) {
+      await expect(tuner.locator(`[data-tuner-${attr}]`)).toHaveCount(0);
+    }
+    await expect(tuner.locator('#tunerModeLabel')).toHaveCount(0);
+    const fixed = tuner.getByLabel('判定する音', { exact: true });
+    await expect(fixed).toHaveValue('');
+    await expect(fixed.locator('option')).toHaveCount(86); // auto + C1..C8
+    await expect(fixed.locator('option').nth(1)).toHaveValue('24');
+    await expect(fixed.locator('option').last()).toHaveValue('108');
+    for (const [midi, cents] of [['24', /\+(4491|4492|4493) cent/], ['108', /−(3907|3908|3909) cent/]]) {
+      await fixed.selectOption(midi);
+      await expect(fixed).toHaveValue(midi);
+      await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4');
+      await expect(tuner.locator('[data-tuner-cents]')).toHaveText(cents);
+    }
+    await fixed.selectOption('60');
+    await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4');
+    // Fake microphone is 440 Hz, reference is 442 Hz: 900 - 7.85 cent.
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/\+(891|892|893) cent/);
+    await fixed.selectOption('');
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/−(7|8|9) cent/);
+    await expect(tuner.locator('[data-tuner-legend]')).toContainText('平均律');
+    await showTunerTab(page, '音源');
+    for (const attr of ['set-root', 'set-target']) {
+      await expect(tuner.locator(`[data-tuner-${attr}]`)).toHaveCount(1);
+      await expect(tuner.locator(`[data-tuner-${attr}]`)).toBeHidden();
+    }
+    await showTunerTab(page, '測定');
+    await expect(tuner.locator('[data-tuner-set-root]')).toBeHidden();
+    await expect(tuner.locator('[data-tuner-set-target]')).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
+  test('reference marks follow meter range, reset and re-entry without changing readings', async ({ page }) => {
+    await login(page);
+    await openTuner(page);
+    await expectMeasuringA4(page);
+    const tuner = page.locator('#systemTunerHost');
+    const expectReferences = async (range) => {
+      for (const cent of [-13.7, 15.6]) {
+        const marks = tuner.locator(`[data-tuner-reference-cent="${cent}"]`);
+        await expect(marks).toHaveCount(2); // stem and its accessible label
+        for (const mark of await marks.all()) {
+          if (range === 10) await expect(mark).toBeHidden();
+          else {
+            await expect(mark).toBeVisible();
+            const geometry = await mark.evaluate((el) => {
+              const box = el.getBoundingClientRect();
+              const parent = el.parentElement.getBoundingClientRect();
+              return { left: parseFloat(el.style.left), x: box.x + (el.classList.contains('tuner-meter-reference-label') ? box.width / 2 : 0), origin: parent.x, width: el.parentElement.clientWidth };
+            });
+            const expected = 50 + 50 * cent / range;
+            expect(geometry.left).toBeCloseTo(expected, 5);
+            expect(Math.abs(geometry.x - geometry.origin - geometry.width * expected / 100)).toBeLessThan(2);
+          }
+        }
+      }
+    };
+    await expectReferences(50); // initial render, before any preference events
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-menu-section="settings"]').click();
+    await tuner.locator('[data-tuner-persist]').check();
+    for (const range of [10, 25, 50, 100, 10, 25]) {
+      await showTunerTab(page, '履歴・楽器・設定');
+      await tuner.locator('[data-tuner-menu-section="settings"]').click();
+      await tuner.locator('[data-tuner-meter-range]').selectOption(String(range));
+      await showTunerTab(page, '測定');
+      await expectReferences(range);
+      await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4');
+      await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/−(7|8|9) cent/);
+      await expect(tuner.locator('[data-tuner-frequency]')).toHaveText(/440\.\d Hz/);
+      await expect(tuner.locator('[data-tuner-judgment]')).toContainText('低い');
+      const percent = await tuner.locator('[data-tuner-needle]').evaluate((el) => parseFloat(el.style.left));
+      expect(Math.abs(percent - (50 + 50 * (1200 * Math.log2(440 / 442)) / range))).toBeLessThan(50 / range);
+    }
+    await expect(tuner.locator('.tuner-meter-reference-label').first()).toHaveText('参考：純正長3度 −13.7 cent');
+    await expect(tuner.locator('.tuner-meter-reference-label').last()).toHaveText('参考：純正短3度 +15.6 cent');
+    expect(await tuner.locator('.tuner-meter-references').evaluate((el) => Boolean(el.closest('[aria-live], [role="status"], [role="alert"]')))).toBe(false);
+    await page.locator('#systemPanel .toolbar').getByRole('button', { name: '実験室', exact: true }).click();
+    await expectReleased(page);
+    await page.locator('#system-laboratoryTab').getByRole('button', { name: 'チューナー', exact: true }).click();
+    await showTunerTab(page, '測定');
+    await expectMeasuringA4(page);
+    await expectReferences(25);
+    await tuner.locator('[data-tuner-pause]').click(); // references survive silence
+    await expect(tuner.locator('[data-tuner-needle]')).toBeHidden();
+    await expectReferences(25);
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-menu-section="settings"]').click();
+    await tuner.locator('[data-tuner-tolerance]').selectOption('10');
+    await showTunerTab(page, '測定');
+    await expectReferences(25);
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-reset-prefs]').click();
+    await showTunerTab(page, '測定');
+    await expectReferences(50);
   });
 
   test('display range switches between 500 Hz-16 kHz (default) and 25 Hz-16 kHz without stopping detection', async ({ page }) => {
@@ -601,24 +677,23 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     await expect.poll(async () => (await probe(page)).playbackContexts).toEqual(['closed']);
   });
 
-  test('just-intonation values go to the player unrounded and only on request', async ({ page }) => {
+  test('direct Hz settings do not play or follow measurement settings', async ({ page }) => {
     await login(page);
     await openTuner(page);
     const tuner = page.locator('#systemTunerHost');
-    await tuner.getByRole('button', { name: '純正律・長3度' }).click();
     await showTunerTab(page, '音源');
-    await tuner.getByRole('button', { name: '判定対象音を再生欄に設定' }).click();
-    // E4 pure = C4 (A4 = 442) x 5/4, shown with three decimals and no sound yet.
-    const pureE4 = 442 * 2 ** ((60 - 69) / 12) * 5 / 4;
-    await expect(tuner.locator('[data-tuner-playback-summary]')).toContainText(`${pureE4.toFixed(3)} Hz（純正長3度 E4（根音 C4））`);
+    await expect(tuner.locator('[data-tuner-playback-just]')).toBeHidden();
+    await tuner.getByRole('button', { name: '周波数（Hz）で指定', exact: true }).click();
+    await tuner.locator('[data-tuner-playback-hz]').fill('333.3');
+    await expect(tuner.locator('[data-tuner-playback-summary]')).toContainText('333.300 Hz');
     expect((await probe(page)).playbackContexts).toHaveLength(0);
     await showTunerTab(page, '測定');
-    await tuner.getByLabel('根音（比較の基準にする音）').selectOption('62');
-    await expect(tuner.locator('[data-tuner-playback-summary]')).toContainText(`${pureE4.toFixed(3)} Hz`); // no implicit follow
+    await tuner.getByLabel('判定する音', { exact: true }).selectOption('62');
+    await tuner.locator('[data-tuner-step="1"]').click();
     await showTunerTab(page, '音源');
-    await tuner.getByRole('button', { name: '根音を再生欄に設定' }).click();
-    const rootD4 = 442 * 2 ** ((62 - 69) / 12);
-    await expect(tuner.locator('[data-tuner-playback-summary]')).toContainText(`${rootD4.toFixed(3)} Hz（根音 D4）`);
+    await expect(tuner.locator('[data-tuner-playback-summary]')).toContainText('333.300 Hz');
+    await expect(tuner.locator('[data-tuner-playback-just]')).toBeHidden();
+    expect((await probe(page)).playbackContexts).toHaveLength(0);
   });
 
   test('leaving, logging out or going to the background while playing stops the tone; returning does not replay', async ({ page }) => {
@@ -844,25 +919,85 @@ test.describe('advanced tuner: tabs, pause, saving off, voices and narrow screen
     expect(result.afterStop).toBeLessThan(0.001);
   });
 
+  test('legacy saved targets become equal and non-equal preset recall stays silent', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('portalTunerSettings', JSON.stringify({ schemaVersion: 1, a4Tenths: 4420, persistSettings: true,
+        prefs: { judgment: { temperament: 'just-major', fixedMidi: 60 }, presets: { temperament: [
+          ...['minor-third', 'major-third', 'just-major', 'just-minor', 'pythagorean', 'custom'].map((temperament) => ({
+            id: temperament, name: `旧音律 ${temperament}`, data: { temperament, fixedMidi: 69 },
+          })),
+        ] } },
+      }));
+    });
+    await login(page);
+    await openTuner(page);
+    const tuner = page.locator('#systemTunerHost');
+    await expect(tuner.locator('[data-tuner-fixed-note]')).toHaveValue('60');
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/\+(891|892|893) cent/);
+    await showTunerTab(page, '音源');
+    await expect(tuner.locator('[data-tuner-set-root]')).toBeHidden();
+    await expect(tuner.locator('[data-tuner-set-target]')).toBeHidden();
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-menu-section="settings"]').click();
+    const before = await page.evaluate(() => localStorage.getItem('portalTunerSettings'));
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-tuner-announcer]');
+      window.__presetAnnouncements = [];
+      new MutationObserver(() => window.__presetAnnouncements.push(el.textContent)).observe(el, { subtree: true, childList: true, characterData: true });
+    });
+    for (const temperament of ['minor-third', 'major-third', 'just-major', 'just-minor', 'pythagorean', 'custom']) {
+      await tuner.locator(`[data-tuner-temperament-preset-use="${temperament}"]`).click();
+      await expect(tuner.locator('[data-tuner-temperament-presets]')).toContainText(`旧音律 ${temperament}`);
+    }
+    expect(await page.evaluate(() => localStorage.getItem('portalTunerSettings'))).toBe(before);
+    expect(await page.evaluate(() => window.__presetAnnouncements.some((text) => text.includes('呼び出しました')))).toBe(false);
+    expect((await probe(page)).playbackContexts).toHaveLength(0);
+    await showTunerTab(page, '測定');
+    await expect(tuner.locator('[data-tuner-fixed-note]')).toHaveValue('60');
+    await tuner.locator('[data-tuner-pause]').click();
+    await tuner.locator('[data-tuner-pause]').click();
+    await expect(tuner.locator('[data-tuner-fixed-note]')).toHaveValue('60');
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/\+(891|892|893) cent/);
+    await showTunerTab(page, '音源');
+    await expect(tuner.locator('[data-tuner-set-root]')).toHaveCount(1);
+    await expect(tuner.locator('[data-tuner-set-target]')).toHaveCount(1);
+    await expect(tuner.locator('[data-tuner-playback-just]')).toBeHidden();
+    await page.locator('#systemPanel .toolbar').getByRole('button', { name: '実験室', exact: true }).click();
+    await expectReleased(page);
+    await page.locator('#system-laboratoryTab').getByRole('button', { name: 'チューナー', exact: true }).click();
+    await showTunerTab(page, '測定');
+    await expect(tuner.locator('[data-tuner-fixed-note]')).toHaveValue('60');
+    await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4', { timeout: 15000 });
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/\+(891|892|893) cent/);
+    await showTunerTab(page, '音源');
+    for (const attr of ['set-root', 'set-target']) {
+      await expect(tuner.locator(`[data-tuner-${attr}]`)).toHaveCount(1);
+      await expect(tuner.locator(`[data-tuner-${attr}]`)).toBeHidden();
+    }
+  });
+
   test('temperament and sound presets: save, recall without playing, delete', async ({ page }) => {
     await login(page);
     await openTuner(page);
     await expectMeasuringA4(page);
     const tuner = page.locator('#systemTunerHost');
-    const temperament = tuner.getByLabel('音律（すべての選択肢）');
-    await temperament.selectOption('pythagorean');
+    const fixed = tuner.getByLabel('判定する音', { exact: true });
+    await fixed.selectOption('60');
     await showTunerTab(page, '履歴・楽器・設定');
     await tuner.locator('[data-tuner-menu-section="settings"]').click();
-    await tuner.locator('[data-tuner-temperament-preset-name]').fill('ピタゴラス');
+    await tuner.locator('[data-tuner-temperament-preset-name]').fill('平均律C4');
     await tuner.locator('[data-tuner-temperament-preset-save]').click();
-    await expect(tuner.locator('[data-tuner-temperament-presets]')).toContainText('ピタゴラス');
+    await expect(tuner.locator('[data-tuner-temperament-presets]')).toContainText('平均律C4');
     await showTunerTab(page, '測定');
-    await tuner.getByRole('button', { name: '平均律' }).click();
-    await expect(temperament).toHaveValue('equal');
+    await fixed.selectOption('69');
     await showTunerTab(page, '履歴・楽器・設定');
     await tuner.locator('[data-tuner-temperament-presets]').getByRole('button', { name: '呼び出す' }).click();
+    await expect(tuner.locator('[data-tuner-announcer]')).toHaveText('音律「平均律C4」を呼び出しました');
     await showTunerTab(page, '測定');
-    await expect(temperament).toHaveValue('pythagorean');
+    await expect(fixed).toHaveValue('60');
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-temperament-preset-delete]').click();
+    await expect(tuner.locator('[data-tuner-temperament-preset-use]')).toHaveCount(0);
     // Sound preset: two voices and a timed pattern; recalling never plays.
     await showTunerTab(page, '音源');
     await tuner.locator('[data-tuner-voice-add]').click();

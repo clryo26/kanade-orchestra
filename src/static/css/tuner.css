@@ -886,3 +886,38 @@
 .tuner[data-contrast="high"] .tuner-meter-needle {
     width: 8px;
 }
+
+/* Static references use dashed/dotted stems, separate from needle and zero. */
+.tuner-meter-reference {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-left: 2px dashed currentColor;
+    opacity: .8;
+    pointer-events: none;
+}
+.tuner-meter-reference-minor { border-left-style: dotted; }
+.tuner-meter-references {
+    position: relative;
+    height: 6.4rem;
+    font-size: .75rem;
+    line-height: 1.4;
+    pointer-events: none;
+}
+.tuner-meter-reference-label {
+    position: absolute;
+    top: 0;
+    width: max-content;
+    max-width: 35%;
+    transform: translateX(-50%);
+    text-align: center;
+    border-bottom: 1px dashed currentColor;
+}
+.tuner-meter-reference-label.tuner-meter-reference-minor {
+    top: 3.2rem;
+    border-bottom-style: dotted;
+}
+.tuner-meter-reference[hidden], .tuner-meter-reference-label[hidden] { display: none; }
+@media (forced-colors: active) {
+    .tuner-meter-reference { color: CanvasText; opacity: 1; }
+}

@@ -45,8 +45,6 @@ describe('just-intonation thirds', () => {
   it('names the example "根音 C4 → 純正長3度 E4"', () => {
     const t = temperament.justTarget('major-third', 60, 442);
     expect([t.root.label, t.intervalLabel, t.target.label]).toEqual(['C4', '純正長3度', 'E4']);
-    const view = require(path.join(root, 'src/static/js/modules/tuner/view.js'));
-    expect(view.targetLineText(t)).toBe(`根音 C4 → 純正長3度 E4（目標 ${t.targetFrequency.toFixed(2)} Hz）`);
   });
 
   it('offers roots C1..A♭7 so the third stays within the detection range (C1-C8)', () => {
