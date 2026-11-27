@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const root = process.cwd();
 const music = require(path.join(root, 'src/static/js/modules/tuner/music.js'));
 const settings = require(path.join(root, 'src/static/js/modules/tuner/settings.js'));
+const displayFilter = require(path.join(root, 'src/static/js/modules/tuner/display_filter.js'));
 
 function memoryStorage(initial = {}) {
   const data = { ...initial };
@@ -191,13 +192,41 @@ describe('tuner reference A4 setting', () => {
 
   it('removes obsolete measuring controls, handlers and text', () => {
     const view = fs.readFileSync(path.join(root, 'src/static/js/modules/tuner/view.js'), 'utf8');
-    for (const removed of ['data-tuner-solfege', 'data-tuner-freeze', 'data-tuner-chip-frozen', 'data-tuner-detail', '表示を固定', '詳細表示', '0.1 Hz']) {
+    for (const removed of ['data-tuner-solfege', 'data-tuner-freeze', 'data-tuner-chip-frozen', 'data-tuner-detail', '表示を固定', '詳細表示']) {
       expect(view).not.toContain(removed);
     }
+    // Only the measuring markup loses 0.1 Hz wording; playback keeps it.
+    const sections = view.split('<section class="tuner-playback"');
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).not.toContain('0.1 Hz');
     const body = fs.readFileSync(path.join(root, 'src/static/js/modules/tuner/index.js'), 'utf8');
     for (const removed of ['onFreeze', 'onDetailToggle', 'displayMode']) {
       expect(body).not.toContain(removed);
     }
+  });
+
+  it('keeps fractional Hz input and its label in the sound tab', () => {
+    const view = fs.readFileSync(path.join(root, 'src/static/js/modules/tuner/view.js'), 'utf8');
+    expect(view).toContain('<label for="tunerPlaybackHz">再生する周波数（28.0～4,700.0 Hz、0.1 Hz単位）</label>');
+    expect(view).toMatch(/<input id="tunerPlaybackHz"[^>]*inputmode="decimal"/);
+  });
+
+  it('saves rounded A4 changes with schema, preferences and the legacy key preserved', () => {
+    const storage = memoryStorage({
+      [settings.SETTINGS_KEY]: JSON.stringify({ schemaVersion: 1, a4Tenths: 4425, persistSettings: true, prefs: { displayMode: 'detail', toleranceCents: 5 } }),
+      [settings.STORAGE_KEY]: '441',
+    });
+    const store = settings.createSettingsStore(storage);
+    expect(store.load()).toBe(443);
+    expect(store.step(10)).toMatchObject({ value: 444, tenths: 4440, saved: true });
+    expect(JSON.parse(storage.data[settings.SETTINGS_KEY])).toMatchObject({
+      schemaVersion: 1, a4Tenths: 4440, persistSettings: true,
+      prefs: { displayMode: 'detail', toleranceCents: 5 },
+    });
+    expect(storage.data[settings.STORAGE_KEY]).toBe('441');
+    const restored = settings.createSettingsStore(storage);
+    expect(restored.load()).toBe(444);
+    expect(restored.getPrefs()).toMatchObject({ displayMode: 'detail', toleranceCents: 5 });
   });
 
   it('does not touch storage while loading the module', () => {
@@ -226,6 +255,23 @@ describe('tuner reference A4 setting', () => {
     for (const file of files) {
       expect(fs.readFileSync(path.join(root, file), 'utf8')).not.toContain('portalTunerSettings');
     }
+  });
+});
+
+describe('tuner note announcement regression', () => {
+  it('requires 800 ms stability and at least two seconds between different notes', () => {
+    const announcer = displayFilter.createAnnouncer();
+    expect(announcer.update('A4 ラ', 0)).toBeNull();
+    expect(announcer.update('A4 ラ', 799)).toBeNull();
+    expect(announcer.update('A4 ラ', 800)).toBe('A4 ラ');
+    expect(announcer.update('A4 ラ', 2800)).toBeNull(); // no repeated stable note
+    expect(announcer.update('C5 ド', 2801)).toBeNull();
+    expect(announcer.update('C5 ド', 3600)).toBeNull();
+    expect(announcer.update('C5 ド', 3601)).toBe('C5 ド');
+    expect(announcer.update('D5 レ', 3602)).toBeNull();
+    expect(announcer.update('D5 レ', 4402)).toBeNull(); // stable, but interval is too short
+    expect(announcer.update('D5 レ', 5600)).toBeNull();
+    expect(announcer.update('D5 レ', 5601)).toBe('D5 レ');
   });
 });
 

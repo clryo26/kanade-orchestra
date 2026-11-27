@@ -176,6 +176,26 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.playbackView().summary).toContain('500.500 Hz');
   });
 
+  it('refused measuring A4 input leaves the reference and playing note unchanged', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.handlers.onPlay();
+    const freq = h.contexts[0].oscillators[0].frequency.events;
+    const count = freq.length;
+    for (const text of ['389', '481', '442.5', '442.0']) {
+      h.handlers.onA4Input(text);
+      expect(h.body.api.getA4()).toBe(442);
+      expect(h.body.api.getA4Tenths()).toBe(4420);
+      expect(h.view.setReference.mock.calls.at(-1)[0]).toBe(442);
+      expect(freq).toHaveLength(count);
+      expect(h.playbackView().summary).toContain('A4基準 442.0 Hz');
+    }
+    h.handlers.onA4Input('４４３');
+    expect(h.body.api.getA4Tenths()).toBe(4430);
+    expect(freq.at(-1)).toEqual(['exp', 443, lib.playback.FREQUENCY_GLIDE_SECONDS]);
+    expect(h.playbackView().summary).toContain('A4基準 443.0 Hz');
+  });
+
   it('playing pauses measurement, releases the microphone path and clears old readings', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
