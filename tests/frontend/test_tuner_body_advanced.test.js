@@ -264,6 +264,56 @@ describe('measurement target compatibility', () => {
     expect(h.view.setTargetConfig.mock.calls.at(-1)[0]).toMatchObject({ fixedMidi });
   });
 
+  it.each(['minor-third', 'major-third', 'just-major', 'just-minor', 'pythagorean', 'custom'])(
+    're-reads a newly saved %s target as equal on restart', async (temperament) => {
+      const h = harness();
+      await h.body.start(h.startOptions);
+      h.pushPitch(442);
+      expect(h.reading().judgment).toBe('in-tune');
+      h.body.stop();
+      // Simulate settings written while the measurement screen was closed.
+      const old = { temperament, fixedMidi: 60, spelling: 'flat', rootMidi: 57, role: 'seventh', seventh: 'harmonic-7/4', octaveShift: -2, pythagoreanStart: -8, customOffsets: [0, 30, -20] };
+      Object.assign(h.storage.data, saved(old));
+      const raw = h.storage.data.portalTunerSettings;
+      await h.body.start(h.startOptions);
+      expect(h.body.api.getTargetConfig()).toEqual(L.targetModel.normalizeConfig({ temperament: 'equal', fixedMidi: 60, spelling: 'flat' }));
+      h.pushPitch(442);
+      expect(h.reading()).toMatchObject({ note: { midi: 69 }, targetNote: { midi: 60 }, judgment: 'sharp', just: null });
+      expect(h.reading().cents).toBeCloseTo(900, 6);
+      expect(h.storage.data.portalTunerSettings).toBe(raw);
+      expect(h.contexts).toHaveLength(0);
+    },
+  );
+
+  it('rejecting a preset during playback preserves the tone and emits no changes', async () => {
+    const h = harness({ storageData: saved({ temperament: 'equal', fixedMidi: 60 }) });
+    await h.body.start(h.startOptions);
+    h.body.handlers.onPlaybackSource('hz');
+    h.body.handlers.onPlaybackHzInput('333.3');
+    h.body.handlers.onPlay();
+    const events = [];
+    h.workspace.api().on((type) => events.push(type));
+    const frequency = h.contexts[0].oscillators[0].frequency.events;
+    const before = {
+      target: h.body.api.getTargetConfig(), raw: h.storage.data.portalTunerSettings,
+      playback: h.view.setPlayback.mock.calls.at(-1)[0], frequency: frequency.slice(),
+      contexts: h.contexts.length, stops: h.controller.stop.mock.calls.length,
+    };
+    for (const temperament of ['minor-third', 'major-third', 'just-major', 'just-minor', 'pythagorean', 'custom']) {
+      expect(h.body.api.applyTargetConfig({ temperament, fixedMidi: 69 })).toBe(false);
+    }
+    expect(h.body.api.isPlaying()).toBe(true);
+    expect(h.body.api.getTargetConfig()).toEqual(before.target);
+    expect(h.storage.data.portalTunerSettings).toBe(before.raw);
+    expect(h.view.setPlayback.mock.calls.at(-1)[0]).toEqual(before.playback);
+    expect(frequency).toEqual(before.frequency);
+    expect(h.contexts).toHaveLength(before.contexts);
+    expect(h.controller.stop).toHaveBeenCalledTimes(before.stops);
+    expect(events).toEqual([]);
+    h.body.handlers.onStop();
+    expect(h.body.api.isPlaying()).toBe(false);
+  });
+
   it('fixed-note and A4 changes immediately recalculate, render and notify without playing', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
@@ -388,7 +438,7 @@ describe('measurement target compatibility', () => {
     expect(JSON.parse(h.storage.data.portalTunerSettings)).toEqual({ schemaVersion: 1, a4Tenths: 4430, persistSettings: false });
     h.body.stop();
     await h.body.start(h.startOptions);
-    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: null });
+    expect(h.body.api.getTargetConfig()).toMatchObject({ temperament: 'equal', fixedMidi: 60 });
     expect(h.body.api.getPrefs()).toMatchObject({ meterRangeCents: 50, toleranceCents: 3 });
     expect(h.body.api.getA4()).toBe(443);
     expect(h.contexts).toHaveLength(0);

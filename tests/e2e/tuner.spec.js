@@ -586,6 +586,24 @@ test.describe('tuner judgment modes, display range and reference tone', () => {
     await expect(tuner.locator('.tuner-meter-reference-label').first()).toHaveText('参考：純正長3度 −13.7 cent');
     await expect(tuner.locator('.tuner-meter-reference-label').last()).toHaveText('参考：純正短3度 +15.6 cent');
     expect(await tuner.locator('.tuner-meter-references').evaluate((el) => Boolean(el.closest('[aria-live], [role="status"], [role="alert"]')))).toBe(false);
+    // A tolerance edit changes the pass band, while references remain static.
+    await showTunerTab(page, '履歴・楽器・設定');
+    await tuner.locator('[data-tuner-menu-section="settings"]').click();
+    await tuner.locator('[data-tuner-tolerance]').selectOption('10');
+    await showTunerTab(page, '測定');
+    await expect(tuner.locator('[data-tuner-judgment]')).toContainText('合っています');
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/−(7|8|9) cent/);
+    await expectReferences(25);
+    // Moving the target changes the reading and clamps the needle, not marks.
+    await tuner.locator('[data-tuner-fixed-note]').selectOption('60');
+    await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4');
+    await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/\+(891|892|893) cent/);
+    await expect(tuner.locator('[data-tuner-judgment]')).toContainText('高い');
+    await expect(tuner.locator('[data-tuner-needle]')).toHaveJSProperty('hidden', false);
+    expect(await tuner.locator('[data-tuner-needle]').evaluate((el) => parseFloat(el.style.left))).toBe(100);
+    await expectReferences(25);
+    await tuner.locator('[data-tuner-fixed-note]').selectOption('');
+    await expect(tuner.locator('[data-tuner-judgment]')).toContainText('合っています');
     await page.locator('#systemPanel .toolbar').getByRole('button', { name: '実験室', exact: true }).click();
     await expectReleased(page);
     await page.locator('#system-laboratoryTab').getByRole('button', { name: 'チューナー', exact: true }).click();
