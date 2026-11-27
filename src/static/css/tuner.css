@@ -162,11 +162,6 @@
     line-height: 1;
 }
 
-.tuner-note-solfege {
-    font-size: 1.4rem;
-    margin-left: 4px;
-}
-
 .tuner-frequency {
     font-size: 1.4rem;
     font-variant-numeric: tabular-nums;
