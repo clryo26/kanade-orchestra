@@ -94,15 +94,16 @@ describe('tuner reference A4 setting', () => {
     expect(store.setTenths(4801)).toMatchObject({ changed: false });
   });
 
-  it('parses typed A4 values (one decimal, full-width digits) and refuses the rest', () => {
-    expect(settings.parseA4Input('442')).toEqual({ ok: true, tenths: 4420 });
-    expect(settings.parseA4Input(' 441.5 ')).toEqual({ ok: true, tenths: 4415 });
-    expect(settings.parseA4Input('４４３．２')).toEqual({ ok: true, tenths: 4432 });
-    expect(settings.parseA4Input('390.0')).toEqual({ ok: true, tenths: 3900 });
-    expect(settings.parseA4Input('480.0')).toEqual({ ok: true, tenths: 4800 });
-    for (const [text, reason] of [['', 'empty'], ['389.9', 'range'], ['480.1', 'range'], ['442.25', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
+  it('parses integer A4 including full-width digits and refuses decimals', () => {
+    for (const [text, tenths] of [['442', 4420], ['４４３', 4430], [' 390 ', 3900], ['480', 4800]]) {
+      expect(settings.parseA4Input(text)).toEqual({ ok: true, tenths });
+    }
+    for (const [text, reason] of [['', 'empty'], ['389', 'range'], ['481', 'range'], ['441.5', 'format'], ['442.0', 'format'], ['４４３．２', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
       expect(settings.parseA4Input(text), text).toMatchObject({ ok: false, reason });
     }
+    expect(settings.parseA4Input('').message).toBe('基準周波数を入力してください。');
+    expect(settings.parseA4Input('442.0').message).toBe('390～480 の整数で入力してください。');
+    expect(settings.parseA4Input('389').message).toBe('390～480 Hz の範囲で入力してください。');
     expect(settings.PRESETS_TENTHS).toEqual([4400, 4410, 4420, 4430]);
   });
 

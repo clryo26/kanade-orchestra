@@ -61,7 +61,7 @@ function harness(options = {}) {
     root: {},
     graph,
     bind: vi.fn(),
-    setRootOptions: vi.fn(),
+    setMeterScale: vi.fn(),
     setJudgment: vi.fn(),
     setRange: vi.fn(),
     setReference: vi.fn(),
@@ -87,7 +87,7 @@ function harness(options = {}) {
   };
   const locks = [];
   const pendingLocks = [];
-  const storage = { data: {}, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = String(v); } };
+  const storage = { data: { ...options.storage }, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = String(v); } };
   const body = createTunerBody({
     lib,
     storage,
@@ -120,7 +120,7 @@ function harness(options = {}) {
     isScreenActive: () => state.active,
   };
   return {
-    body, view, graph, controller, contexts, calls, locks, pendingLocks, state, startOptions, timers,
+    body, view, graph, controller, contexts, calls, locks, pendingLocks, state, startOptions, timers, storage,
     handlers: body.handlers,
     playbackView: () => lastPlayback,
     runIntervals: () => intervals.forEach((t) => t.fn()),
@@ -225,27 +225,6 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.playbackView().summary).toContain('443.000 Hz');
   });
 
-  it('passes the unrounded pure target to playback and does not follow later root/mode changes', async () => {
-    const h = harness();
-    await h.body.start(h.startOptions);
-    h.handlers.onMode('major-third');
-    const target = lib.temperament.justTarget('major-third', 60, 442);
-    h.handlers.onSetPlaybackFromTarget();
-    expect(h.contexts).toHaveLength(0); // setting does not play
-    expect(h.playbackView().source).toBe('hz');
-    expect(h.playbackView().summary).toContain(target.targetFrequency.toFixed(3));
-    h.handlers.onPlay();
-    const firstFrequency = h.contexts[0].oscillators[0].frequency.events[0][1];
-    expect(firstFrequency).toBe(target.targetFrequency); // exact, not 0.1 Hz-rounded
-    expect(Number.isInteger(firstFrequency * 10)).toBe(false);
-    h.handlers.onRoot(62);
-    h.handlers.onMode('minor-third');
-    expect(h.contexts[0].oscillators[0].frequency.events).toHaveLength(1); // no implicit follow
-    h.handlers.onSetPlaybackFromRoot();
-    const rootHz = lib.temperament.justTarget('minor-third', 62, 442).rootFrequency;
-    expect(h.contexts[0].oscillators[0].frequency.events.at(-1)).toEqual(['exp', rootHz, lib.playback.FREQUENCY_GLIDE_SECONDS]);
-  });
-
   it('a full stop (leave, background, logout) ends tone and measurement and is idempotent', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
@@ -293,17 +272,13 @@ describe('tuner body: playback and measurement switching', () => {
     expect(h.controllerCallbacks().getDisplayRange()).toEqual(second); // used by the next start
   });
 
-  it('judgment mode changes recalculate and update the view', async () => {
+  it('exposes no removed handlers and always presents equal temperament', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
-    h.handlers.onMode('minor-third');
-    const config = h.view.setJudgment.mock.calls.at(-1)[0];
-    expect(config.mode).toBe('minor-third');
-    expect(config.just.target.label).toBe('E♭4');
-    h.handlers.onRoot(57); // A3 -> minor third above is C4
-    expect(h.view.setJudgment.mock.calls.at(-1)[0].just.target.label).toBe('C4');
-    h.handlers.onMode('equal');
-    expect(h.view.setJudgment.mock.calls.at(-1)[0].just).toBeNull();
+    for (const name of ['onMode', 'onRoot', 'onTemperament', 'onFreeze', 'onDetailToggle', 'onCustomOffset']) {
+      expect(h.handlers[name], name).toBeUndefined();
+    }
+    expect(h.view.setJudgment).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'equal', just: null }));
   });
 
   it('a late wake-lock answer from an earlier playback is released at once', async () => {
@@ -336,18 +311,74 @@ describe('tuner body: playback and measurement switching', () => {
   it('an A4 change re-judges against the new target instead of keeping "in tune"', async () => {
     const h = harness();
     await h.body.start(h.startOptions);
-    h.handlers.onMode('major-third');
-    const target442 = lib.temperament.justTarget('major-third', 60, 442).targetFrequency;
-    let now = 0;
+    const target442 = 442;
     for (let i = 0; i < 40; i += 1) {
-      now += 50;
       h.controllerCallbacks().onPitch({ valid: true, frequency: target442, reason: 'ok' });
     }
     h.handlers.onStep(10); // A4 442.0 -> 443.0 (ten 0.1 Hz steps)
     const shown = h.view.showReading.mock.calls.filter((c) => c[0]).at(-1)[0];
-    expect(shown.cents).toBeCloseTo(1200 * Math.log2(target442 / lib.temperament.justTarget('major-third', 60, 443).targetFrequency), 6);
+    expect(shown.cents).toBeCloseTo(1200 * Math.log2(442 / 443), 6);
     expect(shown.cents).toBeCloseTo(-3.91, 2);
     expect(shown.judgment).toBe('flat'); // beyond ±3 for the new target
+  });
+});
+
+describe('integer A4 and reference marks', () => {
+  it.each([[4425, 443], [4424, 442]])('rounds saved %i tenths to %i Hz', async (tenths, hz) => {
+    const h = harness({ storage: { portalTunerSettings: JSON.stringify({ schemaVersion: 1, a4Tenths: tenths, persistSettings: false }) } });
+    await h.body.start(h.startOptions);
+    expect(h.view.setReference.mock.calls.at(-1)[0]).toBe(hz);
+    expect(h.body.api.getA4()).toBe(hz);
+    expect(h.body.api.getA4Tenths()).toBe(hz * 10);
+    expect(JSON.parse(h.storage.data.portalTunerSettings).a4Tenths).toBe(hz * 10);
+    // start reloads storage too (e.g. after leaving and reopening the tuner).
+    h.body.stop();
+    h.storage.data.portalTunerSettings = JSON.stringify({ schemaVersion: 1, a4Tenths: tenths, persistSettings: false });
+    await h.body.start(h.startOptions);
+    expect(h.view.setReference.mock.calls.at(-1)[0]).toBe(hz);
+    expect(JSON.parse(h.storage.data.portalTunerSettings).a4Tenths).toBe(hz * 10);
+  });
+
+  it('passes exact reference marks on start and each meter range change', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    expect(lib.settings.createSettingsStore(null).getPrefs).toBeTypeOf('function');
+    const marks = [
+      { id: 'major-third', cents: expect.closeTo(-13.6862861351652, 8) },
+      { id: 'minor-third', cents: expect.closeTo(15.6412870005526, 8) },
+    ];
+    expect(h.view.setMeterScale).toHaveBeenLastCalledWith(50, 3, marks);
+    for (const range of [10, 25, 50]) {
+      h.body.api.setPrefs({ meterRangeCents: range });
+      expect(h.view.setMeterScale).toHaveBeenLastCalledWith(range, 3, marks);
+    }
+  });
+
+  const { meterMarkPercent } = require(path.join(dir, 'view.js'));
+  it.each([[50, 36.3137, 65.6413], [25, 22.6274, 81.2826], [100, 43.1569, 57.8206]])('positions marks at range ±%i', (range, major, minor) => {
+    expect(meterMarkPercent(lib.temperament.pureOffsetCents('major-third'), range)).toBeCloseTo(major, 3);
+    expect(meterMarkPercent(lib.temperament.pureOffsetCents('minor-third'), range)).toBeCloseTo(minor, 3);
+  });
+  it('hides outside marks and includes both endpoints', () => {
+    expect(meterMarkPercent(lib.temperament.pureOffsetCents('major-third'), 10)).toBeNull();
+    expect(meterMarkPercent(lib.temperament.pureOffsetCents('minor-third'), 10)).toBeNull();
+    expect(meterMarkPercent(25, 25)).toBe(100);
+    expect(meterMarkPercent(-25, 25)).toBe(0);
+  });
+
+  it('keeps typed playback Hz out of view updates and legacy pure-target actions inert', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.handlers.onPlaybackSource('hz');
+    for (const text of ['500.5', 'abc', '']) {
+      h.handlers.onPlaybackHzInput(text);
+      expect(h.playbackView().hzText).toBeNull();
+    }
+    const before = h.view.setPlayback.mock.calls.length;
+    h.handlers.onSetPlaybackFromRoot();
+    h.handlers.onSetPlaybackFromTarget();
+    expect(h.view.setPlayback).toHaveBeenCalledTimes(before);
+    expect(h.contexts).toHaveLength(0);
   });
 });
 
