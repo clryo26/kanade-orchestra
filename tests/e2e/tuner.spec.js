@@ -153,7 +153,8 @@ async function showTunerTab(page, name) {
 async function expectMeasuringA4(page) {
   const tuner = page.locator('#systemTunerHost');
   await expect(tuner.locator('[data-tuner-note]')).toHaveText('A4', { timeout: 15000 });
-  await expect(tuner.locator('[data-tuner-solfege]')).toHaveText('（ラ）');
+  await expect(tuner.locator('[data-tuner-solfege]')).toHaveCount(0);
+  await expect(tuner.locator('[data-tuner-readout]')).not.toContainText('（ラ）');
   // The first frames after start can be transient; the smoothed reading must settle on 440 Hz.
   await expect.poll(async () => {
     const value = Number.parseFloat(await tuner.locator('[data-tuner-frequency]').textContent());
@@ -186,6 +187,7 @@ test.describe('tuner with a granted fake microphone', () => {
     await page.locator('#system-laboratoryTab').getByRole('button', { name: 'チューナー', exact: true }).click();
     await expectMeasuringA4(page);
     const tuner = page.locator('#systemTunerHost');
+    await expect(tuner.locator('[data-tuner-announcer]')).toHaveText('A4 ラ', { timeout: 5000 });
     // 440 Hz against A4 = 442 Hz is about -8 cents: "low".
     await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/^−(7|8|9) cent$/);
     await expect(tuner.locator('[data-tuner-judgment]')).toContainText('低い');
@@ -300,10 +302,10 @@ test.describe('tuner with a granted fake microphone', () => {
     expect(state.contexts).toEqual(['running']);
   });
 
-  // Design (Phase 1): A4 390.0-480.0 Hz in 0.1 Hz steps, presets and direct
+  // Measuring A4: integer 390-480 Hz in 1 Hz steps, presets and direct
   // input; stored as portalTunerSettings (a4Tenths). The old key is only a
   // read-once migration source and is never written again.
-  test('reference A4: 0.1 Hz steps, presets, input limits, legacy migration and restore', async ({ page }) => {
+  test('reference A4: 1 Hz steps, integer input limits, legacy migration and restore', async ({ page }) => {
     await page.addInitScript(() => {
       if (!sessionStorage.getItem('tunerE2eSeeded')) {
         sessionStorage.setItem('tunerE2eSeeded', '1');
@@ -316,53 +318,99 @@ test.describe('tuner with a granted fake microphone', () => {
     await expectMeasuringA4(page);
     const tuner = page.locator('#systemTunerHost');
     const reference = tuner.locator('[data-tuner-reference]');
-    const down = tuner.getByRole('button', { name: '基準周波数を0.1 Hz下げる' });
-    const up = tuner.getByRole('button', { name: '基準周波数を0.1 Hz上げる' });
+    const announcer = tuner.locator('[data-tuner-announcer]');
+    const down = tuner.getByRole('button', { name: '基準周波数を1 Hz下げる', exact: true });
+    const up = tuner.getByRole('button', { name: '基準周波数を1 Hz上げる', exact: true });
     // Migrated from the legacy value (441 Hz).
-    await expect(reference).toHaveText('A4 = 441.0 Hz');
+    await expect(reference).toHaveText('A4 = 441 Hz');
     for (const box of [await down.boundingBox(), await up.boundingBox()]) {
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
     }
     await up.click();
-    await expect(reference).toHaveText('A4 = 441.1 Hz');
-    await expect(tuner.locator('[data-tuner-announcer]')).toHaveText('基準周波数 A4 = 441.1 Hz');
+    await expect(reference).toHaveText('A4 = 442 Hz');
+    await expect(announcer).toHaveText('基準周波数 A4 = 442 Hz');
     const stored = await page.evaluate(() => [localStorage.getItem('portalTunerSettings'), localStorage.getItem('portalTunerReferenceA4Hz')]);
-    expect(JSON.parse(stored[0])).toMatchObject({ schemaVersion: 1, a4Tenths: 4411 });
+    expect(JSON.parse(stored[0])).toMatchObject({ schemaVersion: 1, a4Tenths: 4420 });
     expect(stored[1]).toBe('441'); // the legacy key is never rewritten
+    await down.click();
+    await expect(reference).toHaveText('A4 = 441 Hz');
+    await expect(announcer).toHaveText('基準周波数 A4 = 441 Hz');
+    expect(JSON.parse(await page.evaluate(() => localStorage.getItem('portalTunerSettings'))).a4Tenths).toBe(4410);
     // Preset 440 Hz: 440 Hz input is now in tune.
     await tuner.locator('[data-tuner-presets]').getByRole('button', { name: '440 Hz' }).click();
-    await expect(reference).toHaveText('A4 = 440.0 Hz');
+    await expect(reference).toHaveText('A4 = 440 Hz');
     await expect(tuner.locator('[data-tuner-presets]').getByRole('button', { name: '440 Hz' })).toHaveAttribute('aria-pressed', 'true');
     await expect(tuner.locator('[data-tuner-cents]')).toHaveText(/^(−1|0|\+1) cent$/);
     await expect(tuner.locator('[data-tuner-judgment]')).toContainText('合っています');
     // Direct input: out of range is explained and not applied; the lower limit disables "−".
-    const input = tuner.getByLabel('基準周波数を入力（390.0～480.0 Hz）');
-    await input.fill('389.9');
+    const input = tuner.getByLabel('基準周波数を入力（390～480 Hz）');
+    await expect(input).toHaveAttribute('inputmode', 'numeric');
+    await input.fill('389');
     await tuner.locator('[data-tuner-a4-apply]').click();
     await expect(tuner.locator('[data-tuner-a4-error]')).toBeVisible();
-    await expect(reference).toHaveText('A4 = 440.0 Hz');
+    await expect(tuner.locator('[data-tuner-a4-error]')).toHaveText('390～480 Hz の範囲で入力してください。');
+    await expect(reference).toHaveText('A4 = 440 Hz');
     await input.fill('390');
     await tuner.locator('[data-tuner-a4-apply]').click();
-    await expect(reference).toHaveText('A4 = 390.0 Hz');
+    await expect(reference).toHaveText('A4 = 390 Hz');
     await expect(tuner.locator('[data-tuner-a4-error]')).toBeHidden();
     await expect(down).toBeDisabled();
     await expect(up).toBeEnabled();
-    await input.fill('442.5');
+    await input.fill('480');
     await tuner.locator('[data-tuner-a4-apply]').click();
-    await expect(reference).toHaveText('A4 = 442.5 Hz');
+    await expect(reference).toHaveText('A4 = 480 Hz');
+    await expect(tuner.locator('[data-tuner-a4-error]')).toBeHidden();
+    await expect(up).toBeDisabled();
+    await expect(down).toBeEnabled();
+    for (const [text, message] of [
+      ['481', '390～480 Hz の範囲で入力してください。'],
+      ['442.5', '390～480 の整数で入力してください。'],
+      ['442.0', '390～480 の整数で入力してください。'],
+    ]) {
+      await input.fill(text);
+      await tuner.locator('[data-tuner-a4-apply]').click();
+      await expect(tuner.locator('[data-tuner-a4-error]')).toBeVisible();
+      await expect(tuner.locator('[data-tuner-a4-error]')).toHaveText(message);
+      await expect(reference).toHaveText('A4 = 480 Hz');
+    }
+    for (const text of ['443', '４４３']) {
+      await input.fill(text);
+      await tuner.locator('[data-tuner-a4-apply]').click();
+      await expect(reference).toHaveText('A4 = 443 Hz');
+      await expect(tuner.locator('[data-tuner-a4-error]')).toBeHidden();
+    }
     // Logout keeps the device setting; the next login restores it.
     await page.click('#portalDrawerToggle');
     await page.locator('#portalDrawer [data-drawer-action="logout"]').click();
     await expect(page.locator('#portalLoginPanel')).toBeVisible();
-    expect(JSON.parse(await page.evaluate(() => localStorage.getItem('portalTunerSettings'))).a4Tenths).toBe(4425);
+    expect(JSON.parse(await page.evaluate(() => localStorage.getItem('portalTunerSettings'))).a4Tenths).toBe(4430);
     await page.fill('#portalNameInput', '団員テスト');
     await page.selectOption('#portalPartInput', { label: 'Violin' });
     await page.fill('#portalPasswordInput', 'dummy-pass');
     await page.click('#portalLoginBtn');
     await expect(page.locator('#memberPanel')).toBeVisible();
     await openTuner(page);
-    await expect(reference).toHaveText('A4 = 442.5 Hz');
+    await expect(reference).toHaveText('A4 = 443 Hz');
+  });
+
+  test('saved fractional A4 and detail preferences start measuring without page errors', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      localStorage.setItem('portalTunerSettings', JSON.stringify({
+        schemaVersion: 1, a4Tenths: 4425, persistSettings: true, prefs: { displayMode: 'detail' },
+      }));
+    });
+    await login(page);
+    await openTuner(page);
+    await expectMeasuringA4(page);
+    const tuner = page.locator('#systemTunerHost');
+    await expect(tuner.locator('[data-tuner-reference]')).toHaveText('A4 = 443 Hz');
+    await expect(tuner.locator('[data-tuner-detail]')).toHaveCount(0);
+    await expect(tuner.locator('[data-tuner-detail-panel]')).toHaveCount(0);
+    expect((await probe(page)).tracks).toContain('live');
+    expect(errors).toEqual([]);
   });
 
   test('switching tabs or panels releases microphone, audio and worker', async ({ page }) => {
@@ -735,15 +783,18 @@ test.describe('advanced tuner: tabs, pause, saving off, voices and narrow screen
     await expectReleased(page);
   });
 
-  test('"表示を固定" keeps the microphone; "測定を一時停止" releases it until the user resumes', async ({ page }) => {
+  test('"測定を一時停止" releases the microphone until the user resumes', async ({ page }) => {
     await login(page);
     await openTuner(page);
     await expectMeasuringA4(page);
     const tuner = page.locator('#systemTunerHost');
-    await tuner.locator('[data-tuner-freeze]').click();
-    await expect(tuner.locator('[data-tuner-chip-frozen]')).toBeVisible();
+    for (const selector of ['[data-tuner-freeze]', '[data-tuner-chip-frozen]', '[data-tuner-detail]', '[data-tuner-detail-panel]']) {
+      await expect(tuner.locator(selector)).toHaveCount(0);
+    }
+    const measurement = tuner.getByRole('tabpanel', { name: '測定', exact: true });
+    await expect(measurement).not.toContainText('表示を固定');
+    await expect(measurement).not.toContainText('詳細表示');
     expect((await probe(page)).tracks.every((s) => s === 'live')).toBe(true);
-    await tuner.locator('[data-tuner-freeze]').click();
     await tuner.locator('[data-tuner-pause]').click();
     await expect.poll(async () => (await probe(page)).tracks.every((s) => s === 'ended'), { timeout: 5000 }).toBe(true);
     await expect.poll(async () => (await probe(page)).captureContexts.every((s) => s === 'closed')).toBe(true);

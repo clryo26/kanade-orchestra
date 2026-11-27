@@ -87,7 +87,7 @@ function harness(options = {}) {
   };
   const locks = [];
   const pendingLocks = [];
-  const storage = { data: {}, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = String(v); } };
+  const storage = { data: { ...options.storageData }, getItem(k) { return this.data[k] ?? null; }, setItem(k, v) { this.data[k] = String(v); } };
   const body = createTunerBody({
     lib,
     storage,
@@ -133,6 +133,49 @@ function harness(options = {}) {
 const flush = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); };
 
 describe('tuner body: playback and measurement switching', () => {
+  it('starts measuring with saved detail preferences and rounds the stored A4', async () => {
+    const h = harness({ storageData: {
+      portalTunerSettings: JSON.stringify({ schemaVersion: 1, a4Tenths: 4425, persistSettings: true, prefs: { displayMode: 'detail' } }),
+    } });
+    await h.body.start(h.startOptions);
+    expect(h.controller.getState()).toBe('measuring');
+    expect(h.view.setReference.mock.calls.at(-1)[0]).toBe(443);
+    expect(h.body.api.getA4()).toBe(443);
+    expect(h.body.api.getA4Tenths()).toBe(4430);
+    expect(h.body.handlers.onDetailToggle).toBeUndefined();
+    expect(h.body.handlers.onFreeze).toBeUndefined();
+  });
+
+  it('announces A4 changes in integer Hz', async () => {
+    const h = harness();
+    await h.body.start(h.startOptions);
+    h.body.handlers.onStep(10);
+    expect(h.view.announce).toHaveBeenCalledWith('基準周波数 A4 = 443 Hz');
+  });
+
+  it('keeps note playback following rounded A4 and fractional Hz playback independent', async () => {
+    const h = harness({ storageData: {
+      portalTunerSettings: JSON.stringify({ schemaVersion: 1, a4Tenths: 4425 }),
+    } });
+    await h.body.start(h.startOptions);
+    // The sound tab keeps its existing one-decimal A4 summary.
+    expect(h.playbackView().summary).toContain('A4基準 443.0 Hz');
+    h.handlers.onPlay();
+    const freq = h.contexts[0].oscillators[0].frequency.events;
+    expect(freq[0][1]).toBe(443);
+    h.handlers.onStep(10);
+    expect(freq.at(-1)).toEqual(['exp', 444, lib.playback.FREQUENCY_GLIDE_SECONDS]);
+    expect(h.playbackView().summary).toContain('A4基準 444.0 Hz');
+    h.handlers.onPlaybackSource('hz');
+    h.handlers.onPlaybackHzInput('500.5');
+    expect(freq.at(-1)).toEqual(['exp', 500.5, lib.playback.FREQUENCY_GLIDE_SECONDS]);
+    expect(h.playbackView().error).toBeNull();
+    const count = freq.length;
+    h.handlers.onStep(10);
+    expect(freq).toHaveLength(count);
+    expect(h.playbackView().summary).toContain('500.500 Hz');
+  });
+
   it('playing pauses measurement, releases the microphone path and clears old readings', async () => {
     const h = harness();
     await h.body.start(h.startOptions);

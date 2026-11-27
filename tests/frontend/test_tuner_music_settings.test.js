@@ -94,14 +94,19 @@ describe('tuner reference A4 setting', () => {
     expect(store.setTenths(4801)).toMatchObject({ changed: false });
   });
 
-  it('parses typed A4 values (one decimal, full-width digits) and refuses the rest', () => {
+  it('parses only integer A4 values, including full-width digits', () => {
     expect(settings.parseA4Input('442')).toEqual({ ok: true, tenths: 4420 });
-    expect(settings.parseA4Input(' 441.5 ')).toEqual({ ok: true, tenths: 4415 });
-    expect(settings.parseA4Input('４４３．２')).toEqual({ ok: true, tenths: 4432 });
-    expect(settings.parseA4Input('390.0')).toEqual({ ok: true, tenths: 3900 });
-    expect(settings.parseA4Input('480.0')).toEqual({ ok: true, tenths: 4800 });
-    for (const [text, reason] of [['', 'empty'], ['389.9', 'range'], ['480.1', 'range'], ['442.25', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
-      expect(settings.parseA4Input(text), text).toMatchObject({ ok: false, reason });
+    expect(settings.parseA4Input('４４３')).toEqual({ ok: true, tenths: 4430 });
+    expect(settings.parseA4Input('390')).toEqual({ ok: true, tenths: 3900 });
+    expect(settings.parseA4Input('480')).toEqual({ ok: true, tenths: 4800 });
+    expect(settings.parseA4Input(' 441 ')).toEqual({ ok: true, tenths: 4410 });
+    const messages = {
+      empty: '基準周波数を入力してください。',
+      format: '390～480 の整数で入力してください。',
+      range: '390～480 Hz の範囲で入力してください。',
+    };
+    for (const [text, reason] of [['', 'empty'], ['389', 'range'], ['481', 'range'], ['441.5', 'format'], ['442.5', 'format'], ['442.0', 'format'], ['４４３．２', 'format'], ['4.42e2', 'format'], ['abc', 'format']]) {
+      expect(settings.parseA4Input(text), text).toEqual({ ok: false, reason, message: messages[reason] });
     }
     expect(settings.PRESETS_TENTHS).toEqual([4400, 4410, 4420, 4430]);
   });
@@ -162,10 +167,37 @@ describe('tuner reference A4 setting', () => {
     const storage = memoryStorage();
     const first = settings.createSettingsStore(storage);
     first.load();
-    first.step(1);
-    first.step(1);
+    first.step(10);
+    first.step(10);
     const second = settings.createSettingsStore(storage);
-    expect(second.load()).toBe(442.2);
+    expect(second.load()).toBe(444);
+  });
+
+  it.each([[4425, 443], [4415, 442], [4414, 441], [3904, 390], [4796, 480]])(
+    'rounds stored %i tenths to %i Hz without writing during load', (tenths, hz) => {
+      const raw = JSON.stringify({ schemaVersion: 1, a4Tenths: tenths });
+      const storage = memoryStorage({ [settings.SETTINGS_KEY]: raw });
+      const writes = [];
+      const setItem = storage.setItem;
+      storage.setItem = (key, value) => { writes.push([key, value]); setItem(key, value); };
+      const store = settings.createSettingsStore(storage);
+      expect(store.load()).toBe(hz);
+      expect(store.get()).toBe(hz);
+      expect(store.getTenths()).toBe(hz * 10);
+      expect(storage.data[settings.SETTINGS_KEY]).toBe(raw);
+      expect(writes).toEqual([]);
+    },
+  );
+
+  it('removes obsolete measuring controls, handlers and text', () => {
+    const view = fs.readFileSync(path.join(root, 'src/static/js/modules/tuner/view.js'), 'utf8');
+    for (const removed of ['data-tuner-solfege', 'data-tuner-freeze', 'data-tuner-chip-frozen', 'data-tuner-detail', '表示を固定', '詳細表示', '0.1 Hz']) {
+      expect(view).not.toContain(removed);
+    }
+    const body = fs.readFileSync(path.join(root, 'src/static/js/modules/tuner/index.js'), 'utf8');
+    for (const removed of ['onFreeze', 'onDetailToggle', 'displayMode']) {
+      expect(body).not.toContain(removed);
+    }
   });
 
   it('does not touch storage while loading the module', () => {
