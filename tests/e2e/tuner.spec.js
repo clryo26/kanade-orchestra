@@ -165,6 +165,375 @@ async function expectMeasuringA4(page) {
   expect(shown.filter((value) => value < 438 || value > 442)).toEqual([]);
 }
 
+// Capture the real view when view.js registers it, before the launcher creates it.
+// Only this test wrapper may inject readings after pause; other callers are evidence
+// of a render/reset race, even if they happen to write the same text.
+async function captureReadoutView(page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(Element.prototype, 'requestFullscreen', { configurable: true, value: undefined });
+    const capture = { view: null, injecting: false, measuring: false, calls: [], unexpected: [] };
+    window.__readoutProbe = capture;
+    const lib = window.PortalTunerLib = window.PortalTunerLib || {};
+    let registered;
+    Object.defineProperty(lib, 'view', {
+      configurable: true,
+      get() { return registered; },
+      set(api) {
+        const create = api.createTunerView;
+        api.createTunerView = function (...args) {
+          const view = create.apply(this, args);
+          if (args[0].id === 'systemTunerHost') {
+            capture.view = view;
+            const show = view.showReading;
+            view.showReading = function (...readings) {
+              const call = {
+                source: capture.injecting ? 'test' : 'production',
+                state: readings[0]?.state || 'none', label: readings[0]?.note?.label || '—',
+              };
+              capture.calls.push(call);
+              if (capture.measuring && !capture.injecting) {
+                capture.unexpected.push({ ...call, stack: new Error().stack });
+              }
+              return show.apply(this, readings);
+            };
+          }
+          return view;
+        };
+        registered = api;
+      },
+    });
+  });
+}
+
+async function pauseReadoutForMeasurement(page) {
+  await expectMeasuringA4(page);
+  const root = page.locator('#systemTunerHost [data-tuner-root]');
+  await root.locator('[data-tuner-pause]').click();
+  await expect(root).toHaveAttribute('data-paused', 'true');
+  await expect(root).toHaveAttribute('data-state', 'paused');
+  await expect(root.locator('[data-tuner-status]')).toBeVisible();
+  await expect(root.locator('[data-tuner-chip-mic]')).toBeVisible();
+  await expectReleased(page);
+  await expect(root.locator('[data-tuner-readout]')).toHaveAttribute('data-state', 'none');
+  await expect(root.locator('[data-tuner-note]')).toHaveText('—');
+  await expect(root.locator('[data-tuner-frequency]')).toHaveText('— Hz');
+  await page.evaluate(async () => {
+    for (let i = 0; i < 3; i += 1) await new Promise(requestAnimationFrame);
+    window.__readoutProbe.measuring = true;
+  });
+  return root;
+}
+
+// Invoke only the captured production view. Keep caller tracking enabled across
+// animation frames so an unrelated render/reset cannot make an assertion pass.
+async function renderReadoutSnapshot(page, snapshot) {
+  return page.evaluate(async (snapshot) => {
+    const probe = window.__readoutProbe;
+    probe.injecting = true;
+    try { probe.view.showReading(snapshot); } finally { probe.injecting = false; }
+    for (let i = 0; i < 3; i += 1) await new Promise(requestAnimationFrame);
+    const root = probe.view.root;
+    const text = (name) => root.querySelector(`[data-tuner-${name}]`).textContent;
+    const needle = root.querySelector('[data-tuner-needle]');
+    return {
+      state: root.querySelector('[data-tuner-readout]').dataset.state,
+      label: text('note'), frequency: text('frequency'), cents: text('cents'), judgment: text('judgment'),
+      meterJudgment: root.querySelector('[data-tuner-meter]').dataset.judgment,
+      needleHidden: needle.hidden, needleLeft: needle.style.left,
+      paused: root.dataset.paused, rootState: root.dataset.state,
+      unexpected: probe.unexpected.slice(),
+    };
+  }, snapshot);
+}
+
+async function measureReadout(page, width, mode, testInfo) {
+  const result = await page.evaluate(async ({ width, mode }) => {
+    const probe = window.__readoutProbe;
+    const root = probe.view.root;
+    const lib = window.PortalTunerLib;
+    const readout = root.querySelector('[data-tuner-readout]');
+    const note = root.querySelector('[data-tuner-note]');
+    const noteArea = note.parentElement;
+    const label = readout.querySelector('.tuner-readout-label');
+    const frequency = root.querySelector('[data-tuner-frequency]');
+    const meter = root.querySelector('[data-tuner-meter]');
+    const panel = root.querySelector('[data-tuner-panel="measure"]');
+    const frames = async () => {
+      for (let i = 0; i < 3; i += 1) await new Promise(requestAnimationFrame);
+    };
+    await document.fonts.ready;
+    // Button clicks can scroll focused controls. Reset every scroll ancestor once
+    // per mode, then hold that position throughout the reading sequence.
+    for (let element = root; element; element = element.parentElement) {
+      element.scrollTop = 0;
+      element.scrollLeft = 0;
+    }
+    window.scrollTo(0, 0);
+    await frames();
+    const rect = (element) => {
+      const r = element.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    };
+    const textRect = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const r = range.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    };
+    const dimensions = (element) => ({
+      clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+      clientHeight: element.clientHeight, scrollHeight: element.scrollHeight,
+    });
+    const visible = (element) => !element.hidden && getComputedStyle(element).display !== 'none' &&
+      getComputedStyle(element).visibility === 'visible' && rect(element).width > 0 && rect(element).height > 0;
+    const status = root.querySelector('[data-tuner-status]');
+    const chip = root.querySelector('[data-tuner-chip-mic]');
+    const fixedStatus = { box: rect(status), chip: rect(chip), text: status.textContent, chipText: chip.textContent };
+    const inputs = [{ snapshot: null, label: '—', frequency: '— Hz', state: 'none' }];
+    const add = (midi, spelling, naming, state = 'active', expected) => {
+      const spelled = lib.targetModel.spell(midi, spelling);
+      const named = naming === 'solfege' ? { ...spelled, label: spelled.solfege + spelled.octave, solfege: '' } : spelled;
+      // Explicit representatives keep a naming regression from defining its own oracle.
+      if (expected && named.label !== expected) throw new Error(`Expected ${expected}, generated ${named.label}`);
+      const hz = lib.music.noteFrequency(midi, 440);
+      inputs.push({
+        snapshot: { state, note: named, frequency: hz, centsRounded: 0, judgment: 'in-tune', needlePercent: 50 },
+        label: expected || named.label, frequency: hz.toFixed(1) + ' Hz', state,
+      });
+    };
+    const representatives = [
+      [60, 'default', 'en', 'C4'], [69, 'default', 'en', 'A4'],
+      [61, 'sharp', 'en', 'C♯4'], [66, 'sharp', 'en', 'F♯4'],
+      [70, 'flat', 'en', 'B♭4'], [24, 'default', 'en', 'C1'],
+      [108, 'default', 'en', 'C8'], [66, 'sharp', 'solfege', 'ファ♯4'],
+      [102, 'sharp', 'solfege', 'ファ♯7'], [66, 'flat', 'solfege', 'ソ♭4'],
+    ];
+    for (const [midi, spelling, naming, expected] of representatives) {
+      add(midi, spelling, naming, 'active', expected);
+      add(midi, spelling, naming, 'held', expected);
+      inputs.push({ snapshot: { state: 'none' }, label: '—', frequency: '— Hz', state: 'none' });
+    }
+    // Literal oracles for two/three/four digits, rounding and trailing zero;
+    // these also receive the full containment/height checks in every mode.
+    for (const [hz, expected] of [[32.74, '32.7 Hz'], [440, '440.0 Hz'], [466.16, '466.2 Hz'], [2959.96, '2960.0 Hz']]) {
+      const named = lib.music.describeNote(lib.music.nearestMidi(hz, 440));
+      inputs.push({
+        snapshot: { state: 'active', note: named,
+          frequency: hz, centsRounded: 0, judgment: 'in-tune', needlePercent: 50 },
+        label: named.label, frequency: expected, state: 'active',
+      });
+    }
+    // Compare actual rendered widths across all single-accidental spellings and
+    // one-digit octaves, rather than assuming character count predicts width.
+    const seen = new Set();
+    for (let midi = 24; midi <= 108; midi += 1) {
+      for (const spelling of ['default', 'sharp', 'flat']) {
+        for (const naming of ['en', 'solfege']) {
+          const spelled = lib.targetModel.spell(midi, spelling);
+          const key = naming === 'solfege' ? spelled.solfege + spelled.octave : spelled.label;
+          if (!seen.has(key)) { seen.add(key); add(midi, spelling, naming); }
+        }
+      }
+    }
+    // Return through the named representatives to silence, not just increasing widths.
+    for (const [midi, spelling, naming, expected] of representatives.slice().reverse()) {
+      add(midi, spelling, naming, 'active', expected);
+    }
+    inputs.push({ snapshot: null, label: '—', frequency: '— Hz', state: 'none' });
+    const samples = [];
+    const errors = [];
+    let widest = { label: '', width: 0 };
+    const inside = (inner, outer) => inner.left >= outer.left - 0.5 && inner.top >= outer.top - 0.5 &&
+      inner.right <= outer.right + 0.5 && inner.bottom <= outer.bottom + 0.5;
+    for (const input of inputs) {
+      probe.injecting = true;
+      try { probe.view.showReading(input.snapshot); } finally { probe.injecting = false; }
+      // Await font fallback for the newly inserted Japanese/accidental glyphs too.
+      await document.fonts.ready;
+      await frames();
+      const sample = {
+        input: { label: input.label, frequency: input.frequency, state: input.state },
+        actual: { label: note.textContent, frequency: frequency.textContent, state: readout.dataset.state },
+        root: { state: root.dataset.state, paused: root.dataset.paused, maximized: root.classList.contains('tuner-maximized') },
+        readout: rect(readout), noteArea: rect(noteArea), note: rect(note), noteText: textRect(note),
+        label: textRect(label), frequency: textRect(frequency), meter: rect(meter),
+        panel: rect(panel), rootBounds: rect(root),
+        scroll: { note: dimensions(noteArea), readout: dimensions(readout), panel: dimensions(panel), root: dimensions(root) },
+        unexpected: probe.unexpected.slice(),
+      };
+      const check = (ok, reason) => { if (!ok) errors.push({ reason, sample }); };
+      check(visible(panel) && visible(readout) && visible(noteArea) && visible(note), 'visible nonzero measurement');
+      check(visible(status) && visible(chip) && chip.dataset.state === 'paused' &&
+        status.textContent === fixedStatus.text && chip.textContent === fixedStatus.chipText &&
+        Math.abs(rect(status).height - fixedStatus.box.height) <= 0.5 &&
+        Math.abs(rect(chip).height - fixedStatus.chip.height) <= 0.5, 'paused status remains visible and fixed');
+      check(sample.root.state === 'paused' && sample.root.paused === 'true', 'paused root');
+      check(sample.root.maximized === mode.startsWith('maximized'), 'display mode');
+      check(sample.actual.label === input.label && sample.actual.frequency === input.frequency &&
+        sample.actual.state === input.state, 'exact text and state survive multiple frames');
+      check(sample.unexpected.length === 0, 'production showReading interrupted controlled measurement');
+      check(inside(sample.noteText, sample.noteArea) && inside(sample.note, sample.noteArea) &&
+        inside(sample.noteText, sample.readout) && inside(sample.note, sample.readout) &&
+        inside(sample.noteArea, sample.readout), 'note text and element containment on all four edges');
+      check(inside(sample.label, sample.readout) && inside(sample.frequency, sample.readout), 'label/frequency containment');
+      check(sample.label.bottom <= sample.noteArea.top + 0.5 &&
+        sample.noteArea.bottom <= sample.frequency.top + 0.5, 'rows do not overlap');
+      for (const key of ['note', 'readout']) {
+        const d = sample.scroll[key];
+        check(d.scrollWidth <= d.clientWidth + 1 && d.scrollHeight <= d.clientHeight + 1, `${key} scroll containment`);
+      }
+      check(sample.scroll.panel.scrollWidth <= sample.scroll.panel.clientWidth + 1, 'measurement panel horizontal overflow');
+      if (sample.root.maximized) check(sample.scroll.root.scrollWidth <= sample.scroll.root.clientWidth + 1, 'maximized root horizontal overflow');
+      if (sample.scroll.panel.scrollWidth > sample.scroll.panel.clientWidth + 1 ||
+        (sample.root.maximized && sample.scroll.root.scrollWidth > sample.scroll.root.clientWidth + 1)) {
+        // Identify whether the readout or an existing surrounding control is wide;
+        // a failure must not invite changes to the meter/settings/tab bar.
+        sample.horizontalOverflow = Array.from(root.querySelectorAll('*')).filter((element) => {
+          if (!visible(element)) return false;
+          const bounds = rect(element);
+          return bounds.right > sample.rootBounds.right + 1 || bounds.left < sample.rootBounds.left - 1 ||
+            (panel.contains(element) && (bounds.right > sample.panel.right + 1 || bounds.left < sample.panel.left - 1));
+        }).map((element) => ({ element: element.className, readout: readout.contains(element), bounds: rect(element) }));
+      }
+      // A generous box must not pass by hiding text at any of its ancestors.
+      for (let element = note; element && element !== panel; element = element.parentElement) {
+        const style = getComputedStyle(element);
+        check(!['hidden', 'clip'].includes(style.overflowX) && !['hidden', 'clip'].includes(style.overflowY) &&
+          style.textOverflow !== 'ellipsis' && style.clipPath === 'none' && style.maskImage === 'none' &&
+          style.visibility === 'visible' && style.opacity !== '0', 'no clipping, masking or hidden note');
+      }
+      if (sample.noteText.width > widest.width) widest = { label: input.label, width: sample.noteText.width };
+      samples.push(sample);
+      if (errors.length) break; // retain complete diagnostics for the first failing input
+    }
+    const spread = (get) => Math.max(...samples.map(get)) - Math.min(...samples.map(get));
+    const variation = {
+      readout: spread((s) => s.readout.height), note: spread((s) => s.noteArea.height),
+      meterTop: spread((s) => s.meter.top),
+    };
+    for (const [key, value] of Object.entries(variation)) {
+      if (value > 0.5) errors.push({ reason: `${key} variation ${value} exceeds 0.5 CSS px`, samples });
+    }
+    return { width, mode, widest, variation, first: samples[0], last: samples.at(-1), errors, unexpected: probe.unexpected };
+  }, { width, mode });
+  console.log(`tuner readout widest: ${JSON.stringify({ width, mode, ...result.widest })}`);
+  await testInfo.attach(`readout-${width}-${mode}`, { body: JSON.stringify(result, null, 2), contentType: 'application/json' });
+  expect(result.errors, JSON.stringify(result)).toEqual([]);
+  return result.first;
+}
+
+test.describe('tuner readout stable geometry', () => {
+  for (const width of [277, 390, 1280]) {
+    for (const maximized of [false, true]) {
+      test(`${width}px ${maximized ? 'maximized and restored' : 'normal'} readout`, async ({ page, context }, testInfo) => {
+        test.setTimeout(180000);
+        await page.setViewportSize({ width, height: 844 });
+        await context.grantPermissions(['microphone']);
+        await instrument(page);
+        await captureReadoutView(page);
+        await installPortalApiMocks(page, { permission: 'システム管理者' });
+        await login(page);
+        await openTuner(page);
+        const root = await pauseReadoutForMeasurement(page);
+        const before = await measureReadout(page, width, 'normal', testInfo);
+        if (maximized) {
+          await root.locator('[data-tuner-maximize]').click();
+          await expect(root).toHaveClass(/tuner-maximized/);
+          await measureReadout(page, width, 'maximized', testInfo);
+          await root.locator('[data-tuner-maximize]').click();
+          await expect(root).not.toHaveClass(/tuner-maximized/);
+          const after = await measureReadout(page, width, 'restored', testInfo);
+          expect(Math.abs(after.readout.height - before.readout.height)).toBeLessThanOrEqual(0.5);
+          expect(Math.abs(after.noteArea.height - before.noteArea.height)).toBeLessThanOrEqual(0.5);
+        }
+      });
+    }
+  }
+});
+
+test.describe('tuner readout unchanged behavior', () => {
+  test.beforeEach(async ({ page, context }) => {
+    await context.grantPermissions(['microphone']);
+    await instrument(page);
+    await captureReadoutView(page);
+    await installPortalApiMocks(page, { permission: 'システム管理者' });
+    await login(page);
+    await openTuner(page);
+    await pauseReadoutForMeasurement(page);
+  });
+
+  test('held renders the supplied snapshot; none and null clear all reading fields', async ({ page }) => {
+    const notes = await page.evaluate(() => ({
+      active: window.PortalTunerLib.music.describeNote(61),
+      held: window.PortalTunerLib.music.describeNote(58),
+    }));
+    expect(notes.active.label).toBe('C♯4');
+    expect(notes.held.label).toBe('B♭3');
+    const active = { state: 'active', note: notes.active, frequency: 277.18,
+      centsRounded: 12, judgment: 'sharp', needlePercent: 62 };
+    const held = { state: 'held', note: notes.held, frequency: 233.08,
+      centsRounded: -8, judgment: 'flat', needlePercent: 42 };
+    const cases = [
+      [active, { state: 'active', label: 'C♯4', frequency: '277.2 Hz', cents: '+12 cent',
+        judgment: '高い ▶', meterJudgment: 'sharp', needleHidden: false, needleLeft: '62%' }],
+      // Different from the previous active value: showReading must not retain it.
+      [held, { state: 'held', label: 'B♭3', frequency: '233.1 Hz', cents: '−8 cent',
+        judgment: '◀ 低い', meterJudgment: 'flat', needleHidden: false, needleLeft: '42%' }],
+    ];
+    const cleared = { state: 'none', label: '—', frequency: '— Hz', cents: '— cent',
+      judgment: '音を待っています', meterJudgment: 'none', needleHidden: true, needleLeft: '50%' };
+    // Stale fields in a none snapshot must not leak into the cleared display.
+    cases.push([{ ...held, state: 'none' }, cleared], [active, cases[0][1]], [null, cleared]);
+    for (const [snapshot, expected] of cases) {
+      expect(await renderReadoutSnapshot(page, snapshot)).toEqual({
+        ...expected, paused: 'true', rootState: 'paused', unexpected: [],
+      });
+    }
+  });
+
+  test('filter holds the same reading through 1000ms, clears at 1001ms and recovers', async ({ page }) => {
+    // Explicit filter timestamps exercise the actual hold boundary without
+    // changing browser clocks, production settings or the paused render loop.
+    const snapshots = await page.evaluate(() => {
+      const lib = window.PortalTunerLib;
+      const filter = lib.displayFilter.createDisplayFilter();
+      let active;
+      for (let now = 50; now <= 2000; now += 50) {
+        active = filter.push({ valid: true, frequency: 440 }, now, 440);
+      }
+      const held500 = filter.push({ valid: false }, 2500, 440);
+      const held1000 = filter.push({ valid: false }, 3000, 440);
+      const none1001 = filter.push({ valid: false }, 3001, 440);
+      filter.push({ valid: true, frequency: 440 }, 3050, 440);
+      const recovered = filter.push({ valid: true, frequency: 440 }, 3100, 440);
+      const fixed = filter.setTarget({ temperament: 'equal', fixedMidi: 60 }, 3100, 440);
+      return { active, held500, held1000, none1001, recovered, fixed };
+    });
+    for (const name of ['active', 'held500', 'held1000', 'recovered', 'fixed']) {
+      expect(snapshots[name].note.label, name).toBe('A4');
+      expect(snapshots[name].frequency, name).toBeCloseTo(440, 8);
+    }
+    expect(snapshots.held500).toEqual({ ...snapshots.active, state: 'held' });
+    expect(snapshots.held1000).toEqual({ ...snapshots.active, state: 'held' });
+    expect(snapshots.none1001).toEqual({ state: 'none' });
+    expect(snapshots.recovered.state).toBe('active');
+    expect(snapshots.fixed.targetNote.label).toBe('C4');
+    expect(snapshots.fixed.centsRounded).toBe(900);
+    for (const name of ['active', 'held500', 'held1000', 'none1001', 'recovered', 'fixed']) {
+      const snapshot = snapshots[name];
+      const rendered = await renderReadoutSnapshot(page, snapshot);
+      expect(rendered, name).toMatchObject({
+        state: snapshot.state, label: name === 'none1001' ? '—' : 'A4',
+        frequency: name === 'none1001' ? '— Hz' : '440.0 Hz',
+        cents: name === 'none1001' ? '— cent' : name === 'fixed' ? '+900 cent' : '0 cent',
+        judgment: name === 'none1001' ? '音を待っています' : name === 'fixed' ? '高い ▶' : '● 合っています',
+        needleHidden: name === 'none1001', needleLeft: name === 'fixed' ? '100%' : '50%',
+        paused: 'true', rootState: 'paused', unexpected: [],
+      });
+    }
+  });
+});
+
 test.describe('tuner with a granted fake microphone', () => {
   test.beforeEach(async ({ page, context }) => {
     await context.grantPermissions(['microphone']);

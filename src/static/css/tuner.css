@@ -147,24 +147,42 @@
 }
 
 .tuner-readout {
-    align-items: baseline;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    justify-content: center;
+    --tuner-note-size: min(4.5rem, 12vw);
+    /* Keep all three rows stable; leave room for accidentals and fallback glyphs. */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1.25rem calc(var(--tuner-note-size) * 1.5) 2rem;
+    block-size: calc(3.25rem + var(--tuner-note-size) * 1.5 + 8px);
+    gap: 4px;
     text-align: center;
 }
 
-.tuner-note-name {
-    font-size: clamp(3rem, 16vw, 4.5rem);
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    line-height: 1;
+.tuner-readout .tuner-readout-label {
+    line-height: 1.25rem;
 }
 
-.tuner-frequency {
+.tuner-readout .tuner-note {
+    align-items: center;
+    block-size: calc(var(--tuner-note-size) * 1.5);
+    display: flex;
+    justify-content: center;
+    min-inline-size: 0;
+}
+
+.tuner-readout .tuner-note-name {
+    font-size: var(--tuner-note-size);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1.35;
+    /* A single line prevents note changes from moving the following meter. */
+    white-space: nowrap;
+}
+
+.tuner-readout .tuner-frequency {
     font-size: 1.4rem;
     font-variant-numeric: tabular-nums;
+    line-height: 2rem;
+    white-space: nowrap;
 }
 
 /* 表示保持中（音が途切れた直後）は薄く表示する */
@@ -542,8 +560,8 @@
     z-index: 1050;
 }
 
-.tuner.tuner-maximized .tuner-note-name {
-    font-size: clamp(4rem, 24vw, 7rem);
+.tuner.tuner-maximized .tuner-readout {
+    --tuner-note-size: min(7rem, 18vw);
 }
 
 /* フォーム部品 */
