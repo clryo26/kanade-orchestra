@@ -85,7 +85,7 @@ async function stickyTunerSnapshot(root, id) {
       bottomStableFrames, scrollBehavior: getComputedStyle(scroller).scrollBehavior,
       ancestors, navbar: rect(navbar), navbarVisible: Boolean(navbarVisible), root: rect(element), bar: r,
       following, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      barOverflowX: getComputedStyle(bar).overflowX,
+      barOverflowX: getComputedStyle(bar).overflowX, barFlexShrink: getComputedStyle(bar).flexShrink,
       transport: rect(document.querySelector('[data-metronome-transport]')),
       top: getComputedStyle(bar).top, paddingTop: getComputedStyle(element).paddingTop,
       offset: document.documentElement.style.getPropertyValue('--tuner-tabbar-top'),
@@ -110,6 +110,9 @@ async function checkStickyTuner(page, root, testInfo, label) {
     expect(sample.maxScroll, detail).toBeGreaterThanOrEqual(0);
     if (sample.maximized) {
       expect(sample.top, detail).toBe('0px');
+      expect(sample.barFlexShrink, detail).toBe('0');
+      // The existing 44px touch targets must not collapse in the flex scroller.
+      expect(sample.bar.height, detail).toBeGreaterThanOrEqual(44);
       expect(sample.bar.top, detail).toBeGreaterThanOrEqual(sample.root.top - 1);
       // Padding and safe-area stay in the existing maximized scroll container.
       expect(sample.bar.top, detail).toBeLessThanOrEqual(sample.root.top + parseFloat(sample.paddingTop) + 1);
@@ -121,6 +124,11 @@ async function checkStickyTuner(page, root, testInfo, label) {
     }
     expect(sample.pageOverflow, detail).toBeLessThanOrEqual(1);
     expect(sample.barOverflowX, detail).toBe('auto');
+    // A scrollable flex item can collapse while its 44px buttons overflow it.
+    // Keep the whole existing touch target inside the bar's vertical clip.
+    expect(sample.button.height, detail).toBeGreaterThanOrEqual(44);
+    expect(sample.bar.top, detail).toBeLessThanOrEqual(sample.button.top + 1);
+    expect(sample.bar.bottom, detail).toBeGreaterThanOrEqual(sample.button.bottom - 1);
     expect(sample.point.x, detail).toBeGreaterThanOrEqual(sample.button.left);
     expect(sample.point.x, detail).toBeLessThan(sample.button.right);
     expect(sample.point.x, detail).toBeGreaterThanOrEqual(0);

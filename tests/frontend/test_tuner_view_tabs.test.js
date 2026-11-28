@@ -189,6 +189,12 @@ describe('existing tuner tab contract', () => {
         expect(apis[i].current()).toBe(id);
         expect(apis[i].panel(id)).toBe(panels[i]);
         expect(panels[i].hidden).toBe(false);
+        ['measure', 'sound', 'analyzer', 'trainer', 'diagnosis', 'menu'].forEach((other, index) => {
+          expect(apis[i].isVisible(other)).toBe(other === id);
+          expect(apis[i].panel(other).hidden).toBe(other !== id);
+          expect(root.firstChild.children[index].tabIndex).toBe(other === id ? 0 : -1);
+          expect(root.firstChild.children[index].attrs['aria-selected']).toBe(String(other === id));
+        });
         expect(root.firstChild.children.filter((button) => button.attrs['aria-selected'] === 'true'))
           .toEqual([root.firstChild.children[i === 0 ? 2 : 5]]);
         expect(handlers[i].onTab).not.toHaveBeenCalled();
@@ -237,6 +243,15 @@ describe('existing tuner tab contract', () => {
     check('sound');
     expect(s.focus()).toBeNull();
     expect(onTab).toHaveBeenLastCalledWith('sound');
+    // Clicking selects a panel without explicitly moving an existing focus.
+    const externalControl = s.root();
+    externalControl.focus();
+    const label = s.root();
+    bar.children[2].appendChild(label);
+    bar.listeners.click({ target: label });
+    check('analyzer');
+    expect(s.focus()).toBe(externalControl);
+    expect(onTab).toHaveBeenLastCalledWith('analyzer');
     for (const [key, id] of [['End', 'menu'], ['ArrowRight', 'measure'], ['ArrowLeft', 'menu'], ['Home', 'measure'], ['ArrowRight', 'sound'], ['ArrowRight', 'analyzer'], ['ArrowLeft', 'sound'], ['Home', 'measure']]) {
       const preventDefault = vi.fn();
       bar.listeners.keydown({ key, preventDefault });
@@ -281,11 +296,21 @@ describe('tuner sticky CSS contract', () => {
       expect(consumers[0][2]).toContain(declaration);
     }
   });
-  it('overrides the offset only for maximized tabs without changing safe-area padding', () => {
+  it('overrides the maximized offset without changing safe-area padding', () => {
     const tabs = rules.find(([ , selector]) => selector.trim() === '.tuner.tuner-maximized .tuner-tabbar');
-    expect(tabs[2].trim()).toBe('top: 0;');
+    expect(tabs[2]).toContain('top: 0;');
     const root = rules.find(([ , selector]) => selector.trim() === '.tuner.tuner-maximized');
     expect(root[2]).toContain('overflow-y: auto;');
     expect(root[2]).toContain('padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));');
+  });
+  it('prevents the maximized flex scroll container from shrinking and clipping the tabbar', () => {
+    const tabs = rules.find(([, selector]) => selector.trim() === '.tuner.tuner-maximized .tuner-tabbar');
+    // Independent declarations allow the sticky override and the collapse fix
+    // to coexist; an exact body match would incorrectly reject this combination.
+    expect(tabs[2]).toContain('top: 0;');
+    expect(tabs[2]).toContain('flex-shrink: 0;');
+    const root = rules.find(([, selector]) => selector.trim() === '.tuner');
+    expect(root[2]).toContain('display: flex;');
+    expect(root[2]).toContain('flex-direction: column;');
   });
 });

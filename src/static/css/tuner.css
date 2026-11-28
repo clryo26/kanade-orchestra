@@ -562,6 +562,8 @@
 
 /* Maximized scrolling belongs to the tuner, independently of the portal navbar. */
 .tuner.tuner-maximized .tuner-tabbar {
+    /* 固定高の縦flex内でも既存のタブ高を保つ。縮むと横スクロール領域がボタンをクリップする。 */
+    flex-shrink: 0;
     top: 0;
 }
 
