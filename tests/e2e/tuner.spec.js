@@ -47,8 +47,21 @@ async function stickyTunerSnapshot(root, id) {
     const maximized = element.classList.contains('tuner-maximized');
     const scroller = maximized ? element : document.scrollingElement;
     // Always reach the current true bottom, including after lazy panel creation.
-    scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
-    for (let i = 0; i < 3; i += 1) await new Promise(requestAnimationFrame);
+    // scrollTop assignment inherits CSS scroll-behavior (Bootstrap enables smooth
+    // page scrolling). Move instantly so the snapshot cannot sample its animation.
+    let bottomStableFrames = 0;
+    let previousBottom;
+    // Lazy content can change the bottom between frames. Keep targeting the
+    // actual bottom, never a navbar-adjusted position, and retain the strict
+    // assertion below if the bounded wait cannot reach a stable bottom.
+    for (let i = 0; i < 120 && bottomStableFrames < 3; i += 1) {
+      scroller.scrollTo({ top: scroller.scrollHeight - scroller.clientHeight, behavior: 'instant' });
+      await new Promise(requestAnimationFrame);
+      const bottom = scroller.scrollHeight - scroller.clientHeight;
+      bottomStableFrames = bottom === previousBottom && Math.abs(scroller.scrollTop - bottom) <= 1
+        ? bottomStableFrames + 1 : 0;
+      previousBottom = bottom;
+    }
     const ancestors = [];
     const following = [];
     for (let node = element; node; node = node.parentElement) {
@@ -69,6 +82,7 @@ async function stickyTunerSnapshot(root, id) {
     return {
       width: innerWidth, height: innerHeight, maximized,
       scroll: scroller.scrollTop, maxScroll: scroller.scrollHeight - scroller.clientHeight,
+      bottomStableFrames, scrollBehavior: getComputedStyle(scroller).scrollBehavior,
       ancestors, navbar: rect(navbar), navbarVisible: Boolean(navbarVisible), root: rect(element), bar: r,
       following, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       barOverflowX: getComputedStyle(bar).overflowX,
@@ -92,6 +106,7 @@ async function checkStickyTuner(page, root, testInfo, label) {
     await testInfo.attach(`${label}-${id}-${phase}`, { body: JSON.stringify(sample, null, 2), contentType: 'application/json' });
     const detail = JSON.stringify(sample);
     expect(Math.abs(sample.scroll - sample.maxScroll), detail).toBeLessThanOrEqual(1);
+    expect(sample.bottomStableFrames, detail).toBeGreaterThanOrEqual(3);
     expect(sample.maxScroll, detail).toBeGreaterThanOrEqual(0);
     if (sample.maximized) {
       expect(sample.top, detail).toBe('0px');

@@ -160,6 +160,45 @@ describe('tuner navbar offset', () => {
 });
 
 describe('existing tuner tab contract', () => {
+  for (const entry of ['create', 'resize', 'observer']) {
+    it(`keeps selection, focus, panels and callbacks unchanged during ${entry} remeasurement across hosts`, () => {
+      const s = setup();
+      s.doc.navbar = s.navbar(72);
+      const roots = [s.root(), s.root()];
+      const handlers = roots.map(() => ({ onTab: vi.fn() }));
+      const apis = roots.map((root, i) => s.create(root, handlers[i]));
+      apis[0].select('analyzer', true);
+      apis[1].select('menu');
+      const children = roots.map((root) => [...root.children]);
+      const panels = apis.map((api, i) => api.panel(i === 0 ? 'analyzer' : 'menu'));
+      const focus = s.focus();
+      handlers.forEach(({ onTab }) => onTab.mockClear());
+      const replacement = s.doc.navbar = s.navbar(108.25);
+      const update = () => {
+        if (entry === 'create') roots.forEach((root, i) => expect(s.create(root)).toBe(apis[i]));
+        else if (entry === 'resize') s.listeners.resize();
+        else s.observers[0].notify();
+      };
+      update();
+      expect(s.offset()).toBe('108.25px');
+      expect(s.observers[0].observe).toHaveBeenLastCalledWith(replacement, { box: 'border-box' });
+      roots.forEach((root, i) => {
+        const id = i === 0 ? 'analyzer' : 'menu';
+        expect(root.children).toEqual(children[i]);
+        expect(root.dataset.tab).toBe(id);
+        expect(apis[i].current()).toBe(id);
+        expect(apis[i].panel(id)).toBe(panels[i]);
+        expect(panels[i].hidden).toBe(false);
+        expect(root.firstChild.children.filter((button) => button.attrs['aria-selected'] === 'true'))
+          .toEqual([root.firstChild.children[i === 0 ? 2 : 5]]);
+        expect(handlers[i].onTab).not.toHaveBeenCalled();
+      });
+      expect(s.focus()).toBe(focus);
+      expect(s.observers).toHaveLength(1);
+      expect(s.window.addEventListener).toHaveBeenCalledTimes(1);
+    });
+  }
+
   it('preserves content order, API, ARIA, click and keyboard focus semantics', () => {
     const s = setup();
     const root = s.root();
