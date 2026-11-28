@@ -402,7 +402,7 @@
     overflow-x: auto;
     position: sticky;
     scrollbar-width: none;
-    top: 0;
+    top: var(--tuner-tabbar-top, 0px);
     z-index: 2;
 }
 
@@ -558,6 +558,11 @@
     padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     position: fixed;
     z-index: 1050;
+}
+
+/* Maximized scrolling belongs to the tuner, independently of the portal navbar. */
+.tuner.tuner-maximized .tuner-tabbar {
+    top: 0;
 }
 
 .tuner.tuner-maximized .tuner-readout {

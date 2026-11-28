@@ -1,6 +1,136 @@
 const { test, expect } = require('@playwright/test');
 const { installPortalApiMocks } = require('./fixtures/mockApi');
 
+// Kept local to each spec: no test-only layout or tab API overrides.
+async function settleStickyTuner(page, root) {
+  await expect(root).toBeVisible();
+  await expect(root.locator('[data-tuner-panel]:not([hidden]) [data-tuner-loading]')).toHaveCount(0);
+  await expect(page.locator('#portalLoadingBar')).toBeHidden();
+  await expect(page.locator('#portalDrawer')).toBeHidden();
+  await expect(page.locator('#portalDrawerBackdrop')).toBeHidden();
+  await root.evaluate(async (element) => {
+    await document.fonts.ready;
+    const animations = [];
+    for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+      animations.push(...ancestor.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity));
+    }
+    await Promise.all(animations.map((a) => a.finished));
+  });
+  let previous;
+  let stable = 0;
+  await expect.poll(async () => {
+    const shape = await root.evaluate((element) => {
+      const panel = element.querySelector('[data-tuner-panel]:not([hidden])');
+      const nav = document.querySelector('nav.navbar.sticky-top');
+      return [element.offsetWidth, element.offsetHeight, element.scrollHeight, panel.offsetHeight,
+        document.scrollingElement.scrollHeight, nav?.getBoundingClientRect().height || 0].join(',');
+    });
+    stable = shape === previous ? stable + 1 : 0;
+    previous = shape;
+    return stable;
+  }).toBeGreaterThanOrEqual(2);
+}
+
+async function stickyTunerSnapshot(root, id) {
+  return root.evaluate(async (element, id) => {
+    const bar = element.querySelector('[data-tuner-tabbar]');
+    const button = id && bar.querySelector(`[data-tuner-tab="${id}"]`);
+    const rect = (node) => node ? node.getBoundingClientRect().toJSON() : null;
+    if (button) {
+      const b = rect(button), r = rect(bar);
+      if (b.left < r.left) bar.scrollLeft += b.left - r.left;
+      else if (b.right > r.right) bar.scrollLeft += b.right - r.right;
+    }
+    const maximized = element.classList.contains('tuner-maximized');
+    const scroller = maximized ? element : document.scrollingElement;
+    // Always reach the current true bottom, including after lazy panel creation.
+    scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+    for (let i = 0; i < 3; i += 1) await new Promise(requestAnimationFrame);
+    const ancestors = [];
+    const following = [];
+    for (let node = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      for (let sibling = node.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
+        if (sibling.getClientRects().length) following.push({ tag: sibling.tagName, id: sibling.id, className: sibling.className, rect: rect(sibling) });
+      }
+      ancestors.push({ tag: node.tagName, id: node.id, overflowX: style.overflowX, overflowY: style.overflowY, transform: style.transform, rect: rect(node) });
+    }
+    const navbar = document.querySelector('nav.navbar.sticky-top');
+    const navbarVisible = navbar && navbar.getClientRects().length && getComputedStyle(navbar).visibility === 'visible';
+    const b = rect(button), r = rect(bar);
+    const point = button ? {
+      x: (Math.max(b.left, r.left, 0) + Math.min(b.right, r.right, innerWidth)) / 2,
+      y: (b.top + b.bottom) / 2,
+    } : null;
+    const front = point ? document.elementFromPoint(point.x, point.y) : null;
+    return {
+      width: innerWidth, height: innerHeight, maximized,
+      scroll: scroller.scrollTop, maxScroll: scroller.scrollHeight - scroller.clientHeight,
+      ancestors, navbar: rect(navbar), navbarVisible: Boolean(navbarVisible), root: rect(element), bar: r,
+      following, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      barOverflowX: getComputedStyle(bar).overflowX,
+      transport: rect(document.querySelector('[data-metronome-transport]')),
+      top: getComputedStyle(bar).top, paddingTop: getComputedStyle(element).paddingTop,
+      offset: document.documentElement.style.getPropertyValue('--tuner-tabbar-top'),
+      button: b, point, front: front ? { tag: front.tagName, id: front.id, className: front.className } : null,
+      hit: Boolean(button && (front === button || button.contains(front))),
+      clickPosition: button ? { x: point.x - b.left, y: point.y - b.top } : null,
+    };
+  }, id);
+}
+
+async function checkStickyTuner(page, root, testInfo, label) {
+  const captureBefore = await probe(page);
+  // Reopening can retain ended streams in the probe; the current run must be live.
+  expect(captureBefore.tracks.some((state) => state === 'live')).toBe(true);
+  const record = async (id, phase) => {
+    await settleStickyTuner(page, root);
+    const sample = await stickyTunerSnapshot(root, id);
+    await testInfo.attach(`${label}-${id}-${phase}`, { body: JSON.stringify(sample, null, 2), contentType: 'application/json' });
+    const detail = JSON.stringify(sample);
+    expect(Math.abs(sample.scroll - sample.maxScroll), detail).toBeLessThanOrEqual(1);
+    expect(sample.maxScroll, detail).toBeGreaterThanOrEqual(0);
+    if (sample.maximized) {
+      expect(sample.top, detail).toBe('0px');
+      expect(sample.bar.top, detail).toBeGreaterThanOrEqual(sample.root.top - 1);
+      // Padding and safe-area stay in the existing maximized scroll container.
+      expect(sample.bar.top, detail).toBeLessThanOrEqual(sample.root.top + parseFloat(sample.paddingTop) + 1);
+    } else {
+      expect(sample.bar.top, detail).toBeGreaterThanOrEqual((sample.navbarVisible ? sample.navbar.bottom : 0) - 1);
+      expect(parseFloat(sample.top), detail).toBeCloseTo(sample.navbarVisible ? sample.navbar.height : 0, 1);
+      expect(sample.ancestors.filter((a) => !['HTML', 'BODY'].includes(a.tag) && /auto|scroll|hidden|clip/.test(a.overflowY)), detail).toEqual([]);
+      expect(sample.ancestors.filter((a) => a.transform !== 'none'), detail).toEqual([]);
+    }
+    expect(sample.pageOverflow, detail).toBeLessThanOrEqual(1);
+    expect(sample.barOverflowX, detail).toBe('auto');
+    expect(sample.point.x, detail).toBeGreaterThanOrEqual(sample.button.left);
+    expect(sample.point.x, detail).toBeLessThan(sample.button.right);
+    expect(sample.point.x, detail).toBeGreaterThanOrEqual(0);
+    expect(sample.point.x, detail).toBeLessThan(sample.width);
+    expect(sample.point.y, detail).toBeGreaterThanOrEqual(0);
+    expect(sample.point.y, detail).toBeLessThan(sample.height);
+    expect(sample.hit, detail).toBe(true); // also catches the metronome transport covering a tab
+    expect(sample.root.bottom, detail).toBeGreaterThanOrEqual(sample.bar.bottom - 1);
+    return sample;
+  };
+  // Finish on measure so the existing maximize control is available to callers.
+  for (const id of ['sound', 'analyzer', 'trainer', 'diagnosis', 'menu', 'measure']) {
+    const before = await record(id, 'before');
+    const button = root.locator(`[data-tuner-tab="${id}"]`);
+    await button.click({ position: before.clickPosition });
+    await expect(button).toHaveAttribute('aria-selected', 'true');
+    await expect(root).toHaveAttribute('data-tab', id);
+    await expect(root.locator(`[data-tuner-panel="${id}"]`)).toBeVisible();
+    await record(id, 'after');
+    await expect(root.locator('[data-tuner-chip-mic]')).toBeVisible();
+    const captureAfter = await probe(page);
+    expect(captureAfter.gum).toBe(captureBefore.gum);
+    expect(captureAfter.tracks).toEqual(captureBefore.tracks);
+    expect(captureAfter.tracks.some((state) => state === 'live')).toBe(true);
+  }
+}
+
+
 // Metronome in the laboratory (MT-10 / MT-18 / MT-19 / MT-20 in a headless
 // browser). Audible accuracy, iOS, Bluetooth and real instruments are device
 // checks (MD-01..19) and are not claimed here.
@@ -198,6 +328,54 @@ test.describe('metronome for system administrators', () => {
     expect(tabBox.height).toBeGreaterThanOrEqual(44);
   });
 });
+
+for (const width of [390, 1280]) {
+  test(`analysis tuner ${width}px: bottom tabs, maximization, close and reopen`, async ({ page, context }, testInfo) => {
+    test.setTimeout(240000);
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.setViewportSize({ width, height: 844 });
+    await context.grantPermissions(['microphone']);
+    await page.addInitScript(() => {
+      Object.defineProperty(Element.prototype, 'requestFullscreen', { configurable: true, value: undefined });
+    });
+    await instrument(page);
+    await installPortalApiMocks(page, { permission: 'システム管理者' });
+    await login(page);
+    await openMetronome(page);
+    await showTab(page, '演奏解析');
+    const root = host(page).locator('[data-tuner-root]');
+    for (let opening = 0; opening < 2; opening += 1) {
+      await host(page).getByRole('button', { name: 'チューナーを表示する', exact: true }).click();
+      const start = host(page).getByRole('button', { name: 'チューナーで測定を始める', exact: true });
+      await start.click();
+      // The first tap may load the launcher. Follow the production retry prompt.
+      await page.waitForFunction(() => Boolean(window.PortalTunerLauncher));
+      // Wait for either a mounted view or the real retry state; avoid racing enter().
+      await expect.poll(async () => (await root.count()) > 0 ||
+        ((await start.isVisible()) && (await start.isEnabled()))).toBe(true);
+      if (await start.isVisible() && await start.isEnabled()) {
+        await expect(host(page)).toContainText('チューナーを準備しています。もう一度押してください。');
+        await start.click();
+      }
+      await expect(root).toHaveCount(1);
+      await expect(root.locator('[data-tuner-tabbar]')).toHaveCount(1);
+      await expect(root.locator('[data-tuner-chip-mic]')).toContainText('使用中');
+      await checkStickyTuner(page, root, testInfo, `${width}-${opening}-normal`);
+      await root.locator('[data-tuner-maximize]').click();
+      await expect(root).toHaveClass(/tuner-maximized/);
+      await checkStickyTuner(page, root, testInfo, `${width}-${opening}-maximized`);
+      await root.locator('[data-tuner-maximize]').click();
+      await expect(root).not.toHaveClass(/tuner-maximized/);
+      await checkStickyTuner(page, root, testInfo, `${width}-${opening}-restored`);
+      await host(page).getByRole('button', { name: 'チューナーを閉じる', exact: true }).click();
+      await expect(root).toHaveCount(0);
+      await expect.poll(async () => (await probe(page)).tracks.every((state) => state === 'ended')).toBe(true);
+      await expect.poll(async () => (await probe(page)).contexts.every((state) => state === 'closed')).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  });
+}
 
 test('members without the system administrator permission do not get the metronome', async ({ page }) => {
   await installPortalApiMocks(page, { permission: '団員' });
